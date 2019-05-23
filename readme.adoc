@@ -60,8 +60,17 @@ The variable of the yaml files are then merged in this order:
 * `ACCOUNT/CATALOGITEM/common.yaml`
 * `ACCOUNT/CATALOGITEM/STAGE*.yaml`   (_STAGE_ = `dev|test|prod`)
 
+=== Merging strategy (not meta vars)
 
 If a variable is defined in several YAML files, the definition in the last file has precedence over the others.
+
+When a variable is present in more than one file:
+
+* if it's a string, last definition will override previous
+* if it's a list, last definition will override previous
+* if it's a dictionary , all dictionaries will be *merged*
+
+Regarding merging strategies for meta variables, see next section.
 
 == Meta variables
 
@@ -70,19 +79,33 @@ Variables are merged and then passed directly to `ansible-playbook` command.
 If you want to change things happening *before* that, for example "specify what secrets to use", you have to configure your catalog item (or account) using variables from the `agnosticv_meta` dictionary.
 
 |=============================================
-| Variable name | default | Purpose
+| Variable name | type | default | Purpose | Merging strategy
 
 | `sandboxed`
+| Boolean
 | `false`
 | Set to true to deploy in a sandbox (AWS only).
+| Overwrite
 
 | `params_to_variables`
+| Dictionary
 | see `link:common.yaml[]`
 | This is the dictionary used to map BASH argument names passed by Cloudforms into ansible variable.
+| Merge
++
+If a key is present in several files, the last prevails.
 
 | `secrets`
+| List
 | `[]`
 | This list defines the secret files to load. `~/secrets/{{name}}.yml` in Admin host) or credentials (tower).
+| Append
+
+| `idle_after`
+| Number
+| `8`
+| NOT IMPlEMENTED YET
+| Overwrite
 |=============================================
 
 .example
@@ -96,6 +119,7 @@ agnosticv_meta:
   params_to_variables:
     user: student_name
 ----
+
 
 == Migrate a catalog item to agnosticv
 
