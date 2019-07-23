@@ -2,6 +2,12 @@
 
 ORIG="$(cd "$(dirname "$0")" || exit; pwd)"
 
+if ! command -v yq; then
+    echo "You need yq to use this script. You can download it from:"
+    echo "https://github.com/mikefarah/yq/releases"
+    exit 2
+fi
+
 agnosticv_assert_args() {
     if [ -z "${1}" ] || [ -z "${2}" ] || [ -z "${3}" ]; then
         echo "argument missing: agnosticv ACCOUNT CATALOGITEM STAGE"
