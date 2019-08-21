@@ -2,7 +2,7 @@
 
 ORIG="$(cd "$(dirname "$0")" || exit; pwd)"
 
-if ! command -v yq; then
+if ! command -v yq > /dev/null; then
     echo "You need yq to use this script. You can download it from:"
     echo "https://github.com/mikefarah/yq/releases"
     exit 2
