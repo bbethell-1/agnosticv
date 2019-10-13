@@ -1,0 +1,37 @@
+---
+ocp_workloads:
+  - ocp-workload-openshift-applier
+
+ocp_username: '{{ babylon_username }}'
+ocp_namespace_name: lab-{{ ocp_username | lower | regex_replace('[^a-z0-9]','-') }}-{{ guid }}
+
+openshift_cluster_content:
+  - object: User Namespace
+    content:
+      - name: User Namespace from Template
+        template: https://raw.githubusercontent.com/redhat-gpte-devopsautomation/cakephp-ex/master/openshift/multi-project-templates/user-sandbox-namespace.yml
+        params_from_vars:
+          CLUSTER_ROLE: admin
+          NAMESPACE: "{{ ocp_namespace_name }}"
+          USER: "{{ ocp_username }}"
+        action: "{{ applier_action }}"
+
+target_host:
+  # TODO: change this to the shared cluster
+  ansible_host: bastion.shared-ocp4-demo.events.opentlc.com
+  ansible_port: 22
+  ansible_user: ec2-user
+  #ansible_ssh_private_key_content: "{{ target_host_ssh_private_key_content }}"
+  ansible_ssh_private_key_file: ~/.ssh/opentlc_admin_backdoor.pem
+  #ansible_ssh_extra_args:
+
+silent: false
+
+__meta__:
+  deployer:
+    scm_type: git
+    scm_url: https://github.com/redhat-cop/agnosticd.git
+    scm_ref: development
+    scm_tag_prefix: development  # Dynamic lookup of latest tag
+    type: agnosticd # default agnosticd
+    entry_point: ansible/main.yml
