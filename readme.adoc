@@ -38,7 +38,7 @@ ACCOUNT/
          test.yaml
          prod.yaml
 
-   
+
    CATALOGITEM2/
          common.yaml
          dev.yaml
@@ -74,16 +74,30 @@ Regarding merging strategies for meta variables, see next section.
 
 == Meta variables
 
-Variables are merged and then passed directly to `ansible-playbook` command.
+Meta variables are just variables like any other, except they are not used for agnostic**d**. Instead they are useful to configure the way we want the deployment to happen, or anything that is done **before** or **outside** of agnostic**d**.
 
-If you want to change things happening *before* that, for example "specify what secrets to use", you have to configure your catalog item (or account) using variables from the `agnosticv_meta` dictionary.
+|=============================================
+| Special variable | Purpose
 
-The following variables work with the BASH deployment scripts (Located in OPEN_Admin repository). This is not for Babylon.
+| `agnosticv_meta`
+| Dictionary containing variables used by the deployer scripts.
+
+See implementation:  link:https://github.com/redhat-gpe/OPEN_Admin/blob/master/OPENTLC-Deployer/deploy_scripts/ALL_agnosticv.sh[`ALL_agnosticv.sh`] and link:https://github.com/redhat-gpe/OPEN_Admin/blob/master/OPENTLC-Deployer/OPEN-Deployer.agnosticv.sh[functions]
+
+| `\\__meta__`
+| Variables used by link:https://github.com/redhat-cop/babylon[Babylon]. See the dedicated section later in this Readme.
+|=============================================
+
+Variables in agnosticv are merged and then passed directly to `ansible-playbook` command.
+
+If you want to change something happening *before* that, for example "specify what secrets to pass to agnosticd", you have to configure your catalog item (or account) using variables from the `agnosticv_meta` dictionary.
+
+The following variables work with the BASH deployment scripts (Located in OPEN_Admin repository).
 
 |=============================================
 | Variable name | type | default | Purpose | Merging strategy
 
-| `sandboxed` *does not work in CLI*
+| `sandboxed`
 | Boolean
 | `false`
 | Set to true to deploy in a sandbox (AWS only).
@@ -170,6 +184,22 @@ If set to `false`, the deletions of sandboxes can be run in parallel.
 | `configs/{{ env_type }}/lifecycle.yml` if it exists, otherwise `lifecycle.yml`
 | The playbook to use for start / stop / status actions. By default, the one in the config directory is used. If it doesn't exist, then the common link:https://github.com/redhat-cop/agnosticd/blob/development/ansible/lifecycle.yml[`lifecycle.yml`] is used, which just turns on/off the instances.
 | Overwrite
+
+| `deploy_with`
+| String
+| `local`
+| The deployment suite to use. The default is `local`.
+
+`local`: use the `ansible-playbook` command directly from the admin host
+
+`babylon`: Use Babylon. You must set `agnosticv_meta.babylon` to configure it. You must also use the "babylon" virtualenv.
+| Overwrite
+
+| `babylon.kubeconfig`
+| String
+| None
+| The kubeconfig file need to communicate with the Babylon OCP cluster. This file my exist locally on the admin host in `~/secrets/`
+| Overwrite
 |=============================================
 
 .example
@@ -179,10 +209,139 @@ agnosticv_meta:
   secrets:
     - gpte
     - ocp4_special_token
-  
+
   params_to_variables:
     user: student_name
 ----
+
+=== Babylon backend
+
+`agnosticv_meta` variables are not for babylon. But you can use them to tell the deployer script to use Babylon in the background.
+
+The deployer script located on the admin hosts, `ALL_agnosticv.sh` has now the capability to deploy an environment using our link:https://github.com/redhat-cop/babylon[Babylon] clusters.
+Instead of running the `ansible-playbook` locally on the admin host, the script will call Babylon components and let Babylon (down to Ansible Tower) handle the deployment.
+
+In order to do that, there are a few things to add to your catalog item in agnosticv:
+
+. In `agnosticv_meta`, set the following variables:
++
+[source,yaml]
+----
+agnosticv_meta:
+  # Instead of running ansible-playbook from the admin host,
+  # tell ALL_agnosticv.sh to use babylon to deploy.
+  deploy_with: babylon
+
+  # Use a specific virtualenv that has all the k8s modules.
+  # This is mandatory:
+  virtualenv: babylon
+
+  # Specify the kubeconfig to use to talk to the Babylon OCP cluster.
+  # The kubeconfig file must exit in ~/secrets/ on the admin hosts.
+  babylon:
+    kubeconfig: babydev.kubeconfig
+----
++
+|===========================
+| kubeconfig | cluster
+
+| `babydev.kubeconfig`
+| link:https://github.com/redhat-gpe/babylon-private/tree/master/envs/babydev-ocp[babydev]
+| `babytest.kubeconfig`
+| link:https://github.com/redhat-gpe/babylon-private/tree/master/envs/babydev-ocp[babytest]
+| `babyprod.kubeconfig`
+| link:https://github.com/redhat-gpe/babylon-private/tree/master/envs/babydev-ocp[babyprod]
+|===========================
+
+. Create `\\__meta__` dictionary containing the information needed by Babylon.
++
+[source,yaml]
+----
+__meta__:
+  catalog:
+    namespace: gpte
+
+    parameters:
+      # Specify here all the variables passed by Cloudforms
+
+  deployer:
+    scm_ref: development
+    scm_type: git
+    scm_url: https://github.com/redhat-cop/agnosticd.git
+    type: agnosticd
+
+  # Here you must specify the secrets containing the variables used to deploy.
+  secrets:
+  - name: gpte
+    namespace: gpte
+
+  tower:
+    organization: gpte
+----
+
+. Make sure you pass secrets. The current secrets living in `~/secrets` on the admin hosts were all imported as OpenShift secrets in the `gpte` namespace. So you can use the same name. For example:
++
+[source,yaml]
+----
+agnosticv_meta:
+  secrets:
+    - gpte
+    - ocp4_token
+----
++
+Becomes:
++
+[source,yaml]
+----
+__meta__:
+  secrets:
+    - name: gpte
+      namespace: gpte
+    - name: ocp4_token
+      namespace: gpte
+----
+
+==== Parameters passed from Cloudforms
+
+Sometimes you want variables to be dynamic, and to come from a dialog in Cloudforms.
+
+In order to pass variables from Cloudforms up to Babylon, you will need to pay attention to the following:
+
+. Make sure the BASH parameter is translated to a variable by the `ALL_agnosticv.sh` script. This is defined by the `agnosticv_meta.params_to_variables` dictionary
++
+[source,yaml]
+----
+agnosticv_meta:
+  params_to_variables:
+    appversion: ig_version
+----
+. Inform Babylon of all the variables you want to overwrite by using the `\\__meta__.catalog.parameters` list:
++
+[souce,yaml]
+----
+__meta__:
+  catalog:
+    parameters:
+    - name: cloud_tags
+    - name: course_name
+    - name: email
+    - name: ipa_host_password
+    - name: install_lets_encrypt_certificates
+    - name: osrelease
+    - name: platform
+    - name: aws_region
+    - name: student_name
+    - name: ig_version
+----
++
+TIP: Remember to use link:merge.sh[`merge.sh`] to get all the variables for a catalog item.
++
+[WARNING]
+====
+If the variable passed by Cloudforms is not in `\\__meta__.catalog.parameters`, in Babylon, the value for that variable will not be passed to Tower. It will fallback to the value defined in agnostic**v**.
+
+Explanation: Everthing that is in `\\__meta__` is automatically parsed by the link:https://github.com/redhat-gpte-devopsautomation/agnosticv-operator[agnosticv-operator] to generate the AnarchyGovernors objects on the cluster. Those AnarchyGovernors contain the variables. If you want to allow those variables to be overwritten, you have to add them as parameters.
+====
 
 
 == Migrate a catalog item to agnosticv
@@ -230,7 +389,7 @@ to
 
 . After a month, grep the logs to ensure the old script was not called.
 ** If it was, it means there is another catalog item that is using the script. Investigate.
-** If not, delete the old script. 
+** If not, delete the old script.
 
 ----
 ########################################################################
@@ -257,4 +416,3 @@ cd agnosticv
 #!/bin/bash
 ansible-playbook ./ansible/main.yml -e @./config.yaml -e @./secret.yaml -e guid=<a GUID>
 ----
-
