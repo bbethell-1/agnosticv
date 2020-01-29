@@ -26,7 +26,7 @@ echo
 cp -pr NOVELLO_EXAMPLE $ci
 
 cd $ci
-sed -i "s/platform: RHPDS/platform: $en/" common.yml
+sed -i "s/PLATFORM/$en/" common.yml
 sed -i "s/example-bp/$bp/" common.yml
 sed -i "s/my-example-blueprint/$bp/" test.yaml
 sed -i "s/my-example-blueprint/$bp/" prod.yaml
