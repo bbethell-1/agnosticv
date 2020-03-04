@@ -26,10 +26,17 @@ echo
 cp -pr NOVELLO_EXAMPLE $ci
 
 cd $ci
-sed -i "s/PLATFORM/$en/" common.yml
-sed -i "s/example-bp/$bp/" common.yml
-sed -i "s/my-example-blueprint/$bp/" test.yaml
-sed -i "s/my-example-blueprint/$bp/" prod.yaml
+if [ -x /usr/local/bin/gsed ]
+then
+  # For OSX
+  sed=/usr/local/bin/gsed
+else
+  sed=sed
+fi
+$sed -i "s/PLATFORM/$en/" common.yml
+$sed -i "s/example-bp/$bp/" common.yml
+$sed -i "s/my-example-blueprint/$bp/" test.yaml
+$sed -i "s/my-example-blueprint/$bp/" prod.yaml
 
 git add -A
 
