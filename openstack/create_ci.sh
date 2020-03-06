@@ -46,3 +46,7 @@ echo "git commit -a"
 echo "git push --set-upstream origin $gb"
 echo
 echo "Then in the github website, create a PR for this branch"
+echo
+echo "After creating the PR use"
+echo "git checkout master;git pull"
+echo "to get back to the master branch."
