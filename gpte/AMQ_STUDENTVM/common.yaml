@@ -1,0 +1,83 @@
+---
+platform: labs
+env_type: studentvm
+
+student_name: lab-user
+
+## Satellite vars
+repo_method: satellite
+set_repositories_satellite_url: labsat.opentlc.com
+set_repositories_satellite_org: Red_Hat_GPTE_Labs
+# set_repositories_satellite_activationkey = <FROM_SECRET>
+
+# Set up FTL.
+# ftl_injector_tag: "v0.17.0"
+
+# The student roles to deploy
+studentvm_roles:
+# Set up a Student User
+- studentvm-user
+# Customize the Student User with a Git Bash Prompt
+- studentvm-bash-prompt
+# Set up JDK and Maven
+- studentvm-java-development
+# Set up the AMQ Tools
+- studentvm-amq-clientvm
+
+# Variables for role studentvm-user
+studentvm_user_vars:
+  # Install a user id "{{ student_name }}"
+  user_name: "{{ student_name }}"
+  # Use a password for the student user.
+  # If false a key pair will be generated
+  use_password: true
+  # If no student_password is provided a randomly generated password will be used
+  password: ""
+  # This user will not have sudo access
+  enable_sudo: true
+
+# Variables for role studentvm-ocp4
+studentvm_amq_clientvm_vars: []
+
+# Variables for role studentvm-bash-prompt
+studentvm_bash_prompt_vars:
+  # Install for the current student
+  user_name: "{{ student_name }}"
+
+# Variables for role studentvm-java-development
+studentvm_java_development_vars:
+  # Install JDK 8 (default is 11)
+  jdk_package: "java-1.8.0-openjdk-devel"
+
+# Special Security Group to override the default security group
+# Opens port 8161 for the AMQ Console
+security_groups:
+- name: BastionSG
+  rules:
+  - name: MoshPublic
+    description: "Public Mosh Access for bastions"
+    from_port: 60000
+    to_port: 61000
+    protocol: udp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: SSHPublic
+    description: "Public Access for bastions"
+    from_port: 22
+    to_port: 22
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: AMQPublic
+    description: "Public AMQ Access for bastions"
+    from_port: 8161
+    to_port: 8161
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+# Deploy in a Ansible 2.9 Virtualenv
+agnosticv_meta:
+  virtualenv: aws-ansible-2.9
+  secrets:
+  - gpte-amq-clientvm
