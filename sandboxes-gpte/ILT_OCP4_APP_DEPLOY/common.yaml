@@ -1,0 +1,115 @@
+---
+# OpenShift Cluster to be used in the
+# OCP 4 Advanced Application Deployment ILT
+# Catalog: OPENTLC OpenShift 4 Labs
+# Catalog Item: OpenShift 4 Advanced App Deploy ILT
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+# -------------------------------------------------------------------
+# End Mandatory Variables
+# -------------------------------------------------------------------
+
+# guid is the deployment unique identifier,
+# it will be appended to all tags, files and anything
+# that identifies this environment from another "just like it"
+# It comes from Cloud Forms
+# guid: defaultguid
+
+# Platform
+platform: labs
+
+# Config
+ocp4_installer_version: "4.4.7"
+
+# --- These come from the account
+# subdomain_base_suffix:
+# HostedZoneId:
+
+run_janitor: false
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+
+# Satellite is used for RHEL repos
+repo_method: satellite
+
+# Satellite
+satellite_url: "{{ set_repositories_satellite_url }}"
+satellite_org: "{{ set_repositories_satellite_org }}"
+satellite_activationkey: "{{ set_repositories_satellite_activationkey }}"
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# --- Generic Variables
+cloudformation_retries: 0
+install_ipa_client: false
+
+# --- Student User on Bastion
+install_student_user: true
+# --- student_name not set -> Requestor User ID is used as student_name
+# student_name: lab-user
+# --- student_password not set -> generate random password
+# student_password: r3dh4t1!
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Infra Workload Variables
+# -------------------------------------------------------------------
+
+# Authentication (HT Passwd)
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+# When no password specified it is generated
+# ocp4_workload_authentication_htpasswd_admin_password: ocp_admin
+ocp4_workload_authentication_htpasswd_user_base: student
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_password: ocp4_student
+
+# Create 30 student users
+ocp4_workload_authentication_htpasswd_user_count: 30
+
+# Remove the standard kubeadmin user
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# Leave Self Provisioner but set up Image Pruning,
+# Public Registry and Build Defaults
+ocp4_workload_opentlc_production_remove_self_provisioner: false
+ocp4_workload_opentlc_production_expose_registry_route: true
+ocp4_workload_opentlc_production_enable_image_pruning: true
+ocp4_workload_opentlc_production_set_build_defaults: true
+ocp4_workload_opentlc_production_build_memory_limit: "3Gi"
+ocp4_workload_opentlc_production_build_memory_request: "2Gi"
+ocp4_workload_opentlc_production_build_cpu_limit: "1"
+ocp4_workload_opentlc_production_build_cpu_request: "1"
+
+# Customize the cluster with Authentication and
+# Let's Encrypt certificates for the Ingress Controllers
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_le_certificates
+- ocp4_workload_serverless
+- ocp4_workload_pipelines
+- ocp4_workload_opentlc_production
+- ocp4_workload_app_deploy_ilt
+
+# Do not run any student customization.
+# This will result in a default OpenShift 4 installation.
+student_workloads: []
+
+agnosticv_meta:
+  virtualenv: aws-ansible-2.9
+  params_to_variables:
+    nodecount: worker_instance_count_ignored
+    username: student_name
+  secrets:
+  # OpenShift Pull Secret
+  - ocp4_token
+  # Satellite Configuration
+  - satellite_ocp_on_osp_secret
