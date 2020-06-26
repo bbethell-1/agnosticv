@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 ORIG="$(cd "$(dirname "$0")" || exit; pwd)"
 
 if ! command -v yq > /dev/null; then
@@ -20,7 +21,6 @@ agnosticv_get_yaml() {
     local repo_dir=${ORIG}
 
     # Merge all yaml files in the right order
-    echo '---'
     flist=()
     for yamlfile in "${repo_dir}"/common.y{a,}ml \
                                  "${repo_dir}/${1}"/common.y{a,}ml \
@@ -40,4 +40,6 @@ agnosticv_get_yaml() {
 }
 
 
+echo '---'
+echo '# /!\ Please use agnosticv CLI instead of this script, see https://github.com/redhat-cop/agnosticv'
 SHOW_META=yes agnosticv_get_yaml "$@"
