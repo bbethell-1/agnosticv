@@ -1,67 +1,77 @@
 ---
-
+# Platform
 platform: RHPDS
 
-# --- OpenShift 4.2 Red Hat Process Automation Manager DMN & AI Demo
-# --- Catalog: OpenShift Demos
-# --- Catalog: OCP4 PAM7 CC Dispute DEMO
+##### CONFIGS ####
+#######################
+env_type: ocp4-cluster
+software_to_deploy: openshift4
 
-# Config
-env_type: ocp4-workshop
-software_to_deploy: none
-install_ocp4: true
-ocp4_installer_version: "4.2.20"
+# OpenShift Installer Version
+ocp4_installer_version: "4.5.4"
 
-# Repos # leave 4.1 even if we deploy 4.2
-osrelease: 4.1.0
-repo_version: '4.1'
-repo_method: file
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
 
-# Generic Variables
+# Satellite is used for RHEL repos
+repo_method: satellite
+
+# Satellite
+satellite_url: "{{ set_repositories_satellite_url }}"
+satellite_org: "{{ set_repositories_satellite_org }}"
+satellite_activationkey: "{{ set_repositories_satellite_activationkey }}"
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# --- Generic Variables
 cloudformation_retries: 0
 install_ipa_client: false
+ignore_self_provisioners: true
 install_ftl: false
 
-# Student User on Bastion
-#install_student_user: false
-#student_name: lab-user
-#student_password: r3dh4t1!
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_le_certificates
+- ocp-workload-pam7-cc-dispute-dmn-pmml
 
-# OCP Authentication
-install_idm: htpasswd
+# --- OCP Authentication
+# Authentication (HT Passwd)
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+# When no password specified it is generated
+# ocp4_workload_authentication_htpasswd_admin_password: ocp_admin
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+# ocp4_workload_authentication_htpasswd_user_password: ocp_student
 admin_user: opentlc-mgr
 admin_password: r3dh4t1!
 # Users are user1..200
 user_password: openshift
 
-ignore_self_provisioners: true
+## AWS instance types and deff ##
+# In sandboxes RHEL81GOLD is not available. Use regular image
+bastion_instance_image: RHEL81
 
-run_janitor: false
+master_instance_type: c5d.2xlarge
+master_instance_count: 3
+worker_instance_type: m5.4xlarge
+worker_instance_count: 2
+bastion_instance_type: t2.medium
 
-# OCP 4.2 greatness as in RHTE is commented, using version from 2019-10-01
-# ocp4_installer_use_dev_preview: True
-
-# ocp4_installer_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp-dev-preview/4.2.0-0.nightly-2019-09-10-074025/openshift-install-linux-4.2.0-0.nightly-2019-09-10-074025.tar.gz
-
-# ocp4_installer_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp-dev-preview/4.2.0-0.nightly-2019-10-01-210901/openshift-install-linux-4.2.0-0.nightly-2019-10-01-210901.tar.gz
-
-# ocp4_client_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp-dev-preview/4.2.0-0.nightly-2019-09-10-074025/openshift-client-linux-4.2.0-0.nightly-2019-09-10-074025.tar.gz
-
-# ocp4_client_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp-dev-preview/4.2.0-0.nightly-2019-10-01-210901/openshift-client-linux-4.2.0-0.nightly-2019-10-01-210901.tar.gz
-
-# --- Default workloads are a YAML list
-default_workloads:
-  - ocp4-workload-project-request-template
-  - ocp4-workload-opentlc-production
-  - ocp-workload-terminal
-  - ocp4-workload-enable-lets-encrypt-certificates
-
-# --- Infra and Student Workloads are comma separated strings
-infra_workloads: "ocp-workload-pam7-cc-dispute-dmn-pmml"
-
+# --- AgnosticV Meta variables
 agnosticv_meta:
-  virtualenv: ocp4-workshop
+  virtualenv: aws-ansible-2.9
+  idle_after_deploy: 4
+  idle_after_start: 8
   params_to_variables:
-    username: student_name
+    nodecount: worker_instance_count_ignored
+    student_workloads: student_workloads
     infra_workloads: infra_workloads
-  nuke_sandbox: false
+  secrets:
+  # OpenShift Pull Secret
+  - ocp4_token
+  # Satellite Configuration
+  - satellite_ocp_on_osp_secret
