@@ -1,0 +1,98 @@
+---
+# Catalog: Workshops
+# Catalog Item: OpenShift 4.6 Windows
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+# -------------------------------------------------------------------
+# End Mandatory Variables
+# -------------------------------------------------------------------
+
+# guid is the deployment unique identifier,
+# it will be appended to all tags, files and anything
+# that identifies this environment from another "just like it"
+# It comes from Cloud Forms
+# guid: defaultguid
+
+# Platform
+platform: rhpds
+
+# Config
+ocp4_installer_use_dev_preview: true
+ocp4_installer_version: 4.6.0
+ocp4_installer_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp-dev-preview/latest-4.6/openshift-install-linux.tar.gz
+ocp4_client_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp-dev-preview/latest-4.6/openshift-client-linux.tar.gz
+ocp4_network_type: OVNKubernetes
+
+run_janitor: false
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+
+# Satellite is used for RHEL repos
+repo_method: satellite
+
+# Satellite
+satellite_url: "{{ set_repositories_satellite_url }}"
+satellite_org: "{{ set_repositories_satellite_org }}"
+satellite_activationkey: "{{ set_repositories_satellite_activationkey }}"
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# --- Generic Variables
+cloudformation_retries: 0
+install_ipa_client: false
+
+# --- Student User on Bastion
+install_student_user: true
+# --- student_name not set -> Requestor User ID is used as student_name
+# student_name: lab-user
+# --- student_password not set -> generate random password
+# student_password: r3dh4t1!
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Infra Workload Variables
+# -------------------------------------------------------------------
+
+# Authentication (HT Passwd)
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_password: openshift
+
+# Create 30 student users
+ocp4_workload_authentication_htpasswd_user_count: 30
+
+# Remove the standard kubeadmin user
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# Customize the cluster with Authentication and
+# Let's Encrypt certificates for the Ingress Controllers
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_le_certificates
+
+# Do not run any student customization.
+# This will result in a default OpenShift 4 installation.
+student_workloads: []
+
+agnosticv_meta:
+  virtualenv: aws-ansible-2.9
+  params_to_variables:
+    nodecount: worker_instance_count_ignored
+    username: student_name
+  secrets:
+  # OpenShift Pull Secret
+  - ocp4_token
+  # Satellite Configuration
+  - satellite-rhel81
