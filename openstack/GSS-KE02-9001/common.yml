@@ -2,6 +2,7 @@
 
 # Set to RHPDS or OPENTLC
 platform: labs
+email: ashishks@redhat.com
 
 # https://github.com/redhat-cop/agnosticd/tree/development/ansible/configs/osp-migration
 env_type: pntae-jabn
@@ -18,6 +19,47 @@ ___image: rhel-server-7.7-update-2
 bastion_instance_image: "{{ ___image }}"
 node_instance_image: "{{ ___image }}"
 update_packages: false
+
+# Environment Instances
+instances:
+  - name: "bastion"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: false
+    image: "{{ bastion_instance_image }}"
+    flavor: "{{ bastion_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    volumes:
+      - name: '/dev/sda1'
+        size: 20
+    security_groups:
+      - BastionSG
+
+  - name: "node"
+    count: "{{node_instance_count}}"
+    public_dns: false
+    dns_loadbalancer: false
+    image: "{{ node_instance_image }}"
+    flavor: "{{ node_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    volumes:
+      - name: '/dev/sda1'
+        size: 1
+    security_groups:
+      - DefaultSG
 
 coursecode: "gss-ke02-9001"
 courseurl: "https://raw.githubusercontent.com/pntae-training/courses/master"
