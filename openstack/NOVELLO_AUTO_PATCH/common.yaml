@@ -8,10 +8,13 @@ platform: rhpds
 
 # The name of the agnosticd config to deploy
 env_type: smart-management
+cloud_provider: osp
+lab_user: devops
 
 # Enable this if you want to create a user on the bastion
 # Mutually exclusive with {{ install_ipa_client }}
 install_student_user: true
+student_name: lab-user
 
 # Enable this if you want to use IPA for user authentication.
 # Mutually exclusive with {{ install_student_user }}
@@ -27,21 +30,6 @@ install_ipa_client: false
 
 install_ftl: false
 
-# -------------------------------------------------------------------
-# Repos
-# -------------------------------------------------------------------
-
-# Satellite is used for RHEL repos
-repo_method: satellite
-
-# Satellite
-satellite_url: "{{ set_repositories_satellite_url }}"
-satellite_org: "{{ set_repositories_satellite_org }}"
-satellite_activationkey: "{{ set_repositories_satellite_activationkey }}"
-
-# Update RHEL to the latest packages (and reboot)
-update_packages: true
-
 ## Not sure exactly what we will use this for, but it will need to change for OpenStack
 key_name: opentlc_admin_backdoor
 
@@ -54,6 +42,42 @@ osp_project_create: true
 # The name of the project that will be created in OpenStack for the user
 osp_project_name: "{{ guid }}-project"
 
+satellite_lab_setup: false
+tower_lab_setup: false
+configure_satellite: true
+satellite_version: 6.7
+
+# -------------------------------------------------------------------
+# Tower Variables
+# -------------------------------------------------------------------
+tower_version: "3.7.1-1"
+tower_hostname: "tower.{{ guid }}.{{ osp_cluster_dns_zone }}"
+software_to_deploy: tower
+devops_password_tower: "{{ lookup('password', '/dev/null length=15 chars=ascii_letters,digits') }}"
+# tower install playbook from software directory
+tower_infra_workloads:
+  - tower-org-create
+tower_organization:
+  - name: gpte
+
+# -------------------------------------------------------------------
+# Satellite Variables
+# -------------------------------------------------------------------
+
+# Satellite is used for RHEL repos
+repo_method: satellite
+
+# Satellite
+satellite_url: "{{ set_repositories_satellite_url }}"
+satellite_org: "{{ set_repositories_satellite_org }}"
+satellite_activationkey: "{{ set_repositories_satellite_activationkey }}"
+publicname: "satellite.{{ guid }}.{{osp_cluster_dns_zone}}"
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+bookbag_git_repo: "https://github.com/redhat-gpte-labs/rhtr2020_smart_management.git"
+
 #########################################
 # Meta variables for admin host scripts #
 # ALL_agnosticv.sh                      #
@@ -61,7 +85,8 @@ osp_project_name: "{{ guid }}-project"
 agnosticv_meta:
   secrets:
     - ans-tower-lab_license
-    - satellite_ocp_on_osp_secret
+    - sat_auto_patch_secret
+    - bookbag-deployer-dev4
 
   virtualenv: openstack-ansible-2.9
 
@@ -75,29 +100,3 @@ __meta__:
 
   catalog:
     namespace: gpte
-
-#### Tower variables ############
-tower_version: "3.6.4-1"
-software_to_deploy: tower
-# tower install playbook from software directory
-tower_infra_workloads:
-  - tower-org-create
-tower_organization:
-  - name: gpte
-
-# Required variables
-# ##### Repos for satellite 6.7 ###########
-#satellite_repos:
-#  - rhel-7-server-rpms
-#  - rhel-7-server-satellite-6.7-rpms
-#  - rhel-7-server-satellite-maintenance-6-rpms
-#  - rhel-7-server-satellite-capsule-6.7-rpms
-#  - rhel-7-server-satellite-tools-6.7-rpms
-#  - rhel-server-rhscl-7-rpms
-#  - rhel-7-server-ansible-2.9-rpms
-
-# ####### RHEL repos ###########
-#rhel_repos:
-#  - rhel-7-server-rpms
-#  - rhel-server-rhscl-7-rpms
-#  - rhel-7-server-extras-rpms
