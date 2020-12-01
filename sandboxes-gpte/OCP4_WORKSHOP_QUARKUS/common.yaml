@@ -1,45 +1,79 @@
 ---
-# Platform
-platform: RHPDS
+# -------------------------------------------------------------------
+# --- Catalog: Workshops
+# --- Catalog Item: OCP4 Quarkus Workshop
+# -------------------------------------------------------------------
 
-env_type: ocp4-workshop
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# RHELGOLD is not available for sandboxes
+bastion_instance_image: RHEL82
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_use_dev_preview: false
+ocp4_installer_version: 4.6.4
+osrelease: 4.5.0
+
+#ocp4_installer_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp-dev-preview/latest-4.6/openshift-install-linux.tar.gz
+#ocp4_client_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp-dev-preview/latest-4.6/openshift-client-linux.tar.gz
+
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+# -------------------------------------------------------------------
 
 infra_workloads:
-  - ocp4_workload_le_certificates
-  - ocp4-workload-quarkus-workshop
+- ocp4_workload_authentication
+- ocp4_workload_le_certificates
+- ocp4-workload-quarkus-workshop
 
-key_name: opentlc_admin_backdoor
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
 
-install_ipa_client: false
-ipa_host_password: dummy
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
 
-repo_method: file
-own_repo_path: http://admin.na.shared.opentlc.com/repos/ocp/4.5.0
-repo_version: 4.5.0
-osrelease: 4.5.0
-ocp4_installer_version: 4.5.4
-# Turn off cluster shutdown prep steps (no longer necessary with 4.4.8+)
-ocp4_enable_cluster_shutdown: false
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
 
-software_to_deploy: none
-student_name: lab-user
-student_sudo: true
-install_student_user: true
-student_password: openshift
-user_count: 200
-user_password: openshift
-install_ocp4: true
-install_idm: htpasswd
-admin_user: opentlc-mgr
-admin_password: r3dh4t1!
-run_cloudtrail: false
-run_janitor: false
-smoke_tests: false
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_count: 200
+ocp4_workload_authentication_remove_kubeadmin: true
 
-# --- AgnosticV Meta variables
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
 agnosticv_meta:
   virtualenv: aws-ansible-2.9
-  secrets:
-    - ocp4_token
   params_to_variables:
+    # Node count comes from CFME
+    #nodecount: worker_instance_count_ignored
+    username: student_name
     course_module_list: module_type
+  secrets:
+  # OpenShift Pull Secret
+  - ocp4_token
+  # Satellite Configuration
+  - satellite-rhel81
