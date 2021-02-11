@@ -4,48 +4,59 @@
 ## PoC: wharris@redhat.com
 ## Creation: February 10, 2021
 
-## This first tag has to match the CloudForms provider deploying this CI.
-## It may be passed by the provider, so please make sure you are not overwriting it with this definition.
+# Set to RHPDS or OPENTLC
 platform: labs
 
-# The name of the agnosticd config to deploy
+# https://github.com/redhat-cop/agnosticd/tree/development/ansible/configs/osp-migration
 env_type: smart-management-foundations
 
-# Enable this if you want to create a user on the bastion
-# Mutually exclusive with {{ install_ipa_client }}
-install_student_user: true
+common_install_basic_packages_retries: 0
 
-# Enable this if you want to use IPA for user authentication.
-# Mutually exclusive with {{ install_student_user }}
+# How many times Heat will retry to deploy template if it fails
+# Keep this low for development and a little higher for production
+heat_retries: 0
+
+# If you want DNS entries to be created automatically, choose one of these
+# Alternately, they can both be set to false.
+use_dynamic_dns: true
+
+# Enter project name from https://github.com/redhat-gpe/novello-templates/tree/master/heat-templates
+project: Smart_Management_Foundations
+
+# -------------------------------------------------------------------
+# Satellite Vars
+# -------------------------------------------------------------------
+image_project:
+  - smart-management-images
+  - foundations-satellite
+
+publicname: "satellite.{{ guid }}.{{osp_cluster_dns_zone}}"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+
+# Satellite is used for RHEL repos
+repo_method: satellite
+satellite_activationkey: TRSM-2020
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# Generic Variables
 install_ipa_client: false
 
-# This is the tag that will be pulled in from the FTL repo
-#ftl_tag: TBD
+# Student User on Bastion
+install_student_user: true
 
-# By setting the ftl_injector_tag, you imply that you want to install FTL
-# This tag specifies the version of the ftl-injector that will be deployed.
-# It is different from the version of FTL.
-# ftl_injector_tag: ''
+# --- student_name not set -> Requestor User ID is used as student_name
+student_name: lab-user
+# --- student_password not set -> generate random password
+# student_password: r3dh4t1!
 
-install_ftl: false
+# --- Student Workloads (YAML List)
 
-# What we use in this environment to get the packages we need
-# repo_method: satellite
-# satellite_url: satellite.opentlc.com
-repo_method: file
-own_repo_path: http://d3s3zqyaz8cp2d.cloudfront.net/repos/
-
-## Not sure exactly what we will use this for, but it will need to change for OpenStack
-key_name: opentlc_admin_backdoor
-
-# Set this to true if you need to create a new project in OpenStack
-# This should almost always be set to true for OpenShift installations
-# If it is set to false, the {{ osp_project_name }} must already exist and
-# should be able to run whatever you are deploying
-osp_project_create: true
-
-# The name of the project that will be created in OpenStack for the user
-osp_project_name: "{{ guid }}-project"
+student_workloads: []
 
 ########################################
 # Meta variables for admin host scripts #
@@ -53,6 +64,9 @@ osp_project_name: "{{ guid }}-project"
 #########################################
 
 agnosticv_meta:
+  secrets:
+    - labsat-secrets
+    - ibm-cos-secret
   params_to_variables:
     cloudtags: ''
     email: ''
@@ -60,7 +74,7 @@ agnosticv_meta:
     ipapass: ''
     nodecount: ''
     serviceid: ''
-    user: ''
+    user: student_name
     uuid: uuid
   babylon:
     kubeconfig: babylon-prod.kubeconfig
