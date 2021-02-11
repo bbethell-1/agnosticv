@@ -1,27 +1,163 @@
 ---
 platform: labs
-env_type: ansible-multitier-infra
-software_to_deploy: none
+env_type: ansible-multitier-infra           # Name of config to deploy
 
-# Environment-specific settings
-repo_method: file
-repo_version: 3.7.0-4
-own_repo_path: http://d3s3zqyaz8cp2d.cloudfront.net/repos/tower
 
-## User settings
-# --- student_name not set -> Requestor User ID is used as student_name
-# --- student_password not set -> generate random password
-install_student_user: true
-
-# Deploy in a Ansible 2.9 Virtualenv
 agnosticv_meta:
   virtualenv: aws-ansible-2.9
   secrets:
-    - gpte
-    #- ans-tower-lab_secrets
-    #- ocp4_token
+    - gpte-no-repos
+    - labsat-secrets
+    - ans-tower-lab_license
   params_to_variables:
     # This should be overwritten based on the user ordering the catalog item
     # It will be used by the bastion-student-user role and created on the bastion
     username: student_name
-    git_repo: container_service_deploy_git_repo
+
+repo_method: satellite
+satellite_url: labsat.opentlc.com
+satellite_org: Red_Hat_GPTE_Labs
+satellite_activationkey: ansible-advanced-2.0
+
+cloud_provider: osp                         # Which AgnosticD Cloud Provider to use
+
+software_to_deploy: none
+
+install_vscode_server: false
+
+inventory_groups:
+  - app_servers
+  - load_balancers
+  - database_servers
+
+common_packages:
+  - python3
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - git
+  - vim-enhanced
+  - at
+  - ansible
+  - tree
+
+    #  - python3-pyparsing
+
+# Default instance type
+
+__instance_type: 2c2g30d
+
+# Default Image
+
+__image: rhel-8.3 # Need RHEL 8 support
+ #__image: rhel-server-7.7-update-2 # Need to update VSC role for RHEL 8
+
+ #control_instance_image: rhel-server-7.7-update-2
+
+control_instance_image: rhel-8.3
+utility_instance_image: rhel-8.3
+
+# Environment Instances
+
+instances:
+  - name: "control"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image_id: "{{ control_instance_image | default(__image) }}"
+    flavor:
+      osp: "{{ bastion_instance_type | default(__instance_type) }}"
+    security_groups:
+      - BastionSG
+      - WebSG
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+
+  - name: utility
+    count: 2
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image_id: "{{ utility_instance_image | default(__image) }}"
+    flavor:
+      osp: "2c4g30d"
+    security_groups:
+      - BastionSG
+      - WebSG
+      - ClassroomSG
+    tags:
+      - key: "AnsibleGroup"
+        value: "utility,podman"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+
+  - name: "frontend"
+    count: "{{ frontend_instance_count | default(1) }}"
+    public_dns: true
+    dns_loadbalancer: true
+    image_id: "{{ frontend_instance_image | default(__image) }}"
+    flavor:
+      osp: "{{ frontend_instance_type | default(__instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "load_balancers"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    security_groups:
+      - DefaultSG
+      - WebSG
+      - HostSG
+
+  - name: "app"
+    count: "{{ app_instance_count | default(2) }}"
+    public_dns: false
+    image_id: "{{ app_instance_image | default(__image) }}"
+    flavor:
+      osp: "{{ app_instance_type | default(__instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "app_servers"
+      - key: "ostype"
+        value: "rhel"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    key_name: "{{key_name}}"
+    security_groups:
+      - DefaultSG
+      - WebSG
+      - HostSG
+
+  - name: "appdb"
+    count: "{{ appdb_instance_count | default(1) }}"
+    public_dns: false
+    image_id: "{{ appdb_instance_image | default(__image) }}"
+    flavor:
+      osp: "{{ appdb_instance_type | default(__instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "database_servers"
+      - key: "ostype"
+        value: "rhel"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    key_name: "{{key_name}}"
+    security_groups:
+      - DefaultSG
+      - WebSG
+      - HostSG
+
+...
