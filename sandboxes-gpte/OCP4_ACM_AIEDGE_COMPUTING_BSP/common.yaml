@@ -1,0 +1,97 @@
+---
+# --- Edge Computing Architecture Blueprint
+# --- Catalog: Workshops
+# --- Catalog Item: Edge Computing Architecture Blueprint
+# --- Catalog Item Maintainers: Landon LaSmith, Nicolas Barcet, Ricardo Noriega De Soto
+# --- Date: Dec 4th 2020
+
+## This first tag has to match the CloudForms provider deploying this CI.
+## It may be passed by the provider, so please make sure you are not overwriting it with this definition.
+platform: rhpds
+
+# The name of the agnosticd config to deploy
+env_type: ocp4-cluster
+
+# Enable this if you want to create a user on the bastion
+# Mutually exclusive with {{ install_ipa_client }}
+install_student_user: true
+
+# This should be overwritten based on the user ordering the catalog item
+# It will be used by the bastion-student-user role and created on the bastion
+student_name: lab-user
+
+# Enable this if you want to use IPA for user authentication.
+# Mutually exclusive with {{ install_student_user }}
+install_ipa_client: false
+
+# FTL is used for grading and solving. It will pull in the external ftl-injector role.
+# This might be enabled when we have solvers to run or graders for ILT
+install_ftl: false
+
+# What we use in this environment to get the packages we need
+repo_method: satellite
+satellite_url: labsat.opentlc.com
+
+software_to_deploy: openshift4
+
+# OpenShift Installer Version
+ocp4_installer_version: "4.5.4"
+
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_le_certificates
+- ocp4_workload_rhacm
+- ocp4_workload_gitea_operator
+- ocp-workload-aiedge-computing-blueprint
+
+# ACM ROLE VARS - ocp4_workload_rhacm
+ocp4_workload_rhacm_use_catalog_snapshot: true
+ocp4_workload_rhacm_catalog_source_image: "quay.io/gpte-devops-automation/olm_snapshot_acm_redhat_catalog"
+ocp4_workload_rhacm_catalog_source_tag: "v4.5_2020_09_25"
+
+# GITEA ROLE VARS - ocp4_workload_gitea_operator
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_repositories_list:
+- repo: "https://github.com/redhat-edge-computing/industrial-edge-docs"
+  name: "industrial-edge-docs"
+  private: false
+- repo: "https://github.com/redhat-edge-computing/blueprint-management-hub.git"
+  name: "blueprint-management-hub"
+  private: false
+- repo: "https://github.com/redhat-edge-computing/blueprint-industrial-edge.git"
+  name: "blueprint-industrial-edge"
+  private: false
+- repo: "https://github.com/redhat-edge-computing/manuela-dev"
+  name: "manuela-dev"
+  private: false
+- repo: "https://github.com/redhat-edge-computing/manuela-gitops"
+  name: "manuela-gitops"
+  private: false
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# Authentication
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: 5
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# ACM
+# These come from gpte.yml
+ocp4_workload_rhacm_docker_username: "{{ redhat_registry_user }}"
+ocp4_workload_rhacm_docker_password: "{{ redhat_registry_password }}"
+
+# AgnosticV Metadata
+# Set VirtualEnv to run this config in
+agnosticv_meta:
+  sandboxed: true
+  virtualenv: aws-ansible-2.9
+  secrets:
+  - gpte
+  - ocp4_token
