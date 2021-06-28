@@ -1,13 +1,20 @@
 ---
 platform: RHPDS
 
-env_type: ocp4-workshop
-software_to_deploy: none
-install_ocp4: true
+env_type: ocp4-cluster
+software_to_deploy: openshift4
 ocp4_installer_version: "4.3.5"
 
-repo_method: file
-osrelease: 4.3.0
+# Satellite is used for RHEL repos
+repo_method: satellite
+
+# Satellite
+satellite_url: "{{ set_repositories_satellite_url }}"
+satellite_org: "{{ set_repositories_satellite_org }}"
+satellite_activationkey: "{{ set_repositories_satellite_activationkey }}"
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
 
 cloudformation_retries: 0
 install_ipa_client: false
@@ -15,11 +22,14 @@ install_ftl: false
 
 install_student_user: true
 
-install_idm: htpasswd
-admin_user: opentlc-mgr
-admin_password: r3dh4t1!
-# Users are user1..200
-user_password: openshift
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: 200
 
 run_janitor: false
 
@@ -33,6 +43,7 @@ infra_workloads:
   - ocp4-workload-ocs-poc
   - ocp4-workload-open-data-hub-infra
   - ocp4-workload-rhte-analytics_data_ocp_workshop
+  - ocp4_workload_authentication
 
 ansible_additional_args: --skip-tags remove_self_provisioners,install_zabbix
 
@@ -42,5 +53,8 @@ agnosticv_meta:
     username: student_name
     infra_workloads: infra_workloads
     student_workloads: student_workloads
-  nuke_sandbox: false
+  sandboxed: true
   virtualenv: aws-ansible-2.9
+  secrets:
+    - satellite-rhel81
+    - ocp4_token
