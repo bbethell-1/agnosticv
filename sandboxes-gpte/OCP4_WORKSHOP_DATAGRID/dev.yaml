@@ -1,36 +1,108 @@
 ---
-env_type: ocp4-cluster
+# -------------------------------------------------------------------
+# --- OCP4 Data Grid 8 Workshop
+# --- Catalog: Application Services Workshop
+# --- Catalog Item: OCP4 Data Grid 8 Workshop
+# -------------------------------------------------------------------
 
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
 purpose: development
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
+env_type: ocp4-cluster
 software_to_deploy: openshift4
 bastion_instance_image: RHEL82GOLD
+master_instance_type: m5.xlarge
+worker_instance_type: m5.4xlarge
+worker_instance_count: 3
 
 # -------------------------------------------------------------------
 # OpenShift Installer Version
 # -------------------------------------------------------------------
-ocp4_installer_use_dev_preview: false
-ocp4_installer_version: 4.7.2
-# OCP Versions and repo
+ocp4_installer_version: 4.7.21
+run_janitor: false
+
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+# -------------------------------------------------------------------
+infra_workloads:
+  - ocp4_workload_authentication
+  - ocp4_workload_le_certificates
+  - ocp4-workload-jdg-workshop
+default_workloads: []
+student_workloads: []
+
 # -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
+# Satellite
 repo_method: satellite
+satellite_url: "{{ set_repositories_satellite_url }}"
+satellite_org: "{{ set_repositories_satellite_org }}"
+satellite_activationkey: "{{ set_repositories_satellite_activationkey }}"
 
-# Update RHEL to the latest packages (and reboot)
+# Update RHEL and reboot
 update_packages: true
 
-master_instance_type: m5.xlarge
-worker_instance_type: m5.4xlarge
-worker_instance_count: 3
-_infra_instance_type: m5.4xlarge
-_infra_node_replicas: 1
+# Generic Variables
+cloudformation_retries: 0
+install_ipa_client: false
 
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+# --- student_name not set -> Requestor User ID is used as student_name
+student_name: lab_user
+# --- student_password not set -> generate random password
+student_password: openshift
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: 200
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
 agnosticv_meta:
   idle_after_deploy: 4
   idle_after_start: 4
+  babylon:
+    kubeconfig: babylon-prod.kubeconfig
+  deploy_with: babylon
+  virtualenv: babylon
+  params_to_variables:
+    region: aws_region
+    course_module_list: workshop_shortenYn
+
+__meta__:
+  deployer:
+    scm_ref: development
+    virtualenv: ansible2.9-python3.6-2021-01-22
+  aws_sandboxed: true
+  catalog:
+    namespace: gpte
+    parameters:
+      - name: aws_region
+      - name: course_module_list
   secrets:
-    - satellite-rhel81
+    - namespace: gpte
+      name: ocp4-token
+    - namespace: gpte
+      name: satellite-rhel81
