@@ -65,7 +65,7 @@ git diff \
 
 git checkout $TRAVIS_PULL_REQUEST_SHA &>/dev/null
 
-for i in $(agnosticv --list|grep -f ${changed_git}|grep -v '.travis.yml'); do
+for i in $(agnosticv --list|grep -f ${changed_git}); do
     git checkout $TRAVIS_PULL_REQUEST_SHA &>/dev/null
     if [ $? != 0 ]; then
         echo "ERROR git checkout  $TRAVIS_PULL_REQUEST_SHA" >> $errors
