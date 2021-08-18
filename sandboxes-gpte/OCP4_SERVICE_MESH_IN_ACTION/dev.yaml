@@ -1,6 +1,6 @@
 ---
 purpose: development
-master_instance_type_family: m5a
+master_instance_type_family: m5
 master_instance_type_size: >-
    {{ 'xlarge' if worker_instance_count|int <= 10
    else '2xlarge' if worker_instance_count|int <= 20
@@ -8,102 +8,9 @@ master_instance_type_size: >-
    }}
 master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size }}"
 worker_instance_type: m5.4xlarge
-worker_instance_count: "{{ (worker_instance_count_cf | int * 1.4) | int }}"
+worker_instance_count: "{{ (num_users | int * 1.4) | int }}"
 workshop_environment: develop
 
-# agnosticv_meta:
-  # idle_after_deploy: 4
-  # idle_after_start: 4
-# -------------------------------------------------------------------
-# Mandatory Variables
-# -------------------------------------------------------------------
-env_type: ocp4-cluster
-software_to_deploy: openshift4
-
-# -------------------------------------------------------------------
-# OpenShift Installer Version
-# -------------------------------------------------------------------
-
-ocp4_installer_version: "4.7"
-run_janitor: false
-
-# -------------------------------------------------------------------
-# Repos
-# -------------------------------------------------------------------
-
-# Satellite is used for RHEL repos
-repo_method: satellite
-
-# Satellite
-satellite_url: "{{ set_repositories_satellite_url }}"
-satellite_org: "{{ set_repositories_satellite_org }}"
-satellite_activationkey: "{{ set_repositories_satellite_activationkey }}"
-
-# Update RHEL to the latest packages (and reboot)
-update_packages: true
-
-# -------------------------------------------------------------------
-# --- Infra Workloads (YAML List)
-# -------------------------------------------------------------------
-
-infra_workloads:
-  - ocp4_workload_authentication
-  - ocp4_workload_le_certificates
-  - ocp4_workload_project_request_template
-  - ocp4-workload-istio-controlplane-infra
-  - ocp4-workload-istio-controlplane-student
-  - ocp4-workload-istio-tutorial-student
-  - ocp4-workload-istio-workshop-homeroom
-default_workloads: []
-student_workloads: []
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication
-# -------------------------------------------------------------------
-
-ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
-ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_password: openshift
-ocp4_workload_authentication_htpasswd_user_count: 200
-ocp4_workload_authentication_remove_kubeadmin: true
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_opentlc_production
-# -------------------------------------------------------------------
-
-ocp4_workload_opentlc_production_remove_self_provisioner: false
-
-ansible_additional_args: --skip-tags remove_self_provisioners,install_zabbix
-
-# -------------------------------------------------------------------
-# AgnosticV meta variables
-# -------------------------------------------------------------------
-
 agnosticv_meta:
-  babylon:
-    kubeconfig: babylon-prod.kubeconfig
-  deploy_with: babylon
-  virtualenv: babylon
-  params_to_variables:
-    user: ''
-    nodecount: worker_instance_count_cf
   idle_after_deploy: 4
   idle_after_start: 4
-
-__meta__:
-  aws_sandboxed: true
-  deployer:
-    scm_ref: development
-    virtualenv: ansible2.9-python3.6-2021-01-22
-  catalog:
-    namespace: gpte
-    parameters:
-      - name: aws_region
-      - name: worker_instance_count_cf
-  secrets:
-    - namespace: gpte
-      name: ocp4-token
-    - namespace: gpte
-      name: satellite-rhel81
