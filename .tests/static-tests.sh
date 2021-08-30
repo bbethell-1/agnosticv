@@ -157,6 +157,8 @@ ${ORIG}/schema_validator.py > ${schema_output}
 
 if [ $? != 0 ]; then
     RC=2
+    sync
+
     read -r -d '' data << EOF
 ${data}
 
