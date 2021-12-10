@@ -40,6 +40,7 @@ errors=$(mktemp)
 changed_git=$(mktemp)
 deleted_files=$(mktemp)
 schema_output=$(mktemp)
+babylon_checks_output=$(mktemp)
 
 _cleanup_on_exit() {
     local exit_status=${1:-$?}
@@ -170,6 +171,22 @@ $(cat ${schema_output})
 EOF
 fi
 
+${ORIG}/babylon_checks.py > ${babylon_checks_output}
+
+if [ $? != 0 ]; then
+    RC=2
+    sync
+
+    read -r -d '' data << EOF
+${data}
+
+Some catalog items do not pass Babylon checks:
+
+\`\`\`
+$(cat ${babylon_checks_output})
+\`\`\`
+EOF
+fi
 
 if [ ! -z "${data}" ]; then
     comment "${data}"
