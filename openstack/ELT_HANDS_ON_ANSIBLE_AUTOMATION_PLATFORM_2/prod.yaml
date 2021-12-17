@@ -12,29 +12,29 @@ agnosticv_meta:
         purpose: production
         datacenter: dal
   secrets:
-    - openstack-red-no-repos
     - labsat-secrets
 
   idle_after_deploy: 8
   idle_after_start: 8
   agnosticd_git_tag_prefix: hands-on-ansible-automation-platform-2-prod
 
+satellite_activationkey: ansible-aap2-rhel8-hona
+
+env_type: ansible-multi-node
+cloud_provider: osp                         # Cloud Provider to use
+
 hands_on_aap2: true # Runs the setup-hands-on-aap2.yml during software.yml
-satellite_activationkey: rhel_8_latest
-set_repositories_satellite_activationkey: rhel_8_latest
 
 student_name: devops # user_info will use this for devops user
-install_student_user: false
 control_user_name: devops
 
-agnosticd_inventory_exporter_enable: false # Dump inventory in output_dir
-
-software_to_deploy: none
-automationcontroller_install: false # Leave this task for student
+install_student_user: false
 install_vscode_server: false # Use container version?
 
 inventory_groups:
 
+  - automation_controller
+  - automation_hub
   - load_balancers
   - app_servers
   - database_servers
@@ -47,7 +47,6 @@ common_packages:
   - git
   - nc
   - python
-  - python-pip
   - tmux
   - tree
   - unzip
@@ -57,28 +56,31 @@ common_packages:
 control_node_lab_resources:
 
   - name: Ansible automation controller manifest
-    url: "https://www.opentlc.com/satellite/automationcontroller_manifest.zip"
-    dest: "/home/{{ lab_user | default('devops') }}/resources/"
+    url: "https://www.opentlc.com/ansible-automation-platform-2-assets/automationcontroller_manifest.zip"
+    dest: "~{{ lab_user | default('devops') }}/resources/"
     username: "{{ remote_resources_username | default('') }}"
     password: "{{ remote_resources_password | default('') }}"
 
   - name: Bundled ansible automation controller installer
-    url: "https://www.opentlc.com/satellite/ansible-automation-platform-setup-bundle-2.0.0-1-early-access.tar.gz"
-    dest: "/home/{{ lab_user | default('devops') }}/resources/ansible-automation-platform-setup-bundle.tar.gz"
+    url: "https://www.opentlc.com/ansible-automation-platform-2-assets/ansible-automation-platform-setup-2.1.0-1.tar.gz"
+    dest: "~{{ lab_user | default('devops') }}/resources/ansible-automation-platform-setup.tar.gz"
     username: "{{ remote_resources_username | default('') }}"
     password: "{{ remote_resources_password | default('') }}"
 
 # Instance Configurations and Resources
 
-default_image: rhel-8.4 # Default operating system image
+default_image: rhel-8.5 # Default operating system image
 default_flavor: 2c2g30d # Default instance types
 
 control_flavor: 2c4g30d # Resourced for podman and Execution Environments
-automationcontroller_flavor: 4c8g30d # Sized for Ansible automation controller
+control_system_image: rhel-8.5
+
+automation_controller_flavor: 4c8g30d # Sized for Ansible automation controller
+automation_hub_flavor: 4c8g30d
 
 instances:
 
-  - name: control
+  - name: bastion
     count: 1
     unique: true
     public_dns: true
@@ -99,21 +101,41 @@ instances:
       - key: "instance_filter"
         value: "{{ env_type }}-{{ email }}"
 
-  - name: ac
+  - name: ansible-ctrl
     count: 1
-    # unique: true
-    public_dns: false
+    unique: true
+    public_dns: true
     floating_ip: true
-    image_id: "{{ automationcontroller_image | default(default_image) }}"
+    image_id: "{{ automation_controller_image | default(default_image) }}"
     flavor:
-      osp: "{{ automationcontroller_flavor | default(default_flavor) }}"
+      osp: "{{ automation_controller_flavor | default(default_flavor) }}"
     security_groups:
       - BastionSG
       - WebSG
       - HostSG
     tags:
       - key: "AnsibleGroup"
-        value: "automationcontroller"
+        value: "automation_controller"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+
+  - name: ansible-hub
+    count: 1
+    # unique: true
+    public_dns: true
+    floating_ip: true
+    image_id: "{{ automation_hub_image | default(default_image) }}"
+    flavor:
+      osp: "{{ automation_hub_flavor | default(default_flavor) }}"
+    security_groups:
+      - BastionSG
+      - WebSG
+      - HostSG
+    tags:
+      - key: "AnsibleGroup"
+        value: "automation_hub"
       - key: "ostype"
         value: "linux"
       - key: "instance_filter"
