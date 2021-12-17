@@ -1,0 +1,116 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog: Application Services Workshop
+# --- Catalog Item: CCN Roadshow for Dev Track - Stable
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+bastion_instance_image: RHEL82GOLD
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+
+platform: rhpds
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+
+ocp4_installer_version: 4.8.3
+
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+# -------------------------------------------------------------------
+
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_le_certificates
+- ocp4-workload-ccnrd-stable
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# -------------------------------------------------------------------
+# Worker Instace Count
+# -------------------------------------------------------------------
+
+master_instance_type_family: m5a
+master_instance_type_size: >-
+  {{ 'xlarge' if worker_instance_count|int <= 10
+  else '2xlarge' if worker_instance_count|int <= 20
+  else '4xlarge'
+  }}
+
+master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size }}"
+
+master_instance_count: 3
+master_storage_type: >-
+  {{ 'io1' if worker_instance_count|int >= 10
+  else 'gp2' }}
+
+worker_instance_type: "m5a.4xlarge"
+worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max }}"
+
+worker_storage_type: "gp2"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_count: 200
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+
+agnosticv_meta:
+  babylon:
+    kubeconfig: babylon-prod.kubeconfig
+  deploy_with: babylon
+  virtualenv: babylon
+  params_to_variables:
+    username: student_name
+    course_module_list: module_type
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  aws_sandboxed: true
+  catalog:
+    namespace: gpte
+    parameters:
+    - name: module_type
+    - name: num_users
+    - name: student_name
+  deployer:
+    virtualenv: ansible2.9-python3.6-2021-11-30
+    type: agnosticd
+  secrets:
+  - name: satellite-rhel81-ha
+    namespace: gpte
+  - name: ocp4_token
+    namespace: gpte
