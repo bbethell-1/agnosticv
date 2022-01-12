@@ -1,0 +1,118 @@
+---
+# -------------------------------------------------------------------
+# --- Red Hat Summit 2021
+# --- Multi-cloud Application Integration
+# --- course_id: rhs2021-multi0002
+# --- Owners: eshortis@redhat.com, clin@redhat.com sjayanti@redhat.com hguerrero@redhat.com btison@redhat.com
+# --- CPBU: appsvc
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+
+platform: RHPDS
+
+#Which config and what software to use (highest level)
+
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# Email is required for deployment... but really shouldn't be.
+email: devops@example.com
+
+# Azure cloud specific vars
+# sp, tenant, sub, password are in the secret below
+# azure_region is passed by the UI form
+cloud_provider: azure
+az_dnszone_resource_group: gpte-infra
+remote_user: azure
+ansible_user: azure
+# rhel_sku: 7-LVM
+
+# Satellite repo config (these are in secrets):
+# set_repositories_satellite_url: labsat.opentlc.com
+# set_repositories_satellite_org: Red_Hat_GPTE_Labs
+# set_repositories_satellite_activationkey: gpte-rhel8
+
+# OpenShift 4 (ocp4-cluster) specific vars
+windows_vm_count: 0
+cluster_dns_zone: azure.opentlc.com
+ocp4_base_domain: azure.opentlc.com
+basesuffix: .azure.opentlc.com
+
+# RHPDS stuff not part of aro config
+# key_name: ocpkey
+# cloudformation_retries: 0
+install_ipa_client: false
+install_ftl: false
+install_idm: htpasswd
+# admin_user: opentlc-mgr
+# admin_password: r3dh4t1!
+# run_janitor: false
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_use_dev_preview: false
+ocp4_installer_version: 4.7.21
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+# Disable default agnosticd_user_info for ocp4_workload_authentication
+ocp4_workload_authentication_enable_user_info_data: false
+ocp4_workload_authentication_enable_user_info_messages: false
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: azure
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+# -------------------------------------------------------------------
+infra_workloads:
+  - ocp4_workload_authentication
+  - ocp4_workload_le_certificates
+  - ocp4-workload-dil-serverless
+
+#aro_compute_count: worker_instance_count
+
+# Workshop Participant User Configuration
+# --- Student User on Bastion
+install_student_user: false
+
+# --- student_name not set -> Requestor User ID is used as student_name
+student_name: lab-user
+# --- student_password not set -> generate random password
+student_password: openshift
+
+# Scale workers for 7 users per node with a minimum of 3 nodes
+worker_instance_count: "{{ [( num_users / 7) | round(0, 'ceil') | int, 3] | max }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  aws_sandboxed: true
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  deployer:
+    scm_ref: development
+    virtualenv: ansible2.9-python3.6-2021-11-30
+  catalog:
+    namespace: gpte
+    parameters:
+      - name: aws_region
+      - name: student_name
+  secrets:
+    - name: azure_ocp4_gpte
+      namespace: gpte
+    - name: ocp4_token
+      namespace: gpte
+    - name: gpte
+      namespace: gpte
