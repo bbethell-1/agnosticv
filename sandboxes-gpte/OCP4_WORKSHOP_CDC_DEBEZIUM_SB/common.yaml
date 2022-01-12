@@ -1,0 +1,85 @@
+---
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+ocp4_installer_version: "4.6.1"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# OCP4_WORKLOAD_AUTHENTICATION
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: 100
+ocp4_workload_authentication_remove_kubeadmin: true
+install_student_user: true
+
+# -------------------------------------------------------------------
+# Instances
+# -------------------------------------------------------------------
+master_instance_type_family: m5
+master_instance_type_size: >-
+  {{ 'xlarge' if worker_instance_count|int <= 10
+  else '2xlarge' if worker_instance_count|int <= 20
+  else '4xlarge'
+  }}
+master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size }}"
+master_instance_count: 3
+master_storage_type: >-
+  {{ 'io1' if worker_instance_count|int >= 10
+  else 'gp2' }}
+worker_instance_type: "m5.4xlarge"
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+worker_storage_type: "gp2"
+install_lets_encrypt_certificates: true
+
+# -------------------------------------------------------------------
+# WORKLOADS
+# -------------------------------------------------------------------
+infra_workloads:
+  - ocp4_workload_authentication
+  - ocp4_workload_le_certificates
+  - ocp4-workload-debezium-demo
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  deploy_with: babylon
+  params_to_variables:
+    username: student_name
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  aws_sandboxed: true
+  catalog:
+    namespace: gpte
+    parameters:
+      - name: student_name
+      - name: aws_region
+      - name: num_users
+  deployer:
+    virtualenv: ansible2.9-python3.6-2021-11-30
+  secrets:
+    - name: gpte
+      namespace: gpte
+    - name: ocp4-token
+      namespace: gpte
+    - name: satellite-rhel81-ha
+      namespace: gpte
