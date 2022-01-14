@@ -56,7 +56,7 @@ if len(catalog_items) == 0:
 valid = []
 invalid = []
 
-def check_double_booking(c):
+def check_double_booking(c,ci):
     '''Ensure catalog item doesn't double-book
     AWS sandboxes with both Babylon and admin host scripts'''
 
@@ -68,6 +68,20 @@ def check_double_booking(c):
                     '''__meta__.aws_sandboxed and agnosticv_meta.sandboxed can't be both true'''
                 )
 
+    return True
+
+def check_name(c,ci):
+    '''Ensure account and catalog item name
+    should not greater than 57 character'''
+    if len(ci) <= 57:
+        return True
+    
+    ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
+    if len(ciAccNamStg)>57:
+        print("AgV Length is %d and AgV is %s" %(len(ciAccNamStg), ciAccNamStg))
+        raise ValueError(
+            '''Ensure catalog item name should not greater than 57 character'''
+        )
     return True
 
 for ci in catalog_items:
@@ -82,9 +96,9 @@ for ci in catalog_items:
     ci_object = yaml.safe_load(process_ci.stdout)
     passed = True
     exceptions = {}
-    for f in [check_double_booking]:
+    for f in [check_double_booking,check_name]:
         try:
-            if not f(ci_object):
+            if not f(ci_object,ci):
                 passed = False
                 if str(f) in exceptions:
                     exceptions[str(f)].append("Did not pass test")
