@@ -1,0 +1,137 @@
+---
+# OpenShift Cluster to be used in the
+# OCP 4 Pipelines Workshop on RHPDS
+# Catalog: OpenShift Workshops
+# Catalog Item: OpenShift 4 Pipelines Workshop
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+platform: RHPDS
+
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+# -------------------------------------------------------------------
+# End Mandatory Variables
+# -------------------------------------------------------------------
+# guid is the deployment unique identifier,
+# it will be appended to all tags, files and anything
+# that identifies this environment from another "just like it"
+# It comes from Cloud Forms
+# guid: defaultguid
+
+ocp4_installer_version: "4.8"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+# Satellite is used for RHEL repos
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# --- Student User on Bastion
+install_student_user: false
+
+# -------------------------------------------------------------------
+# Infra Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_opentlc_production
+- ocp4_workload_project_request_template
+- ocp4_workload_le_certificates
+- ocp4_workload_pipelines
+- ocp4-workload-homeroomlab-tekton-pipelines
+- ocp4-workload-osevg-workshop-tracker
+
+# -------------------------------------------------------------------
+# Student Workloads ([] means no student workloads)
+# -------------------------------------------------------------------
+student_workloads: []
+
+# -------------------------------------------------------------------
+# ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_password: openshift
+# Create 'num_users' student users
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('2') }}"
+# Remove the standard kubeadmin user
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# OpenTLC Production
+# -------------------------------------------------------------------
+ocp4_workload_opentlc_production_remove_self_provisioner: false
+ocp4_workload_opentlc_production_expose_registry_route: false
+ocp4_workload_opentlc_production_set_build_defaults: true
+
+# -------------------------------------------------------------------
+# OpenShift Pipelines
+# -------------------------------------------------------------------
+ocp4_workload_pipelines_channel: stable
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_starting_csv: redhat-openshift-pipelines.v1.5.1
+ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.8_2021_09_13
+
+# -------------------------------------------------------------------
+# Legacy Roles
+# -------------------------------------------------------------------
+project_name: labs
+workshop_type: pipelines
+
+# ---------------------------------------------------------
+# AWS Instance Sizes
+# ---------------------------------------------------------
+master_instance_type_family: m5
+master_instance_type_size: >-
+  {{ 'xlarge' if worker_instance_count|int <= 10
+  else '2xlarge' if worker_instance_count|int <= 20
+  else '4xlarge'
+  }}
+master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size }}"
+master_instance_count: 3
+master_storage_type: >-
+  {{ 'io1' if worker_instance_count|int >= 10
+  else 'gp2' }}
+worker_instance_type: "m5.4xlarge"
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+worker_storage_type: "gp2"
+bastion_instance_type: t3a.medium
+bastion_instance_image: RHEL82GOLD
+
+# ---------------------------------------------------------
+# AgnosticV Metadata
+# ---------------------------------------------------------
+agnosticv_meta:
+  deploy_with: babylon
+
+# ---------------------------------------------------------
+# Babylon meta variables
+# ---------------------------------------------------------
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  aws_sandboxed: true
+  deployer:
+    virtualenv: ansible2.9-python3.6-2021-11-30
+  catalog:
+    namespace: gpte
+    parameters:
+    - name: num_users
+    - name: aws_region
+  secrets:
+  - name: gpte
+    namespace: gpte
+  - name: ocp4-token
+    namespace: gpte
+  - name: satellite-rhel81-ha
+    namespace: gpte
