@@ -1,0 +1,115 @@
+---
+# --- OpenShift 4.6 Workshop Quay
+# --- Catalog: OpenShift 4 Labs
+# --- Catalog Item: OpenShift 4.6 Quay Workshop
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# End Mandatory Variables
+# -------------------------------------------------------------------
+# Platform
+platform: rhpds
+
+# OpenShift Installer Version
+ocp4_installer_version: "4.6.3"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+# Satellite is used for RHEL repos
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# Student User on Bastion
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+
+# -------------------------------------------------------------------
+# OCP4_WORKLOAD_AUTHENTICATION
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: 200
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# OCP4_WORKLOAD_OPENTLC_PRODUCTION
+# -------------------------------------------------------------------
+ocp4_workload_opentlc_production_remove_self_provisioner: false
+
+# -------------------------------------------------------------------
+# INSTANCES
+# -------------------------------------------------------------------
+master_instance_type_family: m5
+master_instance_type_size: >-
+  {{ 'xlarge' if worker_instance_count|int <= 10
+  else '2xlarge' if worker_instance_count|int <= 20
+  else '4xlarge'
+  }}
+master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size }}"
+master_instance_count: 3
+master_storage_type: >-
+  {{ 'io1' if worker_instance_count|int >= 10
+  else 'gp2' }}
+worker_instance_type: "m5.4xlarge"
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+worker_storage_type: "gp2"
+install_lets_encrypt_certificates: true
+
+# -------------------------------------------------------------------
+# OCP4 WORKLOAD LE CERTIFICATES
+# -------------------------------------------------------------------
+ocp4_workload_le_certificates_install_certificates: true
+ocp4_workload_le_certificates_install_api: False
+# -------------------------------------------------------------------
+# INFRA WORKLOADS
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_project_request_template
+- ocp4_workload_opentlc_production
+- ocp4_workload_le_certificates
+- ocp4_workload_quay_workshop
+
+# -------------------------------------------------------------------
+# STUDENT WORKLOADS
+# -------------------------------------------------------------------
+student_workloads: []
+
+# -------------------------------------------------------------------
+# AGNOSTICV_META
+# -------------------------------------------------------------------
+agnosticv_meta:
+  deploy_with: babylon
+  params_to_variables:
+    username: student_name
+    nodecount: ''
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: gpte
+  deployer:
+    virtualenv: ansible2.9-python3.6-2021-11-30
+  secrets:
+  - name: gpte
+    namespace: gpte
+  - name: ocp4-token
+    namespace: gpte
+  - name: satellite-rhel81-ha
+    namespace: gpte
