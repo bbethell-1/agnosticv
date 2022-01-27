@@ -3,32 +3,55 @@
 # course_id: RHS_2020_T31437
 
 platform: RHPDS
-env_type: ocp4-workshop
-cloud_provider: ec2
+#env_type: ocp4-workshop
+#cloud_provider: ec2
+env_type: ocp4-cluster
+software_to_deploy: openshift4
 
 # admin user for infra workloads
-admin_user: admin
-admin_password: admin
+#admin_user: admin
+#admin_password: admin
 
 osrelease: 4.6.0
 ocp4_installer_version: 4.7.2
 
-default_workloads:
-  - ocp4-workload-enable-lets-encrypt-certificates
-  - ocp4-workload-logging
+#default_workloads:
+#  - ocp4-workload-logging
 
 infra_workloads:
   - ocp4-workload-debugging-workshop
+  - ocp4_workload_le_certificates
+  - ocp4-workload-logging
 
-# Setup lab-user for lab owner SSH access to bastion
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
 install_student_user: true
+# --- student_name not set -> Requestor User ID is used as student_name
+student_name: lab_user
+# --- student_password not set -> generate random password
+# student_password: rhte2019
+# --- Student is allowed to sudo and switch to root
 student_sudo: true
-student_name: lab-user
 
-# Lab user access to OpenShift cluster
-install_idm: htpasswd
-user_password: openshift
-user_count: 60
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_password: openshift
+
+# Create number of htpasswd users
+
+ocp4_workload_authentication_htpasswd_user_count: 50
+
+#install_idm: htpasswd
+#user_password: openshift
+#user_count: 60
 
 # Workshop Configuration
 #workshop_openshift_user_name: userXX
@@ -69,15 +92,15 @@ user_count: 60
 # Ensure the workload prints the correct statements for CloudForms to realize it finished
 workload_shared_deployment: true
 
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
 agnosticv_meta:
   params_to_variables:
     username: student_name
-    infra_workloads: infra_workloads
-    student_workloads: student_workloads
+    infra_workloads: ''
+    student_workloads: ''
   nuke_sandbox: true
-  sandboxed: true
-  secrets:
-    - ocp4_token
   deploy_with: babylon
   virtualenv: babylon
 
@@ -94,12 +117,10 @@ __meta__:
       - name: num_users
       - name: email
   deployer:
-    virtualenv: ansible2.9-python3.6-2021-01-22
+    virtualenv: ansible2.9-python3.6-2021-11-30
     type: agnosticd
   secrets:
     - name: ocp4-token
       namespace: gpte
     - name: rhte-ocp4
-      namespace: gpte
-    - name: rhte-tower
       namespace: gpte
