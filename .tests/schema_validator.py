@@ -81,13 +81,25 @@ if len(catalog_items) == 0:
 valid = []
 invalid = []
 for ci in catalog_items:
-    process_ci = subprocess.run(
-        [str(args.agnosticv_cli), '--merge', ci],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=True,
-        check=True,
-    )
+    try:
+        process_ci = subprocess.run(
+            [str(args.agnosticv_cli), '--merge', ci],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        print()
+        print("Error with %s" %(ci))
+        print("%s" %(e))
+        if e.stdout:
+            print('<STDOUT>')
+            print("%s" %(e.stdout), end='</STDOUT>\n')
+        if e.stderr:
+            print('<STDERR>')
+            print("%s" %(e.stderr), end='</STDERR>\n')
+        sys.exit(2)
 
     ci_object = yaml.safe_load(process_ci.stdout)
     failed = False
