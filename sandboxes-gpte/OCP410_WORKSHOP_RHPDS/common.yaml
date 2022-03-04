@@ -44,6 +44,7 @@ master_instance_type: m5a.2xlarge
 worker_instance_type: m5a.4xlarge
 bastion_instance_type: t3a.medium
 bastion_instance_image: RHEL8-default
+worker_instance_count: "{{ [( num_users / 5) | round(0, 'ceil') | int, 3] | max }}"
 
 # -------------------------------------------------------------------
 # Student User on Bastion
@@ -80,7 +81,8 @@ ocp4_workload_authentication_htpasswd_user_base: user
 # When no password specified it is generated
 ocp4_workload_authentication_htpasswd_user_password: openshift
 # Create 100 users
-ocp4_workload_authentication_htpasswd_user_count: 100
+num_users: "{{ user_count }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ user_count }}"
 # Remove the standard kubeadmin user
 ocp4_workload_authentication_remove_kubeadmin: true
 
@@ -99,20 +101,41 @@ agnosticv_meta:
   virtualenv: babylon
   params_to_variables:
     username: student_name
-    nodecount: ''
-    user: ''
-    region: aws_region
+    num_users: user_count
 
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
 __meta__:
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
   aws_sandboxed: true
   deployer:
     virtualenv: ansible2.9-python3.6-2021-11-30
   catalog:
-    namespace: gpte
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OpenShift 4.10 Workshop
+    category: Workshops
+    keywords:
+    - workshop
+    - openshift
+    - chaos
+    labels:
+      OpenShift_Version: "4.10"
+      Product: OpenShift
+      Provider: PFEE
     parameters:
     - name: aws_region
+    - name: student_name
+    - name: user_count
+      description: Number of users to provision for infrastructure deployment.
+      openAPIV3Schema:
+        default: 1
+        type: integer
+        minimum: 1
+        maximum: 50
   secrets:
   - namespace: gpte
     name: ocp4-token
   - namespace: gpte
-    name: satellite-rhel81
+    name: satellite-rhel81-ha
