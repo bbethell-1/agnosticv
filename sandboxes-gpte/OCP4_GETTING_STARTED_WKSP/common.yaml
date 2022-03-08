@@ -53,7 +53,7 @@ install_ipa_client: false
 # -------------------------------------------------------------------
 install_student_user: true
 # --- student_name not set -> Requestor User ID is used as student_name
-# student_name: lab-user
+student_name: lab-user
 # --- student_password not set -> generate random password
 # student_password: r3dh4t1!
 # --- Student is allowed to sudo and switch to root
@@ -96,7 +96,7 @@ ocp4_workload_authentication_htpasswd_user_base: user
 ocp4_workload_authentication_htpasswd_user_password: openshift
 
 # Create 'num_users' student users
-ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('2') }}"
+ocp4_workload_authentication_htpasswd_user_count: 100
 
 # Remove the standard kubeadmin user
 ocp4_workload_authentication_remove_kubeadmin: true
@@ -159,6 +159,9 @@ agnosticv_meta:
   idle_after_deploy: 4
   idle_after_start: 4
   deploy_with: babylon
+  params_to_variables:
+    username: student_name
+    region: aws_region
 
 ##########################
 # Babylon meta variables #
@@ -168,15 +171,42 @@ __meta__:
   aws_sandboxed: true
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
-  catalog:
-    namespace: gpte
-    parameters:
-    - name: student_name
-    - name: aws_region
-    - name: num_users
   deployer:
-    virtualenv: aws-ansible-2.9
+    virtualenv: ansible2.9-python3.6-2021-11-30
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OCP4 Getting Started Workshop
+    category: Workshops
+    icon:
+      alt: "Cloud Native"
+      url: "https://gpte-public.s3.amazonaws.com/babylon-catalog/Cloud_Native.svg"
+    keywords:
+    - workshop
+    - openshift
+    - ocp
+    - ocp48
+    labels:
+      OpenShift_Version: "4.8"
+      Product: OpenShift
+      Provider: BU1
+    parameters:
+    - name: aws_region
+      description: Region
+      openAPIV3Schema:
+        type: string
+        nullable: false
+        default: us-east-2
+    - name: user_count
+      description: Number of users to provision for infrastructure deployment.
+      openAPIV3Schema:
+        default: 1
+        type: integer
+        minimum: 1
+        maximum: 50
   secrets:
+  - namespace: gpte
+    name: gpte-sandbox
+    var: aws_sandbox_manager
   - namespace: gpte
     name: satellite-rhel81
   - namespace: gpte
