@@ -1,0 +1,30 @@
+---
+name: Schema Validator
+on:
+  pull_request:
+    branches:
+      - main
+jobs:
+  pull_request:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v2
+
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ${{ github.workspace }}/.tests/requirements.txt
+          curl -o agnosticv -L https://github.com/redhat-cop/agnosticv/releases/download/v0.2.1/agnosticv_linux_amd64
+          chmod +x agnosticv
+
+      - name: Static checks
+        run: ${{ github.workspace }}/.tests/schema_validator.sh
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          GITHUB_REPO: "${{ github.repository }}"
