@@ -1,9 +1,9 @@
 ---
 #include /includes/catalog-icon-openshift.yaml
-# -------------------------------------------------------------------
-# --- Catalog: Cutting Edge Workshops
-# --- Catalog Item: CCN Roadshow for Dev Track - OCP 4.8
-# -------------------------------------------------------------------
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/student-name.yaml
+#include /includes/parameters/salesforce-id.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -21,7 +21,7 @@ platform: rhpds
 # OpenShift Installer Version
 # -------------------------------------------------------------------
 ocp4_installer_use_dev_preview: false
-ocp4_installer_version: 4.8.3
+ocp4_installer_version: 4.10.3
 
 # Ability to use Let's Encrypt Certificates
 install_lets_encrypt_certificates: true
@@ -29,7 +29,6 @@ install_lets_encrypt_certificates: true
 # -------------------------------------------------------------------
 # --- Infra Workloads (YAML List)
 # -------------------------------------------------------------------
-
 infra_workloads:
   - ocp4_workload_authentication
   - ocp4_workload_le_certificates
@@ -46,7 +45,6 @@ update_packages: true
 # -------------------------------------------------------------------
 # Worker Instace Count
 # -------------------------------------------------------------------
-
 worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max\
   \ }}"
 
@@ -72,7 +70,6 @@ agnosticv_meta:
   deploy_with: babylon
   virtualenv: babylon
   params_to_variables:
-    username: student_name
     course_module_list: module_type
 
 # -------------------------------------------------------------------
@@ -90,19 +87,31 @@ __meta__:
       #OpenShift_Version: '4.9'
     parameters:
       - name: num_users
-        description: Number of users to provision for infrastructure deployment.
+        description: >-
+          Number of users to provision within the cluster.
+        formLabel: OpenShift User Count
         openAPIV3Schema:
-          default: 1
           type: integer
-          minimum: 1
-          maximum: 50
-    display_name: CCN Roadshow for Dev Track OCP 4.9
+          default: 3
+          minimum: 3
+          maximum: 100
+        validation: >-
+          num_users == 3 ||
+          check_salesforce_id(salesforce_id) ||
+          Error('User count greater than one requires a valid SalesForceID.')
+      - name: module_type
+        description: Semicolon-seperated list of Modules to Enable
+        formLabel: Module
+        required: true
+        openAPIV3Schema:
+          default: m1;m2;m3;m4
+          type: string
+    display_name: CCN Roadshow for Dev Track OCP 4.10
     category: Workshops
   deployer:
     virtualenv: ansible2.9-python3.6-2021-11-30
-    type: agnosticd
   secrets:
-    - name: satellite-rhel81
+    - name: satellite-rhel81-ha
       namespace: gpte
     - name: ocp4_token
       namespace: gpte
