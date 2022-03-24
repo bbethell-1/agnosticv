@@ -1,20 +1,20 @@
 ---
+#include /includes/catalog-icon-openshift.yaml
 #include /includes/parameters/ocp4-fips-enable.yaml
-
-# -------------------------------------------------------------------
-# --- Catalog: Workshops
-# --- Catalog Item: OpenShift 4.8 Workshop
-# -------------------------------------------------------------------
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/student-name.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/agnosticd_open_environment.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/lifetime-standard.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
 env_type: ocp4-cluster
 software_to_deploy: openshift4
-
-# -------------------------------------------------------------------
-# End Mandatory Variables
-# -------------------------------------------------------------------
+ocp4_installer_version: '4.8'
 
 # -------------------------------------------------------------------
 # Platform
@@ -22,14 +22,8 @@ software_to_deploy: openshift4
 platform: RHPDS
 
 # -------------------------------------------------------------------
-# Set OpenShift Installer Version
-# -------------------------------------------------------------------
-ocp4_installer_version: '4.8'
-
-# -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
-
 # Satellite is used for RHEL repos
 repo_method: satellite
 
@@ -39,11 +33,23 @@ update_packages: true
 # -------------------------------------------------------------------
 # AWS Specific
 # -------------------------------------------------------------------
-cloudformation_retries: 0
+master_instance_type_family: m5a
+master_instance_type_size: >-
+  {{ 'xlarge' if worker_instance_count|int <= 10
+  else '2xlarge' if worker_instance_count|int <= 20
+  else '4xlarge'
+  }}
+master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size\
+  \ }}"
 
-master_instance_type: m5a.2xlarge
-worker_instance_type: m5a.4xlarge
-bastion_instance_type: t3a.medium
+master_storage_type: >-
+  {{ 'io1' if worker_instance_count|int >= 10
+  else 'gp2' }}
+worker_instance_type: "m5a.4xlarge"
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max\
+  \ }}"
+
+worker_storage_type: "gp2"
 bastion_instance_image: RHEL84GOLD
 
 # -------------------------------------------------------------------
@@ -52,8 +58,6 @@ bastion_instance_image: RHEL84GOLD
 install_student_user: true
 # --- student_name not set -> Requestor User ID is used as student_name
 student_name: lab-user
-# --- student_password not set -> generate random password
-# student_password: r3dh4t1!
 # --- Student is allowed to sudo and switch to root
 student_sudo: true
 
@@ -81,7 +85,7 @@ ocp4_workload_authentication_htpasswd_user_base: user
 # When no password specified it is generated
 ocp4_workload_authentication_htpasswd_user_password: openshift
 # Create 100 users
-ocp4_workload_authentication_htpasswd_user_count: 100
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('10') }}"
 # Remove the standard kubeadmin user
 ocp4_workload_authentication_remove_kubeadmin: true
 
@@ -94,12 +98,55 @@ ocp4_workload_opentlc_production_remove_self_provisioner: false
 # AgnosticV meta variables
 # -------------------------------------------------------------------
 agnosticv_meta:
-  sandboxed: true
-  virtualenv: ansible2.9-python3.6-2021-11-30
+  babylon:
+    kubeconfig: babylon-prod.kubeconfig
+  deploy_with: babylon
+  virtualenv: babylon
   params_to_variables:
     username: student_name
+
+# ---------------------------------------------------------
+# Babylon meta variables #
+# ---------------------------------------------------------
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  deployer:
+    virtualenv: ansible2.9-python3.6-2021-11-30
+  aws_sandboxed: true
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OpenShift 4.8 Workshop
+    category: Workshops
+    keywords:
+    - workshop
+    - openshift
+    - ocp
+    - ocp48
+    labels:
+      #OpenShift_Version: "4.8"
+      Product: Red_Hat_OpenShift_Container_Platform
+      Provider: PFE
+      Product_Family: Red_Hat_Cloud
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 100
+      validation: >-
+        num_users == 1 ||
+        check_salesforce_id(salesforce_id) ||
+        Error('User count greater than one requires a valid SalesForceID.')
   secrets:
-  # OpenShift Pull Secret
-  - ocp4_token
-  # Satellite Configuration
-  - satellite-rhel81
+  - namespace: gpte
+    name: gpte-sandbox
+    var: aws_sandbox_manager
+  - namespace: gpte
+    name: ocp4-token
+  - namespace: gpte
+    name: satellite-rhel81
