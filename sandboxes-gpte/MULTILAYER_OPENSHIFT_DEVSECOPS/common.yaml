@@ -1,58 +1,49 @@
 ---
-
 #include /includes/catalog-icon-openshift.yaml
-
-# Implementing Multi-Layer Container and Kubernetes Security with OpenShift for Automated DevSecOps
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/student-name.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/lifetime-standard.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-env_type: ocp4-cluster
-# -------------------------------------------------------------------
-# End Mandatory Variables
-# -------------------------------------------------------------------
-
-# guid is the deployment unique identifier,
-# it will be appended to all tags, files and anything
-# that identifies this environment from another "just like it"
-# It comes from Cloud Forms
-# guid: defaultguid
-
-# --- Platform
 platform: RHPDS
-
-software_to_deploy: openshift4
-
-# OpenShift Installer Version
+env_type: ocp4-cluster
 ocp4_installer_version: "4.7"
+software_to_deploy: openshift4
 
 # -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
-
 # Satellite is used for RHEL repos
 repo_method: satellite
-
 # Update RHEL to the latest packages (and reboot)
 update_packages: true
 
-# --- Student User on Bastion
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
 install_student_user: true
 student_name: lab-user
 # --- Student is allowed to sudo and switch to root
 student_sudo: true
 
-# --- OCP Authentication
-# Authentication (HT Passwd)
+# -------------------------------------------------------------------
+# OCP Authentication
+# -------------------------------------------------------------------
 ocp4_workload_authentication_idm_type: htpasswd
 ocp4_workload_authentication_admin_user: admin
 ocp4_workload_authentication_htpasswd_user_base: user
 ocp4_workload_authentication_htpasswd_user_password: openshift
-
-# Remove the standard kubeadmin user
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('2') }}"
 ocp4_workload_authentication_remove_kubeadmin: true
 
-# --- Infra Workloads (YAML List)
+# -------------------------------------------------------------------
+# Worklods
+# -------------------------------------------------------------------
 infra_workloads:
   - ocp4_workload_authentication
   - ocp4_workload_le_certificates
@@ -60,19 +51,18 @@ infra_workloads:
 
 student_workloads: []
 
+# -------------------------------------------------------------------
+# Bookbag
+# -------------------------------------------------------------------
 # Repository must have a build-template.yaml and deploy-template.yaml
 bookbag_git_repo: https://github.com/RedHatDemos/SecurityDemos/tree/master/2021Labs/OpenShiftSecurity/documentation/bookbag
 
+# -------------------------------------------------------------------
+# Agnosticv Meta
+# -------------------------------------------------------------------
 agnosticv_meta:
   deploy_with: babylon
-  virtualenv: ansible2.9-python3.6-2021-11-30
-  sandboxed: false
-  secrets:
-    - ocp4_token
-    - satellite-rhel81
-    - satellite-security-ocp4-dso-pull-secret
-    - bookbag-deployer-na4
-    - guidgrabber-api
+  virtualenv: babylon
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -94,13 +84,24 @@ __meta__:
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: Red_Hat_Cloud
     parameters:
-      - name: aws_region
-      - name: email
+      -name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 25
+      validation: >-
+        num_users == 1 ||
+        check_salesforce_id(salesforce_id) ||
+        Error('User count greater than one requires a valid SalesForceID.')
   secrets:
     - namespace: gpte
       name: ocp4-token
     - namespace: gpte
-      name: satellite-rhel81
+      name: satellite-rhel81-ha
     - namespace: gpte
       name: satellite-security-ocp4-dso-pull-secret
     - namespace: gpte
