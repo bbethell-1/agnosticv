@@ -1,5 +1,13 @@
 ---
 #include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/student-name.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/ocp4-fips-enable.yaml
+
 # -------------------------------------------------------------------
 # --- OCP4 Data Grid 8 Workshop
 # --- Catalog: Application Services Workshop
@@ -16,7 +24,8 @@ platform: RHPDS
 # -------------------------------------------------------------------
 env_type: ocp4-cluster
 software_to_deploy: openshift4
-bastion_instance_image: RHEL82GOLD
+cloudformation_retries: 0
+install_ipa_client: false
 
 # -------------------------------------------------------------------
 # OpenShift Installer Version
@@ -29,26 +38,16 @@ run_janitor: false
 # -------------------------------------------------------------------
 infra_workloads:
   - ocp4_workload_authentication
-  - ocp4_workload_le_certificates
   - ocp4-workload-jdg-workshop
+  - ocp4_workload_le_certificates
 default_workloads: []
 student_workloads: []
 
 # -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
-# Satellite
 repo_method: satellite
-satellite_url: "{{ set_repositories_satellite_url }}"
-satellite_org: "{{ set_repositories_satellite_org }}"
-satellite_activationkey: "{{ set_repositories_satellite_activationkey }}"
-
-# Update RHEL and reboot
 update_packages: true
-
-# Generic Variables
-cloudformation_retries: 0
-install_ipa_client: false
 
 # -------------------------------------------------------------------
 # Student User on Bastion
@@ -69,6 +68,7 @@ master_instance_count: 3
 worker_instance_type: m5.4xlarge
 worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max\
   \ }}"
+bastion_instance_image: RHEL82GOLD
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -80,7 +80,7 @@ ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
 ocp4_workload_authentication_htpasswd_user_base: user
 # When no password specified it is generated
 ocp4_workload_authentication_htpasswd_user_password: openshift
-ocp4_workload_authentication_htpasswd_user_count: 200
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('1') }}"
 ocp4_workload_authentication_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
@@ -93,6 +93,9 @@ agnosticv_meta:
     region: aws_region
     course_module_list: workshop_shortenYn
 
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
 __meta__:
   aws_sandboxed: true
   deployer:
@@ -100,9 +103,19 @@ __meta__:
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     parameters:
-      - name: aws_region
-      - name: course_module_list
       - name: num_users
+        description: >-
+          Number of users to provision within the cluster.
+        formLabel: OpenShift User Count
+        openAPIV3Schema:
+          type: integer
+          default: 1
+          minimum: 1
+          maximum: 100
+        validation: >-
+          num_users == 1 ||
+          check_salesforce_id(salesforce_id) ||
+          Error('User count greater than one requires a valid SalesForceID.')
     keywords: []
     labels:
       Provider: Application_Services_BU

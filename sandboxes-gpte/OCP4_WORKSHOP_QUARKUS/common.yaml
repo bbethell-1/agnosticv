@@ -1,5 +1,13 @@
 ---
 #include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/student-name.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/ocp4-fips-enable.yaml
+
 # -------------------------------------------------------------------
 # --- Catalog: Workshops
 # --- Catalog Item: OCP4 Quarkus Workshop
@@ -10,52 +18,44 @@
 # -------------------------------------------------------------------
 env_type: ocp4-cluster
 software_to_deploy: openshift4
-bastion_instance_image: RHEL82GOLD-latest
 
 # -------------------------------------------------------------------
 # Platform
 # -------------------------------------------------------------------
-
 platform: rhpds
 
 # -------------------------------------------------------------------
 # OpenShift Installer Version
 # -------------------------------------------------------------------
-
 ocp4_installer_version: "4.9"
 
 # -------------------------------------------------------------------
 # --- Infra Workloads (YAML List)
 # -------------------------------------------------------------------
-
 infra_workloads:
   - ocp4_workload_authentication
-  - ocp4_workload_le_certificates
   - ocp4-workload-quarkus-workshop
+  - ocp4_workload_le_certificates
 
 # -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
-
 repo_method: satellite
-
-# Update RHEL to the latest packages (and reboot)
 update_packages: true
 
 # -------------------------------------------------------------------
 # Machine Count
 # -------------------------------------------------------------------
-
 master_instance_type: m5.2xlarge
 master_instance_count: 3
 worker_instance_type: m5.4xlarge
 worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max\
   \ }}"
+bastion_instance_image: RHEL82GOLD-latest
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
-
 ocp4_workload_authentication_idm_type: htpasswd
 ocp4_workload_authentication_admin_user: opentlc-mgr
 # When no password specified it is generated
@@ -63,30 +63,24 @@ ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
 ocp4_workload_authentication_htpasswd_user_base: user
 # When no password specified it is generated
 ocp4_workload_authentication_htpasswd_user_password: openshift
-ocp4_workload_authentication_htpasswd_user_count: 200
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('3') }}"
 ocp4_workload_authentication_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
 # -------------------------------------------------------------------
-
 agnosticv_meta:
   babylon:
     kubeconfig: babylon-prod.kubeconfig
   deploy_with: babylon
-  sandboxed: false
   virtualenv: aws-ansible-2.9
   params_to_variables:
     username: student_name
     course_module_list: module_type
-  secrets:
-    - ocp4_token
-    - satellite-rhel81
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
-
 __meta__:
   aws_sandboxed: true
   anarchy:
@@ -94,9 +88,26 @@ __meta__:
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     parameters:
-      - name: num_users
-      - name: student_name
       - name: module_type
+        description: Semicolon-seperated list of Modules to Enable
+        formLabel: Module
+        required: true
+        openAPIV3Schema:
+          default: m1;m2;m3
+          type: string
+      - name: num_users
+        description: >-
+          Number of users to provision within the cluster.
+        formLabel: OpenShift User Count
+        openAPIV3Schema:
+          type: integer
+          default: 3
+          minimum: 3
+          maximum: 100
+        validation: >-
+          num_users == 3 ||
+          check_salesforce_id(salesforce_id) ||
+          Error('User count greater than one requires a valid SalesForceID.')
     keywords: []
     labels:
       Provider: Application_Services_BU

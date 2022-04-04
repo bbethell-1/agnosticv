@@ -1,28 +1,32 @@
 ---
-#include /includes/catalog-icon-amq.yaml
-# -------------------------------------------------------------------
-# --- Catalog: Application Services Workshop
-# --- Catalog Item: DIL Streaming Event-driven Workshop
-# -------------------------------------------------------------------
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/student-name.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/ocp4-fips-enable.yaml
 
 # -------------------------------------------------------------------
 # Platform
 # -------------------------------------------------------------------
-
 platform: RHPDS
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-
 env_type: ocp4-cluster
 software_to_deploy: openshift4
-bastion_instance_image: RHEL82GOLD
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.6.18"
 
 # -------------------------------------------------------------------
 # Machine Count
 # -------------------------------------------------------------------
-
 master_instance_type: "{{ 'm5.xlarge' if worker_instance_count|int <= 10 else 'm5.2xlarge'\
   \ if worker_instance_count|int <= 20 else 'm5.4xlarge' }}"
 master_instance_count: 3
@@ -30,17 +34,11 @@ worker_instance_type: m5.4xlarge
 worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max\
   \ }}"
 bastion_instance_type: t3.medium
-
-# -------------------------------------------------------------------
-# OpenShift Installer Version
-# -------------------------------------------------------------------
-
-ocp4_installer_version: "4.6.18"
+bastion_instance_image: RHEL82GOLD
 
 # -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
-
 repo_method: satellite
 update_packages: true
 
@@ -49,13 +47,12 @@ update_packages: true
 # -------------------------------------------------------------------
 infra_workloads:
   - ocp4_workload_authentication
-  - ocp4_workload_le_certificates
   - ocp4-workload-dil-streaming
+  - ocp4_workload_le_certificates
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
-
 install_student_user: true
 ocp4_workload_authentication_idm_type: htpasswd
 ocp4_workload_authentication_admin_user: opentlc-mgr
@@ -64,14 +61,12 @@ ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
 ocp4_workload_authentication_htpasswd_user_base: user
 # When no password specified it is generated
 ocp4_workload_authentication_htpasswd_user_password: openshift
-num_users: "{{ user_count }}"
-ocp4_workload_authentication_htpasswd_user_count: "{{ user_count }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
 ocp4_workload_authentication_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
 # -------------------------------------------------------------------
-
 agnosticv_meta:
   babylon:
     kubeconfig: babylon-prod.kubeconfig
@@ -79,7 +74,6 @@ agnosticv_meta:
   virtualenv: babylon
   params_to_variables:
     username: student_name
-    num_users: user_count
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -91,15 +85,19 @@ __meta__:
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     parameters:
-      - name: aws_region
-      - name: student_name
-      - name: user_count
-        description: Number of users to provision for infrastructure deployment.
+      - name: num_users
+        description: >-
+          Number of users to provision within the cluster.
+        formLabel: OpenShift User Count
         openAPIV3Schema:
-          default: 1
           type: integer
+          default: 1
           minimum: 1
-          maximum: 50
+          maximum: 100
+        validation: >-
+          num_users == 1 ||
+          check_salesforce_id(salesforce_id) ||
+          Error('User count greater than one requires a valid SalesForceID.')
     keywords: []
     labels:
       Provider: Application_Services_BU
@@ -109,7 +107,7 @@ __meta__:
     display_name: DIL Streaming Event-driven Workshop
     category: Workshops
   deployer:
-    virtualenv: ansible2.9-python3.6-2021-01-22
+    virtualenv: ansible2.9-python3.6-2021-11-30
     type: agnosticd
   secrets:
     - name: ocp4-token
