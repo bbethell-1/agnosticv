@@ -1,11 +1,19 @@
 ---
 #include /includes/catalog-icon-service-mesh.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/agnosticd_open_environment.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/lifetime-standard.yaml
 
+# -------------------------------------------------------------------
 # --- OpenShift 4.x Workshop
 # --- Catalog: Multi-Product Demo
 # --- Catalog Item: OpenShift 4 OpenShift Service Mesh 2 Workshop
 # --- CODENAME: OCP4_3SAM_OSSM_DEMO
 # --- Demo Owners as of July 1, 2021: Jaeyoung Kang, Jason Dudash
+# -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -63,8 +71,7 @@ ocp4_workload_le_certificates_install_certificates: true
 ocp4_workload_le_certificates_install_api: false
 
 # Create HTPASSWD users
-num_users: "{{ user_count }}"
-ocp4_workload_authentication_htpasswd_user_count: "{{ user_count }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
 ocp4_workload_authentication_remove_kubeadmin: true
 
 # OPENTLC Production Customizations
@@ -72,12 +79,12 @@ ocp4_workload_opentlc_production_remove_self_provisioner: false
 
 # --- Infra Workloads (YAML List)
 infra_workloads:
-  - ocp4_workload_authentication
-  - ocp4_workload_project_request_template
-  - ocp4_workload_opentlc_production
-  - ocp4_workload_le_certificates
-  - ocp-workload-terminal
-  - ocp4_workload_servicemesh_workshop
+- ocp4_workload_authentication
+- ocp4_workload_project_request_template
+- ocp4_workload_opentlc_production
+- ocp4_workload_le_certificates
+- ocp-workload-terminal
+- ocp4_workload_servicemesh_workshop
 
 # Student Workloads (YAML List)
 student_workloads: []
@@ -88,7 +95,6 @@ student_workloads: []
 agnosticv_meta:
   params_to_variables:
     nodecount: ''
-    num_users: user_count
   babylon:
     kubeconfig: babylon-prod.kubeconfig
   deploy_with: babylon
@@ -113,16 +119,24 @@ __meta__:
       Product_Family: Red_Hat_Cloud
       Provider: PFE
     parameters:
-      - name: aws_region
-      - name: user_count
-        description: Number of users to provision for infrastructure deployment.
-        openAPIV3Schema:
-          default: 1
-          type: integer
-          minimum: 1
-          maximum: 50
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 100
+      validation: >-
+        num_users == 1 ||
+        check_salesforce_id(salesforce_id) ||
+        Error('User count greater than one requires a valid SalesForceID.')
   secrets:
-    - name: satellite-rhel81
-      namespace: gpte
-    - name: ocp4_token
-      namespace: gpte
+  - namespace: gpte
+    name: gpte-sandbox
+    var: aws_sandbox_manager
+  - name: satellite-rhel81
+    namespace: gpte
+  - name: ocp4_token
+    namespace: gpte
