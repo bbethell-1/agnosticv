@@ -1,4 +1,13 @@
 ---
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/ocp4-fips-enable.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/student-name.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+
 platform: RHPDS
 
 env_type: ocp4-workshop
@@ -14,11 +23,16 @@ install_ftl: false
 
 install_student_user: false
 
-install_idm: htpasswd
-admin_user: opentlc-mgr
-admin_password: r3dh4t1!
-# Users are user1..200
-user_password: openshift
+# -------------------------------------------------------------------
+# OCP4_WORKLOAD_AUTHENTICATION
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('1') }}"
+ocp4_workload_authentication_remove_kubeadmin: true
 
 ignore_self_provisioners: true
 
@@ -26,18 +40,30 @@ run_janitor: false
 
 osrelease: 4.6.0
 
-# OCP 4.2 greatness as in RHTE is commented, using version from 2019-10-01
-# ocp4_installer_use_dev_preview: True
+# -------------------------------------------------------------------
+# INSTANCES
+# -------------------------------------------------------------------
+master_instance_type_family: m5
+master_instance_type_size: >-
+  {{ 'xlarge' if worker_instance_count|int <= 10
+  else '2xlarge' if worker_instance_count|int <= 20
+  else '4xlarge'
+  }}
+master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size }}"
+master_instance_count: 3
+master_storage_type: >-
+  {{ 'io1' if worker_instance_count|int >= 10
+  else 'gp2' }}
+worker_instance_type: "m5.4xlarge"
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+worker_storage_type: "gp2"
+install_lets_encrypt_certificates: true
 
-# ocp4_installer_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp-dev-preview/4.2.0-0.nightly-2019-09-10-074025/openshift-install-linux-4.2.0-0.nightly-2019-09-10-074025.tar.gz
-
-# ocp4_installer_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp-dev-preview/4.2.0-0.nightly-2019-10-01-210901/openshift-install-linux-4.2.0-0.nightly-2019-10-01-210901.tar.gz
-
-# ocp4_client_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp-dev-preview/4.2.0-0.nightly-2019-09-10-074025/openshift-client-linux-4.2.0-0.nightly-2019-09-10-074025.tar.gz
-
-# ocp4_client_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp-dev-preview/4.2.0-0.nightly-2019-10-01-210901/openshift-client-linux-4.2.0-0.nightly-2019-10-01-210901.tar.gz
-
-default_workloads:
+# -------------------------------------------------------------------
+# INFRA WORKLOADS
+# -------------------------------------------------------------------
+infra_workloads:
+  - ocp4_workload_authentication
   - ocp4-workload-project-request-template
   - ocp4-workload-opentlc-production
   - ocp4-workload-enable-lets-encrypt-certificates
@@ -48,8 +74,58 @@ default_workloads:
 # Only from Admin Host - maybe an Ansible version issue
 #  - ocp-workload-terminal
 
+# -------------------------------------------------------------------
+# AGNOSTICV_META
+# -------------------------------------------------------------------
 agnosticv_meta:
-  virtualenv: ansible2.9-python3.6-2021-01-22
+  deploy_with: babylon
   params_to_variables:
     username: student_name
     infra_workloads: infra_workloads
+    student_workloads: student_workloads
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  aws_sandboxed: true
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OCP4 Workshop Build an Operator
+    category: Workshops
+    keywords:
+    - workshop
+    - openshift
+    - ocp
+    - ocp46
+    labels:
+      #OpenShift_Version: "4.6"
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 100
+      validation: >-
+        num_users == 1 ||
+        check_salesforce_id(salesforce_id) ||
+        Error('User count greater than one requires a valid SalesForceID.')
+  deployer:
+    virtualenv: ansible2.9-python3.6-2021-11-30
+  secrets:
+  - name: gpte
+    namespace: gpte
+  - name: ocp4-token
+    namespace: gpte
+  - name: rhte-ocp4
+    namespace: gpte
+  - name: rhte-tower
+    namespace: gpte
