@@ -13,6 +13,11 @@ common_install_basic_packages_retries: 0
 repo_method: file
 install_student_user: true
 
+########################################
+# Mandatory vars #
+########################################
+migration_key_path: ~/.ssh/opentlc_admin_backdoor.pem
+
 # How many times Heat will retry to deploy template if it fails
 # Keep this low for development and a little higher for production
 heat_retries: 0
@@ -24,23 +29,45 @@ use_dynamic_dns: true
 # Enter project name from https://github.com/redhat-gpe/novello-templates/tree/master/heat-templates
 project: OPTLC-RHELT_v7.0_Troubleshooting-v1.4-bp
 
+# --------------------------------------------------------------------
+# AgnosticV meta variables
+# --------------------------------------------------------------------
 agnosticv_meta:
-
-  virtualenv: openstack-ansible-2.9
-
-  # Uncomment if you want to skip actions like waiting for SSH and other deployment steps
-  # Step examples:
-  # - Step 002 Post Infrastructure, Configuring Bastion Hosts
-  # - wait_ssh: Step 001.3 Configure Linux Hosts and Wait for Connection
-  #ansible_additional_args: --skip-tags wait_ssh,step002
-
+  babylon:
+    kubeconfig: babylon-prod.kubeconfig
+  deploy_with: babylon
   secrets:
-    - novello_git_clone_key
-    # Required by env_type osp-migration
-    # ibm_api_key, ibm_bucket_name, ibm_endpoint, ibm_auth_endpoint, ibm_resource_id
-    - ibm-cos-secrets
-
+  - novello_git_clone_key
+  - ibm-cos-secrets
   params_to_variables:
     # This should be overwritten based on the user ordering the catalog item
     # It will be used by the bastion-student-user role and created on the bastion
     user: student_name
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  catalog:
+    namespace: gpte
+    parameters:
+    - name: student_name
+  anarchy:
+    namespace: babylon-anarchy-openstack
+  scheduler:
+    enable: true
+    data:
+      cloud_selector:
+        type: osp
+      cloud_preference:
+        purpose: production
+        datacenter: dal
+  secrets:
+  - name: ibm-cos-secrets
+    namespace: gpte
+  - name: novello_git_clone_key
+    namespace: gpte
+  - name: repos-cloudfront-ocp
+    namespace: gpte
+  deployer:
+    virtualenv: openstack-ansible-2.9
