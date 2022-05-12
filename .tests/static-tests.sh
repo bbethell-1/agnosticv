@@ -38,6 +38,8 @@ errtemp=$(mktemp)
 changed=$(mktemp)
 errors=$(mktemp)
 changed_git=$(mktemp)
+changed_ci=$(mktemp)
+changed_ci_uniq=$(mktemp)
 deleted_files=$(mktemp)
 schema_output=$(mktemp)
 babylon_checks_output=$(mktemp)
@@ -50,6 +52,8 @@ _cleanup_on_exit() {
     rm $difftemp
     rm $changed
     rm $changed_git
+    rm $changed_ci
+    rm $changed_ci_uniq
     rm $errtemp
     rm $errors
     rm $deleted_files
@@ -68,9 +72,16 @@ git diff \
     | perl -pe 's/(account|common).ya?ml$//' \
     > ${changed_git}
 
+# add related files
+for f in $(cat ${changed_git}); do
+    agnosticv --list --related $f >> ${changed_ci}
+done
+
+sort ${changed_ci} | uniq > ${changed_ci_uniq}
+
 git checkout $TRAVIS_PULL_REQUEST_SHA &>/dev/null
 
-for i in $(agnosticv --list|grep -f ${changed_git}|grep -v '.travis.yml'); do
+for i in $(cat ${changed_ci_uniq}); do
     git checkout $TRAVIS_PULL_REQUEST_SHA &>/dev/null
     if [ $? != 0 ]; then
         echo "ERROR git checkout  $TRAVIS_PULL_REQUEST_SHA" >> $errors
@@ -79,6 +90,9 @@ for i in $(agnosticv --list|grep -f ${changed_git}|grep -v '.travis.yml'); do
 
     agnosticv --merge $i > $temp1 2>$errtemp
     if [ $? != 0 ]; then
+        # remove schema output as it's too verbose
+        sed -i '/^Schema:/,/^Value:/d' $errtemp
+
         echo "ERROR merging $i" >> $errors
         cat $errtemp >> $errors
         continue
@@ -153,23 +167,6 @@ EOF
 fi
 
 git checkout $TRAVIS_PULL_REQUEST_SHA &>/dev/null
-
-${ORIG}/schema_validator.py > ${schema_output}
-
-if [ $? != 0 ]; then
-    RC=2
-    sync
-
-    read -r -d '' data << EOF
-${data}
-
-Some catalog items do not pass Schema Validation:
-
-\`\`\`
-$(cat ${schema_output})
-\`\`\`
-EOF
-fi
 
 ${ORIG}/babylon_checks.py > ${babylon_checks_output}
 
