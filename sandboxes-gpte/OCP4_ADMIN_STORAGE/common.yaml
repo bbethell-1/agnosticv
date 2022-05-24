@@ -5,21 +5,15 @@
 #include /includes/parameters/student-name.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/lifetime-standard.yaml
-# -------------------------------------------------------------------
-# --- Catalog: Workshops
-# --- Catalog Item: OCP4 and Container Storage for Admins(T)
-# -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # Platform
 # -------------------------------------------------------------------
-
 platform: RHPDS
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-
 env_type: ocp4-cluster
 software_to_deploy: openshift4
 install_ipa_client: false
@@ -34,7 +28,6 @@ ocp4_network_ovn_install_workaround: true
 # -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
-
 repo_method: satellite
 
 # Update RHEL to the latest packages (and reboot)
@@ -43,13 +36,31 @@ update_packages: true
 # -------------------------------------------------------------------
 # OpenShift Installer Version
 # -------------------------------------------------------------------
-
 ocp4_installer_version: "4.9"
+
+# -------------------------------------------------------------------
+# Worker Instance Count
+# -------------------------------------------------------------------
+master_instance_type_family: m5
+master_instance_type_size: >-
+  {{ 'xlarge' if worker_instance_count|int <= 10
+  else '2xlarge' if worker_instance_count|int <= 20
+  else '4xlarge'
+  }}
+master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size\
+  \ }}"
+master_instance_count: 3
+master_storage_type: >-
+  {{ 'io1' if worker_instance_count|int >= 10
+  else 'gp2' }}
+worker_instance_type: "m5.4xlarge"
+worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 4] | max\
+  \ }}"
+worker_storage_type: "gp2"
 
 # -------------------------------------------------------------------
 # --- Infra Workloads (YAML List)
 # -------------------------------------------------------------------
-
 infra_workloads:
   - ocp4-workload-workshop-admin-storage
   - ocp4-workload-enable-lets-encrypt-certificates
@@ -57,7 +68,6 @@ infra_workloads:
 # -------------------------------------------------------------------
 # AgnosticV meta variables
 # -------------------------------------------------------------------
-
 agnosticv_meta:
   babylon:
     kubeconfig: babylon-prod.kubeconfig
