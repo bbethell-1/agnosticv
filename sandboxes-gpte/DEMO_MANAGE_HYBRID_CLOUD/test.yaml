@@ -21,7 +21,23 @@ requirements_content:
     version: 1.3.0
   - name: awx.awx
     version: 21.1.0
-
+infra_workloads:
+- ocp4_workload_le_certificates
+- ocp4_workload_authentication
+- ocp4_workload_rhacm
+- ocp4_workload_aws_info
+- ocp4_workload_acm_cloud_credentials
+- ocp4_workload_acm_aws_cluster
+- ocp4_workload_lpe_automation_controller
+- automation-controller-config
+- ocp4_workload_gitea_operator
+- ocp4_workload_pipelines
+- ocp4_workload_openshift_gitops
+- ocp4_workload_mta
+- ocp4_workload_mta_tackle
+- ocp4_workload_rhods_olm
+- ocp4_workload_vscode_bastion
+- ocp4_workload_big_demo
 
 # host_virtualenv_requirements:
 # - requirements_k8s.txt
@@ -45,7 +61,7 @@ az_service_principal:
   tenantId: "{{ azure_tenant }}"
 
 # -------------------------------------------------------------------
-# ocp4_workload_lpe_automation_contoller
+# automation-controller-config
 # -------------------------------------------------------------------
 automation_controller_credentials:
 - name: hmi_nodes
@@ -66,21 +82,28 @@ automation_controller_projects:
   scm_url: https://github.com/linuxnerds/edge-hmi-demo.git
 
 automation_controller_inventories:
-- name: "hmi-inventory"
+- name: "hmi-dynamic-inventory"
   description: "HMI host inventory"
+- name: hmi-smart-inventory
+  description: HMI smart
+  kind: smart
+  host_filter: groups__name__icontains=tag_AnsibleGroup_hmi_nodes
 
 automation_controller_inventory_sources:
 - name: "aws_source"
   description: "aws dynamic inventory"
-  inventory: "hmi-inventory"
+  inventory: "hmi-dynamic-inventory"
   credential: "aws_credentials"
   source: ec2
-  # host_filter:
+  source_vars:
+    keyed_groups:
+    - prefix: tag
+      key: tags
 
 automation_controller_jobtemplates:
 - name: "1. Create HMI VM with survey for hostname"
   description: "Create HMI VM with survey for hostname"
-  inventory: hmi-inventory
+  inventory: "Demo Inventory"
   project: edge-hmi-demo
   playbook: "ansible/provision_host_playbook.yml"
   become_enabled: true
@@ -88,38 +111,34 @@ automation_controller_jobtemplates:
   - "aws_credentials"
 - name: "2. Configure Podman to run Inductive Automation Ignition"
   description: "Configure Podman to run Inductive Automation Ignition"
-  inventory: hmi-inventory
+  inventory: hmi-smart-inventory
   project: edge-hmi-demo
   playbook: "ansible/podman_playbook.yml"
   become_enabled: true
-  limit: hmi_nodes
   credentials:
   - "hmi_nodes"
 - name: "3. Deploy Kiosk Mode to HMI Devices"
   description: "Deploy Kiosk Mode to HMI Devices"
-  inventory: hmi-inventory
+  inventory: hmi-smart-inventory
   project: edge-hmi-demo
   playbook: "ansible/kiosk_playbook.yml"
   become_enabled: true
-  limit: hmi_nodes
   credentials:
   - "hmi_nodes"
 - name: "OS Hardening"
   description: "OS Hardening"
-  inventory: hmi-inventory
+  inventory: hmi-smart-inventory
   project: edge-hmi-demo
   playbook: "ansible/hardening_playbook.yml"
   become_enabled: true
-  limit: hmi_nodes
   credentials:
   - "hmi_nodes"
 - name: "5. Validate Security on HMI Devices(scheduled to report to Splunk)"
   description: "Validate Security on HMI Devices(scheduled to report to Splunk)"
-  inventory: hmi-inventory
+  inventory: hmi-smart-inventory
   project: edge-hmi-demo
   playbook: "ansible/security_playbook.yml"
   become_enabled: true
-  limit: hmi_nodes
   credentials:
   - "hmi_nodes"
 
