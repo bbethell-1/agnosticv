@@ -72,15 +72,15 @@ def check_double_booking(c,ci):
 
 def check_name(c,ci):
     '''Ensure account and catalog item name
-    should not greater than 57 character'''
-    if len(ci) <= 57:
+    should not greater than 52 character'''
+    if len(ci) <= 52:
         return True
     
     ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
-    if len(ciAccNamStg)>57:
+    if len(ciAccNamStg)>52:
         print("AgV Length is %d and AgV is %s" %(len(ciAccNamStg), ciAccNamStg))
         raise ValueError(
-            '''Ensure catalog item name should not greater than 57 character'''
+            '''Ensure catalog item name should not greater than 52 character'''
         )
     return True
 
