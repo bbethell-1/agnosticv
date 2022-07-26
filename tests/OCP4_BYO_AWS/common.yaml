@@ -1,0 +1,135 @@
+---
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+# update_packages: true   # takes 10 minutes, no thanks!
+
+# -------------------------------------------------------------------
+# OpenShift Instance Types
+# -------------------------------------------------------------------
+bastion_instance_image: RHEL84GOLD-latest
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+
+ocp4_installer_version: "4.10"
+
+# ocp4_installer_use_dev_preview: true
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_le_certificates
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+# When no password specified it is generated
+# ocp4_workload_authentication_htpasswd_admin_password: ocp_admin
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
+# Do not remove the standard kubeadmin user
+ocp4_workload_authentication_remove_kubeadmin: false
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+# --- student_name not set -> Requestor User ID is used as student_name
+student_name: lab-user
+# --- student_password not set -> generate random password
+#student_password: r3dh4t1!
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
+install_ftl: false
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# as a workshop, it needs a number of users
+cloud_provider: ec2
+key_name: opentlc_admin_backdoor
+region: us-east-2
+num_users: 5
+aws_region: us-east-2
+subdomain_base_suffix: ".{{ route53_dns_zone }}"
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+# AgnosticV Metadata
+# Set VirtualEnv to run this config in
+agnosticv_meta:
+  deploy_with: babylon
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-test
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OpenShift 4 BYO AWS
+    category: Demos
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHPDS
+    parameters:
+    - name: aws_region
+      description: AWS Region to Provision Environment.
+      formLabel: Region
+      required: true
+      openAPIV3Schema:
+        type: string
+        default: us-east-2
+    - name: aws_access_key_id
+      description: AWS Access Key ID for your AWS account prepared for OpenShift deployment.
+      formLabel: AWS Access Key ID
+      required: true
+      openAPIV3Schema:
+        type: string
+    - name: aws_secret_access_key
+      description: AWS Secret Access Key for your AWS account prepared for OpenShift deployment.
+      formLabel: AWS Secret Access Key
+      required: true
+      openAPIV3Schema:
+        type: string
+    - name: route53_dns_zone
+      description: Route53 DNS zone name to use as base for provisioned resources.
+      formLabel: Route53 DNS Domain
+      required: true
+      openAPIV3Schema:
+        type: string
+  access_control:
+    allow_groups:
+    - babylon-admins
+  secrets:
+  - name: ocp4_token
+    namespace: gpte
+  - name: satellite-rhel81-ha
+    namespace: gpte
