@@ -10,35 +10,60 @@
 
 platform: RHPDS
 
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+
 env_type: ocp4-workshop
-software_to_deploy: none
-install_ocp4: true
+software_to_deploy: openshift4
+
 ocp4_installer_version: "4.6.12"
 
-
-repo_method: file
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
 
 cloudformation_retries: 0
 install_ipa_client: false
 install_ftl: false
 
-install_student_user: false
-
-install_idm: htpasswd
-admin_user: opentlc-mgr
-admin_password: r3dh4t1!
-# Users are user1..200
-user_password: openshift
-
-ignore_self_provisioners: true
-
 run_janitor: false
 
-osrelease: 4.6.0
+install_student_user: false
+
+repo_method: satellite
+
+# -------------------------------------------------------------------
+# OpenShift Cluster Customization
+# -------------------------------------------------------------------
+# Do not run any infrastructure customization.
+# This will result in a default OpenShift 4 installation.
+# --- OCP Authentication
+# Authentication (HT Passwd)
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_password: openshift
+# Activate the use of self-signed certificates
+ocp4_workload_le_certificates_install_certificates: true
+ocp4_workload_le_certificates_install_api: false
+
+# Create htpasswd users
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+
+# Remove the standard kubeadmin user
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# OPENTLC Production Customizations
+ocp4_workload_opentlc_production_remove_self_provisioner: true
 
 # -------------------------------------------------------------------
 # INSTANCES
 # -------------------------------------------------------------------
+
 master_instance_type_family: m5
 master_instance_type_size: >-
   {{ 'xlarge' if worker_instance_count|int <= 10
@@ -54,6 +79,7 @@ worker_instance_type: "m5.4xlarge"
 worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
 worker_storage_type: "gp2"
 install_lets_encrypt_certificates: true
+
 # -------------------------------------------------------------------
 # INFRA WORKLOADS
 # -------------------------------------------------------------------
@@ -63,10 +89,7 @@ default_workloads:
   - ocp4-workload-enable-lets-encrypt-certificates
   - ocp4-workload-build-an-operator-homeroomlab
   - ocp4-workload-osevg-workshop-tracker
-
-# Terminal is breaking at the moment at project create
-# Only from Admin Host - maybe an Ansible version issue
-#  - ocp-workload-terminal
+  - ocp-workload-terminal
 
 # -------------------------------------------------------------------
 # AGNOSTICV_META
