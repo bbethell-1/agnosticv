@@ -1,7 +1,5 @@
 ---
-# touch:2022-07-19 Tue 12:31:23 PM
-#include /includes/access-restriction.yaml
-#include /includes/catalog-icon-red-hat-standard-logo.yaml
+#include /includes/catalog-icon-openshift.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/terms-of-service.yaml
@@ -19,7 +17,7 @@
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-env_type: hybrid-cloud
+env_type: ocp4-cluster
 software_to_deploy: openshift4
 project_tag: "{{ env_type }}-{{ guid }}"
 
@@ -101,8 +99,6 @@ student_sudo: true
 # -------------------------------------------------------------------
 
 # ocp4_network_type: OVNKubernetes
-#
-az_pool_id: "01"
 
 # Show kubeadmin password
 ocp4_cluster_show_access_user_info: true
@@ -141,16 +137,22 @@ infra_workloads:
 - ocp4_workload_rhacm_appsubs              # segment 1
 - ocp4_workload_aws_info
 - ocp4_workload_rhacm_cloud_credentials
-- ocp4_workload_rhacm_clusters
-- ocp4_workload_gitea_operator
+- ocp4_workload_rhacm_aws_cluster
+#- ocp4_workload_gitea_operator
 - ocp4_workload_pipelines
 - ocp4_workload_openshift_gitops
-- ocp4_workload_mta
-- ocp4_workload_mta_tackle
-- ocp4_workload_rhods_olm
-- ocp4_workload_vscode_bastion
-- ocp4_workload_big_demo
-- ocp4_workload_object_detection_ai_ml_setup
+#- ocp4_workload_mta
+#- ocp4_workload_mta_tackle
+#- ocp4_workload_rhods_olm
+#- ocp4_workload_vscode_bastion
+#- ocp4_workload_big_demo
+#- ocp4_workload_object_detection_ai_ml_setup
+- ocp4_workload_lpe_datagrid
+- ocp4_workload_lpe_fuse
+- ocp4_workload_lpe_amq_streams
+- ocp4_workload_lpe_amq_broker
+- ocp4_workload_lpe_amq_online
+- ocp4_workload_lpe_servicemesh
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rosa_cli
@@ -192,7 +194,7 @@ ocp4_workload_rhacm_acm_release: "release-2.5"
 #      label_selector_value: "pacman"
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_rhacm_cloud_credentials
+# Workload: ocp4_workload_acm_cloud_credentials
 # -------------------------------------------------------------------
 ssh_privatekey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path) }}"
 ssh_publickey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path_pub) }}"
@@ -200,33 +202,17 @@ set_aws_acm_secret: true
 account_user_access_key: "{{ aws_access_key_id }}"
 account_user_secret_access_key: "{{ aws_secret_access_key }}"
 aws_acm_secret_name: aws-credential-devsecops-001
-set_azr_acm_secret: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_rhacm_clusters
+# Workload: ocp4_workload_acm_aws_cluster
 # -------------------------------------------------------------------
-
-ocp4_workload_rhacm_clusters_deploy_aws: true
-ocp4_workload_rhacm_clusters_aws_clusters:
-- managed_cluster_name: dev-cluster-a
+acm_aws_clusters:
+- managed_cluster_name: aws-us-openshift-01
   managed_cluster_region: us-west-1
-  managed_cluster_label: dev-cluster-a
-  managed_cluster_openshift_version: TBD
-  managed_cluster_master_instance_type: m5.2xlarge
-  managed_cluster_master_replica_count: 3
-  managed_cluster_worker_instance_type: m5.4xlarge # bigger for apps
-  managed_cluster_worker_replica_count: 0
-
-ocp4_workload_rhacm_clusters_deploy_azure: true
-ocp4_workload_rhacm_clusters_azure_clusters:
-- managed_cluster_name: dev-cluster-b
-  managed_cluster_region: centralus
-  managed_cluster_label: dev-cluster-b
-  managed_cluster_openshift_version: TBD
-  managed_cluster_master_instance_type: "Standard_D4s_v3"
-  managed_cluster_master_replica_count: 3
-  managed_cluster_worker_instance_type: "Standard_D4s_v3" # bigger for possible apps
-  managed_cluster_worker_replica_count: 0
+  managed_cluster_label: aws-us-openshift-01
+- managed_cluster_name: aws-us-openshift-02
+  managed_cluster_region: us-west-2
+  managed_cluster_label: aws-us-openshift-02
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_lpe_automation_controller
@@ -524,21 +510,148 @@ ocp4_workload_gitea_aiml_user: lab-user
 ocp4_workload_big_demo_gitea_project: gitea
 ocp4_workload_big_demo_gitea_instance: gitea
 
+# --------------------------------
+# Red Hat Data grid
+# --------------------------------
+
+# defaults file for ocp4_workload_lpe_datagrid
+ocp4_workload_lpe_datagrid_channel: ""
+ocp4_workload_lpe_datagrid_namespace: lpe-datagrid-{{ guid }}
+ocp4_workload_lpe_datagrid_automatic_install_plan_approval: true
+ocp4_workload_lpe_datagrid_starting_csv: ""
+ocp4_workload_lpe_datagrid_wait_for_deploy: true
+
+# --------------------------------
+# Red Hat Integration - Camel k
+# --------------------------------
+
+# defaults file for ocp4_workload_lpe_fuse
+ocp4_workload_lpe_fuse_camelk_project: lpe-fuse-camelk-{{ guid }}
+ocp4_workload_lpe_fuse_camelk_integration: hello-camel-k
+ocp4_workload_lpe_fuse_camelk_operator_package_name: red-hat-camel-k
+ocp4_workload_lpe_fuse_camelk_operator_current_channel: ""
+# ocp4_workload_lpe_fuse_camelk_current_channel: "1.6.x"
+ocp4_workload_lpe_fuse_camelk_operator_current_csv: ""
+# ocp4_workload_lpe_fuse_camelk_current_csv: "red-hat-camel-k-operator.v1.6.3"
+#ocp4_workload_lpe_fuse_camelk_runtime: ""
+ocp4_workload_lpe_fuse_camelk_runtime: 1.9.0.fuse-800042-redhat-00001
+
+# ----------------------------------
+# Red Hat Integration - Fuse console
+# ----------------------------------
+
+ocp4_workload_lpe_fuse_console_operator_package_name: fuse-console
+ocp4_workload_lpe_fuse_console_operator_current_channel: ""
+# ocp4_workload_lpe_fuse_console_current_channel: "7.10.x"
+ocp4_workload_lpe_fuse_console_operator_current_csv: ""
+# ocp4_workload_lpe_fuse_console_current_csv: "fuse-console.v7.10.2"
+
+# ------------------------------------
+# Red Hat Integration - Fuse Apicurito
+# ------------------------------------
+
+ocp4_workload_lpe_fuse_apicurito_operator_package_name: fuse-apicurito
+ocp4_workload_lpe_fuse_apicurito_operator_current_channel: ""
+# ocp4_workload_lpe_fuse_apicurito_current_channel: "7.10.x"
+ocp4_workload_lpe_fuse_apicurito_operator_current_csv: ""
+# ocp4_workload_lpe_fuse_apicurito_current_csv: "fuse-apicurito.v7.10.2"
+
+# ----------------------------------
+# Red Hat Integration - Fuse online
+# ----------------------------------
+
+ocp4_workload_lpe_fuse_online_operator_package_name: fuse-online
+ocp4_workload_lpe_fuse_online_operator_current_channel: ""
+# ocp4_workload_lpe_fuse_online_current_channel: "7.10.x"
+ocp4_workload_lpe_fuse_online_operator_current_csv: ""
+# ocp4_workload_lpe_fuse_online_current_csv: "fuse-online.v7.10.2"
+
+ocp4_workload_lpe_fuse_project: lpe-fuse-{{ guid }}
+
+# --------------------------------
+# Red Hat Integration - AMQ Online
+# --------------------------------
+
+# Variable to configure AMQ Online operator
+ocp4_workload_lpe_amq_online_channel: ""
+ocp4_workload_lpe_amq_online_namespace: lpe-amq-online-{{ guid }}
+ocp4_workload_lpe_amq_online_automatic_install_plan_approval: true
+ocp4_workload_lpe_amq_online_starting_csv: ""
+ocp4_workload_lpe_amq_online_wait_for_deploy: true
+
+# Variable to configure AMQ Online
+ocp4_workload_lpe_amq_online_space_name: "myspace"
+ocp4_workload_lpe_amq_online_authservice_type: "none"
+ocp4_workload_lpe_amq_online_authservice_name: "none-authservice"
+ocp4_workload_lpe_amq_online_standard_infra_config_name: "default"
+ocp4_workload_lpe_amq_online_address_plan_name: "standard-small-queue"
+ocp4_workload_lpe_amq_online_address_plan_type: "queue"
+ocp4_workload_lpe_amq_online_address_space_plan_name: "standard-small"
+ocp4_workload_lpe_amq_online_address_space_plan_type: "standard"
+ocp4_workload_lpe_amq_online_address_space_name: "myspace"
+ocp4_workload_lpe_amq_online_address_space_type: "standard"
+ocp4_workload_lpe_amq_online_address_name: "myqueue"
+ocp4_workload_lpe_amq_online_address_type: "queue"
+ocp4_workload_lpe_amq_online_messaging_user_name: "app"
+
+# --------------------------------
+# Red Hat Integration - AMQ Streams
+# --------------------------------
+
+# Variable to configure AMQ Streams operator
+ocp4_workload_lpe_amq_streams_channel: ""
+ocp4_workload_lpe_amq_streams_namespace: lpe-amq-streams-{{ guid }}
+ocp4_workload_lpe_amq_streams_automatic_install_plan_approval: true
+ocp4_workload_lpe_amq_streams_starting_csv: ""
+ocp4_workload_lpe_amq_streams_wait_for_deploy: true
+
+# Variable to configure AMQ Streams
+ocp4_workload_lpe_amq_streams_cluster_name: "my-cluster"
+ocp4_workload_lpe_amq_streams_topic_name: "my-topic"
+ocp4_workload_lpe_amq_streams_topic_user: "my-user"
+
+# --------------------------------
+# Red Hat Integration - AMQ Broker
+# --------------------------------
+
+# Variable to configure AMQ Broker operator
+ocp4_workload_lpe_amq_broker_channel: ""
+ocp4_workload_lpe_amq_broker_namespace: lpe-amq-broker-{{ guid }}
+ocp4_workload_lpe_amq_broker_automatic_install_plan_approval: true
+ocp4_workload_lpe_amq_broker_starting_csv: ""
+ocp4_workload_lpe_amq_broker_wait_for_deploy: true
+
+# Variable to configure AMQ Broker
+ocp4_workload_lpe_amq_broker_cluster_name: "my-cluster"
+ocp4_workload_lpe_amq_broker_app_name: "myapp"
+ocp4_workload_lpe_amq_broker_address_name: "myaddress"
+ocp4_workload_lpe_amq_broker_queue_name: "myqueue"
+
+# --------------------------------
+# Red Hat OpenShift Service Mesh
+# --------------------------------
+
+# Installs a basic Service Mesh Control Plane
+ocp4_workload_lpe_servicemesh_smcp_install: true
+ocp4_workload_lpe_servicemesh_smcp_namespace: istio-system
+
+# All operators defaults
+ocp4_workload_lpe_servicemesh_channel: stable
+ocp4_workload_lpe_servicemesh_starting_csv: ""
+ocp4_workload_lpe_servicemesh_auto_approval: true
+ocp4_workload_lpe_servicemesh_use_catalog_snapshot: false
+ocp4_workload_lpe_servicemesh_catalogsource_name: redhat-operators-snapshot-servicemesh
+ocp4_workload_lpe_servicemesh_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_lpe_servicemesh_catalog_snapshot_image_tag: "v4.10_2022_05_09"
+
 # --- Student Workloads (YAML List)
 student_workloads: []
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
 # -------------------------------------------------------------------
-
 agnosticv_meta:
   sandboxed: false
-  secrets:
-  - azure_redhat0
-  idle_after_deploy: 9999
-  idle_after_start: 9999
-  babylon:
-    kubeconfig: babylon-prod.kubeconfig
   deploy_with: babylon
   virtualenv: babylon
 
@@ -550,11 +663,10 @@ __meta__:
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   deployer:
-    #  virtualenv: ansible2.9-python3.6-2021-11-30
     virtualenv: hybrid_cloud_aws_azure-ansible2.9-python3.6-2022-07-06
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: The Open Hybrid Cloud Demo (Beta)
+    display_name: The Openshift with everything
     category: Demos
     keywords: []
     parameters: []
@@ -562,9 +674,6 @@ __meta__:
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: Red_Hat_Cloud
       Provider: RHPDS
-  #access_control:
-   # allow_groups:
-   # - babylon-admins
   secrets:
   - namespace: gpte
     name: gpte-sandbox
