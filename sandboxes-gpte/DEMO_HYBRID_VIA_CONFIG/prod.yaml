@@ -1,10 +1,14 @@
 ---
-#include /includes/access-restriction.yaml
+---
 # -------------------------------------------------------------------
 # Purpose - Cost tag. One of development, ilt, production, event
 # -------------------------------------------------------------------
-purpose: production
+purpose: development
 
+# -------------------------------------------------------------------
+# Dedicated config derived from ocp4-cluster for isolationand
+# -------------------------------------------------------------------
+env_type: hybrid-cloud
 # -------------------------------------------------------------------
 # Custom collections for this environment
 # -------------------------------------------------------------------
@@ -22,35 +26,44 @@ requirements_content:
     version: 1.3.0
   - name: awx.awx
     version: 21.1.0
+  - name: azure.azcollection
+    version: 1.12.0
+  - name: azure.rm
+    version: 0.0.6
 
 infra_workloads:
 - ocp4_workload_rosa_cli
 - ocp4_workload_eksctl
 - ocp4_workload_le_certificates
 - ocp4_workload_authentication
-- ocp4_workload_lpe_automation_controller
-- automation-controller-config
 - ocp4_workload_rhacm
 - ocp4_workload_aws_info
 - ocp4_workload_rhacm_cloud_credentials
 - ocp4_workload_rhacm_clusters
-- ocp4_workload_gitea_operator
-- ocp4_workload_pipelines
-- ocp4_workload_openshift_gitops
-- ocp4_workload_mta
-- ocp4_workload_mta_tackle
-- ocp4_workload_rhods_olm
+- ocp4_workload_rhacs
+- ocp4_workload_lpe_automation_controller
+- automation-controller-config
 - ocp4_workload_vscode_bastion
-- ocp4_workload_big_demo
-- ocp4_workload_object_detection_ai_ml_setup
+- ocp4_workload_managed_cluster_workload
+- edge_nodes_info
 
-# Use following with new prod tag
-# - ocp4_workload_rhacm_cloud_credentials
-# - ocp4_workload_rhacm_aws_cluster
 
 ocp4_workload_rhacm_acm_csv: "advanced-cluster-management.v2.5.0"
 ocp4_workload_rhacm_acm_channel: "release-2.5"
 ocp4_workload_rhacm_acm_release: "release-2.5"
+
+# -------------------------------------------------------------------
+# ocp4_workload_acm_cloud_credentials
+# -------------------------------------------------------------------
+set_azr_acm_secret: true
+az_root_dns_zone: "{{ guid }}.{{ hostvars.localhost.azure_root_dns_zone }}"
+az_resource_group_name: "openenv-{{ guid }}"
+az_service_principal:
+  clientId: "{{ hostvars.localhost.azapp.applications[0].app_id }}"
+  clientSecret: "{{ hostvars.localhost.azpass }}"
+  subscriptionId: "{{ hostvars.localhost.assignedsubscription.subscriptions[0].subscription_id }}"
+  tenantId: "{{ azure_tenant }}"
+
 
 # -------------------------------------------------------------------
 # ocp4_workload_rosa_cli
@@ -188,25 +201,26 @@ automation_controller_job_workflow_templates: true
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm_clusters
 # -------------------------------------------------------------------
-ocp4_workload_rhacm_clusters_deploy_aws: false
+
+ocp4_workload_rhacm_clusters_deploy_aws: true
 ocp4_workload_rhacm_clusters_aws_clusters:
 - managed_cluster_name: dev-cluster-a
   managed_cluster_region: us-west-1
   managed_cluster_label: dev-cluster-a
-  managed_cluster_openshift_version: TBD
+  managed_cluster_openshift_version: img4.10.22-x86-64-appsub
   managed_cluster_master_instance_type: m5.2xlarge
   managed_cluster_master_replica_count: 3
   managed_cluster_worker_instance_type: m5.4xlarge # bigger for apps
   managed_cluster_worker_replica_count: 0
 
-ocp4_workload_rhacm_clusters_deploy_azure: false
+ocp4_workload_rhacm_clusters_deploy_azure: true
 ocp4_workload_rhacm_clusters_azure_clusters:
 - managed_cluster_name: dev-cluster-b
   managed_cluster_region: centralus
   managed_cluster_label: dev-cluster-b
-  managed_cluster_openshift_version: TBD
+  managed_cluster_openshift_version: img4.10.22-x86-64-appsub
   managed_cluster_master_instance_type: "Standard_D4s_v3"
-  managed_cluster_master_replica_count: 3
+  managed_cluster_master_replica_count: 1
   managed_cluster_worker_instance_type: "Standard_D4s_v3" # bigger for possible apps
   managed_cluster_worker_replica_count: 0
 
@@ -218,5 +232,8 @@ agnosticv_meta:
   idle_after_start: 4
 
 __meta__:
+  secrets:
+  - name: azure_redhat0
+    namespace: gpte
   deployer:
-    scm_ref: demo-manage-hybrid-cloud-prod-0.6
+    scm_ref: hybrid-cloud-prod-0.1
