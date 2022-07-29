@@ -28,7 +28,7 @@ platform: rhpds
 # -------------------------------------------------------------------
 master_instance_type: m5a.xlarge
 master_instance_count: 3
-worker_instance_type: c5.metal
+worker_instance_type: m5a.4xlarge
 worker_instance_count: "{{ [(num_users | int / 7) | round(0, 'ceil') | int, 3] | max }}"
 bastion_instance_type: t3a.medium
 bastion_instance_image: RHEL84GOLD-latest
@@ -85,46 +85,15 @@ host_virtualenv_requirements_override:
 requirements_content:
   collections:
   - name: kubernetes.core
-    version: 2.3.1
-  - name: openstack.cloud
-    version: 1.8.0
+    version: 2.3.2
   - name: amazon.aws
-    version: 2.2.0
+    version: 2.3.0
   - name: community.general
-    version: 4.8.0
+    version: 5.3.0
   - name: ansible.posix
-    version: 1.3.0
+    version: 1.4.0
   - name: ovirt.ovirt
-    version: 2.0.3
-
-# -------------------------------------------------------------------
-# Set up Security group on Bastion to allow inbound traffic for
-# Let's Encrypt verification and VS Code
-# -------------------------------------------------------------------
-security_groups:
-- name: BastionSG
-  rules:
-  - name: BasSSHPublic
-    description: "SSH public"
-    from_port: 22
-    to_port: 22
-    protocol: tcp
-    cidr: "0.0.0.0/0"
-    rule_type: Ingress
-  - name: BasHTTPPublic
-    description: "HTTP public for Let's Encrypt verification"
-    from_port: 80
-    to_port: 80
-    protocol: tcp
-    cidr: "0.0.0.0/0"
-    rule_type: Ingress
-  - name: BasHTTPSPublic
-    description: "HTTPS public for VSCode Server"
-    from_port: 8443
-    to_port: 8443
-    protocol: tcp
-    cidr: "0.0.0.0/0"
-    rule_type: Ingress
+    version: 2.2.0
 
 # -------------------------------------------------------------------
 # Other Variables
@@ -143,18 +112,18 @@ ocp4_approve_certificate_signing_requests_recheck_delay: 60
 # --- Infra Workloads (YAML List)
 infra_workloads:
 - ocp4_workload_openshift_data_foundation
+- ocp4_workload_machinesets
 - ocp4_workload_le_certificates
 - ocp4_workload_authentication
 - ocp4_workload_kubevirt
-- ocp4_workload_gitea_operator
 - ocp4_workload_pipelines
 - ocp4_workload_openshift_gitops
+- ocp4_workload_gitea_operator
 - ocp4_workload_ama_demo_shared
 - ocp4_workload_ama_demo_app_services_shared
 - ocp4_workload_codeserver
 - ocp4_workload_mtv
-- ocp4_workload_mta
-- ocp4_workload_mta_tackle
+- ocp4_workload_mta_tackle2
 
 # Do not run any student customization.
 # This will result in a default OpenShift 4 installation.
@@ -172,12 +141,40 @@ remove_workloads_bastion:
 # Workload: ocp4_workload_openshift_data_foundations
 # -------------------------------------------------------------------
 ocp4_workload_openshift_data_foundation_channel: stable-4.10
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_tolerations:
+- key: metal
+  operator: Exists
+
 ocp4_workload_openshift_data_foundation_catalogsource_setup: true
 ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
 ocp4_workload_openshift_data_foundation_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_openshift_data_foundation_catalogsource_image_tag: v4.10_2022_07_04
-ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
-ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: v4.10_2022_07_25
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_machinesets
+# -------------------------------------------------------------------
+ocp4_workload_machinesets_disable_default_machinesets: false
+
+# Add a MachineSet for AWS Bare Metal instances
+ocp4_workload_machinesets_machineset_groups:
+- name: metal
+  role: metal
+  instance_type: c5n.metal
+  autoscale: false
+  total_replicas: "{{ [(num_users | int / 20) | round(0, 'ceil') | int, 1] | max }}"
+  # Autoscaler settings - minimum and maximum number of Machines
+  total_replicas_min: 2
+  total_replicas_max: 4
+  # The role of the nodes (node-role.kubernetes.io/metal: "")
+  machineConfigPool:
+    setup: true
+    maxPodsPerNode: 400
+  taints:
+  - key: metal
+    value: "true"
+    effect: NoSchedule
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -198,7 +195,7 @@ ocp4_workload_gitea_operator_catalog_image_tag: v1.3.0
 
 ocp4_workload_gitea_operator_deploy_gitea_instance: true
 ocp4_workload_gitea_operator_gitea_image: quay.io/gpte-devops-automation/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: "1.16.8"
+ocp4_workload_gitea_operator_gitea_image_tag: "1.16.9"
 ocp4_workload_gitea_operator_name: gitea
 ocp4_workload_gitea_operator_gitea_hostname: gitea
 ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
@@ -237,68 +234,66 @@ ocp4_workload_gitea_operator_repositories_list:
 ocp4_workload_pipelines_channel: pipelines-1.7
 ocp4_workload_pipelines_tkn_version: 0.23.1
 ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
+
 ocp4_workload_pipelines_use_catalog_snapshot: true
 ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.10_2022_07_04
+ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.10_2022_07_25
+
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
 ocp4_workload_openshift_gitops_channel: stable
-ocp4_workload_openshift_gitops_pipelines_csv_prefix: openshift-pipelines-operator-rh
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+
 ocp4_workload_openshift_gitops_use_catalog_snapshot: true
 ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
 ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.10_2022_07_04
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.10_2022_07_25
 
 # -------------------------------------------------------------------
 # ocp4_workload_kubevirt
 # -------------------------------------------------------------------
 ocp4_workload_kubevirt_channel: stable
+ocp4_workload_kubevirt_workload_tolerations:
+- key: metal
+  operator: Exists
+
 ocp4_workload_kubevirt_use_catalog_snapshot: true
 ocp4_workload_kubevirt_catalogsource_name: redhat-operators-snapshot-kubevirt
 ocp4_workload_kubevirt_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_kubevirt_catalog_snapshot_image_tag: v4.10_2022_07_04
+ocp4_workload_kubevirt_catalog_snapshot_image_tag: v4.10_2022_07_25
 
 # -------------------------------------------------------------------
-# ocp4_workload_mta
+# ocp4_workload_mta_tackle2
 # -------------------------------------------------------------------
-ocp4_workload_mta_install_operator: true
-ocp4_workload_mta_print_access_information: true
-ocp4_workload_mta_multi_user_install: true
-ocp4_workload_mta_multi_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
-ocp4_workload_mta_multi_user_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
-ocp4_workload_mta_multi_user_namespace_base: mta-
-ocp4_workload_mta_multi_user_wait_for_windup: false
+ocp4_workload_mta_tackle2_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_mta_tackle2_namespace_base: tackle
+ocp4_workload_mta_tackle2_user: admin
 
-# -------------------------------------------------------------------
-# ocp4_workload_mta_tackle
-# -------------------------------------------------------------------
-ocp4_workload_mta_tackle_print_access_information: true
+# Base for multi user setup
+ocp4_workload_mta_tackle2_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
 
-ocp4_workload_mta_tackle_channel: stable
-ocp4_workload_mta_tackle_use_catalog_snapshot: false
-ocp4_workload_mta_tackle_seed: true
-#ocp4_workload_mta_tackle_seed_script: seed-tackle-v1.sh.j2
+# Role to grant users for the tackle namespace
+ocp4_workload_mta_tackle2_role: edit
 
-# Multiuser deploy
-ocp4_workload_mta_tackle_multi_user_install: true
-ocp4_workload_mta_tackle_multi_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
-ocp4_workload_mta_tackle_multi_user_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
-ocp4_workload_mta_tackle_multi_user_namespace_base: tackle-
+# Seed Tackle with information
+ocp4_workload_mta_tackle2_seed: true
 
 # -------------------------------------------------------------------
 # ocp4_workload_mtv
 # -------------------------------------------------------------------
 ocp4_workload_mtv_channel: release-v2.3
+ocp4_workload_mtv_wait_for_forkliftcontroller: false
+
 ocp4_workload_mtv_use_catalog_snapshot: true
 ocp4_workload_mtv_catalogsource_name: redhat-operators-snapshot-mtv
 ocp4_workload_mtv_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_mtv_catalog_snapshot_image_tag: v4.10_2022_07_04
+ocp4_workload_mtv_catalog_snapshot_image_tag: v4.10_2022_07_25
 
 # -------------------------------------------------------------------
 # ocp4_workload_ama_demo_shared
 # -------------------------------------------------------------------
-ocp4_workload_ama_demo_shared_rhev_user_password_validity: 7
+ocp4_workload_ama_demo_shared_rhv_user_password_validity: 7
 
 ocp4_workload_ama_demo_shared_oracle_vm_setup: true
 ocp4_workload_ama_demo_shared_oracle_vm_install_from_scratch: false
@@ -335,23 +330,12 @@ ocp4_workload_ama_demo_shared_kubevirt_vm_deploy: true
 ocp4_workload_ama_demo_shared_oracle_image_location: https://gpte-public.s3.amazonaws.com/ama_demo/ama-demo-database.qcow2
 ocp4_workload_ama_demo_shared_kubevirt_image_storage_class: ocs-storagecluster-ceph-rbd
 
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_ama_demo_app_services_shared
-# -------------------------------------------------------------------
-ocp4_workload_ama_demo_app_services_shared_lab_setup: true
+ocp4_workload_ama_demo_shared_kubevirt_vm_node_selector:
+  "node-role.kubernetes.io/metal": ""
 
-ocp4_workload_ama_demo_service_binding_operator_catalog: redhat-operators
-ocp4_workload_ama_demo_service_binding_operator_channel: stable
-ocp4_workload_ama_demo_service_binding_operator_csv_nameprefix: service-binding-operator
-ocp4_workload_ama_demo_service_binding_operator_use_catalog_snapshot: false
-
-ocp4_workload_ama_demo_rhoas_operator_catalog: community-operators
-ocp4_workload_ama_demo_rhoas_operator_channel: beta
-ocp4_workload_ama_demo_rhoas_operator_use_catalog_snapshot: false
-
-ocp4_workload_ama_demo_app_services_shared_user_count: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
-
-ocp4_workload_ama_demo_app_services_shared_namespace_prefix: globex-
+ocp4_workload_ama_demo_shared_kubevirt_vm_tolerations:
+- key: metal
+  operator: Exists
 
 # -------------------------------------------------------------------
 # ocp4_workload_codeserver
@@ -369,7 +353,7 @@ ocp4_workload_codeserver_extensions:
 ocp4_workload_codeserver_multi_user_install: true
 ocp4_workload_codeserver_multi_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
 ocp4_workload_codeserver_multi_user_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
-ocp4_workload_codeserver_multi_user_namespace_base: codeserver-
+ocp4_workload_codeserver_multi_user_namespace_base: codeserver
 
 # Repositories to set up in codeserver
 ocp4_workload_codeserver_repos_password: openshift
@@ -377,6 +361,24 @@ ocp4_workload_codeserver_repos:
 - name: app-mod-projects
   account: ""
   branch: main
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ama_demo_app_services_shared
+# -------------------------------------------------------------------
+ocp4_workload_ama_demo_app_services_shared_lab_setup: true
+
+ocp4_workload_ama_demo_service_binding_operator_catalog: redhat-operators
+ocp4_workload_ama_demo_service_binding_operator_channel: stable
+ocp4_workload_ama_demo_service_binding_operator_csv_nameprefix: service-binding-operator
+ocp4_workload_ama_demo_service_binding_operator_use_catalog_snapshot: false
+
+ocp4_workload_ama_demo_rhoas_operator_catalog: community-operators
+ocp4_workload_ama_demo_rhoas_operator_channel: beta
+ocp4_workload_ama_demo_rhoas_operator_use_catalog_snapshot: false
+
+ocp4_workload_ama_demo_app_services_shared_user_count: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+
+ocp4_workload_ama_demo_app_services_shared_namespace_prefix: globex-
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
