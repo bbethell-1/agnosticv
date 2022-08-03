@@ -90,7 +90,7 @@ def check_git_tag(c,ci):
 
     ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
     if '__meta__' in c and 'agnosticv_meta' in c:
-        if ciAccNamStg.endswith(".prod") and 'agnosticd_git_tag_prefix' in c['agnosticv_meta']:
+        if (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt")) and 'agnosticd_git_tag_prefix' in c['agnosticv_meta']:
                 raise ValueError(
                     '''agnosticd_git_ref should be used for prod not agnosticd_git_tag_prefix'''
                 )
