@@ -84,6 +84,18 @@ def check_name(c,ci):
         )
     return True
 
+def check_git_tag(c,ci):
+    '''Ensure configuration is having
+    a valid git tag or branch and np prefix for prod'''
+
+    ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
+    if '__meta__' in c and 'agnosticv_meta' in c:
+        if ciAccNamStg.endswith(".prod") and 'agnosticd_git_tag_prefix' in c['agnosticv_meta']:
+                raise ValueError(
+                    '''agnosticd_git_ref should be used for prod not agnosticd_git_tag_prefix'''
+                )
+    return True
+
 for ci in catalog_items:
     process_ci = subprocess.run(
         [str(args.agnosticv_cli), '--merge', ci],
@@ -96,7 +108,7 @@ for ci in catalog_items:
     ci_object = yaml.safe_load(process_ci.stdout)
     passed = True
     exceptions = {}
-    for f in [check_double_booking,check_name]:
+    for f in [check_double_booking,check_name,check_git_tag]:
         try:
             if not f(ci_object,ci):
                 passed = False
