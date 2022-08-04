@@ -84,12 +84,11 @@ def check_name(c,ci):
         )
     return True
 
-def check_git_tag(c,ci):
-    '''Ensure configuration is having
-    a valid git tag or branch and np prefix for prod'''
+def check_tag_var(c,ci):
+    '''Ensure configuration is having no prefix for prod tagging'''
 
     ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
-    if '__meta__' in c and 'agnosticv_meta' in c:
+    if '__meta__' in c or 'agnosticv_meta' in c:
         if (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt")):
             if 'agnosticd_git_tag_prefix' in c['agnosticv_meta']:
                 raise ValueError(
@@ -116,7 +115,7 @@ for ci in catalog_items:
     ci_object = yaml.safe_load(process_ci.stdout)
     passed = True
     exceptions = {}
-    for f in [check_double_booking,check_name,check_git_tag]:
+    for f in [check_double_booking,check_name,check_tag_var]:
         try:
             if not f(ci_object,ci):
                 passed = False
