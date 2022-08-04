@@ -90,10 +90,18 @@ def check_git_tag(c,ci):
 
     ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
     if '__meta__' in c and 'agnosticv_meta' in c:
-        if (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt")) and 'agnosticd_git_tag_prefix' in c['agnosticv_meta']:
+        if (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt")):
+            if 'agnosticd_git_tag_prefix' in c['agnosticv_meta']:
                 raise ValueError(
-                    '''agnosticd_git_ref should be used for prod not agnosticd_git_tag_prefix'''
+                    '''agnosticd_git_ref should be used for prod/ilt, not agnosticd_git_tag_prefix.'''
                 )
+            if  'deploy_with' in c['agnosticv_meta'] and 'deployer' in c['__meta__']:
+                deployer = c['__meta__']['deployer']
+                if (c['agnosticv_meta']['deploy_with'] == "babylon" and 'git_tag_prefix' in deployer):
+                    raise ValueError(
+                        '''scm_ref should be used for prod/ilt, not git_tag_prefix.'''
+                    )
+
     return True
 
 for ci in catalog_items:
