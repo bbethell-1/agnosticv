@@ -3,6 +3,7 @@
 import sys
 import subprocess
 import argparse
+import requests
 
 import yaml
 
@@ -100,6 +101,28 @@ def check_tag_var(c,ci):
                     raise ValueError(
                         '''scm_ref should be used for prod/ilt, not git_tag_prefix.'''
                     )
+
+    return True
+
+def check_valid_agv_tag(c,ci):
+    '''Ensure configuration is having a valid git tag or branch'''
+
+    ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
+    if '__meta__' in c or 'agnosticv_meta' in c:
+        if (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt") or ciAccNamStg.endswith(".test")):
+            agvRepo = "redhat-cop/agnosticd/git/matching-refs/tags/"
+            # Getting tag value from agnosticv_meta section
+            agvMetaTag = ''
+            if 'agnosticd_git_ref' in c['agnosticv_meta']:
+                agvMetaTag = c['agnosticv_meta']['agnosticd_git_ref']
+            elif 'agnosticd_git_tag_prefix' in c['agnosticv_meta']:
+                agvMetaTag = c['agnosticv_meta']['agnosticd_git_tag_prefix']
+            # Call Github API and check git tag on agnosticd repo
+            agvMetaResponse = requests.get("https://api.github.com/repos/"+agvRepo+agvMetaTag)
+            if agvMetaResponse.status_code==200 and agvMetaResponse.json() is not None and len(agvMetaResponse.json())<1:
+                raise ValueError(
+                    '''No such git tag exist on agnosticd provided under agnosticv_meta: ''' + agvMetaTag
+                )
 
     return True
 
