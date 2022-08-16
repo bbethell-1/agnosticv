@@ -138,7 +138,7 @@ for ci in catalog_items:
     ci_object = yaml.safe_load(process_ci.stdout)
     passed = True
     exceptions = {}
-    for f in [check_double_booking,check_name,check_tag_var]:
+    for f in [check_double_booking,check_name,check_tag_var,check_valid_agv_tag]:
         try:
             if not f(ci_object,ci):
                 passed = False
