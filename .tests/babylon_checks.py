@@ -109,7 +109,7 @@ def check_valid_agv_tag(c,ci):
 
     ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
     if '__meta__' in c or 'agnosticv_meta' in c:
-        if (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt") or ciAccNamStg.endswith(".test")):
+        if (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt")):
             agvRepo = "redhat-cop/agnosticd/git/matching-refs/tags/"
             # Getting tag value from agnosticv_meta section
             agvMetaTag = ''
@@ -131,7 +131,7 @@ def check_valid_babylon_tag(c,ci):
 
     ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
     if '__meta__' in c or 'agnosticv_meta' in c:
-        if (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt") or ciAccNamStg.endswith(".test")):
+        if (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt")):
             bMetaRepo = "redhat-cop/agnosticd/git/matching-refs/tags/"
             # Getting tag value from __meta__ section
             bMetaTag = ''
