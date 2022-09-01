@@ -150,6 +150,41 @@ def check_valid_babylon_tag(c,ci):
 
     return True
 
+def check_anarchy_namespace(c,ci):
+    '''Ensure catalog item have anarchy namespace'''
+
+    if '__meta__' in c and 'agnosticv_meta' in c:
+        if 'deploy_with' in c['agnosticv_meta'] and c['agnosticv_meta']['deploy_with'] == "babylon":
+            if ('anarchy' in c['__meta__']):
+                anarchyObj = c['__meta__']['anarchy']
+                if ('namespace' in anarchyObj):
+                    anarchynamespace = anarchyObj['namespace']
+                    if not anarchynamespace:
+                        raise ValueError(
+                            '''__meta__.anarchy and __meta__.anarchy.namespace can't be blank'''
+                        )
+                else:
+                    raise ValueError(
+                        '''__meta__.anarchy and __meta__.anarchy.namespace can't be blank'''
+                    )
+            else:
+                raise ValueError(
+                    '''__meta__.anarchy can't be blank, plaese add __meta__.anarchy.namespace'''
+                )
+            # Checking for parameters
+            if ('catalog' in c['__meta__']):
+                catalogObj = c['__meta__']['catalog']
+                if ('parameters' not in catalogObj):
+                    raise ValueError(
+                        '''__meta__.catalog and __meta__.catalog.parameters can't be blank'''
+                    )
+            else:
+                raise ValueError(
+                    '''__meta__.catalog can't be blank, plaese add __meta__.catalog.parameters'''
+                )
+
+    return True
+
 for ci in catalog_items:
     process_ci = subprocess.run(
         [str(args.agnosticv_cli), '--merge', ci],
@@ -162,7 +197,7 @@ for ci in catalog_items:
     ci_object = yaml.safe_load(process_ci.stdout)
     passed = True
     exceptions = {}
-    for f in [check_double_booking,check_name,check_tag_var,check_valid_agv_tag,check_valid_babylon_tag]:
+    for f in [check_double_booking,check_name,check_tag_var,check_valid_agv_tag,check_valid_babylon_tag,check_anarchy_namespace]:
         try:
             if not f(ci_object,ci):
                 passed = False
