@@ -6,6 +6,71 @@ purpose: development
 # -------------------------------------------------------------------
 aws_region: us-east-2
 
+## Networking (AWS)
+subdomain_base_short: "{{ guid }}"
+subdomain_base_suffix: ".example.opentlc.com"
+subdomain_base: "{{ subdomain_base_short }}{{ subdomain_base_suffix }}"
+zone_internal_dns: "{{ guid }}.internal."
+chomped_zone_internal_dns: "{{ guid }}.internal"
+
+## Instance Type
+__default_instance_type: "t2.medium"
+
+## Image ID
+__default_image: RHEL8-default
+
+## Security Groups
+security_groups:
+- name: HostSG
+  rules:
+  - name: FromHostSG
+    description: "Allow everything from HostSG nodes"
+    from_port: 0
+    to_port: 65535
+    protocol: -1
+    from_group: HostSG
+    rule_type: Ingress
+
+## Instances
+instances:
+- name: bastion
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: true
+  floating_ip: true
+  image: "{{ bastion_instance_image | default(__default_image ) }}"
+  flavor:
+    ec2: "{{ bastion_instance_type | default(__default_instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+  security_groups:
+  - BastionSG
+  - HostSG
+- name: "node"
+  count: 2
+  public_dns: true
+  dns_loadbalancer: false
+  image: "{{ __default_image }}"
+  flavor:
+    ec2: "{{ __default_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "nodes"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - HostSG
+
 # -------------------------------------------------------------------
 # test Variables
 # -------------------------------------------------------------------
