@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+#
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+
 set -uo pipefail
 
 ORIG=$(cd $(dirname $0); pwd)
@@ -17,6 +20,8 @@ json_escape () {
 comment() {
     local data="$(json_escape "${1}")"
     body=$(mktemp)
+
+    [ -z "${GITHUB_TOKEN}" ] && return
 
     cat > $body <<EOF
 {"body": ${data}}
