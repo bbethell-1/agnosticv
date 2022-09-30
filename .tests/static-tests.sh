@@ -74,7 +74,6 @@ git diff \
     --name-only \
     --diff-filter=AM \
     ${TRAVIS_BRANCH}...${TRAVIS_PULL_REQUEST_SHA} \
-    | perl -pe 's/(account|common).ya?ml$//' \
     > ${changed_git}
 
 # add related files
