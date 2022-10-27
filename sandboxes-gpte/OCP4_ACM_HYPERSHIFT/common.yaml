@@ -1,0 +1,247 @@
+---
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/agnosticd_open_environment.yaml
+# -------------------------------------------------------------------
+# --- System: RHPDS
+# --- Catalog: OpenShift Demos
+# --- Catalog Item: Advanced Cluster Management with HyperShift
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# VM configuration
+# -------------------------------------------------------------------
+master_instance_type: m5a.xlarge
+master_instance_count: 3
+worker_instance_type: m5a.4xlarge
+worker_instance_count: 3
+bastion_instance_type: t3a.medium
+bastion_instance_image: RHEL84GOLD-latest
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.11"
+
+# -------------------------------------------------------------------
+# OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
+# instead of cluster-{{ guid }}.{{ guid }}.sandboxXXX.opentlc.com
+# -------------------------------------------------------------------
+ocp4_base_domain: "{{ sandbox_zone }}"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+# --- student_password not set -> generate random password
+# student_password: r3dh4t1!
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Customizations to packages and virtualenvs to enable ovirt.ovirt
+# -------------------------------------------------------------------
+# Custom collections for this environment
+requirements_content:
+  collections:
+  - name: kubernetes.core
+    version: 2.3.2
+  - name: amazon.aws
+    version: 2.3.0
+  - name: community.general
+    version: 5.8.0
+  - name: ansible.posix
+    version: 1.4.0
+  - name: community.crypto
+    version: 2.7.1
+
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
+
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_le_certificates
+- ocp4_workload_authentication
+- ocp4_workload_gitea_operator
+- ocp4_workload_rhacm
+- ocp4_workload_rhacm_hypershift
+
+# Do not run any student customization.
+# This will result in a default OpenShift 4 installation.
+student_workloads: []
+
+# Remove Workloads when deleting the cluster
+remove_workloads_bastion: []
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: 2
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image_tag: v1.3.0
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/gpte-devops-automation/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.17.3"
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
+ocp4_workload_gitea_operator_gitea_volume_storage_class: gp3-csi
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel8/postgresql-13
+ocp4_workload_gitea_operator_postgresql_image_tag: latest
+ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
+ocp4_workload_gitea_operator_postgresql_volume_storage_class: gp3-csi
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_disable_registration: false
+ocp4_workload_gitea_operator_enable_captcha: false
+ocp4_workload_gitea_operator_allow_create_organization: true
+ocp4_workload_gitea_operator_register_email_confirm: false
+ocp4_workload_gitea_operator_enable_notify_email: false
+ocp4_workload_gitea_operator_mailer_enabled: false
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: opentlc-mgr
+ocp4_workload_gitea_operator_admin_email: opentlc-mgr@opentlc.com
+ocp4_workload_gitea_operator_admin_password: openshift
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_authentication_htpasswd_user_base }}%d"
+ocp4_workload_gitea_operator_user_password: openshift
+ocp4_workload_gitea_operator_migrate_repositories: false
+ocp4_workload_gitea_operator_repositories_list: []
+# - repo: https://github.com/redhat-gpte-devopsautomation/modern-app-dev.git
+#   name: modern-app-dev
+#   private: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacm
+# -------------------------------------------------------------------
+ocp4_workload_rhacm_acm_channel: release-2.6
+ocp4_workload_rhacm_use_catalog_snapshot: true
+ocp4_workload_rhacm_catalogsource_name: catalogsource-rhacm
+ocp4_workload_rhacm_catalog_source_image: "quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog"
+ocp4_workload_rhacm_catalog_source_tag: "v4.11_2022_10_24"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacm_hypershift
+# -------------------------------------------------------------------
+ocp4_workload_rhacm_hypershift_deploy_clusters:
+- name: development
+  ocp_release: 4.11.8
+  worker_count: 2
+  worker_instance_type: m5.large
+  region: us-west-2
+  zones:
+  - us-west-2a
+# - name: production
+#   ocp_release: 4.11.8
+#   worker_count: 2
+#   worker_instance_type: m5.large
+#   region: us-west-2
+#   zones:
+#   - us-west-2b
+#   - us-west-2c
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  sandboxed: false
+  deploy_with: babylon
+  virtualenv: babylon
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  aws_sandboxed: true
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  deployer:
+    virtualenv: ansible2.9-python3.6-2021-11-30
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords: []
+    labels:
+      Provider: RHPDS
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      #OpenShift_Version: '4.11'
+    display_name: Red Hat Advanced Cluster Management with HyperShift
+    category: Demos
+    multiuser: false
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 1
+        maximum: 50
+      # validation: >-
+      #   num_users == 2 ||
+      #   user_is_admin ||
+      #   user_groups.includes('rhpds-devs') ||
+      #   check_salesforce_id(salesforce_id) ||
+      #   Error('User count greater than one requires a valid SalesForceID.')
+  runtime:
+    default: 8h
+    maximum: 48h
+  secrets:
+  - namespace: gpte
+    name: gpte-sandbox
+    var: aws_sandbox_manager
+  - namespace: gpte
+    name: satellite-rhel81-ha
+  - namespace: gpte
+    name: ocp4-token
+  - namespace: gpte
+    name: output-dir-s3
