@@ -1,0 +1,187 @@
+---
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/agnosticd_open_environment.yaml
+# -------------------------------------------------------------------
+# --- System: RHPDS
+# --- Catalog: OpenShift Demos
+# --- Catalog Item: OpenShift 4 Modernize Existing Applications
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# VM configuration
+# -------------------------------------------------------------------
+bastion_instance_image: RHEL84GOLD-latest
+master_instance_type: m5a.xlarge
+master_instance_count: 3
+worker_instance_type: m5a.4xlarge
+worker_instance_count: 3
+bastion_instance_type: t3a.medium
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.11"
+
+# -------------------------------------------------------------------
+# OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
+# instead of cluster-{{ guid }}.{{ guid }}.sandboxXXX.opentlc.com
+# -------------------------------------------------------------------
+ocp4_base_domain: "{{ sandbox_zone }}"
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+# --- student_password not set -> generate random password
+# student_password: r3dh4t1!
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_openshift_data_foundation
+- ocp4_workload_machinesets
+- ocp4_workload_le_certificates
+- ocp4_workload_authentication
+- ocp4_workload_kubevirt
+- ocp4_workload_app_mod_demo
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_data_foundations
+# -------------------------------------------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.11
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_tolerations:
+- key: metal
+  operator: Exists
+
+ocp4_workload_openshift_data_foundation_catalogsource_setup: true
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
+ocp4_workload_openshift_data_foundation_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: v4.11_2022_10_17
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_machinesets
+# -------------------------------------------------------------------
+ocp4_workload_machinesets_disable_default_machinesets: false
+ocp4_workload_machinesets_wait_for_nodes: false
+
+# Add a MachineSet for AWS Bare Metal instances
+ocp4_workload_machinesets_machineset_groups:
+- name: metal
+  role: metal
+  instance_type: c5.metal
+  autoscale: false
+  total_replicas: 1
+  # Autoscaler settings - minimum and maximum number of Machines
+  total_replicas_min: 1
+  total_replicas_max: 1
+  # The role of the nodes (node-role.kubernetes.io/metal: "")
+  machineConfigPool:
+    setup: true
+    maxPodsPerNode: 400
+  taints:
+  - key: metal
+    value: "true"
+    effect: NoSchedule
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: 1
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+ocp4_workload_kubevirt_workload_tolerations:
+- key: metal
+  operator: Exists
+
+ocp4_workload_kubevirt_use_catalog_snapshot: true
+ocp4_workload_kubevirt_catalogsource_name: redhat-operators-snapshot-kubevirt
+ocp4_workload_kubevirt_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_kubevirt_catalog_snapshot_image_tag: v4.10_2022_09_19
+
+# -------------------------------------------------------------------
+# ocp4_workload_app_mod_demo
+# -------------------------------------------------------------------
+
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  sandboxed: false
+  deploy_with: babylon
+  virtualenv: babylon
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  aws_sandboxed: true
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  deployer:
+    virtualenv: ansible2.9-python3.6-2021-11-30
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords: []
+    labels:
+      Provider: RHPDS
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Sales_Play: Modernize_Existing_Apps
+    display_name: Modernize Existing Applications
+    category: Demos
+    multiuser: false
+    parameters: []
+  runtime:
+    default: 8h
+    maximum: 48h
+  secrets:
+  - namespace: gpte
+    name: satellite-rhel81-ha
+  - namespace: gpte
+    name: ocp4-token
