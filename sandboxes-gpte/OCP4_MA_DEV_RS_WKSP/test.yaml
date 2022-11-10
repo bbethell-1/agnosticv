@@ -2,15 +2,466 @@
 # -------------------------------------------------------------------
 # Purpose - Cost tag. One of development, ilt, production, event
 # -------------------------------------------------------------------
-purpose: development
+#purpose: development
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+#agnosticv_meta:
+  #idle_after_deploy: 4
+  #idle_after_start: 4
+
+#__meta__:
+  #deployer:
+    #git_tag_prefix: ocp4-ma-dev-wksp
+
+# -------------------------------------------------------------------
+# --- System: RHPDS
+# --- Catalog: OpenShift Demos
+# --- Catalog Item: OpenShift 4 App Modernization Demo
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# VM configuration
+# -------------------------------------------------------------------
+master_instance_type: m6a.xlarge
+master_instance_count: 3
+worker_instance_type: m6a.4xlarge
+worker_instance_count: "{{ [(num_users | int / 7) | round(0, 'ceil') | int, 3] | max }}"
+bastion_instance_type: t3a.medium
+bastion_instance_image: RHEL84GOLD-latest
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.10"
+
+# -------------------------------------------------------------------
+# OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
+# instead of cluster-{{ guid }}.{{ guid }}.sandboxXXX.opentlc.com
+# -------------------------------------------------------------------
+ocp4_base_domain: "{{ sandbox_zone }}"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+# --- student_password not set -> generate random password
+# student_password: r3dh4t1!
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Customizations to packages and virtualenvs to enable ovirt.ovirt
+# -------------------------------------------------------------------
+# Add prereqs for ovirt-engine-sdk-python Python package
+host_virtualenv_package_prereqs:
+- gcc
+- python3
+- python3-devel
+- python3-libselinux
+- python3-pip
+- libcurl-devel
+- openssl-devel
+- libxml2-devel
+
+# Add required Python packages to virtualenv for ovirt.ovirt collection
+host_virtualenv_requirements_override:
+- ovirt-engine-sdk-python==4.5.0
+- passlib==1.7.4
+
+# Custom collections for this environment
+requirements_content:
+  collections:
+  - name: kubernetes.core
+    version: 2.3.2
+  - name: amazon.aws
+    version: 2.3.0
+  - name: community.general
+    version: 5.3.0
+  - name: ansible.posix
+    version: 1.4.0
+  - name: ovirt.ovirt
+    version: 2.2.0
+
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
+
+# ocp4_network_type: OVNKubernetes
+
+# Because this environment includes Bare Metal instances wait longer for
+# CSRs to appear
+ocp4_approve_certificate_signing_requests_initial_delay: 240
+ocp4_approve_certificate_signing_requests_recheck_delay: 60
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_openshift_data_foundation
+- ocp4_workload_machinesets
+- ocp4_workload_le_certificates
+- ocp4_workload_authentication
+- ocp4_workload_gitea_operator
+- ocp4_workload_kubevirt
+- ocp4_workload_pipelines
+- ocp4_workload_openshift_gitops
+- ocp4_workload_ama_demo_shared
+- ocp4_workload_ama_demo_app_services_shared
+- ocp4_workload_codeserver
+- ocp4_workload_mtv
+- ocp4_workload_mta_tackle2
+
+# Do not run any student customization.
+# This will result in a default OpenShift 4 installation.
+student_workloads: []
+
+# Remove Workloads when deleting the cluster
+remove_workloads_bastion:
+- ocp4_workload_ama_demo_shared
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_data_foundations
+# -------------------------------------------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.10
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_tolerations:
+- key: metal
+  operator: Exists
+
+ocp4_workload_openshift_data_foundation_catalogsource_setup: true
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
+ocp4_workload_openshift_data_foundation_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: v4.10_2022_08_08
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_machinesets
+# -------------------------------------------------------------------
+ocp4_workload_machinesets_disable_default_machinesets: false
+
+# Add a MachineSet for AWS Bare Metal instances
+ocp4_workload_machinesets_machineset_groups:
+- name: metal
+  role: metal
+  instance_type: c5n.metal
+  autoscale: false
+  total_replicas: "{{ [(num_users | int / 25) | round(0, 'ceil') | int, 1] | max }}"
+  # Autoscaler settings - minimum and maximum number of Machines
+  total_replicas_min: 2
+  total_replicas_max: 4
+  # The role of the nodes (node-role.kubernetes.io/metal: "")
+  machineConfigPool:
+    setup: true
+    maxPodsPerNode: 400
+  taints:
+  - key: metal
+    value: "true"
+    effect: NoSchedule
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image_tag: v1.3.0
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/gpte-devops-automation/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.17.1"
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
+ocp4_workload_gitea_operator_gitea_volume_storage_class: gp3-csi
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel8/postgresql-13
+ocp4_workload_gitea_operator_postgresql_image_tag: latest
+ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
+ocp4_workload_gitea_operator_postgresql_volume_storage_class: gp3-csi
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_disable_registration: false
+ocp4_workload_gitea_operator_enable_captcha: false
+ocp4_workload_gitea_operator_allow_create_organization: true
+ocp4_workload_gitea_operator_register_email_confirm: false
+ocp4_workload_gitea_operator_enable_notify_email: false
+ocp4_workload_gitea_operator_mailer_enabled: false
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: opentlc-mgr
+ocp4_workload_gitea_operator_admin_email: opentlc-mgr@opentlc.com
+ocp4_workload_gitea_operator_admin_password: openshift
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_authentication_htpasswd_user_base }}%d"
+ocp4_workload_gitea_operator_user_password: openshift
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/rh-mad-workshop/modern-app-dev.git
+  name: modern-app-dev
+  private: false
+
+# ---------------------------------------------------------
+# OpenShift Pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.7
+ocp4_workload_pipelines_tkn_version: 0.23.1
+ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
+
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.10_2022_08_08
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.6
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
+ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.10_2022_08_08
+
+# -------------------------------------------------------------------
+# ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+ocp4_workload_kubevirt_workload_tolerations:
+- key: metal
+  operator: Exists
+
+ocp4_workload_kubevirt_use_catalog_snapshot: true
+ocp4_workload_kubevirt_catalogsource_name: redhat-operators-snapshot-kubevirt
+ocp4_workload_kubevirt_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_kubevirt_catalog_snapshot_image_tag: v4.10_2022_08_08
+
+# -------------------------------------------------------------------
+# ocp4_workload_mta_tackle2
+# -------------------------------------------------------------------
+ocp4_workload_mta_tackle2_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_mta_tackle2_namespace_base: tackle
+ocp4_workload_mta_tackle2_user: admin
+
+# Base for multi user setup
+ocp4_workload_mta_tackle2_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+
+# Role to grant users for the tackle namespace
+ocp4_workload_mta_tackle2_role: edit
+
+# Seed Tackle with information
+ocp4_workload_mta_tackle2_seed: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_mtv
+# -------------------------------------------------------------------
+ocp4_workload_mtv_channel: release-v2.3
+ocp4_workload_mtv_wait_for_forkliftcontroller: false
+
+ocp4_workload_mtv_use_catalog_snapshot: true
+ocp4_workload_mtv_catalogsource_name: redhat-operators-snapshot-mtv
+ocp4_workload_mtv_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_mtv_catalog_snapshot_image_tag: v4.10_2022_08_08
+
+# -------------------------------------------------------------------
+# ocp4_workload_ama_demo_shared
+# -------------------------------------------------------------------
+ocp4_workload_ama_demo_shared_rhv_user_password_validity: 7
+
+ocp4_workload_ama_demo_shared_oracle_vm_setup: true
+ocp4_workload_ama_demo_shared_oracle_vm_install_from_scratch: false
+
+ocp4_workload_ama_demo_shared_oracle_vm_template: ama-template-oracle
+#ocp4_workload_ama_demo_shared_oracle_vm_template: rhel85-empty
+
+ocp4_workload_ama_demo_shared_oracle_vm_name: "oracle-{{ guid }}"
+
+ocp4_workload_ama_demo_shared_oracle_dba_password: redhat
+ocp4_workload_ama_demo_shared_oracle_db_password: redhat
+
+ocp4_workload_ama_demo_shared_tomcat_vm_setup: true
+ocp4_workload_ama_demo_shared_tomcat_vm_install_from_scratch: false
+
+ocp4_workload_ama_demo_shared_tomcat_vm_template: ama-template-tomcat
+#ocp4_workload_ama_demo_shared_tomcat_vm_template: rhel85-empty
+
+ocp4_workload_ama_demo_shared_tomcat_vm_name: "tomcat-{{ guid }}"
+
+ocp4_workload_ama_demo_shared_vm_user_name: lab-user
+ocp4_workload_ama_demo_shared_vm_user_password: r3dh4t1!
+
+ocp4_workload_ama_demo_shared_tomcat_repo_user: "{{ ocp4_workload_gitea_operator_generate_user_format }}1"
+ocp4_workload_ama_demo_shared_tomcat_repo_user_password: "{{ ocp4_workload_gitea_operator_user_password }}"
+ocp4_workload_ama_demo_shared_tomcat_repo_name: modern-app-dev
+ocp4_workload_ama_demo_shared_tomcat_repo_branch: main
+
+ocp4_workload_ama_demo_shared_gitea_user_count: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_ama_demo_shared_gitea_user_prefix: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_ama_demo_shared_gitea_user_password: "{{ ocp4_workload_gitea_operator_user_password }}"
+
+ocp4_workload_ama_demo_shared_kubevirt_vm_deploy: true
+ocp4_workload_ama_demo_shared_oracle_image_location: https://gpte-public.s3.amazonaws.com/ama_demo/ama-demo-database.qcow2
+ocp4_workload_ama_demo_shared_kubevirt_image_storage_class: ocs-storagecluster-ceph-rbd
+
+ocp4_workload_ama_demo_shared_kubevirt_vm_node_selector:
+  "node-role.kubernetes.io/metal": ""
+
+ocp4_workload_ama_demo_shared_kubevirt_vm_tolerations:
+- key: metal
+  operator: Exists
+
+ocp4_workload_ama_demo_shared_guides_deploy: true
+ocp4_workload_ama_demo_shared_guides_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_ama_demo_shared_guides_namespace: dev-guides
+ocp4_workload_ama_demo_shared_guides_namespace_display: Dev Track Guides
+ocp4_workload_ama_demo_shared_guides_repo: https://github.com/rh-mad-workshop
+
+# For OCP 4.10 (use 6-el8 or 6-el9 for OCP 4.11)
+ocp4_workload_ama_demo_shared_guides_user_selector_redis_tag: 6-el8
+
+# -------------------------------------------------------------------
+# ocp4_workload_codeserver
+# -------------------------------------------------------------------
+ocp4_workload_codeserver_name: codeserver
+ocp4_workload_codeserver_workspace_name: ModernAppDev
+
+# Change to v4.6.0 when upgrading to OCP 4.11
+ocp4_workload_codeserver_image_tag: v4.5.1
+ocp4_workload_codeserver_init_image_tag: v4.5.1
+
+ocp4_workload_codeserver_password: openshift
+ocp4_workload_codeserver_pvc_size: 3Gi
+ocp4_workload_codeserver_gitea_name: gitea
+ocp4_workload_codeserver_gitea_namespace: gitea
+ocp4_workload_codeserver_extensions:
+- filename: auchenberg.vscode-browser-preview-0.7.2.vsix
+  url: https://gpte-public.s3.amazonaws.com/vscode-plugins/auchenberg.vscode-browser-preview-0.7.2.vsix
+
+ocp4_workload_codeserver_multi_user_install: true
+ocp4_workload_codeserver_multi_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_codeserver_multi_user_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_codeserver_multi_user_namespace_base: codeserver
+
+# Repositories to set up in codeserver
+ocp4_workload_codeserver_repos_password: openshift
+ocp4_workload_codeserver_repos:
+- name: modern-app-dev
+  account: ""
+  branch: main
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ama_demo_app_services_shared
+# -------------------------------------------------------------------
+ocp4_workload_ama_demo_app_services_shared_lab_setup: true
+
+ocp4_workload_ama_demo_app_services_shared_user_count: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_ama_demo_app_services_shared_user_prefix: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+
+ocp4_workload_ama_demo_app_services_shared_namespace_prefix: globex-
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
 # -------------------------------------------------------------------
 agnosticv_meta:
-  idle_after_deploy: 4
-  idle_after_start: 4
+  sandboxed: false
+  deploy_with: babylon
+  virtualenv: babylon
+  params_to_variables:
+    course_module_list: ocp4_workload_ama_demo_shared_guides_module_type
 
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
 __meta__:
+  aws_sandboxed: true
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
   deployer:
-    git_tag_prefix: ocp4-ma-dev-wksp
+    virtualenv: ansible2.9-python3.6-2021-11-30
+    scm_ref: ocp4-ma-dev-wksp-1.8
+  tower:
+    timeout: 43200
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords: []
+    labels:
+      Provider: RHPDS
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      #OpenShift_Version: '4.10'
+    display_name: Modern App Dev Roadshow - Dev Track
+    category: Demos
+    multiuser: true
+    parameters:
+    - name: module_type
+      description: Semicolon-seperated list of Modules to Enable
+      formLabel: Module
+      required: true
+      openAPIV3Schema:
+        default: m1;m2;m3;m4;m5
+        type: string
+    - name: num_users
+      description: Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 40
+      # validation: >-
+      #   num_users == 2 ||
+      #   user_is_admin ||
+      #   user_groups.includes('rhpds-devs') ||
+      #   check_salesforce_id(salesforce_id) ||
+      #   Error('User count greater than one requires a valid SalesForceID.')
+  runtime:
+    default: 8h
+    maximum: 48h
+  secrets:
+  - namespace: gpte
+    name: gpte-sandbox
+    var: aws_sandbox_manager
+  - namespace: gpte
+    name: satellite-rhel81-ha
+  - namespace: gpte
+    name: ocp4-token
+  - namespace: gpte
+    name: output-dir-s3
+  - namespace: gpte
+    name: rhev_dev_credentials
