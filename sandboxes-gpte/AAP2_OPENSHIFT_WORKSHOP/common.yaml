@@ -23,8 +23,9 @@ platform: rhpds
 # Cloud Provider
 # -------------------------------------------------------------------
 cloud_provider: ec2
+__image: RHEL84GOLD-latest
+__instance_type: t2.medium
 bastion_instance_type: t3.medium
-bastion_instance_image: RHEL84GOLD-latest
 
 key_name: opentlc_admin_backdoor
 region: us-east-2
@@ -50,13 +51,93 @@ security_groups:
     protocol: tcp
     cidr: "0.0.0.0/0"
     rule_type: Ingress
-  - name: BasHTTPPublic
-    description: "HTTP public for Let's Encrypt verification"
+- name: WebSG
+  rules:
+  - name: HTTPPorts
+    description: "HTTP Public"
     from_port: 80
     to_port: 80
     protocol: tcp
     cidr: "0.0.0.0/0"
     rule_type: Ingress
+  - name: HTTPSPorts
+    description: "HTTP Public"
+    from_port: 443
+    to_port: 443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+- name: HostSG
+  rules:
+  - name: FromHostSG
+    description: "Allow everything from HostSG nodes"
+    from_port: 0
+    to_port: 65535
+    protocol: -1
+    from_group: HostSG
+    rule_type: Ingress
+
+# -------------------------------------------------------------------
+# Instances vars
+# -------------------------------------------------------------------
+instances:
+- name: bastion
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: true
+  floating_ip: true
+  image: "{{ bastion_instance_image | default(__image) }}"
+  flavor:
+    ec2: "{{ bastion_instance_type | default(__instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+  security_groups:
+  - BastionSG
+  - WebSG
+  - HostSG
+- name: "frontend"
+  count: "{{ frontend_instance_count | default(1) }}"
+  public_dns: true
+  dns_loadbalancer: false
+  image: "{{ frontend_instance_image | default(__image) }}"
+  flavor:
+    ec2: "{{ frontend_instance_type  | default(__instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "load_balancers"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - WebSG
+  - HostSG
+- name: "app"
+  count: "{{ app_instance_count | default(2) }}"
+  public_dns: false
+  image: "{{ app_instance_image | default(__image) }}"
+  flavor:
+    ec2: "{{ app_instance_type | default(__instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "app_servers"
+  - key: "ostype"
+    value: "rhel"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  key_name: "{{ key_name }}"
+  security_groups:
+  - DefaultSG
+  - WebSG
+  - HostSG
 
 # -------------------------------------------------------------------
 # Common Password
@@ -133,7 +214,7 @@ infra_workloads:
 - ocp4_workload_codeserver
 - ocp4_workload_gitops_aap
 - automation-controller-config
-- edge_nodes_info
+# - edge_nodes_info
   # launching bookbag from hybrid-cloud-binder now
   #- ocp4_workload_bookbag_ohc_demo           # judd prod
 
@@ -166,8 +247,8 @@ account_user_access_key: "{{ aws_access_key_id }}"
 account_user_secret_access_key: "{{ aws_secret_access_key }}"
 
 automation_controller_credentials:
-- name: hmi_nodes
-  description: hmi nodes
+- name: Multitier Nodes
+  description: Multitier Nodes
   credential_type: Machine
   username: ec2-user
   ssh_key_data: "{{ ssh_privatekey }}"
@@ -177,119 +258,119 @@ automation_controller_credentials:
   username: "{{ account_user_access_key }}"
   password: "{{ account_user_secret_access_key }}"
 
-automation_controller_projects:
-- name: "edge-hmi-demo"
-  description: "Edge HMI Demo"
-  scm_type: git
-  scm_url: https://github.com/linuxnerds/edge-hmi-demo.git
+# automation_controller_projects:
+# - name: "edge-hmi-demo"
+#   description: "Edge HMI Demo"
+#   scm_type: git
+#   scm_url: https://github.com/linuxnerds/edge-hmi-demo.git
 
-automation_controller_inventories:
-- name: "hmi-dynamic-inventory"
-  description: "HMI host inventory"
-- name: hmi-smart-inventory
-  description: HMI smart
-  kind: smart
-  host_filter: groups__name__icontains=tag_AnsibleGroup_hmi_nodes
+# automation_controller_inventories:
+# - name: "hmi-dynamic-inventory"
+#   description: "HMI host inventory"
+# - name: hmi-smart-inventory
+#   description: HMI smart
+#   kind: smart
+#   host_filter: groups__name__icontains=tag_AnsibleGroup_hmi_nodes
 
-automation_controller_inventory_sources:
-- name: "aws_source"
-  description: "aws dynamic inventory"
-  inventory: "hmi-dynamic-inventory"
-  credential: "aws_credentials"
-  source: ec2
-  source_vars:
-    keyed_groups:
-    - prefix: tag
-      key: tags
+# automation_controller_inventory_sources:
+# - name: "aws_source"
+#   description: "aws dynamic inventory"
+#   inventory: "hmi-dynamic-inventory"
+#   credential: "aws_credentials"
+#   source: ec2
+#   source_vars:
+#     keyed_groups:
+#     - prefix: tag
+#       key: tags
 
-automation_controller_jobtemplates:
-- name: "1. Create HMI VM with survey for hostname"
-  description: "Create HMI VM with survey for hostname"
-  inventory: "Demo Inventory"
-  project: edge-hmi-demo
-  playbook: "ansible/provision_host_playbook.yml"
-  credentials:
-  - "aws_credentials"
-  survey_enabled: true
-  survey_spec:
-    name: HMI survey
-    description: HMI node survey
-    spec:
-    - type: text
-      question_name: "Enter AWS Region"
-      question_description: "Aws Region for HMI nodes"
-      variable: aws_region
-      required: false
-      default: "us-east-2"
-    - type: textarea
-      question_name: "Enter HMI Nodes Hostname"
-      question_description: "Aws Region for HMI nodes"
-      variable: hmi_nodes
-      required: false
-      default: node1
-- name: "2. Configure Podman to run Inductive Automation Ignition"
-  description: "Configure Podman to run Inductive Automation Ignition"
-  inventory: hmi-smart-inventory
-  project: edge-hmi-demo
-  playbook: "ansible/podman_playbook.yml"
-  become_enabled: true
-  credentials:
-  - "hmi_nodes"
-  survey_enabled: true
-  survey_spec:
-    name: Podman survey
-    description: Podman survey
-    spec:
-    - type: text
-      question_name: "Enter Quay Username"
-      question_description: "Quay username for podman"
-      variable: podman_username
-      required: false
-    - type: password
-      question_name: "Enter Quay Password"
-      question_description: "Quay password for podman"
-      variable: podman_password
-      required: false
-- name: "3. Deploy Kiosk Mode to HMI Devices"
-  description: "Deploy Kiosk Mode to HMI Devices"
-  inventory: hmi-smart-inventory
-  project: edge-hmi-demo
-  playbook: "ansible/kiosk_playbook.yml"
-  become_enabled: true
-  credentials:
-  - "hmi_nodes"
-  survey_enabled: true
-  survey_spec:
-    name: Kiosk survey
-    description: Kiosk survey
-    spec:
-    - type: text
-      question_name: "Enter RHSM Username"
-      question_description: "RHSM Username"
-      variable: rhsm_username
-      required: false
-    - type: password
-      question_name: "Enter RHSM Password"
-      question_description: "RHSM password"
-      variable: rhsm_password
-      required: false
-- name: "4. OS Hardening"
-  description: "OS Hardening"
-  inventory: hmi-smart-inventory
-  project: edge-hmi-demo
-  playbook: "ansible/hardening_playbook.yml"
-  become_enabled: true
-  credentials:
-  - "hmi_nodes"
-- name: "5. Validate Security on HMI Devices(scheduled to report to Splunk)"
-  description: "Validate Security on HMI Devices(scheduled to report to Splunk)"
-  inventory: hmi-smart-inventory
-  project: edge-hmi-demo
-  playbook: "ansible/security_playbook.yml"
-  become_enabled: true
-  credentials:
-  - "hmi_nodes"
-automation_controller_job_workflow_templates: true
+# automation_controller_jobtemplates:
+# - name: "1. Create HMI VM with survey for hostname"
+#   description: "Create HMI VM with survey for hostname"
+#   inventory: "Demo Inventory"
+#   project: edge-hmi-demo
+#   playbook: "ansible/provision_host_playbook.yml"
+#   credentials:
+#   - "aws_credentials"
+#   survey_enabled: true
+#   survey_spec:
+#     name: HMI survey
+#     description: HMI node survey
+#     spec:
+#     - type: text
+#       question_name: "Enter AWS Region"
+#       question_description: "Aws Region for HMI nodes"
+#       variable: aws_region
+#       required: false
+#       default: "us-east-2"
+#     - type: textarea
+#       question_name: "Enter HMI Nodes Hostname"
+#       question_description: "Aws Region for HMI nodes"
+#       variable: hmi_nodes
+#       required: false
+#       default: node1
+# - name: "2. Configure Podman to run Inductive Automation Ignition"
+#   description: "Configure Podman to run Inductive Automation Ignition"
+#   inventory: hmi-smart-inventory
+#   project: edge-hmi-demo
+#   playbook: "ansible/podman_playbook.yml"
+#   become_enabled: true
+#   credentials:
+#   - "hmi_nodes"
+#   survey_enabled: true
+#   survey_spec:
+#     name: Podman survey
+#     description: Podman survey
+#     spec:
+#     - type: text
+#       question_name: "Enter Quay Username"
+#       question_description: "Quay username for podman"
+#       variable: podman_username
+#       required: false
+#     - type: password
+#       question_name: "Enter Quay Password"
+#       question_description: "Quay password for podman"
+#       variable: podman_password
+#       required: false
+# - name: "3. Deploy Kiosk Mode to HMI Devices"
+#   description: "Deploy Kiosk Mode to HMI Devices"
+#   inventory: hmi-smart-inventory
+#   project: edge-hmi-demo
+#   playbook: "ansible/kiosk_playbook.yml"
+#   become_enabled: true
+#   credentials:
+#   - "hmi_nodes"
+#   survey_enabled: true
+#   survey_spec:
+#     name: Kiosk survey
+#     description: Kiosk survey
+#     spec:
+#     - type: text
+#       question_name: "Enter RHSM Username"
+#       question_description: "RHSM Username"
+#       variable: rhsm_username
+#       required: false
+#     - type: password
+#       question_name: "Enter RHSM Password"
+#       question_description: "RHSM password"
+#       variable: rhsm_password
+#       required: false
+# - name: "4. OS Hardening"
+#   description: "OS Hardening"
+#   inventory: hmi-smart-inventory
+#   project: edge-hmi-demo
+#   playbook: "ansible/hardening_playbook.yml"
+#   become_enabled: true
+#   credentials:
+#   - "hmi_nodes"
+# - name: "5. Validate Security on HMI Devices(scheduled to report to Splunk)"
+#   description: "Validate Security on HMI Devices(scheduled to report to Splunk)"
+#   inventory: hmi-smart-inventory
+#   project: edge-hmi-demo
+#   playbook: "ansible/security_playbook.yml"
+#   become_enabled: true
+#   credentials:
+#   - "hmi_nodes"
+# automation_controller_job_workflow_templates: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitea_operator
