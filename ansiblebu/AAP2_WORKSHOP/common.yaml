@@ -6,120 +6,23 @@
 #include /includes/runtime-unlimited.yaml
 #include /includes/parameters/aws-region.yaml
 #include /includes/parameters/num-users-salesforce.yaml
+#include /includes/aap2-workshop-common.yaml
 
-# Agnosticd variables
+# Deployment Platform
 platform: rhpds
 
-env_type: aap2-workshop
-cloud_provider: ec2
+# Workshop Type
+workshop_type: rhel_90
 
-# Sets the Route53 DNS zone to use for Amazon Web Services
-workshop_dns_zone: example.opentlc.com
+# ENV TYPE
+env_type: "aap2-workshop-{{ workshop_type }}"
 
-# region where the nodes will live
-ec2_region: "{{ aws_region }}"
-
-# name prefix for all the VMs
-ec2_name_prefix: "{{ guid }}"
-
-# creates student_total of workbenches for the workshop
-student_total: "{{ num_users }}"
-
-# turn DNS on for control nodes, and set to type in valid_dns_type
-dns_type: aws
-
-# password for Ansible control node
-admin_password: >-
-  {{ lookup("ansible.builtin.password", "/tmp/admin_password chars=ascii_lowercase,digits length=8") }}
-#admin_password: password1
-
-# automatically installs Tower to control node
-controllerinstall: true
-
-# SHA value of targeted AAP bundle setup files.
-provided_sha_value: ea2843fae672274cb1b32447c9a54c627aa5bdf5577d9a6c7f957efe68be8c01
-
-# Automation controller install setup command. Default: "./setup.sh -e gpgcheck=0" if undefined or empty
-controller_install_command: './setup.sh -e gpgcheck=0'
-# default vars for ec2 AMIs (ec2_info) are located in provisioner/roles/manage_ec2_instances/defaults/main/main.yml
-# select ec2_info AMI vars can be overwritten via ec2_xtra vars, e.g.:
-ec2_xtra:
-  satellite:
-    owners: 012345678910
-    filter: Satellite*
-    username: ec2-user
-    os_type: linux
-    size: r5b.2xlarge
-
-# Registry name to download execution environments
-ee_registry_name: registry.redhat.io
-
-# List of execution environments to download during controller installation:
-ee_images:
-  - "{{ ee_registry_name }}/ansible-automation-platform-21/ee-29-rhel8:latest"
-  - "{{ ee_registry_name }}/ee-supported-rhel8:latest"
-  - "{{ ee_registry_name }}/ansible-automation-platform-21/ee-minimal-rhel8:latest"
-
-# "Default execution environment" for controller
-ee_default_image: "{{ ee_registry_name }}/ee-supported-rhel8:latest"
-
-agnosticv_meta:
-  # Instead of running ansible-playbook from the admin host,
-  # tell ALL_agnosticv.sh to use babylon to deploy.
-  deploy_with: babylon
-
-  # Use a specific virtualenv that has all the k8s modules
-  virtualenv: babylon
-
-  babylon:
-    kubeconfig: babylon-prod.kubeconfig
-
-##########################
-# Babylon meta variables #
-##########################
 __meta__:
-  anarchy:
-    namespace: babylon-anarchy-aap2-workshop
-  aws_sandboxed: false
-  tower:
-    organization: RHPDS
-
-  deployer:
-    scm_url: https://github.com/redhat-gpe/workshops.git
-    actions:
-      provision:
-        entry_point: provisioner/provision_lab.yml
-      destroy:
-        entry_point: provisioner/teardown_lab.yml
-    execution_environment:
-      name: aap2-workshop
-    credentials:
-      - rhpds-aws-dev
-
-  ansible_control_plane:
-    type: controller
-    secret: babylon-aap2-controller-on-azure
-
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: Ansible Automation Platform 2 Workshop
+    display_name: Ansible Automation Platform 2 Workshop RHEL 9 Workshop
     description: >-
-      This is the Ansible Automation Platform 2 Workshop.  Please choose Workshop Type.
+      This is the Ansible Automation Platform 2 Workshop RHEL 9 Workshop.
     category: Workshops
     labels:
       Provider: Ansible_BU
-
-    parameters:
-      - name: workshop_type
-        description: Workshop Type
-        formLabel: Workshop Type
-        required: true
-        openAPIV3Schema:
-          type: string
-          enum:
-            - rhel_90
-  secrets:
-    - namespace: gpte
-      name: aap2-workshop
-    - namespace: gpte
-      name: aap2-base64-manifest
