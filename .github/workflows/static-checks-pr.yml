@@ -1,0 +1,60 @@
+---
+name: static-checks-pr
+
+on:
+  pull_request:
+    branches:
+      - master
+      - main
+
+jobs:
+  lfs-warning:
+    name: Check size of files in commits
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Repo Code
+        id: get_repo_code
+        uses: actions/checkout@v2
+
+      - name: Run lfs-warning
+        uses: actionsdesk/lfs-warning@v3.2
+        with:
+          token: ${{ secrets.RHPDS_BOT_REPO }} # Optional
+          filesizelimit: '40000' # ~40KB
+
+  static-checks:
+    name: Static Checks Pull Request
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+          - '3.10'
+
+    steps:
+      - name: Get Repository Code
+        id: get_repo_code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip' # caching pip dependencies
+
+      - name: Install python dependencies
+        run: pip install -r .tests/requirements.txt
+
+      - name: Install agnosticv CLI
+        run: |-
+          curl -o agnosticv -L https://github.com/redhat-cop/agnosticv/releases/download/v0.5.0/agnosticv_linux_amd64
+          chmod +x agnosticv
+
+      - name: Run yamllint
+        run: yamllint -c .yamllint .
+
+      - name: Run static-tests.sh
+        env: # Or as an environment variable
+          RHPDS_BOT_REPO: ${{ secrets.RHPDS_BOT_REPO }}
+        run: ./.tests/static-tests.sh
+...

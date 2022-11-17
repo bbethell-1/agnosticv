@@ -1,15 +1,10 @@
 #!/usr/bin/env bash
 #
-GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+GITHUB_TOKEN="${RHPDS_BOT_REPO:-}"
 
 set -uo pipefail
 
 ORIG=$(cd $(dirname $0); pwd)
-
-if [ "$TRAVIS_PULL_REQUEST" = "false" ] ; then
-    echo "Not a pull request."
-    exit 0
-fi
 
 export PATH=$PWD:$PATH
 
@@ -21,7 +16,10 @@ comment() {
     local data="$(json_escape "${1}")"
     body=$(mktemp)
 
-    [ -z "${GITHUB_TOKEN}" ] && return
+    if [ -z "${GITHUB_TOKEN}" ]; then
+        echo "GITHUB_TOKEN empty" >&2
+        return
+    fi
 
     cat > $body <<EOF
 {"body": ${data}}
@@ -31,7 +29,7 @@ EOF
         -H "Authorization: token ${GITHUB_TOKEN}" \
         -X POST \
         --data @$body \
-        "https://api.github.com/repos/${TRAVIS_REPO_SLUG}/issues/${TRAVIS_PULL_REQUEST}/comments"
+        "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/issues/${PULL_NO}/comments"
 
     rm $body
 }
@@ -67,13 +65,20 @@ _cleanup_on_exit() {
     exit ${exit_status}
 }
 
+set -e
+
 trap "_cleanup_on_exit" EXIT
+
+PULL_REF=${GITHUB_SHA}
+ORIG_REF=$( git show -s --pretty=format:"%H" remotes/origin/${GITHUB_BASE_REF})
+PULL_NO=${GITHUB_REF##refs/pull/}
+PULL_NO=${PULL_NO///merge}
 
 git diff \
     --no-commit-id \
     --name-only \
     --diff-filter=AM \
-    ${TRAVIS_BRANCH}...${TRAVIS_PULL_REQUEST_SHA} \
+    ${ORIG_REF}...${PULL_REF} \
     > ${changed_git}
 
 # add related files
@@ -83,12 +88,14 @@ done
 
 sort ${changed_ci} | uniq > ${changed_ci_uniq}
 
-git checkout $TRAVIS_PULL_REQUEST_SHA &>/dev/null
+git checkout $PULL_REF &>/dev/null
+
+set +e
 
 for i in $(cat ${changed_ci_uniq}); do
-    git checkout $TRAVIS_PULL_REQUEST_SHA &>/dev/null
+    git checkout $PULL_REF &>/dev/null
     if [ $? != 0 ]; then
-        echo "ERROR git checkout  $TRAVIS_PULL_REQUEST_SHA" >> $errors
+        echo "ERROR git checkout  ${PULL_REF}" >> $errors
         continue
     fi
 
@@ -102,9 +109,9 @@ for i in $(cat ${changed_ci_uniq}); do
         continue
     fi
 
-    git checkout $TRAVIS_BRANCH &>/dev/null
+    git checkout $ORIG_REF &>/dev/null
     if [ $? != 0 ]; then
-        echo "ERROR git checkout  $TRAVIS_BRANCH" >> $errors
+        echo "ERROR git checkout  $ORIG_REF" >> $errors
         continue
     fi
 
@@ -115,7 +122,7 @@ for i in $(cat ${changed_ci_uniq}); do
 
     agnosticv --merge $i > $temp2
     if [ $? != 0 ]; then
-        echo "ERROR merging $i in branch $TRAVIS_BRANCH" >&2
+        echo "ERROR merging $i in branch $ORIG_REF" >&2
         # assuming it changed
         echo $i >> $changed
         continue
@@ -156,7 +163,7 @@ git diff \
     --no-commit-id \
     --name-only \
     --diff-filter=D \
-    ${TRAVIS_BRANCH}...${TRAVIS_PULL_REQUEST_SHA} > $deleted_files
+    ${ORIG_REF}...${PULL_REF} > $deleted_files
 
 if [ $(wc -l < $deleted_files) -gt 0 ]; then
     read -r -d '' data << EOF
@@ -170,7 +177,7 @@ $(cat ${deleted_files})
 EOF
 fi
 
-git checkout $TRAVIS_PULL_REQUEST_SHA &>/dev/null
+git checkout $PULL_REF &>/dev/null
 
 ${ORIG}/babylon_checks.py > ${babylon_checks_output}
 
