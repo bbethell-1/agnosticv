@@ -9,7 +9,7 @@
 # -------------------------------------------------------------------
 # --- System: RHPDS
 # --- Catalog: OpenShift Demos
-# --- Catalog Item: OpenShift 4 App Modernization Demo (Shared Environment)
+# --- Catalog Item: OpenShift 4 App Modernization ILT
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
@@ -133,7 +133,8 @@ infra_workloads:
 - ocp4_workload_ama_demo_app_services_shared
 - ocp4_workload_codeserver
 - ocp4_workload_mtv
-- ocp4_workload_mta_tackle2
+- ocp4_workload_mta6
+- ocp4_workload_openshift_gitops_fix_argocd
 
 # Do not run any student customization.
 # This will result in a default OpenShift 4 installation.
@@ -160,7 +161,7 @@ ocp4_workload_openshift_data_foundation_tolerations:
 ocp4_workload_openshift_data_foundation_catalogsource_setup: true
 ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
 ocp4_workload_openshift_data_foundation_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_openshift_data_foundation_catalogsource_image_tag: v4.11_2022_11_14
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: v4.11_2022_11_21
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_machinesets
@@ -173,10 +174,13 @@ ocp4_workload_machinesets_machineset_groups:
 - name: metal
   role: metal
   instance_type: c5.metal
+  root_volume_size: 250
+  root_volume_type: io1
+  root_volume_iops: 2000
   autoscale: false
   total_replicas: "{{ [(num_users | int / 25) | round(0, 'ceil') | int, 1] | max }}"
   # Autoscaler settings - minimum and maximum number of Machines
-  total_replicas_min: 2
+  total_replicas_min: "{{ [(num_users | int / 25) | round(0, 'ceil') | int, 1] | max }}"
   total_replicas_max: 4
   # The role of the nodes (node-role.kubernetes.io/metal: "")
   machineConfigPool:
@@ -246,7 +250,7 @@ ocp4_workload_pipelines_channel: pipelines-1.8
 
 ocp4_workload_pipelines_use_catalog_snapshot: true
 ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.11_2022_11_14
+ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.11_2022_11_21
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
@@ -257,7 +261,7 @@ ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_use_catalog_snapshot: true
 ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
 ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.11_2022_11_14
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.11_2022_11_21
 
 ocp4_workload_openshift_gitops_update_resources: true
 ocp4_workload_openshift_gitops_controller_update: true
@@ -283,24 +287,29 @@ ocp4_workload_kubevirt_workload_tolerations:
 ocp4_workload_kubevirt_use_catalog_snapshot: true
 ocp4_workload_kubevirt_catalogsource_name: redhat-operators-snapshot-kubevirt
 ocp4_workload_kubevirt_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_kubevirt_catalog_snapshot_image_tag: v4.11_2022_11_14
+ocp4_workload_kubevirt_catalog_snapshot_image_tag: v4.11_2022_11_21
 
 # -------------------------------------------------------------------
-# ocp4_workload_mta_tackle2
+# ocp4_workload_mta6
 # -------------------------------------------------------------------
-ocp4_workload_mta_tackle2_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
-ocp4_workload_mta_tackle2_namespace_base: tackle
-ocp4_workload_mta_tackle2_user: admin
+ocp4_workload_mta6_catalogsource_setup: true
+ocp4_workload_mta6_catalogsource_name: redhat-operators-snapshot-mta6
+ocp4_workload_mta6_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_mta6_catalogsource_image_tag: v4.11_2022_11_21
+
+ocp4_workload_mta6_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_mta6_namespace_base: mta
+ocp4_workload_mta6_user: admin
 
 # Base for multi user setup
-ocp4_workload_mta_tackle2_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_mta6_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
 
-# Role to grant users for the tackle namespace
-ocp4_workload_mta_tackle2_role: edit
+# Role to grant users for the mga namespace
+ocp4_workload_mta6_role: edit
 
-# Seed Tackle with information
-ocp4_workload_mta_tackle2_seed: true
-ocp4_workload_mta_tackle2_seed_tag: "v2.1.2"
+# Seed MTA with information
+ocp4_workload_mta6_seed: true
+ocp4_workload_mta6_seed_tag: "v2.1.3"
 
 # -------------------------------------------------------------------
 # ocp4_workload_mtv
@@ -311,7 +320,7 @@ ocp4_workload_mtv_wait_for_forkliftcontroller: false
 ocp4_workload_mtv_use_catalog_snapshot: true
 ocp4_workload_mtv_catalogsource_name: redhat-operators-snapshot-mtv
 ocp4_workload_mtv_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_mtv_catalog_snapshot_image_tag: v4.11_2022_11_14
+ocp4_workload_mtv_catalog_snapshot_image_tag: v4.11_2022_11_21
 
 # -------------------------------------------------------------------
 # ocp4_workload_ama_demo_shared
@@ -433,6 +442,14 @@ ocp4_workload_ama_demo_app_services_shared_user_prefix: "{{ ocp4_workload_authen
 ocp4_workload_ama_demo_app_services_shared_namespace_prefix: globex-
 
 # -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops_fix_argocd
+# -------------------------------------------------------------------
+# Sleep 10 minutes before attempting to fix argocd dex pods
+ocp4_workload_openshift_gitops_fix_argocd_delay: "10"
+ocp4_workload_openshift_gitops_fix_argocd_create_namespace: false
+#ocp4_workload_openshift_gitops_fix_argocd_namespace: openshift-gitops
+
+# -------------------------------------------------------------------
 # AgnosticV meta variables
 # -------------------------------------------------------------------
 agnosticv_meta:
@@ -458,8 +475,7 @@ __meta__:
       Provider: RHPDS
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: Red_Hat_Cloud
-      #OpenShift_Version: '4.11'
-    display_name: OpenShift 4 App Modernization Demo
+    display_name: OpenShift 4 App Modernization ILT
     category: Demos
     multiuser: true
     parameters:
