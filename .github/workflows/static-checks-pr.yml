@@ -7,6 +7,10 @@ on:
       - master
       - main
 
+concurrency:
+  group: pr-${{ github.event.number }}
+  cancel-in-progress: true
+
 jobs:
   lfs-warning:
     name: Check size of files in commits
@@ -57,4 +61,62 @@ jobs:
         env: # Or as an environment variable
           RHPDS_BOT_REPO: ${{ secrets.RHPDS_BOT_REPO }}
         run: ./.tests/static-tests.sh
+
+  merge-integration:
+    name: Merge PR branch into integration
+    runs-on: ubuntu-latest
+    needs:
+      - static-checks
+      - lfs-warning
+
+    permissions:
+      pull-requests: write
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Merge PR branch into integration branch
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: "${{ secrets.RHPDS_BOT_REPO }}"
+          PR: ${{ github.event.number }}
+        run: |-
+          set -o pipefail
+          git config --local user.email "rhpds-bot@redhat.com"
+          git config --local user.name "rhpds-bot"
+          git checkout integration
+          git pull
+          # Merge PR branch as a squashed merge commit
+          set +e
+          git merge \
+            --no-edit \
+            --squash \
+            -X theirs \
+            "origin/${GITHUB_HEAD_REF}" \
+            |& tee -a /tmp/merge.log
+          if [ $? != 0 ]; then
+            # conflict?
+            {
+                echo 'Cannot merge `'${GITHUB_HEAD_REF}'` into `integration`:'
+                echo
+                echo '```'
+                cat /tmp/merge.log
+                echo '```'
+            } > /tmp/comment.md
+            gh pr comment ${PR} --body-file /tmp/comment.md
+            exit 1
+          fi
+          if [ $(git diff --cached | wc -c) != 0 ]; then
+            git commit -m "Auto-merge #${PR} into integration"
+            git push
+          fi
+      - name: Label issue
+        env:
+          GITHUB_TOKEN: "${{ secrets.RHPDS_BOT_REPO }}"
+          PR: ${{ github.event.number }}
+        run: |
+          gh pr edit ${PR} --add-label integration
 ...
