@@ -78,10 +78,32 @@ security_groups:
     protocol: -1
     from_group: HostSG
     rule_type: Ingress
+- name: WinSG
+  rules:
+  - name: WinSGTCP
+    description: "All TCP"
+    from_port: 1
+    to_port: 65535
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+  - name: WinSGUdp
+    description: "All UDP"
+    from_port: 1
+    to_port: 65535
+    protocol: udp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
 
 # -------------------------------------------------------------------
 # Instances vars
 # -------------------------------------------------------------------
+windows_password: "Pa$$w0rd"
+__windows_instance_type: m5a.xlarge
+__windows_instance_image: WIN2019
+__windows_instance_image_id: ami-0bf9c6c2e7ac638a4
+
 instances:
 - name: bastion
   count: 1
@@ -102,6 +124,34 @@ instances:
   - BastionSG
   - WebSG
   - HostSG
+- name: win
+  count: "{{ windows_server_instance_count | default(5) }}"
+  public_dns: true
+  #image: "{{ windows_server_instance_image | default(__windows_instance_image) }}"
+  image_id: "{{ windows_server_instance_image_id | default(__windows_instance_image_id) }}"
+  flavor:
+    ec2: "{{ windows_server_instance_type | default(__windows_instance_type) }}"
+  UserData: |
+    UserData:
+      "Fn::Base64":
+         "Fn::Join":
+           - ""
+           - - "<powershell>\n"
+             - "$admin = [adsi]('WinNT://./administrator, user')\n"
+             - "$admin.PSBase.Invoke('SetPassword', '{{windows_password}}')\n"
+             - "$scriptPath=((New-Object System.Net.Webclient).DownloadString('https://raw.githubusercontent.com/ansible/ansible/devel/examples/scripts/ConfigureRemotingForAnsible.ps1'))\n"
+             - "Invoke-Command -ScriptBlock ([scriptblock]::Create($scriptPath)) -ArgumentList '-skipNetworkProfileCheck'\n"
+             - "</powershell>"
+  tags:
+  - key: "AnsibleGroup"
+    value: "servers"
+  - key: "ostype"
+    value: "windows"
+  security_groups:
+  - DefaultSG
+  - WinSG
+  - HostSG
+
 # - name: "frontend"
 #   count: "{{ frontend_instance_count | default(1) }}"
 #   public_dns: true
