@@ -83,34 +83,6 @@ jobs:
         env:
           GITHUB_TOKEN: "${{ secrets.RHPDS_BOT_REPO }}"
           PR: ${{ github.event.number }}
-        run: |-
-          set -o pipefail
-          git config --local user.email "rhpds-bot@redhat.com"
-          git config --local user.name "rhpds-bot"
-          git checkout integration
-          git pull
-          # Merge PR branch as a squashed merge commit
-          set +e
-          git merge \
-            --no-edit \
-            --squash \
-            -X theirs \
-            "origin/${GITHUB_HEAD_REF}" \
-            |& tee -a /tmp/merge.log
-          if [ $? != 0 ]; then
-            # conflict?
-            {
-                echo 'Cannot merge `'${GITHUB_HEAD_REF}'` into `integration`:'
-                echo
-                echo '```'
-                cat /tmp/merge.log
-                echo '```'
-            } > /tmp/comment.md
-            gh pr comment ${PR} --body-file /tmp/comment.md
-            exit 1
-          fi
-          if [ $(git diff --cached | wc -c) != 0 ]; then
-            git commit -m "Auto-merge #${PR} into integration"
-            git push
-          fi
+        run: ./.github/scripts/merge-pr-to-integration.sh
+        shell: bash
 ...
