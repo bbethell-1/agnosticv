@@ -78,32 +78,10 @@ security_groups:
     protocol: -1
     from_group: HostSG
     rule_type: Ingress
-- name: WinSG
-  rules:
-  - name: WinSGTCP
-    description: "All TCP"
-    from_port: 1
-    to_port: 65535
-    protocol: tcp
-    cidr: "0.0.0.0/0"
-    rule_type: Ingress
-
-  - name: WinSGUdp
-    description: "All UDP"
-    from_port: 1
-    to_port: 65535
-    protocol: udp
-    cidr: "0.0.0.0/0"
-    rule_type: Ingress
 
 # -------------------------------------------------------------------
 # Instances vars
 # -------------------------------------------------------------------
-windows_password: 'jVMijRwLbI02gFCo2xkjlZ9lxEA7bm7zgg=='
-__windows_instance_type: m5.2xlarge
-__windows_instance_image: WIN2019
-__windows_instance_image_id: ami-0bf9c6c2e7ac638a4
-
 instances:
 - name: bastion
   count: 1
@@ -124,65 +102,37 @@ instances:
   - BastionSG
   - WebSG
   - HostSG
-- name: win
-  count: "{{ windows_server_instance_count | default(2) }}"
+- name: "frontend"
+  count: "{{ frontend_instance_count | default(1) }}"
   public_dns: true
-  image:
-    name: Windows_Server-2012-R2_RTM-English-64Bit-Base-*
+  dns_loadbalancer: false
+  image: "{{ frontend_instance_image | default(__image) }}"
   flavor:
-    ec2: "{{ windows_server_instance_type | default(__windows_instance_type) }}"
-  UserData: |
-       UserData:
-              "Fn::Base64":
-                 "Fn::Join":
-                   - ""
-                   - - "<powershell>\n"
-                     - "$admin = [adsi]('WinNT://./administrator, user')\n"
-                     - "$admin.PSBase.Invoke('SetPassword', '{{windows_password}}')\n"
-                     - "$scriptPath=((New-Object System.Net.Webclient).DownloadString('https://raw.githubusercontent.com/ansible/ansible/devel/examples/scripts/ConfigureRemotingForAnsible.ps1'))\n"
-                     - "Invoke-Command -ScriptBlock ([scriptblock]::Create($scriptPath)) -ArgumentList '-skipNetworkProfileCheck'\n"
-                     - "</powershell>"
+    ec2: "{{ frontend_instance_type  | default(__instance_type) }}"
   tags:
   - key: "AnsibleGroup"
-    value: "servers"
+    value: "load_balancers"
   - key: "ostype"
-    value: "windows"
+    value: "linux"
   security_groups:
   - DefaultSG
-  - WinSG
+  - WebSG
   - HostSG
-
-# - name: "frontend"
-#   count: "{{ frontend_instance_count | default(1) }}"
-#   public_dns: true
-#   dns_loadbalancer: false
-#   image: "{{ frontend_instance_image | default(__image) }}"
-#   flavor:
-#     ec2: "{{ frontend_instance_type  | default(__instance_type) }}"
-#   tags:
-#   - key: "AnsibleGroup"
-#     value: "load_balancers"
-#   - key: "ostype"
-#     value: "linux"
-#   security_groups:
-#   - DefaultSG
-#   - WebSG
-#   - HostSG
-# - name: "app"
-#   count: "{{ app_instance_count | default(2) }}"
-#   public_dns: true
-#   image: "{{ app_instance_image | default(__image) }}"
-#   flavor:
-#     ec2: "{{ app_instance_type | default(__instance_type) }}"
-#   tags:
-#   - key: "AnsibleGroup"
-#     value: "app_servers"
-#   - key: "ostype"
-#     value: "linux"
-#   security_groups:
-#   - DefaultSG
-#   - WebSG
-#   - HostSG
+- name: "app"
+  count: "{{ app_instance_count | default(2) }}"
+  public_dns: true
+  image: "{{ app_instance_image | default(__image) }}"
+  flavor:
+    ec2: "{{ app_instance_type | default(__instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "app_servers"
+  - key: "ostype"
+    value: "linux"
+  security_groups:
+  - DefaultSG
+  - WebSG
+  - HostSG
 
 # -------------------------------------------------------------------
 # Common Password
@@ -534,8 +484,7 @@ __meta__:
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   deployer:
-    # virtualenv: ansible2.9-python3.6-2021-11-30
-    virtualenv: windows-ansible2.9-python2.7-2022-01-11
+    virtualenv: ansible2.9-python3.6-2021-11-30
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: AAP2 on Openshift
@@ -559,5 +508,5 @@ __meta__:
     namespace: gpte
   - name: rhods-git-secret
     namespace: gpte
-#   - name: output-dir-s3
-#     namespace: gpte
+  - name: output-dir-s3
+    namespace: gpte
