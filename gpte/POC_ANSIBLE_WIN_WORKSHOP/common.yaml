@@ -1,96 +1,530 @@
 ---
-platform: labs
+#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: Open Hybrid Cloud - Parallel
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
 env_type: ocp4-cluster
+software_to_deploy: openshift4
+project_tag: "{{ env_type }}-{{ guid }}"
 
-# Environment-specific settings
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
 
-## User settings
-# --- student_name not set -> Requestor User ID is used as student_name
-# --- student_password not set -> generate random password
-install_student_user: true
+# -------------------------------------------------------------------
+# Cloud Provider
+# -------------------------------------------------------------------
+cloud_provider: ec2
+__image: RHEL84GOLD-latest
+__instance_type: t2.medium
+bastion_instance_image: RHEL84GOLD-latest
+bastion_instance_type: t3.medium
 
-# Deploy in a Ansible 2.9 Virtualenv
-agnosticv_meta:
-  virtualenv: ansible2.9-python3.6-2021-11-30
-  secrets:
-    - gpte-no-repos
-    - satellite-rhel81-ha
-    - ans-tower-lab_license
-    - output-dir-s3
-  params_to_variables:
-    # This should be overwritten based on the user ordering the catalog item
-    # It will be used by the bastion-student-user role and created on the bastion
-    username: student_name
+key_name: opentlc_admin_backdoor
+region: us-east-2
+cloud_tags:
+  env_type: "{{ env_type }}"
+  #guid: "{{ guid }}"
+  #course_name: "{{ course_name | d('unknown') }}"
+  platform: "{{ platform | d('unknown') }}"
+  #purpose: "{{ purpose | d('unknown') }}"
+num_users: 5
+aws_region: us-east-2
 
+# -------------------------------------------------------------------
+# Security group
+# -------------------------------------------------------------------
+security_groups:
+- name: BastionSG
+  rules:
+  - name: BasSSHPublic
+    description: "SSH public"
+    from_port: 22
+    to_port: 22
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+- name: WebSG
+  rules:
+  - name: HTTPPorts
+    description: "HTTP Public"
+    from_port: 80
+    to_port: 80
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: HTTPSPorts
+    description: "HTTP Public"
+    from_port: 443
+    to_port: 443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+- name: HostSG
+  rules:
+  - name: FromHostSG
+    description: "Allow everything from HostSG nodes"
+    from_port: 0
+    to_port: 65535
+    protocol: -1
+    from_group: HostSG
+    rule_type: Ingress
+- name: WinSG
+  rules:
+  - name: WinSGTCP
+    description: "All TCP"
+    from_port: 1
+    to_port: 65535
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+  - name: WinSGUdp
+    description: "All UDP"
+    from_port: 1
+    to_port: 65535
+    protocol: udp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+# -------------------------------------------------------------------
+# Instances vars
+# -------------------------------------------------------------------
+windows_password: 'jVMijRwLbI02gFCo2xkjlZ9lxEA7bm7zgg=='
+__windows_instance_type: m5.2xlarge
+__windows_instance_image: WIN2019
+__windows_instance_image_id: ami-0bf9c6c2e7ac638a4
+
+instances:
+- name: bastion
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: true
+  floating_ip: true
+  image: "{{ bastion_instance_image | default(__image) }}"
+  flavor:
+    ec2: "{{ bastion_instance_type | default(__instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions"
+  - key: "ostype"
+    value: "linux"
+  rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+  security_groups:
+  - BastionSG
+  - WebSG
+  - HostSG
+- name: win
+  count: "{{ windows_server_instance_count | default(2) }}"
+  public_dns: true
+  image:
+    name: Windows_Server-2012-R2_RTM-English-64Bit-Base-*
+  flavor:
+    ec2: "{{ windows_server_instance_type | default(__windows_instance_type) }}"
+  UserData: |
+       UserData:
+              "Fn::Base64":
+                 "Fn::Join":
+                   - ""
+                   - - "<powershell>\n"
+                     - "$admin = [adsi]('WinNT://./administrator, user')\n"
+                     - "$admin.PSBase.Invoke('SetPassword', '{{windows_password}}')\n"
+                     - "$scriptPath=((New-Object System.Net.Webclient).DownloadString('https://raw.githubusercontent.com/ansible/ansible/devel/examples/scripts/ConfigureRemotingForAnsible.ps1'))\n"
+                     - "Invoke-Command -ScriptBlock ([scriptblock]::Create($scriptPath)) -ArgumentList '-skipNetworkProfileCheck'\n"
+                     - "</powershell>"
+  tags:
+  - key: "AnsibleGroup"
+    value: "servers"
+  - key: "ostype"
+    value: "windows"
+  security_groups:
+  - DefaultSG
+  - WinSG
+  - HostSG
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.10"
+master_instance_count: 3
+master_instance_type: m5.2xlarge
+worker_instance_count: 3
+worker_instance_type: m5.4xlarge
+
+# -------------------------------------------------------------------
+# OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
+# instead of cluster-{{ guid }}.{{ guid }}.sandboxXXX.opentlc.com
+# -------------------------------------------------------------------
+ocp4_base_domain: "{{ sandbox_zone }}"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
 repo_method: satellite
-set_repositories_satellite_activationkey: aapf-labs
 
-install_bastion: false
-install_common: true
-install_bastion_lite: true
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
 
-# Default instance type
-instance_type: "t2.medium"
-tower_instance_type: "t2.xlarge"
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+# --- student_name not set -> Requestor User ID is used as student_name
+student_name: dev-admin
+# --- student_password not set -> generate random password
+student_password: "{{ common_password }}"
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
 
-# Default Image
-image: RHEL8GOLD-latest
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
 
-software_to_deploy: tower
+install_ftl: false
 
-tower_version: 3.7.1-1
-tower_hostname: "tower1.{{ subdomain_base }}"
+# -------------------------------------------------------------------
+# Custom collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  - name: kubernetes.core
+    version: 2.3.1
+  - name: openstack.cloud
+    version: 1.7.2
+  - name: amazon.aws
+    version: 2.2.0
+  - name: community.general
+    version: 4.6.1
+  - name: ansible.posix
+    version: 1.3.0
+  - name: awx.awx
+    version: 21.1.0
 
-tower_user_accounts:
-  - user: devops
-    password: "{{ devops_password_tower }}"
-    email: devops@example.com
-    firstname: Devon
-    lastname: Operations
-    superuser: yes
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_le_certificates            # all segments
+- ocp4_workload_authentication             # all segments
+- ocp4_workload_gitea_operator
+- ocp4_workload_pipelines
+- ocp4_workload_openshift_gitops
+- ocp4_workload_codeserver
+- ocp4_workload_gitops_aap
+# - automation-controller-config
+# - edge_nodes_info
+  # launching bookbag from hybrid-cloud-binder now
+  #- ocp4_workload_bookbag_ohc_demo           # judd prod
 
-tower_projects:
-  - name: Webserver SCM
-    description: Webserver Deployment Project
-    organization: Default
-    scm_url: https://github.com/wilson-walrus/ansible-automation-platform-labs.git
-    scm_type: git
-    state: present
-    tower_host: "{{ tower_hostname }}"
-    tower_username: admin
-    tower_password: "{{ tower_admin_password }}"
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_htpasswd_user_base: student
+ocp4_workload_authentication_htpasswd_user_count: 5
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_remove_kubeadmin: false
 
-tower_inventories:
-  - name: Webserver Inventory
-    description: Webserver Inventory
-    organization: Default
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_lpe_automation_controller
+# -------------------------------------------------------------------
+automation_controller_project: "ac-{{ guid }}"
+#automation_controller_admin_secret: "ac-{{ guid }}-secret"
+#automation_controller_admin_password: "{{ common_password }}"
+automation_controller_upload_manifest: true
+automationcontroller_manifest_url: https://gpte-public.s3.amazonaws.com/aap2-subscription/manifest_31_10_2022.zip
 
-tower_inventory_source:
-  - name: Webserver Static
-    description: Sourced from project
-    inventory: Webserver Inventory
-    source: scm
-    source_project: Webserver SCM
-    source_path: hosts-ec2
-    update_on_launch: yes
-    state: present
+# -------------------------------------------------------------------
+# Workload: automation-controller-config
+# -------------------------------------------------------------------
+ssh_privatekey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path) }}"
+ssh_publickey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path_pub) }}"
+account_user_access_key: "{{ aws_access_key_id }}"
+account_user_secret_access_key: "{{ aws_secret_access_key }}"
 
-tower_credentials:
-  - name: Webserver Private Key
-    username: ec2-user
-    description: Private key to connect to Webservers
-    organization: Default
-    type: ssh
-    become_method: sudo
-    state: present
-    ssh_key_data: "{{ lookup('file', '{{ output_dir}}/{{ guid }}key') }}"
+automation_controller_credentials:
+- name: Multitier Nodes
+  description: Multitier Nodes
+  credential_type: Machine
+  username: ec2-user
+  ssh_key_data: "{{ ssh_privatekey }}"
+- name: aws_credentials
+  description: aws_credentials
+  credential_type: "Amazon Web Services"
+  username: "{{ account_user_access_key }}"
+  password: "{{ account_user_secret_access_key }}"
 
-tower_job_templates:
-  - name: Webserver Deploy
-    description: Deploy Webservers
-    inventory: Webserver Inventory
-    credential: Webserver Private Key
-    project: Webserver SCM
-    playbook: main.yml
-    become: yes
-    ask_extra_vars: no
+# automation_controller_projects:
+# - name: "edge-hmi-demo"
+#   description: "Edge HMI Demo"
+#   scm_type: git
+#   scm_url: https://github.com/linuxnerds/edge-hmi-demo.git
+
+# automation_controller_inventories:
+# - name: "hmi-dynamic-inventory"
+#   description: "HMI host inventory"
+# - name: hmi-smart-inventory
+#   description: HMI smart
+#   kind: smart
+#   host_filter: groups__name__icontains=tag_AnsibleGroup_hmi_nodes
+
+# automation_controller_inventory_sources:
+# - name: "aws_source"
+#   description: "aws dynamic inventory"
+#   inventory: "hmi-dynamic-inventory"
+#   credential: "aws_credentials"
+#   source: ec2
+#   source_vars:
+#     keyed_groups:
+#     - prefix: tag
+#       key: tags
+
+# automation_controller_jobtemplates:
+# - name: "1. Create HMI VM with survey for hostname"
+#   description: "Create HMI VM with survey for hostname"
+#   inventory: "Demo Inventory"
+#   project: edge-hmi-demo
+#   playbook: "ansible/provision_host_playbook.yml"
+#   credentials:
+#   - "aws_credentials"
+#   survey_enabled: true
+#   survey_spec:
+#     name: HMI survey
+#     description: HMI node survey
+#     spec:
+#     - type: text
+#       question_name: "Enter AWS Region"
+#       question_description: "Aws Region for HMI nodes"
+#       variable: aws_region
+#       required: false
+#       default: "us-east-2"
+#     - type: textarea
+#       question_name: "Enter HMI Nodes Hostname"
+#       question_description: "Aws Region for HMI nodes"
+#       variable: hmi_nodes
+#       required: false
+#       default: node1
+# - name: "2. Configure Podman to run Inductive Automation Ignition"
+#   description: "Configure Podman to run Inductive Automation Ignition"
+#   inventory: hmi-smart-inventory
+#   project: edge-hmi-demo
+#   playbook: "ansible/podman_playbook.yml"
+#   become_enabled: true
+#   credentials:
+#   - "hmi_nodes"
+#   survey_enabled: true
+#   survey_spec:
+#     name: Podman survey
+#     description: Podman survey
+#     spec:
+#     - type: text
+#       question_name: "Enter Quay Username"
+#       question_description: "Quay username for podman"
+#       variable: podman_username
+#       required: false
+#     - type: password
+#       question_name: "Enter Quay Password"
+#       question_description: "Quay password for podman"
+#       variable: podman_password
+#       required: false
+# - name: "3. Deploy Kiosk Mode to HMI Devices"
+#   description: "Deploy Kiosk Mode to HMI Devices"
+#   inventory: hmi-smart-inventory
+#   project: edge-hmi-demo
+#   playbook: "ansible/kiosk_playbook.yml"
+#   become_enabled: true
+#   credentials:
+#   - "hmi_nodes"
+#   survey_enabled: true
+#   survey_spec:
+#     name: Kiosk survey
+#     description: Kiosk survey
+#     spec:
+#     - type: text
+#       question_name: "Enter RHSM Username"
+#       question_description: "RHSM Username"
+#       variable: rhsm_username
+#       required: false
+#     - type: password
+#       question_name: "Enter RHSM Password"
+#       question_description: "RHSM password"
+#       variable: rhsm_password
+#       required: false
+# - name: "4. OS Hardening"
+#   description: "OS Hardening"
+#   inventory: hmi-smart-inventory
+#   project: edge-hmi-demo
+#   playbook: "ansible/hardening_playbook.yml"
+#   become_enabled: true
+#   credentials:
+#   - "hmi_nodes"
+# - name: "5. Validate Security on HMI Devices(scheduled to report to Splunk)"
+#   description: "Validate Security on HMI Devices(scheduled to report to Splunk)"
+#   inventory: hmi-smart-inventory
+#   project: edge-hmi-demo
+#   playbook: "ansible/security_playbook.yml"
+#   become_enabled: true
+#   credentials:
+#   - "hmi_nodes"
+# automation_controller_job_workflow_templates: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image_tag: v1.3.0
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/gpte-devops-automation/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.16.8"
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 2Gi
+ocp4_workload_gitea_operator_postgresql_volume_size: 2Gi
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_disable_registration: false
+ocp4_workload_gitea_operator_enable_captcha: false
+ocp4_workload_gitea_operator_allow_create_organization: true
+ocp4_workload_gitea_operator_register_email_confirm: false
+ocp4_workload_gitea_operator_enable_notify_email: false
+ocp4_workload_gitea_operator_mailer_enabled: false
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: dev-admin
+ocp4_workload_gitea_operator_admin_email: dev-admin@opentlc.com
+ocp4_workload_gitea_operator_admin_password: openshift
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_password: openshift
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/globex-retail/inventory.git
+  name: inventory
+  private: false
+
+# ---------------------------------------------------------
+# Workload: OpenShift Pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.7
+ocp4_workload_pipelines_tkn_version: 0.23.1
+ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.10_2022_06_06
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: stable
+ocp4_workload_openshift_gitops_pipelines_csv_prefix: openshift-pipelines-operator-rh
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
+ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.10_2022_06_06
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_codeserver
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_codeserver_name: codeserver
+ocp4_workload_codeserver_workspace_name: ide
+ocp4_workload_codeserver_password: "{{ common_password }}"
+ocp4_workload_codeserver_pvc_size: 3Gi
+ocp4_workload_codeserver_gitea_name: gitea
+ocp4_workload_codeserver_gitea_namespace: gitea
+ocp4_workload_codeserver_extensions:
+- filename: auchenberg.vscode-browser-preview-0.7.2.vsix
+  url: https://gpte-public.s3.amazonaws.com/vscode-plugins/auchenberg.vscode-browser-preview-0.7.2.vsix
+
+ocp4_workload_codeserver_multi_user_install: true
+ocp4_workload_codeserver_multi_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_codeserver_multi_user_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_codeserver_multi_user_namespace_base: workshop
+
+# Repositories to set up in codeserver
+ocp4_workload_codeserver_repos_user: dev-user
+#ocp4_workload_codeserver_repos_password: openshift  # openshift is used above
+ocp4_workload_codeserver_repos_password: "{{ common_password }}"
+ocp4_workload_codeserver_repos:
+- name: inventory
+  account: dev-user
+  branch: main
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_aap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_aap_install_controller: true
+ocp4_workload_gitops_aap_install_hub: true
+ocp4_workload_gitops_aap_enable_multiuser_controller: true
+ocp4_workload_gitops_aap_multiuser_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_gitops_aap_multiuser_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_gitops_aap_multiuser_namespace_base: workshop
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+
+agnosticv_meta:
+  sandboxed: false
+  secrets:
+  - azure_redhat0
+  idle_after_deploy: 9999
+  idle_after_start: 9999
+  babylon:
+    kubeconfig: babylon-prod.kubeconfig
+  deploy_with: babylon
+  virtualenv: babylon
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-gpte
+  deployer:
+    # virtualenv: ansible2.9-python3.6-2021-11-30
+    virtualenv: windows-ansible2.9-python2.7-2022-01-11
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: POC Ansible Windows Workshop
+    category: Workshops
+    keywords:
+    - poc
+    - win
+    - aap2
+    - ansible
+    parameters: []
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHPDS
+  secrets:
+  - name: gpte
+    namespace: gpte
+  - name: satellite-rhel81-ha
+    namespace: gpte
+  - name: ocp4-token
+    namespace: gpte
+  - name: rhods-git-secret
+    namespace: gpte
+#   - name: output-dir-s3
+#     namespace: gpte
