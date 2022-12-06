@@ -4,6 +4,57 @@
 # Some valid: development, ilt, production, event
 purpose: development
 
+subdomain_base_suffix: .example.opentlc.com
+ocp4_base_domain: "{{ subdomain_base_suffix }}"
+
+instances:
+- name: bastion
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: true
+  floating_ip: true
+  image: "{{ bastion_instance_image | default(__image) }}"
+  flavor:
+    ec2: "{{ bastion_instance_type | default(__instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions"
+  - key: "ostype"
+    value: "linux"
+  rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+  security_groups:
+  - BastionSG
+  - WebSG
+  - HostSG
+- name: win
+  count: "{{ windows_server_instance_count | default(2) }}"
+  public_dns: true
+  image:
+    name: "Windows_Server-2016-English-Full-Base*"
+  flavor:
+    ec2: "{{ windows_server_instance_type | default(__windows_instance_type) }}"
+  UserData: |
+       UserData:
+              "Fn::Base64":
+                 "Fn::Join":
+                   - ""
+                   - - "<powershell>\n"
+                     - "$admin = [adsi]('WinNT://./administrator, user')\n"
+                     - "$admin.PSBase.Invoke('SetPassword', '{{windows_password}}')\n"
+                     - "$scriptPath=((New-Object System.Net.Webclient).DownloadString('https://raw.githubusercontent.com/ansible/ansible/devel/examples/scripts/ConfigureRemotingForAnsible.ps1'))\n"
+                     - "Invoke-Command -ScriptBlock ([scriptblock]::Create($scriptPath)) -ArgumentList '-skipNetworkProfileCheck'\n"
+                     - "</powershell>"
+  tags:
+  - key: "AnsibleGroup"
+    value: "servers"
+  - key: "ostype"
+    value: "windows"
+  security_groups:
+  - DefaultSG
+  - WinSG
+  - HostSG
+
 agnosticv_meta:
   idle_after_deploy: 4
   idle_after_start: 4
