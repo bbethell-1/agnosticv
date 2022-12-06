@@ -1,9 +1,9 @@
 :toc2:
 
-= AgnosticV, vars for link:https://github.com/redhat-cop/agnosticd[AgnosticD]
+= RHPDS catalog
 
 
-This repo contains the variables needed for catalog items present in RHPDS and labs.opentlc.com.
+This repository contains the catalog of RHPDS https://demo.redhat.com. It contains the variables and also meta definition like descriptions, labels, categories, RBAC access, ...
 
 
 == Goals
@@ -24,10 +24,22 @@ This repo contains the variables needed for catalog items present in RHPDS and l
 *** Detect non-documented variables
 * Risk mitigation: no more manual operations on the deployment servers
 
-== Structure
+
+Please refer to link:https://github.com/redhat-cop/agnosticv[agnosticv] documentation:
+
+* agnosticv CLI to list/merge variables of the catalog items
+* Default merge strategies
+
+== Structure of this repository
 
 ----
 common.yaml
+
+includes/
+  parameters/
+    ...
+  secrets/
+    ...
 
 ACCOUNT/
     common.yaml
@@ -46,33 +58,226 @@ ACCOUNT/
          prod.yaml
 ----
 
-When deploying, you provide 3 things to the deployer (scripts or tower).
 
-. _ACCOUNT_        (for example `gpte`, `openshift`, `sandboxes-gpte`, ...)
-. _CATALOGITEM_    (for example `OCP_CLIENTVM`)
-. _STAGE_          (`dev|test|prod`)
+== CI / CD
+
+This repo uses Github workflows. For the full definition, see directory link:.github/workflows[.github/workflows].
+
+=== User stories and flowcharts
 
 
-The variable of the yaml files are then merged in this order:
+[source,mermaid]
+.Key
+----
+flowchart TB
+  automated[Automated operation]
+  decision{Automated decision}
+  manual[Manual operation]
+  manualdecision{Manual decision}
+  style manualdecision fill:#FFF7A8,stroke:orange,stroke-width:4px
+  style manual fill:#FFF7A8,stroke:orange,stroke-width:4px
+  datastore[(Datastore, Git, DB)]
+  approved(<b>Automated approval</b>)
+  style approved fill:#D6FFD9,stroke:green,stroke-width:4px
+  rejected(fa:fa-ban <b>Automated rejection</b>)
+  style rejected fill:#FFD0D0,stroke:red,stroke-width:4px
+----
 
-* `common.yaml`
-* `ACCOUNT/common.yaml`
-* `ACCOUNT/CATALOGITEM/common.yaml`
-* `ACCOUNT/CATALOGITEM/STAGE*.yaml`   (_STAGE_ = `dev|test|prod`)
+==== Update deployer code using the DEV catalog item
 
-=== Merging strategy (not meta vars)
+As a lab or demo developer, i want to update the code of the deployer while testing the change in RHPDS. When i can't use my local machine to provision, i want to be able to use RHPDS and a DEV catalog item to test my code change.
 
-If a variable is defined in several YAML files, the definition in the last file has precedence over the others.
+I want to be able to do all of the above without having to wait for someone.
 
-When a variable is present in more than one file:
+[source,mermaid]
+----
+flowchart TB
+  classDef agnosticd fill:#f9f3,stroke:#A80093,stroke-width:1px;
+  classDef manual fill:#FFF7A8,stroke:orange,stroke-width:4px
 
-* if it's a string, last definition will override previous
-* if it's a list, last definition will override previous
-* if it's a dictionary , all dictionaries will be *merged*
+  cp[Open PR<br /><b>agnosticd</b>]
+  class cp manual
 
-Regarding merging strategies for meta variables, see next section.
+  gitp[(PR branch<br /><b>agnosticd</b>)]
+  class gitp agnosticd
+  gitd[(development<br />branch<br /><b>agnosticd</b>)]
+  class gitd agnosticd
+  merge[Merge PR<br /><b>agnosticd</b>]
+  class merge manual
+  u2[Open PR for DEV<br />update scm_ref<br /><b>agnosticv</b>]
+  class u2 manual
+  u3[Restore DEV item]
+  class u3 manual
 
-== Meta variables
+  subgraph it [Iterative phase]
+  test(Developer interacts<br />with DEV item)
+  class test manual
+  happy{happy?}
+  class happy manual
+  u1[Update PR<br /><b>agnosticd</b>]
+  class u1 manual
+  end
+
+  cp -.- gitp
+  cp --> u2
+  u2 -- auto-approved --> u2
+  u2 -. point to .-> gitp
+  u2 --> it
+  test --> happy
+  happy -- no --> u1
+  u1 -. update .-> gitp
+  u1 --> test
+  happy -- yes --> merge
+
+  merge -. into .-> gitd
+
+
+  merge --> u3
+  u3 -. point to .-> gitd
+  u3 -- auto-approved --> u3
+----
+
+
+==== Create or Update catalog item, general
+
+. As a catalog item maintainer, i want to be able to test a change of a catalog item without impacting production.
+. As a content developer, i want to be able to create a new catalog item and see the change on the integration cluster without having to wait for someone.
+. As a content developer, i want to be able to make a change to a catalog item and see the change or test the change on the integration cluster without having to wait for someone.
+
+[source,mermaid]
+----
+flowchart TB
+  labeler[Workflow: Labeler]
+  click labeler "https://github.com/rhpds/agnosticv/blob/master/.github/workflows/labeler.yml" "labeler.yml"
+  dev{dev.yaml only?}
+  start[Open PR<br />Update PR<br />Reopen PR]
+  style start fill:#FFF7A8,stroke:orange,stroke-width:4px
+  static[Workflow: static-checks-pr]
+  click static "https://github.com/rhpds/agnosticv/blob/master/.github/workflows/static-checks-pr.yml" "static-checks-pr.yml"
+  close[Close PR]
+  style close fill:#FFF7A8,stroke:orange,stroke-width:4px
+  prclosed[Workflow: integration-pr-closed]
+  click prclosed "https://github.com/rhpds/agnosticv/blob/master/.github/workflows/integration-pr-closed.yml" "integration-pr-closed.yml"
+
+  giti[(integration branch)]
+  comment[Comment back in the PR]
+  approved(<b>PR approved</b>)
+  approved2(<b>PR approved</b>)
+  style approved fill:#D6FFD9,stroke:green,stroke-width:4px
+  style approved2 fill:#D6FFD9,stroke:green,stroke-width:4px
+  rejected(fa:fa-ban <b>PR rejected</b>)
+  rejected2(fa:fa-ban <b>PR rejected</b>)
+  style rejected fill:#FFD0D0,stroke:red,stroke-width:4px
+  style rejected2 fill:#FFD0D0,stroke:red,stroke-width:4px
+  size[job lfs-warning:<br />Check size of files in commits]
+  staticjob[job static checks:<br />validate YAML lint <br />Validate syntax and schema<br />Validate all git refs exist<br />Babylon validations: anarchy namespace, EE validation]
+  m1{PR merged?}
+  test(Maintainer can test<br />from the integration cluster)
+  style test fill:#FFF7A8,stroke:orange,stroke-width:4px
+  sync[Sync master branch to integration branch]
+  revert[Revert all changes from the integration branch]
+  enterprise{Is enterprise?}
+  e2e[End to End test in Jenkins<br /><b>integration</b>]
+  passed{Passed?}
+  merge[job: Merge PR branch into integration]
+  qa{QA successful?<br /><b>integration</b>}
+  allapproved{all approved?}
+  finalmerge(Maintainer can<br />merge the PR)
+  style finalmerge fill:#FFF7A8,stroke:orange,stroke-width:4px
+  upr[Update PR]
+  style upr fill:#FFF7A8,stroke:orange,stroke-width:4px
+
+  labeler --> dev
+  dev -- yes --> approved
+  start --> static
+  start --> labeler
+  static --> size
+  static --> staticjob
+  staticjob & size --> ok{all jobs passed?}
+  ok -- yes --> merge
+  merge -.-> giti
+  ok -- no --> rejected
+
+  subgraph agnosticv-operator
+
+    update[Update the catalog on the integration cluster]
+
+    giti o-- watch --> anyupdate{Any update?}
+
+    anyupdate -- yes --> update
+    update --> comment
+  end
+
+
+  comment --> test
+  test --> qa
+  qa -- yes --> allapproved -- yes --> finalmerge
+  allapproved -- no --> upr
+  qa -- no --> upr
+  comment --> enterprise
+  enterprise -- yes --> e2e
+  e2e --> passed
+  passed -- yes --> approved2
+  passed -- no --> rejected2
+
+  close --> prclosed --> m1
+  m1 -- yes --> sync
+  m1 -- no --> revert
+  revert -.-> giti
+----
+
+==== Promote deployer development to production
+
+As a catalog item maintainer, i want to be able to promote a change in agnosticd development branch to production.
+
+[source,mermaid]
+----
+flowchart TB
+  version>Git revision]
+  dev[DEV catalog item]
+  bumptest[new TEST tag]
+  style bumptest fill:#FFF7A8,stroke:orange,stroke-width:2px
+  testtest[TEST catalog item]
+  bumpprod[new PROD tag]
+  style bumpprod fill:#FFF7A8,stroke:orange,stroke-width:2px
+  prprod[Open PR to update PROD]
+  style prprod fill:#FFF7A8,stroke:orange,stroke-width:2px
+  merge[Merge PR]
+  style merge fill:#FFF7A8,stroke:orange,stroke-width:2px
+  qatest{QA on <b>production</b> cluster<br />successful?}
+  style qatest fill:#FFF7A8,stroke:orange,stroke-width:2px
+  qaprod{QA on <b>integration</b> cluster<br />successful?}
+
+  dev -.- version
+  bumptest -.point to.-> version
+  bumpprod -.point to.-> version
+
+  dev --> bumptest --> testtest --> qatest
+  qatest -- yes --> bumpprod --> prprod --> qaprod -- yes --> merge
+----
+
+
+==  Running AgnosticD and AgnosticV via CLI
+
+* First, use link:https://github.com/redhat-cop/agnosticv/releases/[`agnosticv` CLI] to get a YAML file of your config.  Indicate the catalog item path to merge the variables.
++
+.Example
+----
+cd agnosticv
+agnosticv --merge sandboxes-gpte/RHTE_A0007/dev.yml > $HOME/config.yaml
+----
+** For more information about the agnosticv CLI, see agnosticv link:https://github.com/redhat-cop/agnosticv[Readme]
+
+* Then run your agnosticD deployer
++
+.Example `ansible-playbook` agnosticD
+----
+#!/bin/bash
+ansible-playbook ./ansible/main.yml -e @./config.yaml -e @./secret.yaml -e guid=<a GUID>
+----
+
+
+== Meta variables (reference only)
 
 Meta variables are just variables like any other, except they are not used for agnostic**d**. Instead they are useful to configure the way we want the deployment to happen, or anything that is done **before** or **outside** of agnostic**d**.
 
@@ -328,7 +533,7 @@ __meta__:
 When using the scheduler, the name of the secret will be set by the scheduler automatically, depending on the labels passed as `cloud_preference` and `cloud_selector`, so you don't need to set the secret of the cluster.
 For more information about the scheduler, please refer to the documentation in the wiki: https://ipamwiki.opentlc.com/index.php/AgnosticS
 
-==== Parameters passed from Cloudforms
+==== Parameters passed from Cloudforms (reference only)
 
 Sometimes you want variables to be dynamic, and to come from a dialog in Cloudforms.
 
@@ -371,7 +576,7 @@ Explanation: Everthing that is in `\\__meta__` is automatically parsed by the li
 ====
 
 
-== Migrate a catalog item to agnosticv
+== Migrate a catalog item to agnosticv (reference only)
 
 == Checklist
 
@@ -426,21 +631,3 @@ to
 ########################################################################
 ----
 
-==  Running AgnosticD and AgnosticV via CLI
-
-* First, use link:https://github.com/redhat-cop/agnosticv/releases/[`agnosticv` CLI] to get a YAML file of your config.  Indicate the catalog item path to merge the variables.
-+
-.Example
-----
-cd agnosticv
-agnosticv --merge sandboxes-gpte/RHTE_A0007/dev.yml > $HOME/config.yaml
-----
-** For more information about the agnosticv CLI, see agnosticv link:https://github.com/redhat-cop/agnosticv[Readme]
-
-* Then run your agnosticD deployer
-+
-.Example `ansible-playbook` agnosticD
-----
-#!/bin/bash
-ansible-playbook ./ansible/main.yml -e @./config.yaml -e @./secret.yaml -e guid=<a GUID>
-----
