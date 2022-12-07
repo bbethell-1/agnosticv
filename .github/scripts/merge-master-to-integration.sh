@@ -17,7 +17,7 @@ if ! git merge \
     --no-edit \
     --squash \
     -X theirs \
-    "origin/master"; then
+    master; then
 
     # Try to resolve conflicts
 
@@ -38,7 +38,7 @@ if ! git merge \
         git add "${i}"
     done
 
-    git commit -m "Auto-merge #${PR} into integration"
+    git commit -m "Auto-merge master into integration"
 fi
 
 if [ $(git diff --cached | wc -c) != 0 ]; then
