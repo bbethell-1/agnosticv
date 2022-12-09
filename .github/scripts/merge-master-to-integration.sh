@@ -51,15 +51,17 @@ set +e
 # Merge master into integration, prefer master
 merge_squash
 
-if [ $(git diff master integration | wc -c) != 0 ]; then
+if [ "${FORCE_SYNC}" = "true" ]; then
+    if [ "$(git diff master integration | wc -c)" != 0 ]; then
 
-    # Merge integration into master but prefer master
-    git checkout master
-    git merge --no-edit -s ours integration
+        # Merge integration into master but prefer master
+        git checkout master
+        git merge --no-edit -s ours integration
 
-    # Merge master into integration, prefer master
-    git checkout integration
-    merge_squash
+        # Merge master into integration, prefer master
+        git checkout integration
+        merge_squash
+    fi
 fi
 
 # Push only integration
