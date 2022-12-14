@@ -34,7 +34,7 @@ key_name: opentlc_admin_backdoor
 cloud_tags:
   env_type: "{{ env_type }}"
   platform: "{{ platform | d('unknown') }}"
-num_users: 5
+num_users: 1
 
 # -------------------------------------------------------------------
 # Security group
@@ -98,22 +98,6 @@ instances:
   - BastionSG
   - WebSG
   - HostSG
-- name: "frontend"
-  count: "{{ frontend_instance_count | default(1) }}"
-  public_dns: true
-  dns_loadbalancer: false
-  image: "{{ frontend_instance_image | default(__image) }}"
-  flavor:
-    ec2: "{{ frontend_instance_type  | default(__instance_type) }}"
-  tags:
-  - key: "AnsibleGroup"
-    value: "load_balancers"
-  - key: "ostype"
-    value: "linux"
-  security_groups:
-  - DefaultSG
-  - WebSG
-  - HostSG
 - name: "app"
   count: "{{ app_instance_count | default(2) }}"
   public_dns: true
@@ -143,13 +127,8 @@ master_instance_count: 3
 master_instance_type: m5.2xlarge
 worker_instance_count: 3
 worker_instance_type: m5.4xlarge
+ocp4_base_domain: "{{ sandbox_zone }}"
 
-# -------------------------------------------------------------------
-# OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
-# instead of cluster-{{ guid }}.{{ guid }}.sandboxXXX.opentlc.com
-# -------------------------------------------------------------------
-#subdomain_base_suffix: "example.opentlc.com"
-#ocp4_base_domain: "{{ subdomain_base_suffix }}"
 # -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
@@ -162,23 +141,18 @@ update_packages: true
 # Student User on Bastion
 # -------------------------------------------------------------------
 install_student_user: true
-# --- student_name not set -> Requestor User ID is used as student_name
 student_name: dev-admin
-# --- student_password not set -> generate random password
 student_password: "{{ common_password }}"
-# --- Student is allowed to sudo and switch to root
 student_sudo: true
 
 # Enable if the item is being deployed to a sandbox account
 # and you want credentials provided to the user
 sandbox_student_user: true
-
 sandbox_user_info_messages_enable: true
 
 # -------------------------------------------------------------------
 # Other Variables
 # -------------------------------------------------------------------
-
 install_ftl: false
 
 # -------------------------------------------------------------------
@@ -203,8 +177,8 @@ requirements_content:
 # Workloads
 # -------------------------------------------------------------------
 infra_workloads:
-- ocp4_workload_le_certificates            # all segments
-- ocp4_workload_authentication             # all segments
+- ocp4_workload_le_certificates
+- ocp4_workload_authentication
 - ocp4_workload_gitea_operator
 - ocp4_workload_pipelines
 - ocp4_workload_openshift_gitops
@@ -213,31 +187,119 @@ infra_workloads:
 - automation-controller-config
 # - edge_nodes_info
   # launching bookbag from hybrid-cloud-binder now
-  #- ocp4_workload_bookbag_ohc_demo           # judd prod
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
 ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_htpasswd_user_base: student
-ocp4_workload_authentication_htpasswd_user_count: 5
+ocp4_workload_authentication_htpasswd_user_base: "{{ student_name }}"
+ocp4_workload_authentication_htpasswd_user_count: 1
 ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
 ocp4_workload_authentication_admin_user: admin
 ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
 ocp4_workload_authentication_remove_kubeadmin: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_lpe_automation_controller
+# Workload: ocp4_workload_gitea_operator
 # -------------------------------------------------------------------
-#automation_controller_project: "ac-{{ guid }}"
-#automation_controller_admin_secret: "ac-{{ guid }}-secret"
-#automation_controller_admin_password: "{{ common_password }}"
-automation_controller_upload_manifest: true
-automationcontroller_manifest_url: https://gpte-public.s3.amazonaws.com/aap2-subscription/manifest_31_10_2022.zip
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image_tag: v1.3.0
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/gpte-devops-automation/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.16.8"
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 2Gi
+ocp4_workload_gitea_operator_postgresql_volume_size: 2Gi
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_disable_registration: false
+ocp4_workload_gitea_operator_enable_captcha: false
+ocp4_workload_gitea_operator_allow_create_organization: true
+ocp4_workload_gitea_operator_register_email_confirm: false
+ocp4_workload_gitea_operator_enable_notify_email: false
+ocp4_workload_gitea_operator_mailer_enabled: false
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: "{{ student_name }}"
+ocp4_workload_gitea_operator_admin_email: "{{ student_name }}@opentlc.com"
+ocp4_workload_gitea_operator_admin_password: openshift
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_password: openshift
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/globex-retail/inventory.git
+  name: inventory
+  private: false
+- repo: https://github.com/redhat-gpte-devopsautomation/aap2-gitops
+  name: aap2-gitops
+  private: false
+- repo: https://github.com/linuxnerds/edge-hmi-demo.git
+  name: edge-hmi-demo
+  private: false
+
+# ---------------------------------------------------------
+# Workload: OpenShift Pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.7
+ocp4_workload_pipelines_tkn_version: 0.23.1
+ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.10_2022_06_06
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: stable
+ocp4_workload_openshift_gitops_pipelines_csv_prefix: openshift-pipelines-operator-rh
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
+ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.10_2022_06_06
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_codeserver
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_codeserver_name: codeserver
+ocp4_workload_codeserver_workspace_name: ide
+ocp4_workload_codeserver_password: "{{ common_password }}"
+ocp4_workload_codeserver_pvc_size: 3Gi
+ocp4_workload_codeserver_gitea_name: gitea
+ocp4_workload_codeserver_gitea_namespace: gitea
+ocp4_workload_codeserver_extensions:
+- filename: auchenberg.vscode-browser-preview-0.7.2.vsix
+  url: https://gpte-public.s3.amazonaws.com/vscode-plugins/auchenberg.vscode-browser-preview-0.7.2.vsix
+
+# Repositories to set up in codeserver
+ocp4_workload_codeserver_repos_user: "{{ student_user }}"
+#ocp4_workload_codeserver_repos_password: openshift  # openshift is used above
+ocp4_workload_codeserver_repos_password: "{{ common_password }}"
+ocp4_workload_codeserver_repos:
+- name: edge-hmi-demo
+  account: "{{ student_user }}"
+  branch: main
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_aap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_aap_install_controller: true
+ocp4_workload_gitops_aap_install_hub: true
+# ocp4_workload_gitops_aap_repo: https://github.com/redhat-gpte-devopsautomation/aap2-gitops
+ocp4_workload_gitops_aap_repo: "{{ r_gitea.resources[0].status.giteaRoute }}/{{ student_name }}/aap2-gitops"
 
 # -------------------------------------------------------------------
 # Workload: automation-controller-config
 # -------------------------------------------------------------------
+automation_controller_upload_manifest: true
+automationcontroller_manifest_url: https://gpte-public.s3.amazonaws.com/aap2-subscription/manifest_31_10_2022.zip
+
 ssh_privatekey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path) }}"
 ssh_publickey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path_pub) }}"
 account_user_access_key: "{{ aws_access_key_id }}"
@@ -256,7 +318,7 @@ automation_controller_credentials:
   password: "{{ account_user_secret_access_key }}"
 
 automation_controller_users:
-- name: dev-admin
+- name: "{{ student_name }}"
   password: "{{ common_password }}"
   superuser: true
 
@@ -375,104 +437,8 @@ automation_controller_users:
 # automation_controller_job_workflow_templates: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_gitea_operator
-# -------------------------------------------------------------------
-ocp4_workload_gitea_operator_project: gitea
-ocp4_workload_gitea_operator_catalog_image_tag: v1.3.0
-
-ocp4_workload_gitea_operator_deploy_gitea_instance: true
-ocp4_workload_gitea_operator_gitea_image: quay.io/gpte-devops-automation/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: "1.16.8"
-ocp4_workload_gitea_operator_name: gitea
-ocp4_workload_gitea_operator_gitea_hostname: gitea
-ocp4_workload_gitea_operator_gitea_volume_size: 2Gi
-ocp4_workload_gitea_operator_postgresql_volume_size: 2Gi
-ocp4_workload_gitea_operator_ssl_route: true
-
-ocp4_workload_gitea_operator_disable_registration: false
-ocp4_workload_gitea_operator_enable_captcha: false
-ocp4_workload_gitea_operator_allow_create_organization: true
-ocp4_workload_gitea_operator_register_email_confirm: false
-ocp4_workload_gitea_operator_enable_notify_email: false
-ocp4_workload_gitea_operator_mailer_enabled: false
-
-ocp4_workload_gitea_operator_create_admin: true
-ocp4_workload_gitea_operator_admin_user: dev-admin
-ocp4_workload_gitea_operator_admin_email: dev-admin@opentlc.com
-ocp4_workload_gitea_operator_admin_password: openshift
-
-ocp4_workload_gitea_operator_create_users: true
-ocp4_workload_gitea_operator_user_password: openshift
-ocp4_workload_gitea_operator_migrate_repositories: true
-ocp4_workload_gitea_operator_repositories_list:
-- repo: https://github.com/globex-retail/inventory.git
-  name: inventory
-  private: false
-
-# ---------------------------------------------------------
-# Workload: OpenShift Pipelines
-# ---------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.7
-ocp4_workload_pipelines_tkn_version: 0.23.1
-ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
-ocp4_workload_pipelines_use_catalog_snapshot: true
-ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.10_2022_06_06
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_openshift_gitops
-# -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: stable
-ocp4_workload_openshift_gitops_pipelines_csv_prefix: openshift-pipelines-operator-rh
-ocp4_workload_openshift_gitops_use_catalog_snapshot: true
-ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
-ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.10_2022_06_06
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_codeserver
-# -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_setup_cluster_admin: true
-ocp4_workload_codeserver_name: codeserver
-ocp4_workload_codeserver_workspace_name: ide
-ocp4_workload_codeserver_password: "{{ common_password }}"
-ocp4_workload_codeserver_pvc_size: 3Gi
-ocp4_workload_codeserver_gitea_name: gitea
-ocp4_workload_codeserver_gitea_namespace: gitea
-ocp4_workload_codeserver_extensions:
-- filename: auchenberg.vscode-browser-preview-0.7.2.vsix
-  url: https://gpte-public.s3.amazonaws.com/vscode-plugins/auchenberg.vscode-browser-preview-0.7.2.vsix
-
-#ocp4_workload_codeserver_multi_user_install: false
-#ocp4_workload_codeserver_multi_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
-#ocp4_workload_codeserver_multi_user_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
-#ocp4_workload_codeserver_multi_user_namespace_base: workshop
-
-# Repositories to set up in codeserver
-ocp4_workload_codeserver_repos_user: dev-user
-#ocp4_workload_codeserver_repos_password: openshift  # openshift is used above
-ocp4_workload_codeserver_repos_password: "{{ common_password }}"
-ocp4_workload_codeserver_repos:
-- name: inventory
-  account: dev-user
-  branch: main
-# --- Student Workloads (YAML List)
-student_workloads: []
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_gitops_aap
-# -------------------------------------------------------------------
-ocp4_workload_gitops_aap_install_controller: true
-ocp4_workload_gitops_aap_install_hub: true
-# ocp4_workload_gitops_aap_enable_multiuser_controller: false
-# ocp4_workload_gitops_aap_multiuser_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
-# ocp4_workload_gitops_aap_multiuser_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
-# ocp4_workload_gitops_aap_multiuser_namespace_base: workshop
-
-# -------------------------------------------------------------------
 # AgnosticV meta variables
 # -------------------------------------------------------------------
-
 agnosticv_meta:
   nuke_sandbox: true
   idle_after_deploy: 9999
