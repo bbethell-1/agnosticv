@@ -187,6 +187,7 @@ infra_workloads:
 - automation-controller-config
 - ocp4_workload_rhacs
 - ocp4_workload_rhacs_secured_cluster
+- ocp4_workload_tekton_execution_environment
 # - edge_nodes_info
   # launching bookbag from hybrid-cloud-binder now
 
@@ -238,6 +239,12 @@ ocp4_workload_gitea_operator_repositories_list:
 - repo: https://github.com/linuxnerds/edge-hmi-demo.git
   name: edge-hmi-demo
   private: false
+- name: ee-pipeline
+  private: false
+  repo: 'https://github.com/jtudelag/ansible-execution-environments.git'
+- name: ee-automated-pipeline
+  private: false
+  repo: 'https://github.com/jtudelag/ansible-execution-environments.git'
 
 # ---------------------------------------------------------
 # Workload: OpenShift Pipelines
@@ -281,6 +288,12 @@ ocp4_workload_codeserver_repos:
 - name: edge-hmi-demo
   account: "{{ user_base }}1"
   branch: main
+- account: '{{ user_base }}1'
+  branch: main
+  name: ee-pipeline
+- account: '{{ user_base }}1'
+  branch: main
+  name: ee-automated-pipeline
 
 # --- Student Workloads (YAML List)
 student_workloads: []
@@ -454,6 +467,47 @@ ocp4_workload_rhacs_install_operator_channel: "rhacs-3.69"
 ocp4_workload_rhacs_install_operator_starting_csv: "rhacs-operator.v3.69.1"
 ocp4_workload_rhacs_install_operator_use_catalog_snapshot: true
 ocp4_workload_rhacs_install_operator_catalog_source_tag: "v4.10_2022_04_04"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tekton_execution_environment
+# -------------------------------------------------------------------
+ocp4_workload_tekton_ee_namespace: ansible-ee-pipeline
+ocp4_workload_tekton_ee_event_listener_token: "{{ common_password }}"
+ocp4_workload_tekton_ee_automation_controller_job_template: "Demo Job Template"
+ocp4_workload_tekton_ee_internal_registry_sa: registry-admin
+ocp4_workload_tekton_ee_centeral_stackrox_username: admin
+ocp4_workload_tekton_ee_centeral_stackrox_password: "{{ ocp4_workload_rhacs_central_admin_password }}"
+ocp4_workload_tekton_ee_centeral_stackrox_inform_only_policies:
+- Fixable Severity at least Important
+ocp4_workload_tekton_ansible_execution_environments:
+- pipeline_name: p1
+  pipeline_dir: section1
+  type: gitea
+  webhook: false
+  git_params:
+    api_url: "{{ _ocp4_workload_gitea_operator_gitea_route }}/api/v1"
+    url: "{{ _ocp4_workload_gitea_operator_gitea_route }}"
+    repository: "{{ user_base }}1/ee-pipeline"
+    branch: main
+    username: "{{ user_base }}1"
+    password: "{{ common_password }}"
+  ee_params:
+    name: ee-pipeline
+    tag: 1.0.0
+- pipeline_name: p2
+  pipeline_dir: section2
+  type: gitea
+  webhook: true
+  git_params:
+    api_url: "{{ _ocp4_workload_gitea_operator_gitea_route }}/api/v1"
+    url: "{{ _ocp4_workload_gitea_operator_gitea_route }}"
+    repository: "{{ user_base }}1/ee-automated-pipeline"
+    branch: main
+    username: "{{ user_base }}1"
+    password: "{{ common_password }}"
+  ee_params:
+    name: ee-automated-pipeline
+    tag: 1.0.0
 
 # -------------------------------------------------------------------
 # Babylon meta variables
