@@ -21,6 +21,87 @@ requirements_content:
   - name: ansible.utils
     version: 2.6.1
 
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/redhat-gpte-devopsautomation/aap2-gitops.git
+  name: aap2-gitops
+  private: false
+- repo: https://github.com/linuxnerds/edge-hmi-demo.git
+  name: edge-hmi-demo
+  private: false
+- name: ee-pipeline
+  private: false
+  repo: 'https://github.com/jtudelag/ansible-execution-environments.git'
+- name: ee-automated-pipeline
+  private: false
+  repo: 'https://github.com/jtudelag/ansible-execution-environments.git'
+- name: multitier-aap
+  private: false
+  repo: 'https://github.com/linuxnerds/edge-hmi-demo.git'
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_codeserver
+# -------------------------------------------------------------------
+ocp4_workload_codeserver_repos:
+- name: edge-hmi-demo
+  account: "{{ user_base }}1"
+  branch: main
+- account: '{{ user_base }}1'
+  branch: main
+  name: ee-pipeline
+- account: '{{ user_base }}1'
+  branch: main
+  name: ee-automated-pipeline
+- account: '{{ user_base }}1'
+  branch: main
+  name: multitier-aap
+
+# -------------------------------------------------------------------
+# Workload: automation-controller-config
+# -------------------------------------------------------------------
+
+automation_controller_projects:
+- name: "multitier-aap"
+  description: "Multi Tier Application"
+  scm_type: git
+  scm_url: "{{ _ocp4_workload_gitea_operator_gitea_route }}/{{ user_base }}1/multitier-aap"
+
+automation_controller_inventories:
+- name: "multitier-app-inventory"
+  description: "Multi Tier App inventory"
+- name: multitier-app-smart-inventory
+  description: Multi Tier smart
+  kind: smart
+  host_filter: groups__name__icontains=tag_AnsibleGroup_bastions
+
+automation_controller_inventory_sources:
+- name: "aws_source"
+  description: "aws dynamic inventory"
+  inventory: "multitier-app-dynamic-inventory"
+  credential: "aws_credentials"
+  source: ec2
+  source_vars:
+    keyed_groups:
+    - prefix: tag
+      key: tags
+
+automation_controller_jobtemplates:
+- name: "multitier-app-deployer"
+  description: "multitier application deployer"
+  inventory: "Demo Inventory"
+  project: multitier-aap
+  playbook: "ansible/provision_host_playbook.yml"
+  credentials:
+  - "aws_credentials"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tekton_execution_environment
+# -------------------------------------------------------------------
+ocp4_workload_tekton_ee_automation_controller_job_template: "multitier-app-deployer"
+
+# -------------------------------------------------------------------
 agnosticv_meta:
   idle_after_deploy: 4
   idle_after_start: 4
