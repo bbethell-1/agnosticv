@@ -1,0 +1,271 @@
+---
+# Why is this config being deployed?
+# This is a cost tag, please make sure it's correct.
+# Some valid: development, ilt, production, event
+purpose: development
+
+requirements_content:
+  collections:
+    - name: kubernetes.core
+      version: 2.3.1
+    - name: openstack.cloud
+      version: 1.7.2
+    - name: amazon.aws
+      version: 2.2.0
+    - name: community.general
+      version: 4.6.1
+    - name: ansible.posix
+      version: 1.3.0
+    - name: awx.awx
+      version: 21.1.0
+    - name: ansible.utils
+      version: 2.6.1
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+
+ocp4_workload_gitea_operator_repositories_list:
+  - repo: https://github.com/redhat-gpte-devopsautomation/aap2-gitops.git
+    name: aap2-gitops
+    private: false
+  - name: ee-pipeline
+    private: false
+    repo: 'https://github.com/linuxnerds/execution-environment.git'
+  - name: ee-automated-pipeline
+    private: false
+    repo: 'https://github.com/linuxnerds/execution-environment.git'
+  - name: multitier-aap
+    private: false
+    repo: 'https://github.com/linuxnerds/edge-hmi-demo.git'
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_codeserver
+# -------------------------------------------------------------------
+
+ocp4_workload_codeserver_repos:
+
+  - account: '{{ user_base }}1'
+    branch: main
+    name: ee-pipeline
+
+  - account: '{{ user_base }}1'
+    branch: main
+    name: ee-automated-pipeline
+
+  - account: '{{ user_base }}1'
+    branch: main
+    name: multitier-aap
+
+# -------------------------------------------------------------------
+# Workload: automation-controller-config
+# -------------------------------------------------------------------
+
+automation_controller_credentials:
+
+  - name: Multitier Nodes
+    description: Multitier Nodes
+    credential_type: Machine
+    username: ec2-user
+    ssh_key_data: "{{ ssh_privatekey }}"
+
+  - name: aws_credentials
+    description: aws_credentials
+    credential_type: "Amazon Web Services"
+    username: "{{ account_user_access_key }}"
+    password: "{{ account_user_secret_access_key }}"
+
+  - name: hub_registry_credentials
+    description: Hub Registry credentials
+    credential_type: "Container Registry"
+    host: "{{ automation_hub_hostname }}"
+    username: "admin"
+    password: "{{ automation_hub_admin_password }}"
+    verify_ssl: false
+
+automation_controller_users:
+
+  - name: "{{ user_base }}1"
+    password: "{{ common_password }}"
+    superuser: true
+
+automation_controller_projects:
+
+  - name: "multitier-aap"
+    description: "Multi Tier Application"
+    scm_type: git
+    scm_url: "{{ _ocp4_workload_gitea_operator_gitea_route }}/{{ user_base }}1/multitier-aap"
+
+automation_controller_inventories:
+
+  - name: "multitier-app-dynamic-inventory"
+    description: "Multi Tier App inventory"
+
+  - name: multitier-app-smart-inventory
+    description: Multi Tier smart
+    kind: smart
+    host_filter: "groups__name__icontains=tag_AnsibleGroup_app_servers or groups__name__icontains=tag_AnsibleGroup_bastions"
+
+automation_controller_inventory_sources:
+
+  - name: "aws_source"
+    description: "aws dynamic inventory"
+    inventory: "multitier-app-dynamic-inventory"
+    credential: "aws_credentials"
+    source: ec2
+    source_vars:
+      keyed_groups:
+        - prefix: tag
+          key: tags
+
+automation_controller_jobtemplates:
+
+  - name: "multitier-app-deployer"
+    description: "multitier application deployer"
+    inventory: "Demo Inventory"
+    project: multitier-aap
+    playbook: "ansible/provision_host_playbook.yml"
+    credentials:
+      - "aws_credentials"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tekton_execution_environment
+# -------------------------------------------------------------------
+
+ocp4_workload_tekton_ee_automation_controller_job_template: "multitier-app-deployer"
+ocp4_workload_tekton_ee_automation_controller_registry_credential: "hub_registry_credentials"
+
+# -------------------------------------------------------------------
+
+agnosticv_meta:
+  idle_after_deploy: 4
+  idle_after_start: 4
+
+__meta__:
+  deployer:
+    scm_ref: development
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+project_tag: "{{ env_type }}-{{ guid }}"
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Cloud Provider
+# -------------------------------------------------------------------
+
+cloud_provider: ec2
+__image: RHEL84GOLD-latest
+__instance_type: t3a.medium
+bastion_instance_image: RHEL84GOLD-latest
+bastion_instance_type: t3a.medium
+
+key_name: opentlc_admin_backdoor
+cloud_tags:
+  env_type: "{{ env_type }}"
+  platform: "{{ platform | d('unknown') }}"
+num_users: 1
+user_base: devops
+
+# -------------------------------------------------------------------
+# Security group
+# -------------------------------------------------------------------
+
+security_groups:
+  - name: BastionSG
+    rules:
+      - name: BasSSHPublic
+        description: "SSH public"
+        from_port: 22
+        to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: WebSG
+    rules:
+      - name: HTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: HTTPSPorts
+        description: "HTTP Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: HostSG
+    rules:
+      - name: FromHostSG
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: -1
+        from_group: HostSG
+        rule_type: Ingress
+
+# -------------------------------------------------------------------
+# Instances vars
+# -------------------------------------------------------------------
+
+instances:
+  - name: bastion
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ bastion_instance_image | default(__image) }}"
+    flavor:
+      ec2: "{{ bastion_instance_type | default(__instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    security_groups:
+      - BastionSG
+      - WebSG
+      - HostSG
+
+  - name: "app"
+    count: "{{ app_instance_count | default(2) }}"
+    public_dns: true
+    image: "{{ app_instance_image | default(__image) }}"
+    flavor:
+      ec2: "{{ app_instance_type | default(__instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "app_servers"
+      - key: "ostype"
+        value: "linux"
+    security_groups:
+      - DefaultSG
+      - WebSG
+      - HostSG
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+
+ocp4_installer_version: "4.10"
+master_instance_count: 1
+master_instance_type: m5.4xlarge
+worker_instance_count: 0
+# worker_instance_type: m5.4xlarge
+ocp4_base_domain: "{{ sandbox_zone }}"
