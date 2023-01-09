@@ -1,0 +1,377 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+# update_packages: false
+
+# -------------------------------------------------------------------
+# Cloud Provider
+# -------------------------------------------------------------------
+cloud_provider: ec2
+bastion_instance_type: t3.medium
+bastion_instance_image: RHEL84GOLD-latest
+
+key_name: opentlc_admin_backdoor
+region: us-east-2
+cloud_tags:
+  env_type: "{{ env_type }}"
+  #guid: "{{ guid }}"
+  #course_name: "{{ course_name | d('unknown') }}"
+  platform: "{{ platform | d('unknown') }}"
+  #purpose: "{{ purpose | d('unknown') }}"
+num_users: 5
+aws_region: us-east-2
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Security group
+# -------------------------------------------------------------------
+security_groups:
+- name: BastionSG
+  rules:
+  - name: BasSSHPublic
+    description: "SSH public"
+    from_port: 22
+    to_port: 22
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: BasHTTPPublic
+    description: "HTTP public for Let's Encrypt verification"
+    from_port: 80
+    to_port: 80
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: BasVscodePublic
+    description: "VScode Bastion access for public"
+    from_port: 8443
+    to_port: 8443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+# -------------------------------------------------------------------
+# Bastion and Student Info
+# -------------------------------------------------------------------
+
+# Enable this if you want to create a user on the bastion
+# Mutually exclusive with {{ install_ipa_client }}
+install_student_user: true
+
+# Enable if the item is being deployed to a sandbox account
+# and you want credentials provided to the user
+sandbox_student_user: true
+
+# This should be overwritten based on the user ordering the catalog item
+# It will be used by the bastion-student-user role and created on the bastion
+student_name: dev-admin
+
+# student_password not set -> generate random password
+student_password: "{{ common_password }}"
+
+# Student is allowed to sudo and switch to root
+student_sudo: true
+
+# Student Workloads (YAML List)
+student_workloads: []
+
+# Enable this if you want to use IPA for user authentication.
+# Mutually exclusive with {{ install_student_user }}
+install_ipa_client: false
+
+# FTL is used for grading and solving. It will pull in the external ftl-injector role.
+# This might be enabled when we have solvers to run or graders for ILT
+install_ftl: false
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+
+ocp4_installer_version: "4.10"
+
+# -------------------------------------------------------------------
+# OpenShift Instance Types
+# -------------------------------------------------------------------
+
+master_instance_type: m5.xlarge
+master_instance_count: 3
+worker_instance_type: m5.2xlarge
+worker_instance_count: 2
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+
+requirements_content:
+  collections:
+  - name: kubernetes.core
+    version: 2.3.1
+  - name: openstack.cloud
+    version: 1.7.2
+  - name: amazon.aws
+    version: 2.2.0
+  - name: community.general
+    version: 4.6.1
+  - name: ansible.posix
+    version: 1.3.0
+  - name: awx.awx            # Prakhar, what does this support?
+    version: 21.1.0
+  - name: azure.azcollection # Needed for azure creds loading
+    version: 1.12.0
+  - name: azure.rm           # Needed for azure creds loading
+    version: 0.0.6
+
+infra_workloads:
+- ocp4_workload_rosa_cli
+- ocp4_workload_eksctl
+- ocp4_workload_authentication
+- ocp4_workload_le_certificates
+- ocp4_workload_rhacm
+- ocp4_workload_rhacs
+- ocp4_workload_gitea_operator
+- ocp4_workload_pipelines
+- ocp4_workload_openshift_gitops
+- ocp4_workload_sonarqube
+- ocp4_workload_codeserver
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_count: 5
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_remove_kubeadmin: false
+
+# Use Let's Encrypt Prod certificates
+install_lets_encrypt_certificates: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacm
+# -------------------------------------------------------------------
+
+ocp4_workload_rhacm_use_catalog_snapshot: true
+ocp4_workload_rhacm_catalog_source_image: "quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog"
+ocp4_workload_rhacm_catalog_source_tag: "v4.9_2022_07_11"
+ocp4_workload_rhacm_acm_csv: "advanced-cluster-management.v2.5.1"
+ocp4_workload_rhacm_acm_channel: "release-2.5"
+ocp4_workload_rhacm_acm_release: "release-2.5"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacs
+# -------------------------------------------------------------------
+ocp4_workload_rhacs_install_operator_channel: "rhacs-3.69"
+ocp4_workload_rhacs_install_operator_starting_csv: "rhacs-operator.v3.69.1"
+ocp4_workload_rhacs_install_operator_use_catalog_snapshot: true
+ocp4_workload_rhacs_install_operator_catalog_source_tag: "v4.10_2022_04_04"
+ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image_tag: v1.3.0
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/gpte-devops-automation/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.16.8"
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 2Gi
+ocp4_workload_gitea_operator_postgresql_volume_size: 2Gi
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_disable_registration: false
+ocp4_workload_gitea_operator_enable_captcha: false
+ocp4_workload_gitea_operator_allow_create_organization: true
+ocp4_workload_gitea_operator_register_email_confirm: false
+ocp4_workload_gitea_operator_enable_notify_email: false
+ocp4_workload_gitea_operator_mailer_enabled: false
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: dev-admin
+ocp4_workload_gitea_operator_admin_email: dev-admin@opentlc.com
+ocp4_workload_gitea_operator_admin_password: openshift
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: 1
+ocp4_workload_gitea_operator_generate_user_format: dev-user
+ocp4_workload_gitea_operator_user_password: openshift
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/globex-retail/inventory.git
+  name: inventory
+  private: false
+- repo: https://github.com/globex-retail/catalog.git
+  name: catalog
+  private: false
+- repo: https://github.com/globex-retail/gateway.git
+  name: gateway
+  private: false
+- repo: https://github.com/globex-retail/gitops.git
+  name: gitops
+  private: false
+- repo: https://github.com/rh-aiservices-bu/arc-model
+  name: arc-model
+  private: false
+- repo: https://github.com/redhat-gpte-devopsautomation/arc-model-argocd
+  name: arc-model-argocd
+  private: false
+- repo: https://github.com/rh-aiservices-bu/arc-frontend.git
+  name: arc-frontend
+  private: false
+- repo: https://github.com/redhat-gpte-devopsautomation/arc-frontend-argocd
+  name: arc-frontend-argocd
+  private: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: stable
+ocp4_workload_openshift_gitops_pipelines_csv_prefix: openshift-pipelines-operator-rh
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
+ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.10_2022_06_06
+
+# ---------------------------------------------------------
+# Workload: OpenShift Pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.7
+ocp4_workload_pipelines_tkn_version: 0.23.1
+ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.10_2022_06_06
+
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_codeserver
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_codeserver_name: codeserver
+ocp4_workload_codeserver_workspace_name: ide
+ocp4_workload_codeserver_password: "{{ common_password }}"
+ocp4_workload_codeserver_pvc_size: 3Gi
+ocp4_workload_codeserver_gitea_name: gitea
+ocp4_workload_codeserver_gitea_namespace: gitea
+ocp4_workload_codeserver_extensions:
+- filename: auchenberg.vscode-browser-preview-0.7.2.vsix
+  url: https://gpte-public.s3.amazonaws.com/vscode-plugins/auchenberg.vscode-browser-preview-0.7.2.vsix
+
+ocp4_workload_codeserver_multi_user_install: false
+ocp4_workload_codeserver_multi_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_codeserver_multi_user_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_codeserver_multi_user_namespace_base: codeserver
+
+# Repositories to set up in codeserver
+ocp4_workload_codeserver_repos_user: dev-user
+ocp4_workload_codeserver_repos_password: openshift  # openshift is used above
+# ocp4_workload_codeserver_repos_password: "{{ common_password }}"
+ocp4_workload_codeserver_repos:
+- name: inventory
+  account: dev-user
+  branch: main
+- name: catalog
+  account: dev-user
+  branch: main
+- name: gateway
+  account: dev-user
+  branch: main
+- name: gitops
+  account: dev-user
+  branch: main
+- name: arc-model
+  account: dev-user
+  branch: main
+- name: arc-frontend
+  account: dev-user
+  branch: main
+
+# Codeserver image tags
+ocp4_workload_codeserver_image_tag: v4.8.3-java11
+ocp4_workload_codeserver_init_image_tag: v4.8.3
+
+
+# -------------------------------------------------------------------
+# AgnosticV Metadata
+# -------------------------------------------------------------------
+# Set VirtualEnv to run this config in
+agnosticv_meta:
+  babylon:
+    kubeconfig: babylon-prod.kubeconfig
+  deploy_with: babylon
+  virtualenv: babylon
+  params_to_variables:
+    region: aws_region
+
+sandbox_user_info_messages_enable: true
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  deployer:
+    # virtualenv: ansible2.9-python3.6-2021-11-30
+    # we need azure support to get creds in RHACM
+    virtualenv: hybrid_cloud_aws_azure-ansible2.9-python3.6-2022-07-06
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: DecSecOps Vald Pattern Hub Cluster
+    category: Demos
+    keywords:
+    - devsecops
+    - validated-pattern
+    - hub
+    labels:
+      Product: Red_Hat_Advanced_Cluster_Management_for_Kubernetes
+      Product_Family: Red_Hat_Cloud
+      Provider: RHPDS
+      Featured_Score: '90'
+    parameters: []
+  access_control:
+    allow_groups:
+    - rhpds-devs
+  secrets:
+  - name: ocp4-token
+    namespace: gpte
+  - name: satellite-rhel81-ha
+    namespace: gpte
+  - name: output-dir-s3
+    namespace: gpte
+  - name: azure_redhat0
+    namespace: gpte
+  - name: gpte-sandbox
+    namespace: gpte
+    var: aws_sandbox_manager
+  - name: rhods-git-secret
+    namespace: gpte
+  - name: output-dir-s3
+    namespace: gpte
+  - name: rosa-token
+    namespace: gpte
+  - name: temp-epic-demo-rosa-aws-key
+    namespace: gpte
