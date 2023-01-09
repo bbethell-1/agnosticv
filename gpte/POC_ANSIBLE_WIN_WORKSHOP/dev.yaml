@@ -56,6 +56,92 @@ instances:
                      - "Invoke-Command -ScriptBlock ([scriptblock]::Create($scriptPath)) -ArgumentList '-skipNetworkProfileCheck'\n"
                      - "</powershell>"
 
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_le_certificates            # all segments
+- ocp4_workload_authentication             # all segments
+- ocp4_workload_gitea_operator
+- ocp4_workload_pipelines
+- ocp4_workload_openshift_gitops
+- ocp4_workload_codeserver
+- ocp4_workload_gitops_aap
+- automation-controller-config
+
+# -------------------------------------------------------------------
+# Workload: automation-controller-config
+# -------------------------------------------------------------------
+# -------------------------------------------------------------------
+automation_controller_upload_manifest: true
+automationcontroller_manifest_url: https://gpte-public.s3.amazonaws.com/aap2-subscription/manifest_31_10_2022.zip
+
+ssh_privatekey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path) }}"
+ssh_publickey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path_pub) }}"
+account_user_access_key: "{{ aws_access_key_id }}"
+account_user_secret_access_key: "{{ aws_secret_access_key }}"
+
+automation_controller_config_multiple_controllers: true
+automation_controller_config_multiple_controllers_dictionary: "{{ lookup('agnosticd_user_data','users')}}"
+
+automation_controller_credentials:
+- name: Multitier Nodes
+  description: Multitier Nodes
+  credential_type: Machine
+  username: ec2-user
+  ssh_key_data: "{{ ssh_privatekey }}"
+- name: aws_credentials
+  description: aws_credentials
+  credential_type: "Amazon Web Services"
+  username: "{{ account_user_access_key }}"
+  password: "{{ account_user_secret_access_key }}"
+- name: hub_registry_credentials
+  description: Hub Registry credentials
+  credential_type: "Container Registry"
+  host: "{{ automation_hub_hostname }}"
+  username: "admin"
+  password: "{{ automation_hub_admin_password }}"
+  verify_ssl: false
+
+automation_controller_users:
+- name: "{{ controller.key }}"
+  password: "{{ common_password }}"
+  superuser: true
+
+automation_controller_projects:
+- name: "multitier-aap"
+  description: "Multi Tier Application"
+  scm_type: git
+  scm_url: "{{ _ocp4_workload_gitea_operator_gitea_route }}/{{ user_base }}1/multitier-aap"
+
+automation_controller_inventories:
+- name: "multitier-app-dynamic-inventory"
+  description: "Multi Tier App inventory"
+- name: multitier-app-smart-inventory
+  description: Multi Tier smart
+  kind: smart
+  host_filter: "groups__name__icontains=tag_AnsibleGroup_app_servers or groups__name__icontains=tag_AnsibleGroup_bastions"
+
+automation_controller_inventory_sources:
+- name: "aws_source"
+  description: "aws dynamic inventory"
+  inventory: "multitier-app-dynamic-inventory"
+  credential: "aws_credentials"
+  source: ec2
+  source_vars:
+    keyed_groups:
+    - prefix: tag
+      key: tags
+
+automation_controller_jobtemplates:
+- name: "multitier-app-deployer"
+  description: "multitier application deployer"
+  inventory: "Demo Inventory"
+  project: multitier-aap
+  playbook: "ansible/provision_host_playbook.yml"
+  credentials:
+  - "aws_credentials"
+
 agnosticv_meta:
   idle_after_deploy: 4
   idle_after_start: 4
