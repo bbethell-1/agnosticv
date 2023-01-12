@@ -85,62 +85,72 @@ automation_controller_config_multiple_controllers: true
 automation_controller_config_multiple_controllers_dictionary: "{{ lookup('agnosticd_user_data','users')}}"
 
 automation_controller_credentials:
-- name: Multitier Nodes
-  description: Multitier Nodes
+- name: "Workshop Credential"
+  description: "Workshop Credential"
+  organization: Default
   credential_type: Machine
   username: ec2-user
   ssh_key_data: "{{ ssh_privatekey }}"
-- name: aws_credentials
-  description: aws_credentials
-  credential_type: "Amazon Web Services"
-  username: "{{ account_user_access_key }}"
-  password: "{{ account_user_secret_access_key }}"
-- name: hub_registry_credentials
-  description: Hub Registry credentials
-  credential_type: "Container Registry"
-  host: "{{ automation_hub_hostname }}"
-  username: "admin"
-  password: "{{ automation_hub_admin_password }}"
-  verify_ssl: false
+- name: "Controller Credential"
+  description: "Controller Credential"
+  organization: Default
+  credential_type: "Red Hat Ansible Automation Platform"
+  host: "{{ _automation_controller_config_controller_host }}"
+  username: "{{ _automation_controller_config_controller_username }}"
+  password: "{{ _automation_controller_config_controller_password }}"
+- name: "Demo Credential"
+  credential_type: Machine
+  state: absent
+
+automation_controller_projects:
+- name: "Demo Project"
+  state: absent
+
+automation_controller_inventories:
+- name: "Demo Inventory"
+  state: absent
+
+- name: "Workshop Inventory"
+  description: "Workshop Inventory"
+  # import hosts
+
+automation_controller_inventory_hosts:
+- name:
+  description: "{{ item.description | default(omit) }}"
+  inventory: "{{ item.inventory }}"
+  variables: "{{ item.variables | default(omit) }}"
 
 automation_controller_users:
 - name: "{{ controller.key }}"
   password: "{{ common_password }}"
+  email: fake@fake.com
   superuser: true
 
-automation_controller_projects:
-- name: "multitier-aap"
-  description: "Multi Tier Application"
-  scm_type: git
-  scm_url: "https://github.com/linuxnerds/edge-hmi-demo.git"
+automation_controller_execution_environments:
+- name: "windows workshop execution environment"
+  image: quay.io/acme_corp/windows_ee:latest
+  pull: missing
 
-automation_controller_inventories:
-- name: "multitier-app-dynamic-inventory"
-  description: "Multi Tier App inventory"
-- name: multitier-app-smart-inventory
-  description: Multi Tier smart
-  kind: smart
-  host_filter: "groups__name__icontains=tag_AnsibleGroup_app_servers or groups__name__icontains=tag_AnsibleGroup_bastions"
-
-automation_controller_inventory_sources:
-- name: "aws_source"
-  description: "aws dynamic inventory"
-  inventory: "multitier-app-dynamic-inventory"
-  credential: "aws_credentials"
-  source: ec2
-  source_vars:
-    keyed_groups:
-    - prefix: tag
-      key: tags
+automation_controller_settings:
+- name: AD_HOC_COMMANDS
+  arguments:
+  - 'command'
+  - 'shell'
+  - 'ping'
+  - 'setup'
+  - 'win_ping'
+  - 'win_service'
+  - 'win_updates'
+  - 'win_group'
+  - 'win_user'
+  - 'win_shell'
+  - 'win_feature'
+  - 'win_reboot'
+  - 'win_chocolatey'
 
 automation_controller_jobtemplates:
-- name: "multitier-app-deployer"
-  description: "multitier application deployer"
-  inventory: "Demo Inventory"
-  project: multitier-aap
-  playbook: "ansible/provision_host_playbook.yml"
-  credentials:
-  - "aws_credentials"
+- name: "Demo Job Template"
+  state: absent
 
 agnosticv_meta:
   idle_after_deploy: 4
