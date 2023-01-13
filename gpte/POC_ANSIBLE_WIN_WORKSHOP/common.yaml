@@ -124,8 +124,8 @@ instances:
   - BastionSG
   - WebSG
   - HostSG
-- name: primary_win
-  count: "{{ windows_server_instance_count | default(2) }}"
+- name: win
+  count: "{{ windows_server_instance_count | default(num_users) }}"
   public_dns: true
   image:
     name: "Windows_Server-2016-English-Full-Base*"
@@ -341,8 +341,9 @@ automation_controller_credentials:
   description: "Workshop Credential"
   organization: Default
   credential_type: Machine
-  username: ec2-user
-  ssh_key_data: "{{ ssh_privatekey }}"
+  username: Administrator
+  password: "{{ windows_password }}"
+  become_method: runas
 - name: "Controller Credential"
   description: "Controller Credential"
   organization: Default
@@ -353,6 +354,10 @@ automation_controller_credentials:
 - name: "Demo Credential"
   credential_type: Machine
   state: absent
+- name: aws_readonly_cred
+  credential_type: "Amazon Web Services"
+  username: "{{ account_user_access_key }}"
+  password: "{{ account_user_secret_access_key }}"
 
 automation_controller_projects:
 - name: "Demo Project"
@@ -361,15 +366,28 @@ automation_controller_projects:
 automation_controller_inventories:
 - name: "Demo Inventory"
   state: absent
-
 - name: "Workshop Inventory"
   description: "Workshop Inventory"
-  # import hosts
+  variables:
+    ansible_connection: winrm
+    ansible_port: 5986
+    ansible_winrm_server_cert_validation: ignore
+    ansible_winrm_transport: basic
+
+automation_controller_inventory_sources:
+- name: "windows"
+  inventory: "Workshop Inventory"
+  credential: "aws_readonly_cred"
+  source: ec2
+  source_vars:
+    include_filters:
+    - tag:internaldns:
+      - "win{{ controller.key.split()[0] | last }}.{{ guid }}.internal"
 
 automation_controller_users:
 - name: "{{ controller.key }}"
   password: "{{ common_password }}"
-  email: fake@fake.com
+  email: "{{ controller.key }}@fake.com"
   superuser: true
 
 automation_controller_execution_environments:
