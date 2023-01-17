@@ -7,13 +7,12 @@
 #include /includes/parameters/open-environment-annotation.yaml
 
 # -------------------------------------------------------------------
-# --- Catalog Item: Open Hybrid Cloud - Parallel
+# --- Catalog Item: RHTE 2023 GitOps Ansible Automation Platform 2
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-
 env_type: ocp4-cluster
 software_to_deploy: openshift4
 project_tag: "{{ env_type }}-{{ guid }}"
@@ -36,16 +35,15 @@ key_name: opentlc_admin_backdoor
 cloud_tags:
   env_type: "{{ env_type }}"
   platform: "{{ platform | d('unknown') }}"
-num_users: 2
+
+num_users: 1
 user_base: devops
 # -------------------------------------------------------------------
 # Security group
 # -------------------------------------------------------------------
 security_groups:
-
   - name: BastionSG
     rules:
-
       - name: BasSSHPublic
         description: "SSH public"
         from_port: 22
@@ -56,7 +54,6 @@ security_groups:
 
   - name: WebSG
     rules:
-
       - name: HTTPPorts
         description: "HTTP Public"
         from_port: 80
@@ -64,7 +61,6 @@ security_groups:
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
-
       - name: HTTPSPorts
         description: "HTTP Public"
         from_port: 443
@@ -75,7 +71,6 @@ security_groups:
 
   - name: HostSG
     rules:
-
       - name: FromHostSG
         description: "Allow everything from HostSG nodes"
         from_port: 0
@@ -88,7 +83,6 @@ security_groups:
 # Instances vars
 # -------------------------------------------------------------------
 instances:
-
   - name: bastion
     count: 1
     unique: true
@@ -145,7 +139,7 @@ instances:
       - WebSG
       - HostSG
 
-  - name: database-01
+  - name: database01
     count: 1
     unique: true
     public_dns: false
@@ -165,13 +159,11 @@ instances:
 # -------------------------------------------------------------------
 # Common Password
 # -------------------------------------------------------------------
-
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
 # -------------------------------------------------------------------
 # OpenShift Installer Version
 # -------------------------------------------------------------------
-
 ocp4_installer_version: "4.10"
 master_instance_count: 2
 master_instance_type: m5a.2xlarge
@@ -210,7 +202,6 @@ install_ftl: false
 # -------------------------------------------------------------------
 requirements_content:
   collections:
-
     - name: kubernetes.core
       version: 2.3.1
     - name: openstack.cloud
@@ -223,12 +214,13 @@ requirements_content:
       version: 1.3.0
     - name: awx.awx
       version: 21.1.0
+    - name: ansible.utils
+      version: 2.6.1
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 infra_workloads:
-
   - ocp4_workload_le_certificates
   - ocp4_workload_authentication
   - ocp4_workload_gitea_operator
@@ -240,8 +232,6 @@ infra_workloads:
   - ocp4_workload_rhacs
   - ocp4_workload_rhacs_secured_cluster
   - ocp4_workload_tekton_execution_environment
-# - edge_nodes_info
-# launching bookbag from hybrid-cloud-binder now
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -285,19 +275,18 @@ ocp4_workload_gitea_operator_create_users: true
 ocp4_workload_gitea_operator_user_password: "{{ common_password }}"
 ocp4_workload_gitea_operator_migrate_repositories: true
 ocp4_workload_gitea_operator_repositories_list:
-
   - repo: https://github.com/redhat-gpte-devopsautomation/aap2-gitops.git
     name: aap2-gitops
     private: false
-  - repo: https://github.com/linuxnerds/edge-hmi-demo.git
-    name: edge-hmi-demo
-    private: false
   - name: ee-pipeline
     private: false
-    repo: 'https://github.com/jtudelag/ansible-execution-environments.git'
+    repo: 'https://github.com/linuxnerds/execution-environment.git'
   - name: ee-automated-pipeline
     private: false
-    repo: 'https://github.com/jtudelag/ansible-execution-environments.git'
+    repo: 'https://github.com/linuxnerds/execution-environment.git'
+  - name: multitier-aap
+    private: false
+    repo: 'https://github.com/linuxnerds/edge-hmi-demo.git'
 
 # ---------------------------------------------------------
 # Workload: OpenShift Pipelines
@@ -330,25 +319,22 @@ ocp4_workload_codeserver_pvc_size: 3Gi
 ocp4_workload_codeserver_gitea_name: gitea
 ocp4_workload_codeserver_gitea_namespace: gitea
 ocp4_workload_codeserver_extensions:
-
   - filename: auchenberg.vscode-browser-preview-0.7.2.vsix
     url: https://gpte-public.s3.amazonaws.com/vscode-plugins/auchenberg.vscode-browser-preview-0.7.2.vsix
 
 # Repositories to set up in codeserver
-ocp4_workload_codeserver_repos_user: "{{ user_base }}1"
-# ocp4_workload_codeserver_repos_password: openshift  # openshift is used above
+ocp4_workload_codeserver_repos_user: "{{ user_base }}"
 ocp4_workload_codeserver_repos_password: "{{ common_password }}"
 ocp4_workload_codeserver_repos:
-
-  - name: edge-hmi-demo
-    account: "{{ user_base }}1"
-    branch: main
-  - account: '{{ user_base }}1'
+  - account: '{{ user_base }}'
     branch: main
     name: ee-pipeline
-  - account: '{{ user_base }}1'
+  - account: '{{ user_base }}'
     branch: main
     name: ee-automated-pipeline
+  - account: '{{ user_base }}'
+    branch: main
+    name: multitier-aap
 
 # --- Student Workloads (YAML List)
 student_workloads: []
@@ -358,8 +344,7 @@ student_workloads: []
 # -------------------------------------------------------------------
 ocp4_workload_gitops_aap_install_controller: true
 ocp4_workload_gitops_aap_install_hub: true
-# ocp4_workload_gitops_aap_repo: https://github.com/redhat-gpte-devopsautomation/aap2-gitops
-ocp4_workload_gitops_aap_repo: "{{ _ocp4_workload_gitea_operator_gitea_route }}/{{ user_base }}1/aap2-gitops"
+ocp4_workload_gitops_aap_repo: "{{ _ocp4_workload_gitea_operator_gitea_route }}/{{ user_base }}/aap2-gitops"
 
 # -------------------------------------------------------------------
 # Workload: automation-controller-config
@@ -373,7 +358,6 @@ account_user_access_key: "{{ aws_access_key_id }}"
 account_user_secret_access_key: "{{ aws_secret_access_key }}"
 
 automation_controller_credentials:
-
   - name: Multitier Nodes
     description: Multitier Nodes
     credential_type: Machine
@@ -386,125 +370,79 @@ automation_controller_credentials:
     username: "{{ account_user_access_key }}"
     password: "{{ account_user_secret_access_key }}"
 
-automation_controller_users:
+  - name: hub_registry_credentials
+    description: Hub Registry credentials
+    credential_type: "Container Registry"
+    host: "{{ automation_hub_hostname }}"
+    username: "admin"
+    password: "{{ automation_hub_admin_password }}"
+    verify_ssl: false
 
+automation_controller_users:
   - name: "{{ user_base }}"
     password: "{{ common_password }}"
     superuser: true
 
-# automation_controller_projects:
-# - name: "edge-hmi-demo"
-#   description: "Edge HMI Demo"
-#   scm_type: git
-#   scm_url: https://github.com/linuxnerds/edge-hmi-demo.git
+automation_controller_projects:
+  - name: "multitier-aap"
+    description: "Multi Tier Application"
+    scm_type: git
+    scm_url: "{{ _ocp4_workload_gitea_operator_gitea_route }}/{{ user_base }}/multitier-aap"
 
-# automation_controller_inventories:
-# - name: "hmi-dynamic-inventory"
-#   description: "HMI host inventory"
-# - name: hmi-smart-inventory
-#   description: HMI smart
-#   kind: smart
-#   host_filter: groups__name__icontains=tag_AnsibleGroup_hmi_nodes
+automation_controller_inventories:
+  - name: "multitier-app-dynamic-inventory"
+    description: "Multi Tier App inventory"
 
-# automation_controller_inventory_sources:
-# - name: "aws_source"
-#   description: "aws dynamic inventory"
-#   inventory: "hmi-dynamic-inventory"
-#   credential: "aws_credentials"
-#   source: ec2
-#   source_vars:
-#     keyed_groups:
-#     - prefix: tag
-#       key: tags
+automation_controller_inventory_sources:
+  - name: "aws_source"
+    description: "aws dynamic inventory"
+    inventory: "multitier-app-dynamic-inventory"
+    credential: "aws_credentials"
+    source: ec2
+    source_vars:
+      keyed_groups:
+        - prefix: tag
+          key: tags
 
-# automation_controller_jobtemplates:
-# - name: "1. Create HMI VM with survey for hostname"
-#   description: "Create HMI VM with survey for hostname"
-#   inventory: "Demo Inventory"
-#   project: edge-hmi-demo
-#   playbook: "ansible/provision_host_playbook.yml"
-#   credentials:
-#   - "aws_credentials"
-#   survey_enabled: true
-#   survey_spec:
-#     name: HMI survey
-#     description: HMI node survey
-#     spec:
-#     - type: text
-#       question_name: "Enter AWS Region"
-#       question_description: "Aws Region for HMI nodes"
-#       variable: aws_region
-#       required: false
-#       default: "us-east-2"
-#     - type: textarea
-#       question_name: "Enter HMI Nodes Hostname"
-#       question_description: "Aws Region for HMI nodes"
-#       variable: hmi_nodes
-#       required: false
-#       default: node1
-# - name: "2. Configure Podman to run Inductive Automation Ignition"
-#   description: "Configure Podman to run Inductive Automation Ignition"
-#   inventory: hmi-smart-inventory
-#   project: edge-hmi-demo
-#   playbook: "ansible/podman_playbook.yml"
-#   become_enabled: true
-#   credentials:
-#   - "hmi_nodes"
-#   survey_enabled: true
-#   survey_spec:
-#     name: Podman survey
-#     description: Podman survey
-#     spec:
-#     - type: text
-#       question_name: "Enter Quay Username"
-#       question_description: "Quay username for podman"
-#       variable: podman_username
-#       required: false
-#     - type: password
-#       question_name: "Enter Quay Password"
-#       question_description: "Quay password for podman"
-#       variable: podman_password
-#       required: false
-# - name: "3. Deploy Kiosk Mode to HMI Devices"
-#   description: "Deploy Kiosk Mode to HMI Devices"
-#   inventory: hmi-smart-inventory
-#   project: edge-hmi-demo
-#   playbook: "ansible/kiosk_playbook.yml"
-#   become_enabled: true
-#   credentials:
-#   - "hmi_nodes"
-#   survey_enabled: true
-#   survey_spec:
-#     name: Kiosk survey
-#     description: Kiosk survey
-#     spec:
-#     - type: text
-#       question_name: "Enter RHSM Username"
-#       question_description: "RHSM Username"
-#       variable: rhsm_username
-#       required: false
-#     - type: password
-#       question_name: "Enter RHSM Password"
-#       question_description: "RHSM password"
-#       variable: rhsm_password
-#       required: false
-# - name: "4. OS Hardening"
-#   description: "OS Hardening"
-#   inventory: hmi-smart-inventory
-#   project: edge-hmi-demo
-#   playbook: "ansible/hardening_playbook.yml"
-#   become_enabled: true
-#   credentials:
-#   - "hmi_nodes"
-# - name: "5. Validate Security on HMI Devices(scheduled to report to Splunk)"
-#   description: "Validate Security on HMI Devices(scheduled to report to Splunk)"
-#   inventory: hmi-smart-inventory
-#   project: edge-hmi-demo
-#   playbook: "ansible/security_playbook.yml"
-#   become_enabled: true
-#   credentials:
-#   - "hmi_nodes"
-# automation_controller_job_workflow_templates: true
+automation_controller_inventory_groups:
+  - name: tag_AnsibleGroup_bastions_load_balancers
+    description: Frontend tag
+    inventory: "multitier-app-dynamic-inventory"
+
+  - name: tag_AnsibleGroup_app_servers
+    description: application servers tag
+    inventory: "multitier-app-dynamic-inventory"
+
+  - name: tag_AnsibleGroup_database_servers
+    description: database servers tag
+    inventory: "multitier-app-dynamic-inventory"
+
+  - name: load_balancers
+    description: Frontend load balancer
+    inventory: "multitier-app-dynamic-inventory"
+    children:
+      - tag_AnsibleGroup_bastions_load_balancers
+
+  - name: app_servers
+    description: application servers
+    inventory: "multitier-app-dynamic-inventory"
+    children:
+      - tag_AnsibleGroup_app_servers
+
+  - name: database_servers
+    description: database servers
+    inventory: "multitier-app-dynamic-inventory"
+    children:
+      - tag_AnsibleGroup_database_servers
+
+automation_controller_jobtemplates:
+  - name: "multitier-app-deployer"
+    description: "multitier application deployer"
+    inventory: "Demo Inventory"
+    project: multitier-aap
+    playbook: "ansible/provision_host_playbook.yml"
+    credentials:
+      - "aws_credentials"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacs
@@ -519,7 +457,8 @@ ocp4_workload_rhacs_install_operator_catalog_source_tag: "v4.10_2022_04_04"
 # -------------------------------------------------------------------
 ocp4_workload_tekton_ee_namespace: ansible-ee-pipeline
 ocp4_workload_tekton_ee_event_listener_token: "{{ common_password }}"
-ocp4_workload_tekton_ee_automation_controller_job_template: "Demo Job Template"
+ocp4_workload_tekton_ee_automation_controller_job_template: "multitier-app-deployer"
+ocp4_workload_tekton_ee_automation_controller_registry_credential: "hub_registry_credentials"
 ocp4_workload_tekton_ee_internal_registry_sa: registry-admin
 ocp4_workload_tekton_ee_centeral_stackrox_username: admin
 ocp4_workload_tekton_ee_centeral_stackrox_password: "{{ ocp4_workload_rhacs_central_admin_password }}"
@@ -527,7 +466,6 @@ ocp4_workload_tekton_ee_centeral_stackrox_inform_only_policies:
   - Fixable Severity at least Important
 
 ocp4_workload_tekton_ansible_execution_environments:
-
   - pipeline_name: p1
     pipeline_dir: section1
     type: gitea
@@ -535,9 +473,9 @@ ocp4_workload_tekton_ansible_execution_environments:
     git_params:
       api_url: "{{ _ocp4_workload_gitea_operator_gitea_route }}/api/v1"
       url: "{{ _ocp4_workload_gitea_operator_gitea_route }}"
-      repository: "{{ user_base }}1/ee-pipeline"
+      repository: "{{ user_base }}/ee-pipeline"
       branch: main
-      username: "{{ user_base }}1"
+      username: "{{ user_base }}"
       password: "{{ common_password }}"
     ee_params:
       name: ee-pipeline
@@ -550,9 +488,9 @@ ocp4_workload_tekton_ansible_execution_environments:
     git_params:
       api_url: "{{ _ocp4_workload_gitea_operator_gitea_route }}/api/v1"
       url: "{{ _ocp4_workload_gitea_operator_gitea_route }}"
-      repository: "{{ user_base }}1/ee-automated-pipeline"
+      repository: "{{ user_base }}/ee-automated-pipeline"
       branch: main
-      username: "{{ user_base }}1"
+      username: "{{ user_base }}"
       password: "{{ common_password }}"
     ee_params:
       name: ee-automated-pipeline
@@ -583,17 +521,13 @@ __meta__:
       Product_Family: Red_Hat_Cloud
       Provider: RHPDS
   secrets:
-
     - name: gpte-sandbox
       namespace: gpte
       var: aws_sandbox_manager
-
     - name: satellite-rhel81-ha
       namespace: gpte
-
     - name: ocp4-token
       namespace: gpte
-
     - name: rhods-git-secret
       namespace: gpte
     - name: output-dir-s3
