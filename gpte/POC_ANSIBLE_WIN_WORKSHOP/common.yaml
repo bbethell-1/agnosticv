@@ -336,6 +336,12 @@ account_user_secret_access_key: "{{ aws_secret_access_key }}"
 automation_controller_config_multiple_controllers: true
 automation_controller_config_multiple_controllers_dictionary: "{{ lookup('agnosticd_user_data','users')}}"
 
+automation_controller_users:
+- name: "{{ controller.key }}"
+  password: "{{ common_password }}"
+  email: "{{ controller.key }}@fake.com"
+  superuser: true
+
 automation_controller_credentials:
 - name: "Workshop Credential"
   description: "Workshop Credential"
@@ -394,12 +400,6 @@ automation_controller_inventory_sources:
     groups:
       windows: tags.internaldns == 'win{{ controller.key.split()[0] | last }}.{{ guid }}.internal'
 
-automation_controller_users:
-- name: "{{ controller.key }}"
-  password: "{{ common_password }}"
-  email: "{{ controller.key }}@fake.com"
-  superuser: true
-
 automation_controller_execution_environments:
 - name: "windows workshop execution environment"
   image: quay.io/acme_corp/windows_ee:latest
@@ -425,6 +425,18 @@ automation_controller_settings:
 automation_controller_jobtemplates:
 - name: "Demo Job Template"
   state: absent
+
+automation_controller_ad_hoc_commands:
+- module_name: win_user
+  module_args: >-
+    name={{ controller.key }}
+    password={{ common_password }}
+    groups=Administrators
+    state=present
+  inventory: "Workshop Inventory"
+  limit: "windows"
+  execution_environment: "windows workshop execution environment"
+  credential: "Workshop Credential"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
