@@ -34,14 +34,17 @@ bastion_instance_type: t3a.medium
 key_name: opentlc_admin_backdoor
 cloud_tags:
   env_type: "{{ env_type }}"
-  platform: "{{ platform | d('unknown') }}"
+  platform: "{{ platform | default('unknown') }}"
 
 num_users: 2
 user_base: devops
+
 # -------------------------------------------------------------------
 # Security group
 # -------------------------------------------------------------------
+
 security_groups:
+
   - name: BastionSG
     rules:
       - name: BasSSHPublic
@@ -82,7 +85,9 @@ security_groups:
 # -------------------------------------------------------------------
 # Instances vars
 # -------------------------------------------------------------------
+
 instances:
+
   - name: bastion
     count: 1
     unique: true
@@ -159,6 +164,7 @@ instances:
 # -------------------------------------------------------------------
 # Common Password
 # -------------------------------------------------------------------
+
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
 # -------------------------------------------------------------------
@@ -275,17 +281,21 @@ ocp4_workload_gitea_operator_create_users: true
 ocp4_workload_gitea_operator_user_password: "{{ common_password }}"
 ocp4_workload_gitea_operator_migrate_repositories: true
 ocp4_workload_gitea_operator_repositories_list:
+
   - name: aap2-gitops
     repo: https://github.com/redhat-gpte-devopsautomation/aap2-gitops.git
     private: false
+
   - name: ee-pipeline
     repo: 'https://github.com/linuxnerds/execution-environment.git'
     private: false
+
   - name: ee-automated-pipeline
     repo: 'https://github.com/linuxnerds/execution-environment.git'
     private: false
+
   - name: multitier-aap
-    repo: 'https://github.com/linuxnerds/edge-hmi-demo.git'
+    repo: 'https://github.com/redhat-gpe/multi-tier-app-deployer.git'
     private: false
 
 # ---------------------------------------------------------
@@ -326,12 +336,15 @@ ocp4_workload_codeserver_extensions:
 ocp4_workload_codeserver_repos_user: "{{ user_base }}1"
 ocp4_workload_codeserver_repos_password: "{{ common_password }}"
 ocp4_workload_codeserver_repos:
+
   - account: '{{ user_base }}1'
     branch: main
     name: ee-pipeline
+
   - account: '{{ user_base }}1'
     branch: main
     name: ee-automated-pipeline
+
   - account: '{{ user_base }}1'
     branch: main
     name: multitier-aap
@@ -358,6 +371,7 @@ account_user_access_key: "{{ aws_access_key_id }}"
 account_user_secret_access_key: "{{ aws_secret_access_key }}"
 
 automation_controller_credentials:
+
   - name: Multitier Nodes
     description: Multitier Nodes
     credential_type: Machine
@@ -379,21 +393,25 @@ automation_controller_credentials:
     verify_ssl: false
 
 automation_controller_users:
+
   - name: "{{ user_base }}1"
     password: "{{ common_password }}"
     superuser: true
 
 automation_controller_projects:
+
   - name: "multitier-aap"
     description: "Multi Tier Application"
     scm_type: git
     scm_url: "{{ _ocp4_workload_gitea_operator_gitea_route }}/{{ user_base }}1/multitier-aap"
 
 automation_controller_inventories:
+
   - name: "multitier-app-dynamic-inventory"
     description: "Multi Tier App inventory"
 
 automation_controller_inventory_sources:
+
   - name: "aws_source"
     description: "aws dynamic inventory"
     inventory: "multitier-app-dynamic-inventory"
@@ -405,7 +423,8 @@ automation_controller_inventory_sources:
           key: tags
 
 automation_controller_inventory_groups:
-  - name: tag_AnsibleGroup_bastions_load_balancers
+
+  - name: tag_AnsibleGroup_load_balancers
     description: Frontend tag
     inventory: "multitier-app-dynamic-inventory"
 
@@ -421,7 +440,7 @@ automation_controller_inventory_groups:
     description: Frontend load balancer
     inventory: "multitier-app-dynamic-inventory"
     children:
-      - tag_AnsibleGroup_bastions_load_balancers
+      - tag_AnsibleGroup_load_balancers
 
   - name: app_servers
     description: application servers
@@ -436,11 +455,12 @@ automation_controller_inventory_groups:
       - tag_AnsibleGroup_database_servers
 
 automation_controller_jobtemplates:
+
   - name: "multitier-app-deployer"
     description: "multitier application deployer"
-    inventory: "Demo Inventory"
+    inventory: "multitier-app-dynamic-inventory"
     project: multitier-aap
-    playbook: "ansible/provision_host_playbook.yml"
+    playbook: "deploy-app.yml"
     credentials:
       - "aws_credentials"
 
