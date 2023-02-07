@@ -179,7 +179,7 @@ fi
 
 git checkout $PULL_REF &>/dev/null
 
-${ORIG}/babylon_checks.py > ${babylon_checks_output}
+${ORIG}/babylon_checks.py --from_file ${changed_ci_uniq} > ${babylon_checks_output}
 
 if [ $? != 0 ]; then
     RC=2

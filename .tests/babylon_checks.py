@@ -30,6 +30,14 @@ parser.add_argument('--agnosticv_cli',
                     required=False,
                     )
 
+parser.add_argument('--from_file',
+                    type=str,
+                    dest='from_file',
+                    help='List of catalog items to check',
+                    default='',
+                    required=False,
+                    )
+
 parser.add_argument('--debug',
                     type=str2bool,
                     dest='debug',
@@ -48,11 +56,18 @@ process_all = subprocess.run(
     check=True,
 )
 
-catalog_items = process_all.stdout.split()
+all_catalog_items = process_all.stdout.split()
 
-if len(catalog_items) == 0:
+if len(all_catalog_items) == 0:
     print("No catalog item found")
     sys.exit(2)
+
+catalog_items = all_catalog_items
+
+# Override if it's passed as a file
+if args.from_file != '':
+    with open(args.from_file) as x:
+        catalog_items = x.readlines()
 
 valid = []
 invalid = []
@@ -186,6 +201,7 @@ def check_anarchy_namespace(c,ci):
     return True
 
 for ci in catalog_items:
+    ci = ci.strip()
     process_ci = subprocess.run(
         [str(args.agnosticv_cli), '--merge', ci],
         stdout=subprocess.PIPE,

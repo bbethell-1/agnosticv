@@ -1,5 +1,5 @@
 ---
-name: static-checks-pr
+name: all-checks-pr
 
 on:
   pull_request:
@@ -32,7 +32,7 @@ jobs:
     strategy:
       matrix:
         python-version:
-          - '3.10'
+          - '3.x'
 
     steps:
       - name: Get Repository Code
@@ -41,7 +41,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4.5.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip' # caching pip dependencies
@@ -60,11 +60,12 @@ jobs:
       - name: Run static-tests.sh
         env: # Or as an environment variable
           RHPDS_BOT_REPO: ${{ secrets.RHPDS_BOT_REPO }}
+          PR: ${{ github.event.number }}
         run: ./.tests/static-tests.sh
 
   merge-integration:
     name: Merge PR branch into integration
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs:
       - static-checks
       - lfs-warning
@@ -79,10 +80,65 @@ jobs:
           fetch-depth: 0
 
       - name: Merge PR branch into integration branch
-        continue-on-error: true
         env:
           GITHUB_TOKEN: "${{ secrets.RHPDS_BOT_REPO }}"
           PR: ${{ github.event.number }}
         run: ./.github/scripts/merge-pr-to-integration.sh
         shell: bash
+
+      - name: Wait for agnosticv-operator to report back
+        env:
+          GITHUB_TOKEN: "${{ secrets.RHPDS_BOT_REPO }}"
+          PR: ${{ github.event.number }}
+        run: |
+          function join_by {
+            local d=${1-} f=${2-}
+            if shift 2; then
+            printf %s "$f" "${@/#/$d}"
+            fi
+          }
+
+          changed=$(gh pr diff ${PR} --name-only)
+          sha=$(git show-ref -s integration)
+
+          if ! [ "${changed}" ]; then
+            exit 0
+          fi
+
+          countc=$( agnosticv --list --related $(join_by ' --or-related ' $changed) | wc -l )
+          if [ "${countc}" = 0 ]; then
+            exit 0
+          fi
+
+          # 4m
+          retries=24
+          delay=10
+          for i in $(seq 1 $retries); do
+            if gh pr view ${PR} --comments --json comments --jq '.comments[].body' \
+            | grep operator \
+            | grep "${sha}" \
+            | grep success; then
+              exit 0
+            fi
+
+            if gh pr view ${PR} --comments --json comments --jq '.comments[].body' \
+            | grep operator \
+            | grep "${sha}" \
+            | grep failed; then
+              exit 1
+            fi
+            sleep $delay
+          done
+          exit 1
+
+  e2e-test:
+    concurrency:
+      group: ${{ github.ref }}
+      cancel-in-progress: false
+
+    needs:
+      - merge-integration
+
+    uses: ./.github/workflows/e2e-pr.yml
+    secrets: inherit
 ...

@@ -1,0 +1,139 @@
+---
+name: e2e-pr
+on:
+  - workflow_call
+
+jobs:
+  get-ci-list:
+    name: Get list of catalog items changed which require E2E tests
+
+    # Long job ; use self-hosted runner
+    runs-on: integration
+
+    outputs:
+      catalog_items: ${{ steps.get-cis.outputs.cis }}
+
+    steps:
+      - name: Get 'agnosticv' Repository Code
+        uses: actions/checkout@v3
+        with:
+          path: agnosticv
+
+      - name: Get the Catalog item names
+        id: get-cis
+        env:
+          GITHUB_TOKEN: "${{ secrets.RHPDS_BOT_REPO }}"
+          PR: ${{ github.event.number }}
+        run: |-
+          function join_by {
+            local d=${1-} f=${2-}
+            if shift 2; then
+            printf %s "$f" "${@/#/$d}"
+            fi
+          }
+
+          changed=$(gh pr diff ${PR} --name-only)
+
+          if [ "${changed}" ]; then
+            # Print all catalog items updated by this Pull Request and that
+            # have __meta__.require_end_to_end_test set to true
+            {
+              echo -n "cis="
+              agnosticv --list --has __meta__.require_end_to_end_test \
+                --related $(join_by ' --or-related ' $changed) \
+                --output json
+            } >> ${GITHUB_OUTPUT}
+          fi
+
+        working-directory: agnosticv
+
+  e2e:
+    name: End-to-end test using Cypress
+
+    runs-on: integration
+
+    needs: get-ci-list
+
+    #container: quay.io/fridim/e2e-tests:latest
+
+    strategy:
+      max-parallel: 10
+      fail-fast: false
+      matrix:
+        catalog_item: ${{ fromJSON(needs.get-ci-list.outputs.catalog_items) }}
+
+    steps:
+      - name: Get catalog item ID
+        id: catalog_item
+        run: |-
+          echo "${{ matrix.catalog_item }}" \
+            | perl -pe 's{/}{.}g;tr/_[A-Z]/-[a-z]/;s/\.ya?ml$//'
+          {
+            echo -n "id="
+            echo "${{ matrix.catalog_item }}"\
+             | perl -pe 's{/}{.}g;tr/_[A-Z]/-[a-z]/;s/\.ya?ml$//'
+          } >> $GITHUB_OUTPUT
+
+      - name: Get 'service-e2e-tests' Repository Code
+        uses: actions/checkout@v3
+        with:
+          repository: rhpds/service-e2e-tests
+          ref: main
+          token: ${{ secrets.RHPDS_BOT_REPO }}
+          path: service-e2e-tests
+
+      - name: Use Node.js v14
+        uses: actions/setup-node@v3
+        with:
+          node-version: 14
+
+      - run: node -v
+
+      - name: Cypress run
+        uses: cypress-io/github-action@v5.0.5
+        env:
+          cypress_homepageUrl: https://integration.demo.redhat.com
+          #delaySeconds: 15
+          CYPRESS_USER_EMAIL: rhpds-opentlc-infra+rhpds-user@redhat.com
+          CYPRESS_USER_USERNAME: rhpds-user
+          CYPRESS_USER_PASSWORD: ${{ secrets.CICD_SSO_PASSWORD }}
+          CYPRESS_CATALOG_ITEM: ${{ steps.catalog_item.outputs.id }}
+        with:
+          browser: firefox
+          headed: false
+          working-directory: service-e2e-tests
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: cypress-screenshots-${{ steps.catalog_item.outputs.id }}
+          path: service-e2e-tests/cypress/screenshots
+          retention-days: 5
+
+      - name: Update Videos
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: cypress-videos-${{ steps.catalog_item.outputs.id }}
+          path: service-e2e-tests/cypress/videos
+          retention-days: 2
+
+      - if: ${{ failure() }}
+        name: Report back
+        env:
+          GITHUB_TOKEN: "${{ secrets.RHPDS_BOT_REPO }}"
+          PR: ${{ github.event.number }}
+        run: |
+          comment=$(mktemp)
+          {
+          echo "End to end test failed for ${{ steps.catalog_item.outputs.id }}"
+          echo
+          echo "You can review the Cypress screenshots or videos here:"
+          echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } > $comment
+
+          gh pr comment --repo ${{github.repository}} ${PR} --body-file $comment
+          rm $comment
+
+...
