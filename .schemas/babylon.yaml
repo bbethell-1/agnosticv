@@ -46,8 +46,231 @@ properties:
             items:
               type: string
 
+      anarchy:
+        type: object
+        additionalProperties: false
+        properties:
+          namespace:
+            type: string
+            example: babylon-anarchy-test
+
+      ansible_control_plane:
+        description: >-
+          Select what kind of ansible backend to use
+        type: object
+        additionalProperties: false
+        properties:
+          type:
+            description: >-
+              Type of the ansible backend.
+            type: string
+            default: tower
+            enum:
+              - tower
+              - controller
+          secret:
+            description: >-
+              Secret in OCP that contains the connection credentials.
+              The name of a Secret object must be a valid DNS subdomain name.
+            type: string
+            pattern: '[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*'
+
       aws_sandboxed:
         type: boolean
+
+      bookbag:
+        description: >-
+          Configuration for how bookbag should be deployed by the babylon lab-ui-manager.
+          This should only be used for labs that do not deploy their own lab user interface
+          during AgnosticD execution
+        type: object
+        additionalProperties: false
+        properties:
+          auth:
+            description: >-
+              Authentication configuration for bookbag. Default values disable
+              authentication.
+            type: object
+            additionalProperties: false
+            properties:
+              password:
+                description: >-
+                  Value for AUTH_USERNAME environment variable in bookbag deployment.
+                type: string
+                default: ''
+              user:
+                description: >-
+                  Value for AUTH_PASSWORD environment variable in bookbag deployment.
+                type: string
+                default: '*'
+          image:
+            description: >-
+              Container image used for bookbag deployment. Mutually exclusive with imageBuild.
+            type: string
+          imageBuild:
+            description: >-
+              Configuration used to build image for bookbag deployment. Value is used a spec
+              for OpenShift BuildConfig.
+            type: object
+            additionalProperties: false
+            properties:
+              source:
+                type: object
+                additionalProperties: false
+                properties:
+                  contextDir:
+                    type: string
+                    description: >-
+                      contextDir specifies the sub-directory where the source code for the
+                      application exists. This allows to have buildable sources in directory
+                      other than root of repository.
+                  dockerfile:
+                    type: string
+                    description: >-
+                      dockerfile is the raw contents of a Dockerfile which should be built. When
+                      this option is specified, the FROM may be modified based on your strategy
+                      base image and additional ENV stanzas from your strategy environment will
+                      be added after the FROM, but before the rest of your Dockerfile stanzas.
+                      The Dockerfile source type may be used with other options like git - in
+                      those cases the Git repo will have any innate Dockerfile replaced in the
+                      context dir.
+                  git:
+                    type: object
+                    additionalProperties: false
+                    properties:
+                      ref:
+                        description: >-
+                          ref is the branch/tag/ref to build.
+                        type: string
+                      uri:
+                        description: >-
+                          uri points to the source that will be built. The structure of the
+                          source will depend on the type of build to run
+                        type: string
+                  type:
+                    description: >-
+                      type of build input to accept
+                    type: string
+                    enum:
+                      - Git
+              strategy:
+                type: object
+                additionalProperties: false
+                properties:
+                  dockerStrategy:
+                    description: >-
+                      dockerStrategy holds the parameters to the container image build strategy.
+                    type: object
+                    additionalProperties: false
+                    properties:
+                      buildArgs:
+                        type: array
+                        items:
+                          description: >-
+                            buildArgs contains build arguments that will be resolved in the Dockerfile.
+                          type: object
+                          additionalProperties: false
+                          required:
+                            - name
+                            - value
+                          properties:
+                            name:
+                              type: string
+                            value:
+                              type: string
+                      dockerfilePath:
+                        type: string
+                        description: >-
+                          dockerfilePath is the path of the Dockerfile that will be used to build the
+                          container image, relative to the root of the context (contextDir). Defaults
+                          to `Dockerfile` if unset.
+                      env:
+                        type: array
+                        items:
+                          description: >-
+                            env contains additional environment variables you want to pass into a
+                            builder container.
+                          type: object
+                          additionalProperties: false
+                          required:
+                            - name
+                            - value
+                          properties:
+                            name:
+                              type: string
+                            value:
+                              type: string
+                      forcePull:
+                        description: >-
+                          forcePull describes if the builder should pull the images from registry
+                          prior to building.
+                        type: boolean
+                      from:
+                        description: >-
+                          from is a reference to an DockerImage which overrides the FROM image in
+                          the FROM image in the Dockerfile for the build. If the Dockerfile uses
+                           multi-stage builds, this will replace the image in the last FROM
+                          directive of the file.
+                        type: object
+                        additionalProperties: false
+                        properties:
+                          kind:
+                            type: string
+                            enum:
+                              - DockerImage
+                          name:
+                            type: string
+                            description: >-
+                              Docker image reference.
+                  sourceStrategy:
+                    type: object
+                    description: >-
+                      sourceStrategy holds the parameters to the Source build strategy.
+                    additionalProperties: false
+                    properties:
+                      env:
+                        type: array
+                        items:
+                          description: >-
+                            env contains additional environment variables you want to pass into a
+                            builder container.
+                          type: object
+                          required:
+                            - name
+                            - value
+                          additionalProperties: false
+                          properties:
+                            name:
+                              type: string
+                            value:
+                              type: string
+                      forcePull:
+                        description: >-
+                          forcePull describes if the builder should pull the images from registry
+                          prior to building.
+                        type: boolean
+                      from:
+                        description: >-
+                          from is reference to a DockerImage which should be used as the
+                          source-to-image builder.
+                        type: object
+                        additionalProperties: false
+                        properties:
+                          kind:
+                            type: string
+                            enum:
+                              - DockerImage
+                          name:
+                            type: string
+                            description: >-
+                              Docker image reference.
+                  type:
+                    type: string
+                    description: >-
+                      strategy defines how to perform a build.
+                    enum:
+                      - Docker
+                      - Source
 
       catalog:
         type: object
@@ -273,6 +496,42 @@ properties:
             description:
               HTML content for terms of service to appear on the service request form.
             type: string
+
+      components:
+        description: >-
+          Configuration for multi-component items.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          properties:
+            display_name:
+              description: >-
+                Display name to show in interfaces and communications for this component.
+              type: string
+            item:
+              description: >-
+                Reference within AgnosticD to other item in the form "<ACCOUNT>/<NAME>".
+                The STAGE used will match dev/test/prod.
+              type: string
+            name:
+              type: string
+            propagate_provision_data:
+              description: >-
+                Configuration to pass values from provision data from component to set variables for subsequent provisions.
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                properties:
+                  name:
+                    description: >-
+                      Name of provision data item to find in component.
+                    type: string
+                  var:
+                    description: >-
+                      Variable to set in provision.
+                    type: string
 
       deployer:
         type: object
@@ -533,6 +792,27 @@ properties:
             type: string
             pattern: ^[0-9]+[dhms]$
 
+      owners:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - email
+            - name
+          properties:
+            email:
+              type: string
+            name:
+              type: string
+
+      require_end_to_end_test:
+        description: >-
+          Specify if the end-to-end tests must be executed on each PR against the integration cluster.
+
+        type: boolean
+        default: false
+
       runtime:
         description: >-
           Configuration for automatic stop and runtime extension.
@@ -552,6 +832,28 @@ properties:
             type: string
             pattern: ^[0-9]+[dhms]$
 
+      scheduler:
+        type: object
+        additionalProperties: false
+        properties:
+          data:
+            type: object
+            properties:
+              annotations:
+                type: object
+                additionalProperties:
+                  type: string
+              uuid:
+                type: string
+          enable:
+            type: boolean
+          endpoint:
+            type: string
+            example: /api/v1/schedule
+          url:
+            type: string
+            example: https://agnostics.apps.open.redhat.com
+
       secrets:
         type: array
         items:
@@ -566,27 +868,6 @@ properties:
               type: string
             var:
               type: string
-
-      ansible_control_plane:
-        description: >-
-          Select what kind of ansible backend to use
-        type: object
-        additionalProperties: false
-        properties:
-          type:
-            description: >-
-              Type of the ansible backend.
-            type: string
-            default: tower
-            enum:
-              - tower
-              - controller
-          secret:
-            description: >-
-              Secret in OCP that contains the connection credentials.
-              The name of a Secret object must be a valid DNS subdomain name.
-            type: string
-            pattern: '[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*'
 
       tower:
         type: object
@@ -614,271 +895,4 @@ properties:
             default: 10800
 
             type: integer
-
-      anarchy:
-        type: object
-        additionalProperties: false
-        properties:
-          namespace:
-            type: string
-            example: babylon-anarchy-test
-
-      scheduler:
-        type: object
-        additionalProperties: false
-        properties:
-          data:
-            type: object
-            properties:
-              annotations:
-                type: object
-                additionalProperties:
-                  type: string
-              uuid:
-                type: string
-          enable:
-            type: boolean
-          endpoint:
-            type: string
-            example: /api/v1/schedule
-          url:
-            type: string
-            example: https://agnostics.apps.open.redhat.com
-
-      components:
-        description: >-
-          Configuration for multi-component items.
-        type: array
-        items:
-          type: object
-          additionalProperties: false
-          properties:
-            display_name:
-              description: >-
-                Display name to show in interfaces and communications for this component.
-              type: string
-            item:
-              description: >-
-                Reference within AgnosticD to other item in the form "<ACCOUNT>/<NAME>".
-                The STAGE used will match dev/test/prod.
-              type: string
-            name:
-              type: string
-            propagate_provision_data:
-              description: >-
-                Configuration to pass values from provision data from component to set variables for subsequent provisions.
-              type: array
-              items:
-                type: object
-                additionalProperties: false
-                properties:
-                  name:
-                    description: >-
-                      Name of provision data item to find in component.
-                    type: string
-                  var:
-                    description: >-
-                      Variable to set in provision.
-                    type: string
-
-      # TODO: define bookbag properly
-      bookbag:
-        description: >-
-          Configuration for how bookbag should be deployed by the babylon lab-ui-manager.
-          This should only be used for labs that do not deploy their own lab user interface
-          during AgnosticD execution
-        type: object
-        additionalProperties: false
-        properties:
-          auth:
-            description: >-
-              Authentication configuration for bookbag. Default values disable
-              authentication.
-            type: object
-            additionalProperties: false
-            properties:
-              password:
-                description: >-
-                  Value for AUTH_USERNAME environment variable in bookbag deployment.
-                type: string
-                default: ''
-              user:
-                description: >-
-                  Value for AUTH_PASSWORD environment variable in bookbag deployment.
-                type: string
-                default: '*'
-          image:
-            description: >-
-              Container image used for bookbag deployment. Mutually exclusive with imageBuild.
-            type: string
-          imageBuild:
-            description: >-
-              Configuration used to build image for bookbag deployment. Value is used a spec
-              for OpenShift BuildConfig.
-            type: object
-            additionalProperties: false
-            properties:
-              source:
-                type: object
-                additionalProperties: false
-                properties:
-                  contextDir:
-                    type: string
-                    description: >-
-                      contextDir specifies the sub-directory where the source code for the
-                      application exists. This allows to have buildable sources in directory
-                      other than root of repository.
-                  dockerfile:
-                    type: string
-                    description: >-
-                      dockerfile is the raw contents of a Dockerfile which should be built. When
-                      this option is specified, the FROM may be modified based on your strategy
-                      base image and additional ENV stanzas from your strategy environment will
-                      be added after the FROM, but before the rest of your Dockerfile stanzas.
-                      The Dockerfile source type may be used with other options like git - in
-                      those cases the Git repo will have any innate Dockerfile replaced in the
-                      context dir.
-                  git:
-                    type: object
-                    additionalProperties: false
-                    properties:
-                      ref:
-                        description: >-
-                          ref is the branch/tag/ref to build.
-                        type: string
-                      uri:
-                        description: >-
-                          uri points to the source that will be built. The structure of the
-                          source will depend on the type of build to run
-                        type: string
-                  type:
-                    description: >-
-                      type of build input to accept
-                    type: string
-                    enum:
-                      - Git
-              strategy:
-                type: object
-                additionalProperties: false
-                properties:
-                  dockerStrategy:
-                    description: >-
-                      dockerStrategy holds the parameters to the container image build strategy.
-                    type: object
-                    additionalProperties: false
-                    properties:
-                      buildArgs:
-                        type: array
-                        items:
-                          description: >-
-                            buildArgs contains build arguments that will be resolved in the Dockerfile.
-                          type: object
-                          additionalProperties: false
-                          required:
-                            - name
-                            - value
-                          properties:
-                            name:
-                              type: string
-                            value:
-                              type: string
-                      dockerfilePath:
-                        type: string
-                        description: >-
-                          dockerfilePath is the path of the Dockerfile that will be used to build the
-                          container image, relative to the root of the context (contextDir). Defaults
-                          to `Dockerfile` if unset.
-                      env:
-                        type: array
-                        items:
-                          description: >-
-                            env contains additional environment variables you want to pass into a
-                            builder container.
-                          type: object
-                          additionalProperties: false
-                          required:
-                            - name
-                            - value
-                          properties:
-                            name:
-                              type: string
-                            value:
-                              type: string
-                      forcePull:
-                        description: >-
-                          forcePull describes if the builder should pull the images from registry
-                          prior to building.
-                        type: boolean
-                      from:
-                        description: >-
-                          from is a reference to an DockerImage which overrides the FROM image in
-                          the FROM image in the Dockerfile for the build. If the Dockerfile uses
-                           multi-stage builds, this will replace the image in the last FROM
-                          directive of the file.
-                        type: object
-                        additionalProperties: false
-                        properties:
-                          kind:
-                            type: string
-                            enum:
-                              - DockerImage
-                          name:
-                            type: string
-                            description: >-
-                              Docker image reference.
-                  sourceStrategy:
-                    type: object
-                    description: >-
-                      sourceStrategy holds the parameters to the Source build strategy.
-                    additionalProperties: false
-                    properties:
-                      env:
-                        type: array
-                        items:
-                          description: >-
-                            env contains additional environment variables you want to pass into a
-                            builder container.
-                          type: object
-                          required:
-                            - name
-                            - value
-                          additionalProperties: false
-                          properties:
-                            name:
-                              type: string
-                            value:
-                              type: string
-                      forcePull:
-                        description: >-
-                          forcePull describes if the builder should pull the images from registry
-                          prior to building.
-                        type: boolean
-                      from:
-                        description: >-
-                          from is reference to a DockerImage which should be used as the
-                          source-to-image builder.
-                        type: object
-                        additionalProperties: false
-                        properties:
-                          kind:
-                            type: string
-                            enum:
-                              - DockerImage
-                          name:
-                            type: string
-                            description: >-
-                              Docker image reference.
-                  type:
-                    type: string
-                    description: >-
-                      strategy defines how to perform a build.
-                    enum:
-                      - Docker
-                      - Source
-      require_end_to_end_test:
-        description: >-
-          Specify if the end-to-end tests must be executed on each PR against the integration cluster.
-
-        type: boolean
-        default: false
 ...
