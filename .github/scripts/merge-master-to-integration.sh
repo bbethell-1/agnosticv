@@ -17,6 +17,14 @@ merge_squash() {
             git rm "${i}"
         done
 
+        # Add files updated in their branch which are deleted in ours
+        git status --porcelain \
+            | grep -E '^DU' \
+            | cut -d' ' -f 1 --complement \
+            | while read -r i; do
+            git add "${i}"
+        done
+
         # Add files added in their branch
 
         git status --porcelain \
