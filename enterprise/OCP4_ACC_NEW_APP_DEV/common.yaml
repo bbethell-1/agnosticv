@@ -1,26 +1,23 @@
 ---
-#include /includes/parameters/enable-lets-encrypt.yaml
 #include /includes/catalog-icon-openshift.yaml
-#include /includes/parameters/aws-region.yaml
 #include /includes/parameters/purpose.yaml
-#include /includes/terms-of-service.yaml
+#include /includes/parameters/aws-region.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
 #include /includes/enterprise-premium-sla.yaml
 #include /includes/aws-sandbox-meta.yaml
 
 # -------------------------------------------------------------------
-# --- System: RHPDS
-# --- Catalog: OpenShift Demos
-# --- Catalog Item: OpenShift 4 Accelerate New App Development
+# --- Catalog Item: Accelerate New App Development Sales Play
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
+cloud_provider: ec2
 env_type: ocp4-cluster
 software_to_deploy: openshift4
-cloud_provider: ec2
 
 # -------------------------------------------------------------------
 # Platform
@@ -30,23 +27,23 @@ platform: rhpds
 # -------------------------------------------------------------------
 # VM configuration
 # -------------------------------------------------------------------
-bastion_instance_image: RHEL84GOLD-latest
 master_instance_type: m5a.2xlarge
 master_instance_count: 3
-worker_instance_type: m5a.2xlarge
-worker_instance_count: 3
+worker_instance_type: m5a.4xlarge
+worker_instance_count: 2
+bastion_instance_type: t3a.medium
+bastion_instance_image: RHEL84GOLD-latest
 
 # -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
 repo_method: satellite
-# Update RHEL to the latest packages (and reboot)
 update_packages: true
 
 # -------------------------------------------------------------------
 # OpenShift Installer Version
 # -------------------------------------------------------------------
-ocp4_installer_version: "4.10"
+ocp4_installer_version: "4.12.4"
 
 # -------------------------------------------------------------------
 # OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
@@ -68,8 +65,8 @@ student_workloads: []
 
 # -------------------------------------------------------------------
 # Bastion customization
+# Remove this once vscode on bastion not needed.
 # -------------------------------------------------------------------
-
 # Open up port 80 and 443 for VSCode Server
 # Open ports for Quarkus applications
 # Overwrite default Security Group BastionSG
@@ -112,59 +109,84 @@ security_groups:
 infra_workloads:
 - ocp4_workload_le_certificates
 - ocp4_workload_authentication
-- ocp4_workload_gitea_operator
 - ocp4_workload_pipelines
 - ocp4_workload_openshift_gitops
-- ocp4_workload_quarkus_super_heroes_demo
+- ocp4_workload_gitea_operator
+- ocp4_workload_acc_new_app_dev
+- ocp4_workload_codeserver
+- ocp4_workload_openshift_gitops_fix_argocd
 - ocp4_workload_vscode_bastion
 
 # -------------------------------------------------------------------
 # Workload variables
 # -------------------------------------------------------------------
+ocp4_workload_user_base: user
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.12_2023_02_27
+
+# Remove this once vscode on bastion not needed.
+_ocp4_workload_acc_new_app_dev_setup_bastion: true
+
+# -------------------------------------------------------------------
+# Common Admin Password
+# -------------------------------------------------------------------
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: openshift
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
 ocp4_workload_authentication_idm_type: htpasswd
 ocp4_workload_authentication_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
-ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: "{{ ocp4_workload_user_base }}"
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
 ocp4_workload_authentication_htpasswd_user_count: 1
 ocp4_workload_authentication_remove_kubeadmin: true
 
 # ---------------------------------------------------------
 # Workload: ocp4_workload_pipelines
 # ---------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.7
-ocp4_workload_pipelines_tkn_version: 0.23.1
-ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
+ocp4_workload_pipelines_channel: pipelines-1.9
 
 ocp4_workload_pipelines_use_catalog_snapshot: true
-ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.10_2022_08_29
+ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.6
+ocp4_workload_openshift_gitops_channel: gitops-1.7
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 
 ocp4_workload_openshift_gitops_use_catalog_snapshot: true
-ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
-ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.10_2022_08_29
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# ocp4_workload_openshift_gitops_update_resources: true
+
+# ocp4_workload_openshift_gitops_controller_update: true
+# ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+# ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+# ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+# ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+# ocp4_workload_openshift_gitops_repo_update: true
+# ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+# ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+# ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+# ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+ocp4_workload_openshift_gitops_update_route_tls: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitea_operator
 # -------------------------------------------------------------------
-ocp4_workload_gitea_operator_project: gitea
 ocp4_workload_gitea_operator_catalog_image_tag: v1.3.0
 
-ocp4_workload_gitea_operator_deploy_gitea_instance: true
 ocp4_workload_gitea_operator_gitea_image: quay.io/gpte-devops-automation/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: "1.17.1"
-ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.18.5"
 ocp4_workload_gitea_operator_gitea_hostname: gitea
 ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
 ocp4_workload_gitea_operator_gitea_volume_storage_class: gp3-csi
@@ -172,53 +194,114 @@ ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel8/postgres
 ocp4_workload_gitea_operator_postgresql_image_tag: latest
 ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
 ocp4_workload_gitea_operator_postgresql_volume_storage_class: gp3-csi
-ocp4_workload_gitea_operator_ssl_route: true
-
-ocp4_workload_gitea_operator_disable_registration: false
-ocp4_workload_gitea_operator_enable_captcha: false
-ocp4_workload_gitea_operator_allow_create_organization: true
-ocp4_workload_gitea_operator_register_email_confirm: false
-ocp4_workload_gitea_operator_enable_notify_email: false
-ocp4_workload_gitea_operator_mailer_enabled: false
 
 ocp4_workload_gitea_operator_create_admin: true
 ocp4_workload_gitea_operator_admin_user: opentlc-mgr
 ocp4_workload_gitea_operator_admin_email: opentlc-mgr@opentlc.com
-ocp4_workload_gitea_operator_admin_password: openshift
+ocp4_workload_gitea_operator_admin_password: "{{ common_admin_password }}"
 
 ocp4_workload_gitea_operator_create_users: true
 ocp4_workload_gitea_operator_user_number: 1
-ocp4_workload_gitea_operator_generate_user_format: "{{ student_name }}"
-ocp4_workload_gitea_operator_user_password: openshift
+# For single user, must assign a value such as 'user1' for compatibility with ocp4_workload_acc_new_app_dev
+ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_user_base + '1'}}"
+ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
 ocp4_workload_gitea_operator_migrate_repositories: true
 ocp4_workload_gitea_operator_repositories_list:
-- repo: https://github.com/quarkusio/quarkus-super-heroes.git
+- repo: https://github.com/redhat-gpte-devopsautomation/acc-new-app-dev.git
+  name: acc-new-app-dev
+  private: false
+- repo: https://github.com/redhat-gpte-devopsautomation/quarkus-super-heroes-rhbq213.git
   name: quarkus-super-heroes
   private: false
-- repo: https://github.com/redhat-gpte-devopsautomation/quarkus-super-heroes.git
+- repo: https://github.com/redhat-gpte-devopsautomation/quarkus-super-heroes-deploy.git
   name: quarkus-super-heroes-deploy
-  private: false
+  private: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_quarkus_super_heroes_demo
+# Workload: ocp4_workload_acc_new_app_dev
 # -------------------------------------------------------------------
-ocp4_workload_quarkus_super_heroes_demo_user_name: "{{ student_name }}"
-ocp4_workload_quarkus_super_heroes_demo_user_group: users
+ocp4_workload_acc_new_app_dev_user_count: 1
+ocp4_workload_acc_new_app_dev_user_prefix: "{{ ocp4_workload_user_base }}"
 
-ocp4_workload_quarkus_super_heroes_demo_release_tag: rhbq-2.7
-ocp4_workload_quarkus_super_heroes_demo_java_versions: []
-ocp4_workload_quarkus_super_heroes_demo_clone_repo_gitea_user: "{{ student_name }}"
-ocp4_workload_quarkus_super_heroes_demo_clone_repo_gitea_password: openshift
-ocp4_workload_quarkus_super_heroes_demo_deploy_cicd: true
+ocp4_workload_acc_new_app_dev_gitea_user_password: "{{ ocp4_workload_gitea_operator_user_password }}"
+
+# repo details from gitea containing the devops code for this lab
+ocp4_workload_acc_new_app_dev_repo: acc-new-app-dev
+ocp4_workload_acc_new_app_dev_revision: v1.0.0
+
+ocp4_workload_acc_new_app_dev_demo_namespace_prefix: quarkus-superheroes-
+ocp4_workload_acc_new_app_dev_demo_app_name: rest-fights
+# repo details from gitea containing the source code of the demo application.
+ocp4_workload_acc_new_app_dev_demo_app_source: quarkus-super-heroes
+ocp4_workload_acc_new_app_dev_demo_app_source_revision: rhbq-2.13
+# repo details from gitea containing the gitops/deploy code of the demo application.
+ocp4_workload_acc_new_app_dev_demo_app_deploy: quarkus-super-heroes-deploy
+ocp4_workload_acc_new_app_dev_demo_app_deploy_revision: rhbq-2.13
+ocp4_workload_acc_new_app_dev_demo_app_deploy_path: kustomize
+
+ocp4_workload_acc_new_app_dev_amqstreams_channel: stable
+ocp4_workload_acc_new_app_dev_amqstreams_startingcsv: amqstreams.v2.3.0-1
+ocp4_workload_acc_new_app_dev_amqstreams_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_acc_new_app_dev_amqstreams_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_acc_new_app_dev_amqstreams_memory: 1Gi
+
+ocp4_workload_acc_new_app_dev_kafka_name: fights-kafka
+ocp4_workload_acc_new_app_dev_kafka_topic: fights
+
+ocp4_workload_acc_new_app_dev_jaeger_channel: stable
+ocp4_workload_acc_new_app_dev_jaeger_startingcsv: jaeger-operator.v1.39.0-3
+ocp4_workload_acc_new_app_dev_jaeger_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_acc_new_app_dev_jaeger_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_acc_new_app_dev_opentelemetry_channel: stable
+ocp4_workload_acc_new_app_dev_opentelemetry_startingcsv: opentelemetry-operator.v0.63.1-4
+ocp4_workload_acc_new_app_dev_opentelemetry_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_acc_new_app_dev_opentelemetry_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_acc_new_app_dev_guides: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_codeserver
+# -------------------------------------------------------------------
+ocp4_workload_codeserver_password: "{{ common_user_password }}"
+ocp4_workload_codeserver_image_tag: v4.10.0-java11
+ocp4_workload_codeserver_init_image_tag: v4.10.0
+ocp4_workload_codeserver_extensions:
+- filename: auchenberg.vscode-browser-preview-0.7.2.vsix
+  url: https://gpte-public.s3.amazonaws.com/vscode-plugins/auchenberg.vscode-browser-preview-0.7.2.vsix
+
+ocp4_workload_codeserver_multi_user_install: false
+
+ocp4_workload_codeserver_repos_user: "{{ ocp4_workload_user_base + '1'}}"
+
+ocp4_workload_codeserver_init_request_memory: "512Mi"
+ocp4_workload_codeserver_init_limits_memory: "512Mi"
+ocp4_workload_codeserver_request_memory: "2Gi"
+ocp4_workload_codeserver_limits_memory: "2Gi"
+
+# Repositories to set up in codeserver
+ocp4_workload_codeserver_repos_password: "{{ common_user_password }}"
+ocp4_workload_codeserver_repos:
+- name: quarkus-super-heroes
+  account: "{{ ocp4_workload_user_base + '1'}}"
+  branch: rhbq-2.13
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops_fix_argocd
+# -------------------------------------------------------------------
+# Sleep 10 minutes before attempting to fix argocd dex pods
+ocp4_workload_openshift_gitops_fix_argocd_delay: "10"
+ocp4_workload_openshift_gitops_fix_argocd_create_namespace: false
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_bastion_vscode
+# Remove this once vscode on bastion not needed.
 # -------------------------------------------------------------------
-ocp4_workload_vscode_bastion_user_name: "{{ ocp4_workload_quarkus_super_heroes_demo_user_name }}"
+ocp4_workload_vscode_bastion_user_name: "{{ student_name }}"
 ocp4_workload_vscode_bastion_user_group: users
 
 ocp4_workload_vscode_bastion_vscode_package_version: 4.7.0
-ocp4_workload_vscode_bastion_vscode_password: "openshift"
+ocp4_workload_vscode_bastion_vscode_password: "{{ common_user_password }}"
 ocp4_workload_vscode_bastion_vscode_repo_directories:
 - "/home/{{ ocp4_workload_vscode_bastion_user_name }}/quarkus-super-heroes"
 ocp4_workload_vscode_bastion_workspace_name: QuarkusSuperHeroes
@@ -239,13 +322,14 @@ agnosticv_meta:
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
-  aws_sandboxed: true
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   deployer:
     virtualenv: ansible2.9-python3.6-2021-11-30
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Accelerate New App Development
+    category: Demos
     keywords: []
     labels:
       Provider: RHDP
@@ -253,9 +337,6 @@ __meta__:
       Product_Family: Red_Hat_Cloud
       Sales_Play: Accelerate_New_App_Dev
       Featured_Score: '80'
-    display_name: Accelerate New App Development
-    category: Demos
-    multiuser: true
     parameters: []
   runtime:
     default: 8h
@@ -265,9 +346,3 @@ __meta__:
     name: satellite-rhel81-ha
   - namespace: gpte
     name: ocp4-token
-  - namespace: gpte
-    name: rhev_dev_credentials
-  - namespace: gpte
-    name: output-dir-s3
-
-# Email update 2022-09-30 09:50
