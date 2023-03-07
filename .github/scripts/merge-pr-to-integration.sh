@@ -20,24 +20,15 @@ if [ $? != 0 ]; then
 
     # Delete files deleted in their branch
     git status --porcelain \
-        | grep -E '^UD' \
+        | grep -E '^.D' \
         | cut -d' ' -f 1 --complement \
         | while read -r i; do
         git rm "${i}"
     done
 
-    # Add files updated in their branch which are deleted in ours
+    # Add files updated or added in their branch
     git status --porcelain \
-        | grep -E '^DU' \
-        | cut -d' ' -f 1 --complement \
-        | while read -r i; do
-        git add "${i}"
-    done
-
-    # Add files added in their branch
-
-    git status --porcelain \
-        | grep -E '^UA' \
+        | grep -E -e '^.A' -e '^.U' \
         | cut -d' ' -f 1 --complement \
         | while read -r i; do
         git add "${i}"
