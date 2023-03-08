@@ -116,8 +116,24 @@ def check_tag_var(c,ci):
                     raise ValueError(
                         '''scm_ref should be used for prod/ilt, not git_tag_prefix.'''
                     )
-
     return True
+
+def check_virtualenv(c, ci):
+    """
+    Check that __meta__.deployer.virtualenv exists in GitHub upstream repo
+    """
+
+    if "__meta__" in c or "agnosticv_meta" in c:
+        deployer = c.get("__meta__", {}).get("deployer", {})
+        virtualenv = deployer.get("virtualenv") or c.get("agnosticv_meta", {}).get("virtualenv")
+        if virtualenv:
+            url = f"https://api.github.com/repos/redhat-cop/agnosticd/contents/tools/virtualenvs/{virtualenv}.txt"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            r = requests.get(url, headers=headers)
+            if r.status_code != 200:
+                raise ValueError(f"Error accessing  {url} or virtualenv doesn't exist. Status code: {r.status_code}")
+
+    return True   
 
 def check_valid_agv_tag(c,ci):
     '''Ensure configuration is having a valid git tag agnosticv meta'''
@@ -213,7 +229,7 @@ for ci in catalog_items:
     ci_object = yaml.safe_load(process_ci.stdout)
     passed = True
     exceptions = {}
-    for f in [check_double_booking,check_name,check_tag_var,check_valid_agv_tag,check_valid_babylon_tag,check_anarchy_namespace]:
+    for f in [check_double_booking,check_name,check_tag_var,check_valid_agv_tag,check_valid_babylon_tag,check_anarchy_namespace,check_virtualenv]:
         try:
             if not f(ci_object,ci):
                 passed = False
