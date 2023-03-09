@@ -2,9 +2,11 @@
 #include /includes/catalog-icon-cloud-native.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/aws-region.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/lifetime-standard.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/enterprise-premium-sla.yaml
-#include /includes/lifetime-standard.yaml
+#include /includes/aws-sandbox-meta.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: Modernize Existing Applications
@@ -13,6 +15,7 @@
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
+cloud_provider: ec2
 env_type: ocp4-cluster
 software_to_deploy: openshift4
 
@@ -24,27 +27,23 @@ platform: rhpds
 # -------------------------------------------------------------------
 # VM configuration
 # -------------------------------------------------------------------
-cloud_provider: ec2
 master_instance_type: m5a.4xlarge
 master_instance_count: 1
-master_storage_type: io1
 worker_instance_type: m5a.4xlarge
-worker_instance_count: 3
-worker_storage_type: gp3
-bastion_instance_image: RHEL84GOLD-latest
+worker_instance_count: 1
 bastion_instance_type: t3a.medium
+bastion_instance_image: RHEL84GOLD-latest
 
 # -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
 repo_method: satellite
-# Update RHEL to the latest packages (and reboot)
 update_packages: true
 
 # -------------------------------------------------------------------
 # OpenShift Installer Version
 # -------------------------------------------------------------------
-ocp4_installer_version: "4.11"
+ocp4_installer_version: "4.12.4"
 
 # -------------------------------------------------------------------
 # OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
@@ -69,7 +68,6 @@ student_workloads: []
 # -------------------------------------------------------------------
 # --- Infra Workloads (YAML List)
 infra_workloads:
-- ocp4_workload_openshift_data_foundation
 - ocp4_workload_machinesets
 - ocp4_workload_le_certificates
 - ocp4_workload_authentication
@@ -81,28 +79,20 @@ infra_workloads:
 # -------------------------------------------------------------------
 # Workload variables
 # -------------------------------------------------------------------
+ocp4_workload_user_base: user
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.12_2023_03_06
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_openshift_data_foundations
+# Common Admin Password
 # -------------------------------------------------------------------
-ocp4_workload_openshift_data_foundation_channel: stable-4.11
-ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
-ocp4_workload_openshift_data_foundation_update_default_storage_class: true
-ocp4_workload_openshift_data_foundation_tolerations:
-- key: metal
-  operator: Exists
-
-ocp4_workload_openshift_data_foundation_catalogsource_setup: true
-ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
-ocp4_workload_openshift_data_foundation_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_openshift_data_foundation_catalogsource_image_tag: v4.11_2022_11_21
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: openshift
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_machinesets
 # -------------------------------------------------------------------
-ocp4_workload_machinesets_disable_default_machinesets: false
-ocp4_workload_machinesets_wait_for_nodes: false
-
 # Add a MachineSet for AWS Bare Metal instances
 ocp4_workload_machinesets_machineset_groups:
 - name: metal
@@ -110,13 +100,11 @@ ocp4_workload_machinesets_machineset_groups:
   instance_type: c5.metal
   autoscale: false
   total_replicas: 1
-  # Autoscaler settings - minimum and maximum number of Machines
   total_replicas_min: 1
   total_replicas_max: 1
-  # The role of the nodes (node-role.kubernetes.io/metal: "")
   machineConfigPool:
     setup: true
-    maxPodsPerNode: 400
+    maxPodsPerNode: 250
   taints:
   - key: metal
     value: "true"
@@ -127,9 +115,9 @@ ocp4_workload_machinesets_machineset_groups:
 # -------------------------------------------------------------------
 ocp4_workload_authentication_idm_type: htpasswd
 ocp4_workload_authentication_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
-ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: "{{ ocp4_workload_user_base }}"
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
 ocp4_workload_authentication_htpasswd_user_count: 1
 ocp4_workload_authentication_remove_kubeadmin: true
 
@@ -137,14 +125,14 @@ ocp4_workload_authentication_remove_kubeadmin: true
 # ocp4_workload_kubevirt
 # -------------------------------------------------------------------
 ocp4_workload_kubevirt_channel: stable
+
+ocp4_workload_kubevirt_use_catalog_snapshot: true
+ocp4_workload_kubevirt_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_kubevirt_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
 ocp4_workload_kubevirt_workload_tolerations:
 - key: metal
   operator: Exists
-
-ocp4_workload_kubevirt_use_catalog_snapshot: true
-ocp4_workload_kubevirt_catalogsource_name: redhat-operators-snapshot-kubevirt
-ocp4_workload_kubevirt_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_kubevirt_catalog_snapshot_image_tag: v4.11_2022_11_21
 
 # -------------------------------------------------------------------
 # ocp4_workload_app_mod_demo
@@ -160,34 +148,32 @@ ocp4_workload_app_mod_demo_image_postgresql: registry.redhat.io/rhel8/postgresql
 ocp4_workload_mta6_namespace_base: openshift-mta
 
 ocp4_workload_mta6_channel: stable-v6.0
-ocp4_workload_mta6_starting_csv: mta-operator.v6.0.0
+ocp4_workload_mta6_starting_csv: mta-operator.v6.0.1
 ocp4_workload_mta6_catalogsource_setup: true
-ocp4_workload_mta6_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_mta6_catalogsource_image_tag: v4.11_2022_11_21
+ocp4_workload_mta6_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_mta6_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
-# Needs to install rhsso separately, because installation via
-# mta operator restults in non-deterministic behaviour on the
-# installPlan csv name
+# Needs to install rhsso separately, because installation via mta operator restults in
+# non-deterministic behaviour on the installPlan csv name.
 ocp4_workload_mta6_rhsso_channel: stable
-ocp4_workload_mta6_rhsso_starting_csv: rhsso-operator.7.6.1-opr-001
+ocp4_workload_mta6_rhsso_starting_csv: rhsso-operator.7.6.2-opr-001
 
-ocp4_workload_mta6_seed_image: quay.io/gpte-devops-automation/tackle2-setup
-ocp4_workload_mta6_seed_tag: "v2.1.3"
-ocp4_workload_mta6_rwx_storage_class: ocs-storagecluster-cephfs
-ocp4_workload_mta6_rwo_storage_class: ocs-storagecluster-ceph-rbd
+ocp4_workload_mta6_rwx_supported: false
+ocp4_workload_mta6_rwx_storage_class: ""
+ocp4_workload_mta6_rwo_storage_class: ""
 
 ocp4_workload_mta6_seed: true
+ocp4_workload_mta6_seed_image: quay.io/gpte-devops-automation/tackle2-setup
+ocp4_workload_mta6_seed_tag: "v2.1.3"
 
 # -------------------------------------------------------------------
 # ocp4_workload_mtv
 # -------------------------------------------------------------------
 ocp4_workload_mtv_channel: release-v2.3
-ocp4_workload_mtv_wait_for_forkliftcontroller: false
 
 ocp4_workload_mtv_use_catalog_snapshot: true
-ocp4_workload_mtv_catalogsource_name: redhat-operators-snapshot-mtv
-ocp4_workload_mtv_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_mtv_catalog_snapshot_image_tag: v4.11_2022_11_21
+ocp4_workload_mtv_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_mtv_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
@@ -201,7 +187,6 @@ agnosticv_meta:
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
-  aws_sandboxed: true
   anarchy:
     namespace: babylon-anarchy-enterprise
   deployer:
@@ -218,17 +203,15 @@ __meta__:
       Sales_Play: Modernize_Existing_Apps
       Featured_Score: '80'
     parameters: []
+  runtime:
+    default: 8h
+    maximum: 48h
   access_control:
     allow_groups:
     - babylon-admins
     - rhpds-devs
   secrets:
   - namespace: gpte
-    name: ocp4-token
-  - namespace: gpte
-    name: gpte-sandbox
-    var: aws_sandbox_manager
-  - namespace: gpte
     name: satellite-rhel81-ha
-  - name: output-dir-s3
-    namespace: gpte
+  - namespace: gpte
+    name: ocp4-token
