@@ -163,7 +163,8 @@ def check_valid_babylon_tag(c,ci):
     ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
     if '__meta__' in c or 'agnosticv_meta' in c:
         if (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt")):
-            bMetaRepo = "redhat-cop/agnosticd/git/matching-refs/tags/"
+            bMetaProdRepo = "redhat-cop/agnosticd"
+            bMetaRepo = ''
             # Getting tag value from __meta__ section
             bMetaTag = ''
             if 'deployer' in c['__meta__']:
@@ -172,7 +173,11 @@ def check_valid_babylon_tag(c,ci):
                     bMetaTag = deployer['scm_ref']
                 elif 'git_tag_prefix' in deployer:
                     bMetaTag = deployer['git_tag_prefix']
+                if 'scm_url' in deployer:
+                    bMetaScmUrl = deployer['scm_url']
+                    bMetaProdRepo = bMetaScmUrl.replace("https://github.com/","").replace(".git","")
                 # Call Github API and check git tag on agnosticd repo
+                bMetaRepo = bMetaProdRepo + "/git/matching-refs/tags/"
                 bTagResponse = requests.get("https://api.github.com/repos/"+bMetaRepo+bMetaTag)
                 if bTagResponse.status_code==200 and bTagResponse.json() is not None and len(bTagResponse.json())<1:
                     raise ValueError(
