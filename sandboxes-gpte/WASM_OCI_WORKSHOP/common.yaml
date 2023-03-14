@@ -1,0 +1,257 @@
+---
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/secrets/bookbag-shared-410.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/open-environment-annotation.yaml
+#include /includes/secrets/satellite-rhel-8.6-and-9.0.yaml
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: rhel9-workshop
+software_to_deploy: none
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+use_content_view: true
+update_all_packages: true
+update_packages: true
+
+# -------------------------------------------------------------------
+# AWS machine vars
+# -------------------------------------------------------------------
+workstation_instance_image: RHEL91GOLD-latest
+node_instance_image: RHEL90GOLD
+set_repositories_rhel8_lock_release: '8.6'
+set_repositories_rhel9_lock_release: '9.1'
+
+# -------------------------------------------------------------------
+# BookBag VARS
+# -------------------------------------------------------------------
+bookbag_git_repo: https://github.com/tonykay/wasm-oci-workshop.git
+  # bookbag_git_version: Summit_2022
+
+# -------------------------------------------------------------------
+# AWS user VARS
+# -------------------------------------------------------------------
+ansible_user: ec2-user
+remote_user: ec2-user
+key_name: ""
+student_name: student
+install_student_user: true
+admin_user: opentlc-mgr
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  deploy_with: babylon
+  virtualenv: babylon
+  params_to_variables:
+    user: ignore_user
+    username: student_name
+    region: aws_region
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  aws_sandboxed: true
+  deployer:
+    virtualenv: ansible2.9-python3.6-2021-11-30
+  catalog:
+    multiuser: false
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: WebAssembly OCI Workshop
+    category: Workshops
+    keywords:
+      - rhel9
+      - wasm
+      - oci
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: TME_And_Industries_BU
+      Featured_Score: '70'
+    parameters: []
+  secrets:
+    - name: output-dir-s3
+      namespace: gpte
+    - name: satellite-rhel-8.6-and-9.0
+      namespace: gpte
+
+instance_type: "t3a.medium"
+
+control_user_ssh_config: ./files/ssh_config.j2
+
+security_groups:
+
+  - name: BastionSG
+    rules:
+      - name: BastionHTTPSPorts
+        description: "Cockpit HTTPS Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: NodeSG
+    rules:
+      - name: FromNodeSGtcp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: NodeSG
+        rule_type: Ingress
+
+      - name: FromNodeSGudp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: NodeSG
+        rule_type: Ingress
+
+      - name: FromBastionTCP
+        description: "Allow everything from Bastion"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: BastionSG
+        rule_type: Ingress
+
+      - name: FromBastionUDP
+        description: "Allow everything from Bastion"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: BastionSG
+        rule_type: Ingress
+
+
+leap_instance_image: "RHEL8GOLD-latest"
+rootfs_size_workstation: 30
+rootfs_size_node: 30
+
+# Instance type
+workstation_instance_type: "{{ instance_type }}"
+node_instance_type: "{{ instance_type }}"
+leap_instance_type: "{{ instance_type }}"
+
+###
+instances:
+  - name: bastion
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image_id: "{{ workstation_instance_image | default(aws_default_image) }}"
+    image: "{{ workstation_instance_image | default(aws_default_image) }}"
+    flavor:
+      ec2: "{{workstation_instance_type | default(instance_type) }}"
+      osp: "{{workstation_instance_type | default(instance_type) }}"
+      azure: Standard_A2_V2
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ rootfs_size_workstation }}"
+    security_groups:
+      - BastionSG
+
+  - name: microshift
+    count: 1
+    public_dns: true
+    unique: true
+    image_id: "{{ leap_instance_image | default(aws_default_image) }}"
+    image: "{{ leap_instance_image | default(aws_default_image) }}"
+    flavor:
+      ec2: "{{leap_instance_type | default(instance_type) }}"
+      osp: "{{leap_instance_type | default(instance_type) }}"
+      azure: Standard_A2_V2
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "rhel"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ rootfs_size_node }}"
+    security_groups:
+      - NodeSG
+
+
+# FTL Settings
+install_ftl: false
+ftl_use_python3: true
+
+# Login Settings
+install_ipa_client: false
+
+# Do you want to run a full yum update
+# update_packages: false # leave for now 2023-03-14
+
+
+## guid is the deployment unique identifier, it will be appended to all tags,
+## files and anything that identifies this environment from another "just like it"
+
+# This var is used to identify stack (cloudformation, azure resourcegroup, ...)
+project_tag: "{{ env_type }}-{{ guid }}"
+
+# This is where the ssh_config file will be created, this file is used to
+# define the communication method to all the hosts in the deployment
+deploy_local_ssh_config_location: "{{output_dir}}/"
+
+install_bastion: false
+install_common: true
+install_bastion_lite: true
+
+### If you want a Key Pair name created and injected into the hosts,
+# set `set_env_authorized_key` to true and set the keyname in `env_authorized_key`
+# you can use the key used to create the environment or use your own self generated key
+env_authorized_key: "{{guid}}key"
+ansible_ssh_private_key_file: ~/.ssh/{{key_name}}.pem
+set_env_authorized_key: true
+
+rhel_repos:
+  - rhel-9-for-x86_64-baseos-rpms
+  - rhel-9-for-x86_64-appstream-rpms
+
+common_packages_el9:
+
+  - bash-completion
+  - bind-utils
+  - gcc
+  - python3
+  - python3-devel
+  - unzip
+  - tmux
+  - tree
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - httpd-tools
+
+    # cf_template_description: "{{ env_type }}-{{ guid }} Ansible Agnostic Deployer "
+
+...
