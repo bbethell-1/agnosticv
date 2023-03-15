@@ -1,13 +1,5 @@
 ---
-#include /includes/catalog-icon-rhel.yaml
-#include /includes/parameters/salesforce-id.yaml
-#include /includes/parameters/purpose.yaml
-#include /includes/parameters/aws-region.yaml
-#include /includes/secrets/bookbag-shared-410.yaml
-#include /includes/lifetime-standard.yaml
-#include /includes/terms-of-service.yaml
-#include /includes/parameters/open-environment-annotation.yaml
-#include /includes/secrets/satellite-rhel-8.6-and-9.0.yaml
+#include /includes/aws-sandbox-meta.yaml
 
 # -------------------------------------------------------------------
 # Platform
@@ -18,156 +10,60 @@ platform: RHPDS
 # Mandatory Variables
 # -------------------------------------------------------------------
 env_type: base-rhel-infra
-software_to_deploy: none
+cloud_provider: ec2
 
-# -------------------------------------------------------------------
-# Repos
-# -------------------------------------------------------------------
-repo_method: satellite
-use_content_view: true
-update_all_packages: true
-update_packages: true
+aws_region: us-east-2
 
-# -------------------------------------------------------------------
-# AWS machine vars
-# -------------------------------------------------------------------
-#
-# -------------------------------------------------------------------
-# BookBag VARS
-# -------------------------------------------------------------------
-bookbag_git_repo: https://github.com/tonykay/wasm-oci-workshop.git
-  # bookbag_git_version: Summit_2022
-
-# -------------------------------------------------------------------
-# AWS user VARS
-# -------------------------------------------------------------------
-ansible_user: ec2-user
-remote_user: ec2-user
-key_name: ""
-student_name: student
-install_student_user: true
-admin_user: opentlc-mgr
+# Disable creating SSH key and bastion inventory (like skip-tags)
+create_ssh_config: true
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
 # -------------------------------------------------------------------
+# AgnosticV Metadata
+# Set VirtualEnv to run this config in
 agnosticv_meta:
+  babylon:
+    kubeconfig: babylon-prod.kubeconfig
   deploy_with: babylon
   virtualenv: babylon
   params_to_variables:
-    user: ignore_user
-    username: student_name
     region: aws_region
 
+sandbox_user_info_messages_enable: true
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
+
 __meta__:
-  anarchy:
-    namespace: babylon-anarchy-sandboxes-gpte
   aws_sandboxed: true
+  anarchy:
+    namespace: babylon-anarchy-enterprise
   deployer:
     virtualenv: ansible2.9-python3.6-2021-11-30
   catalog:
-    multiuser: false
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: WebAssembly OCI Workshop
-    category: Workshops
     keywords:
-      - rhel9
       - wasm
       - oci
     labels:
-      Product: Red_Hat_Enterprise_Linux
-      Product_Family: Red_Hat_Enterprise_Linux
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Cloud
       Provider: RHDP
-      Featured_Score: '70'
+      Featured_Score: '90'
     parameters: []
   secrets:
-    - name: output-dir-s3
+    - name: ent-demo-ate
       namespace: gpte
-    - name: satellite-rhel-8.6-and-9.0
-      namespace: gpte
+  access_control:
+    allow_groups:
+      - babylon-admins
+      - babylon-devs
+      - rhpds-devs
 
-instance_type: "t3a.medium"
-
-control_user_ssh_config: ./files/ssh_config.j2
-
-security_groups:
-
-  - name: BastionSG
-    rules:
-      - name: BastionHTTPSPorts
-        description: "Cockpit HTTPS Public"
-        from_port: 443
-        to_port: 443
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-
-  - name: NodeSG
-    rules:
-      - name: FromNodeSGtcp
-        description: "Allow everything from HostSG nodes"
-        from_port: 0
-        to_port: 65535
-        protocol: tcp
-        from_group: NodeSG
-        rule_type: Ingress
-
-      - name: FromNodeSGudp
-        description: "Allow everything from HostSG nodes"
-        from_port: 0
-        to_port: 65535
-        protocol: udp
-        from_group: NodeSG
-        rule_type: Ingress
-
-      - name: FromBastionTCP
-        description: "Allow everything from Bastion"
-        from_port: 0
-        to_port: 65535
-        protocol: tcp
-        from_group: BastionSG
-        rule_type: Ingress
-
-      - name: FromBastionUDP
-        description: "Allow everything from Bastion"
-        from_port: 0
-        to_port: 65535
-        protocol: udp
-        from_group: BastionSG
-        rule_type: Ingress
-
-
-rootfs_size_workstation: 30
-rootfs_size_node: 30
-
-
-# FTL Settings
-install_ftl: false
-ftl_use_python3: true
-
-# Login Settings
-install_ipa_client: false
-
-# Do you want to run a full yum update
-# update_packages: false # leave for now 2023-03-14
-
-
-## guid is the deployment unique identifier, it will be appended to all tags,
-## files and anything that identifies this environment from another "just like it"
-
-# This var is used to identify stack (cloudformation, azure resourcegroup, ...)
-project_tag: "{{ env_type }}-{{ guid }}"
-
-# This is where the ssh_config file will be created, this file is used to
-# define the communication method to all the hosts in the deployment
-deploy_local_ssh_config_location: "{{output_dir}}/"
-
-
-### If you want a Key Pair name created and injected into the hosts,
-# set `set_env_authorized_key` to true and set the keyname in `env_authorized_key`
-# you can use the key used to create the environment or use your own self generated key
-
-...
+repo_method: satellite
+set_repositories_satellite_ha: true
+set_repositories_satellite_url: labsat-ha.opentlc.com
+set_repositories_satellite_org: Red_Hat_GPTE_Labs
+set_repositories_satellite_activationkey: rhel8-latest
