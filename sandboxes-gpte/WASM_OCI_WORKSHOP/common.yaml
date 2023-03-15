@@ -17,7 +17,7 @@ platform: RHPDS
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-env_type: rhel9-workshop
+env_type: base-rhel-infra
 software_to_deploy: none
 
 # -------------------------------------------------------------------
@@ -31,11 +31,7 @@ update_packages: true
 # -------------------------------------------------------------------
 # AWS machine vars
 # -------------------------------------------------------------------
-workstation_instance_image: RHEL91GOLD-latest
-node_instance_image: RHEL90GOLD
-set_repositories_rhel8_lock_release: '8.6'
-set_repositories_rhel9_lock_release: '9.1'
-
+#
 # -------------------------------------------------------------------
 # BookBag VARS
 # -------------------------------------------------------------------
@@ -84,7 +80,7 @@ __meta__:
     labels:
       Product: Red_Hat_Enterprise_Linux
       Product_Family: Red_Hat_Enterprise_Linux
-      Provider: TME_And_Industries_BU
+      Provider: RHDP
       Featured_Score: '70'
     parameters: []
   secrets:
@@ -144,60 +140,8 @@ security_groups:
         rule_type: Ingress
 
 
-leap_instance_image: "RHEL8GOLD-latest"
 rootfs_size_workstation: 30
 rootfs_size_node: 30
-
-# Instance type
-workstation_instance_type: "{{ instance_type }}"
-node_instance_type: "{{ instance_type }}"
-leap_instance_type: "{{ instance_type }}"
-
-###
-instances:
-  - name: bastion
-    count: 1
-    unique: true
-    public_dns: true
-    dns_loadbalancer: true
-    floating_ip: true
-    image_id: "{{ workstation_instance_image | default(aws_default_image) }}"
-    image: "{{ workstation_instance_image | default(aws_default_image) }}"
-    flavor:
-      ec2: "{{workstation_instance_type | default(instance_type) }}"
-      osp: "{{workstation_instance_type | default(instance_type) }}"
-      azure: Standard_A2_V2
-    tags:
-      - key: "AnsibleGroup"
-        value: "bastions"
-      - key: "ostype"
-        value: "linux"
-      - key: "instance_filter"
-        value: "{{ env_type }}-{{ email }}"
-    rootfs_size: "{{ rootfs_size_workstation }}"
-    security_groups:
-      - BastionSG
-
-  - name: microshift
-    count: 1
-    public_dns: true
-    unique: true
-    image_id: "{{ leap_instance_image | default(aws_default_image) }}"
-    image: "{{ leap_instance_image | default(aws_default_image) }}"
-    flavor:
-      ec2: "{{leap_instance_type | default(instance_type) }}"
-      osp: "{{leap_instance_type | default(instance_type) }}"
-      azure: Standard_A2_V2
-    tags:
-      - key: "AnsibleGroup"
-        value: "nodes"
-      - key: "ostype"
-        value: "rhel"
-      - key: "instance_filter"
-        value: "{{ env_type }}-{{ email }}"
-    rootfs_size: "{{ rootfs_size_node }}"
-    security_groups:
-      - NodeSG
 
 
 # FTL Settings
@@ -221,37 +165,9 @@ project_tag: "{{ env_type }}-{{ guid }}"
 # define the communication method to all the hosts in the deployment
 deploy_local_ssh_config_location: "{{output_dir}}/"
 
-install_bastion: false
-install_common: true
-install_bastion_lite: true
 
 ### If you want a Key Pair name created and injected into the hosts,
 # set `set_env_authorized_key` to true and set the keyname in `env_authorized_key`
 # you can use the key used to create the environment or use your own self generated key
-env_authorized_key: "{{guid}}key"
-ansible_ssh_private_key_file: ~/.ssh/{{key_name}}.pem
-set_env_authorized_key: true
-
-rhel_repos:
-  - rhel-9-for-x86_64-baseos-rpms
-  - rhel-9-for-x86_64-appstream-rpms
-
-common_packages_el9:
-
-  - bash-completion
-  - bind-utils
-  - gcc
-  - python3
-  - python3-devel
-  - unzip
-  - tmux
-  - tree
-  - wget
-  - nano
-  - git
-  - vim-enhanced
-  - httpd-tools
-
-    # cf_template_description: "{{ env_type }}-{{ guid }} Ansible Agnostic Deployer "
 
 ...
