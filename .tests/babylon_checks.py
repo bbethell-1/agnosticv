@@ -118,6 +118,7 @@ def check_tag_var(c,ci):
                     )
     return True
 
+validated_virtualenvs = set()
 def check_virtualenv(c, ci):
     """
     Check that __meta__.deployer.virtualenv exists in GitHub upstream repo
@@ -126,11 +127,13 @@ def check_virtualenv(c, ci):
     if "__meta__" in c or "agnosticv_meta" in c:
         deployer = c.get("__meta__", {}).get("deployer", {})
         virtualenv = deployer.get("virtualenv") or c.get("agnosticv_meta", {}).get("virtualenv")
-        if virtualenv:
+        if virtualenv and virtualenv not in validated_virtualenvs:
             url = f"https://api.github.com/repos/redhat-cop/agnosticd/contents/tools/virtualenvs/{virtualenv}.txt"
             headers = {"User-Agent": "Mozilla/5.0"}
             r = requests.get(url, headers=headers)
-            if r.status_code != 200:
+            if r.status_code == 200:
+                validated_virtualenvs.add(virtualenv)
+            else:
                 raise ValueError(f"Error accessing  {url} or virtualenv doesn't exist. Status code: {r.status_code}")
 
     return True   
