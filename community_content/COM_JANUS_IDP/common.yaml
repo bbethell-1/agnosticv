@@ -11,123 +11,29 @@
 #include /includes/parameters/agnosticd_open_environment.yaml
 
 # -------------------------------------------------------------------
-# Mandatory Variables
-# -------------------------------------------------------------------
-env_type: ocp4-cluster
-software_to_deploy: openshift4
-cloud_provider: ec2
-
-# -------------------------------------------------------------------
-# Platform
-# -------------------------------------------------------------------
-platform: RHPDS
-
-# -------------------------------------------------------------------
-# OpenShift Version
-# -------------------------------------------------------------------
-ocp4_installer_version: "4.12"
-ocp4_installer_use_dev_preview: false
-
-# -------------------------------------------------------------------
-# Repos
-# -------------------------------------------------------------------
-repo_method: satellite
-update_packages: true
-
-# -------------------------------------------------------------------
-# Default Networking Stack
-# -------------------------------------------------------------------
-ocp4_network_type: OVNKubernetes
-
-# -------------------------------------------------------------------
-# Student User on Bastion
-# -------------------------------------------------------------------
-install_student_user: true
-student_name: lab-user
-student_sudo: true
-
-# -------------------------------------------------------------------
-# AWS Specific
-# -------------------------------------------------------------------
-master_instance_type_family: m5
-master_instance_type_size: >-
-  {{ 'xlarge' if worker_instance_count|int <= 10
-  else '2xlarge' if worker_instance_count|int <= 20
-  else '4xlarge'
-  }}
-master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size\
-  \ }}"
-
-master_storage_type: >-
-  {{ 'io1' if worker_instance_count|int >= 10
-  else 'gp3' }}
-worker_instance_type: "m5.4xlarge"
-worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max\
-  \ }}"
-
-worker_storage_type: gp3
-bastion_instance_image: RHEL84GOLD-latest
-
-# -------------------------------------------------------------------
-# Workloads
-# -------------------------------------------------------------------
-# --- Infra Workloads (YAML List)
-infra_workloads:
-- ocp4_workload_authentication
-- ocp4_workload_project_request_template
-- ocp4_workload_opentlc_production
-- ocp4_workload_le_certificates
-
-# --- Student Workloads (YAML List)
-student_workloads: []
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication
-# -------------------------------------------------------------------
-ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_admin_user: admin
-# Generate admin password
-ocp4_workload_authentication_htpasswd_admin_password: ""
-ocp4_workload_authentication_htpasswd_admin_password_length: 16
-ocp4_workload_authentication_htpasswd_user_base: user
-# Generate user password
-ocp4_workload_authentication_htpasswd_user_password: ""
-ocp4_workload_authentication_htpasswd_user_password_length: 16
-ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
-ocp4_workload_authentication_remove_kubeadmin: true
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_opentlc_production
-# -------------------------------------------------------------------
-ocp4_workload_opentlc_production_remove_self_provisioner: false
-
-
-# -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
   anarchy:
     namespace: babylon-anarchy-ocp-wksp
-  aws_sandboxed: true
-  deployer:
-    virtualenv: ansible2.9-python3.6-2021-11-30
+
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: Janus IDP Demo
-    category: Workshops
-    keywords:
-    - workshop
-    - openshift
+    display_name: Janus IDP Demo (Test)
+    category: Demos
     labels:
       Product_Family: Red_Hat_Cloud
       Provider: RHDP
       SLA: Community
-    multiuser: true
     parameters: []
-  secrets:
-  - namespace: gpte
-    name: ocp4-token
-  - namespace: gpte
-    name: satellite-rhel8-latest-ha
-  - name: output-dir-s3
-    namespace: gpte
+
+  # Components to include in template and catalog item
+  components:
+  - name: ocp412-wksp
+    display_name: Janus IDP Demo
+    item: sandboxes-gpte/OCP412_WKSP
+
+  # This catalog item only consists of components and does not describe
+  # anything to provision.
+  deployer:
+    type: null
