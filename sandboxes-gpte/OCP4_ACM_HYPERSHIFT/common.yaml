@@ -27,19 +27,29 @@ software_to_deploy: openshift4
 platform: rhpds
 
 # -------------------------------------------------------------------
+# Save ssh information to agnosticd_user_info
+# -------------------------------------------------------------------
+ocp4_cluster_show_access_user_info: true
+
+# -------------------------------------------------------------------
 # VM configuration
 # -------------------------------------------------------------------
-master_instance_type: m5a.xlarge
+master_instance_type: c6in.2xlarge
 master_instance_count: 3
-worker_instance_type: m5a.4xlarge
+master_storage_type: gp3
+master_storage_size: 250
+worker_instance_type: m6a.xlarge
 worker_instance_count: 3
+worker_storage_type: gp3
+worker_storage_size: 250
 bastion_instance_type: t3a.medium
 bastion_instance_image: RHEL84GOLD-latest
 
 # -------------------------------------------------------------------
 # OpenShift Installer Version
 # -------------------------------------------------------------------
-ocp4_installer_version: "4.11"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.12.9"
 
 # -------------------------------------------------------------------
 # OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
@@ -72,15 +82,15 @@ student_sudo: true
 requirements_content:
   collections:
   - name: kubernetes.core
-    version: 2.3.2
+    version: 2.4.0
   - name: amazon.aws
     version: 2.3.0
   - name: community.general
-    version: 5.8.0
+    version: 6.4.0
   - name: ansible.posix
-    version: 1.4.0
+    version: 1.5.1
   - name: community.crypto
-    version: 2.7.1
+    version: 2.11.0
 
 # -------------------------------------------------------------------
 # Other Variables
@@ -95,7 +105,7 @@ ocp4_network_type: OVNKubernetes
 infra_workloads:
 - ocp4_workload_le_certificates
 - ocp4_workload_authentication
-- ocp4_workload_gitea_operator
+- ocp4_workload_openshift_gitops
 - ocp4_workload_rhacm
 - ocp4_workload_rhacm_hypershift
 
@@ -115,81 +125,43 @@ remove_workloads_bastion: []
 # -------------------------------------------------------------------
 ocp4_workload_authentication_idm_type: htpasswd
 ocp4_workload_authentication_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_admin_password: ""
 ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_password: ""
 ocp4_workload_authentication_htpasswd_user_count: 2
 ocp4_workload_authentication_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_gitea_operator
+# Workload: ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_gitea_operator_project: gitea
-ocp4_workload_gitea_operator_catalog_image_tag: v1.3.0
-
-ocp4_workload_gitea_operator_deploy_gitea_instance: true
-ocp4_workload_gitea_operator_gitea_image: quay.io/gpte-devops-automation/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: "1.17.3"
-ocp4_workload_gitea_operator_name: gitea
-ocp4_workload_gitea_operator_gitea_hostname: gitea
-ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
-ocp4_workload_gitea_operator_gitea_volume_storage_class: gp3-csi
-ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel8/postgresql-13
-ocp4_workload_gitea_operator_postgresql_image_tag: latest
-ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
-ocp4_workload_gitea_operator_postgresql_volume_storage_class: gp3-csi
-ocp4_workload_gitea_operator_ssl_route: true
-
-ocp4_workload_gitea_operator_disable_registration: false
-ocp4_workload_gitea_operator_enable_captcha: false
-ocp4_workload_gitea_operator_allow_create_organization: true
-ocp4_workload_gitea_operator_register_email_confirm: false
-ocp4_workload_gitea_operator_enable_notify_email: false
-ocp4_workload_gitea_operator_mailer_enabled: false
-
-ocp4_workload_gitea_operator_create_admin: true
-ocp4_workload_gitea_operator_admin_user: opentlc-mgr
-ocp4_workload_gitea_operator_admin_email: opentlc-mgr@opentlc.com
-ocp4_workload_gitea_operator_admin_password: openshift
-
-ocp4_workload_gitea_operator_create_users: true
-ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
-ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_authentication_htpasswd_user_base }}%d"
-ocp4_workload_gitea_operator_user_password: openshift
-ocp4_workload_gitea_operator_migrate_repositories: false
-ocp4_workload_gitea_operator_repositories_list: []
-# - repo: https://github.com/redhat-gpte-devopsautomation/modern-app-dev.git
-#   name: modern-app-dev
-#   private: false
+ocp4_workload_openshift_gitops_channel: gitops-1.8
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm
 # -------------------------------------------------------------------
-ocp4_workload_rhacm_acm_channel: release-2.6
-ocp4_workload_rhacm_use_catalog_snapshot: true
-ocp4_workload_rhacm_catalogsource_name: catalogsource-rhacm
-ocp4_workload_rhacm_catalog_source_image: "quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog"
-ocp4_workload_rhacm_catalog_source_tag: "v4.11_2022_10_24"
+ocp4_workload_rhacm_acm_channel: release-2.7
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm_hypershift
 # -------------------------------------------------------------------
 ocp4_workload_rhacm_hypershift_deploy_clusters:
 - name: development
-  ocp_release: 4.11.8
-  worker_count: 2
-  worker_instance_type: m5.large
+  infra_id: "dev-{{ guid }}"
+  ocp_release: 4.12.9
   region: us-west-2
   zones:
   - us-west-2a
-# - name: production
-#   ocp_release: 4.11.8
-#   worker_count: 2
-#   worker_instance_type: m5.large
-#   region: us-west-2
-#   zones:
-#   - us-west-2b
-#   - us-west-2c
+  control_plane_availability: SingleReplica
+  infra_availability: SingleReplica
+  etcd_storage_class: gp3-csi
+  nodepool_replicas: 1
+  worker_instance_type: m5a.2xlarge
+  root_volume_type: gp3
+  root_volume_size: 120
+  labels:
+    rhdp_type: sandbox
+    rhdp_usage: development
+    guid: "{{ guid }}"
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
@@ -214,7 +186,7 @@ __meta__:
       Provider: RHDP
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: Red_Hat_Cloud
-      #OpenShift_Version: '4.11'
+      #OpenShift_Version: '4.12'
     display_name: Red Hat Advanced Cluster Management with HyperShift
     category: Demos
     multiuser: false
