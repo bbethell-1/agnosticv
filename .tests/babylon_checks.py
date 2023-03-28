@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
+import os
 import sys
 import subprocess
 import argparse
 import requests
+import time
 
 import yaml
 
@@ -118,25 +120,28 @@ def check_tag_var(c,ci):
                     )
     return True
 
-validated_virtualenvs = set()
+virtualenv_check_result = {}
 def check_virtualenv(c, ci):
     """
     Check that __meta__.deployer.virtualenv exists in GitHub upstream repo
     """
-
     if "__meta__" in c or "agnosticv_meta" in c:
         deployer = c.get("__meta__", {}).get("deployer", {})
         virtualenv = deployer.get("virtualenv") or c.get("agnosticv_meta", {}).get("virtualenv")
-        if virtualenv and virtualenv not in validated_virtualenvs:
-            url = f"https://api.github.com/repos/redhat-cop/agnosticd/contents/tools/virtualenvs/{virtualenv}.txt"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            r = requests.get(url, headers=headers)
-            if r.status_code == 200:
-                validated_virtualenvs.add(virtualenv)
+        if virtualenv:
+            url = f"https://raw.githubusercontent.com/redhat-cop/agnosticd/development/tools/virtualenvs/{virtualenv}.txt"
+            cached_result = virtualenv_check_result.get(url)
+            if cached_result:
+                if cached_result != 200:
+                    raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {cached_result} (cached)")
             else:
-                raise ValueError(f"Error accessing  {url} or virtualenv doesn't exist. Status code: {r.status_code}")
-
-    return True   
+                headers = {"User-Agent": "Mozilla/5.0"}
+                r = requests.get(url, headers=headers)
+                result = r.status_code
+                virtualenv_check_result[url] = r.status_code
+                if r.status_code != 200:
+                    raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {r.status_code}")
+    return True
 
 def check_valid_agv_tag(c,ci):
     '''Ensure configuration is having a valid git tag agnosticv meta'''
