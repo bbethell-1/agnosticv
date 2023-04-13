@@ -1,0 +1,258 @@
+---
+#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: POC Hypershift for future
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+project_tag: "{{ env_type }}-{{ guid }}"
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Cloud Provider
+# -------------------------------------------------------------------
+cloud_provider: ec2
+__image: RHEL84GOLD-latest
+__instance_type: t2.medium
+bastion_instance_image: RHEL84GOLD-latest
+bastion_instance_type: t3.medium
+
+key_name: opentlc_admin_backdoor
+region: eu-west-1
+cloud_tags:
+  env_type: "{{ env_type }}"
+  platform: "{{ platform | d('unknown') }}"
+#num_users: 5
+aws_region: eu-west-1
+user_base: student
+
+# -------------------------------------------------------------------
+# Security group
+# -------------------------------------------------------------------
+security_groups:
+- name: BastionSG
+  rules:
+  - name: BasSSHPublic
+    description: "SSH public"
+    from_port: 22
+    to_port: 22
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+- name: WebSG
+  rules:
+  - name: HTTPPorts
+    description: "HTTP Public"
+    from_port: 80
+    to_port: 80
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: HTTPSPorts
+    description: "HTTP Public"
+    from_port: 443
+    to_port: 443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+- name: HostSG
+  rules:
+  - name: FromHostSG
+    description: "Allow everything from HostSG nodes"
+    from_port: 0
+    to_port: 65535
+    protocol: -1
+    from_group: HostSG
+    rule_type: Ingress
+
+# -------------------------------------------------------------------
+# Instances vars
+# -------------------------------------------------------------------
+subdomain_base_suffix: "example.opentlc.com"
+ocp4_base_domain: "{{ subdomain_base_suffix }}"
+
+instances:
+- name: bastion
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: true
+  floating_ip: true
+  image: "{{ bastion_instance_image | default(__image) }}"
+  flavor:
+    ec2: "{{ bastion_instance_type | default(__instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions"
+  - key: "ostype"
+    value: "linux"
+  rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+  security_groups:
+  - BastionSG
+  - WebSG
+  - HostSG
+
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + '_1' }}"
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.12"
+master_instance_count: 3
+master_instance_type: m5.2xlarge
+worker_instance_count: 3
+worker_instance_type: m5.4xlarge
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: "{{ user_base }}"
+student_password: "{{ common_password }}"
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
+install_ftl: false
+
+# -------------------------------------------------------------------
+# Custom collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  - name: kubernetes.core
+    version: 2.3.1
+  - name: openstack.cloud
+    version: 1.7.2
+  - name: amazon.aws
+    version: 2.2.0
+  - name: community.general
+    version: 4.6.1
+  - name: ansible.posix
+    version: 1.3.0
+  - name: awx.awx
+    version: 21.1.0
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_le_certificates            # all segments
+- ocp4_workload_authentication             # all segments
+- ocp4_workload_rhacm
+- ocp4_workload_openshift_gitops
+- ocp4_workload_gitops_aap
+- automation-controller-config
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_htpasswd_user_base: "{{ user_base }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_remove_kubeadmin: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacm
+# -------------------------------------------------------------------
+
+ocp4_workload_rhacm_acm_channel: "release-2.6"
+ocp4_workload_rhacm_use_catalog_snapshot: true
+ocp4_workload_rhacm_catalogsource_name: catalogsource-rhacm
+ocp4_workload_rhacm_catalog_source_image: "quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog"
+ocp4_workload_rhacm_catalog_source_tag: "v4.12_2023_02_20"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: stable
+ocp4_workload_openshift_gitops_pipelines_csv_prefix: openshift-pipelines-operator-rh
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
+ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.12_2023_02_20
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_aap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_aap_install_controller: true
+ocp4_workload_gitops_aap_install_hub: false
+
+# -------------------------------------------------------------------
+# Workload: automation-controller-config
+# -------------------------------------------------------------------
+automation_controller_upload_manifest: true
+automationcontroller_manifest_url: https://gpte-public.s3.amazonaws.com/aap2-subscription/manifest_31_10_2022.zip
+
+ssh_privatekey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path) }}"
+ssh_publickey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path_pub) }}"
+account_user_access_key: "{{ aws_access_key_id }}"
+account_user_secret_access_key: "{{ aws_secret_access_key }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-gpte
+  deployer:
+    virtualenv: windows-ansible2.9-python2.7-2022-01-11
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: POC Hypershift for future
+    category: Demos
+    keywords:
+    - poc
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 1
+        maximum: 50
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+  secrets:
+  - name: gpte
+    namespace: gpte
+  - name: satellite-rhel81-ha
+    namespace: gpte
+  - name: ocp4-token
+    namespace: gpte
+  - name: rhods-git-secret
+    namespace: gpte
+#   - name: output-dir-s3
+#     namespace: gpte
