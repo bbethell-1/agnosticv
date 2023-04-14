@@ -74,6 +74,38 @@ if args.from_file != '':
 valid = []
 invalid = []
 
+def check_duplicate_directories(c, ci):
+    '''Check for duplicate directories'''
+    path = os.path.join(os.environ['GITHUB_WORKSPACE'], c.get('directory', ''))  # get the directory path from the catalog item contents
+    if not path:
+        raise ValueError('Missing "directory" field in catalog item')
+
+    seen_dirs = {}
+    duplicate_dirs = {}
+    for root, dirs, files in os.walk(path):
+        # Exclude directories containing .git, includes, and parameters in the path
+        dirs[:] = [d for d in dirs if '.git' not in os.path.join(root, d) and 'includes' not in os.path.join(root, d) and 'parameters' not in os.path.join(root, d)]
+        for dir in dirs:
+            dir_path = os.path.join(root, dir)
+            if os.path.isdir(dir_path):
+                if dir in seen_dirs:
+                    seen_dir_path = seen_dirs[dir]
+                    if dir in duplicate_dirs:
+                        duplicate_dirs[dir].append(dir_path)
+                    else:
+                        duplicate_dirs[dir] = [seen_dir_path, dir_path]
+                else:
+                    seen_dirs[dir] = dir_path
+
+    if duplicate_dirs:
+        error_message = f"Found {len(duplicate_dirs)} duplicate directories in catalog item {ci}:\n"
+        for dir, paths in duplicate_dirs.items():
+            dir_paths = '\n                 '.join(paths)
+            error_message += f"- {dir}:\n                 {dir_paths}\n"
+        raise ValueError(error_message)
+    return True
+
+
 def check_double_booking(c,ci):
     '''Ensure catalog item doesn't double-book
     AWS sandboxes with both Babylon and admin host scripts'''
@@ -93,7 +125,7 @@ def check_name(c,ci):
     should not greater than 52 character'''
     if len(ci) <= 52:
         return True
-    
+
     ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
     if len(ciAccNamStg)>52:
         print("AgV Length is %d and AgV is %s" %(len(ciAccNamStg), ciAccNamStg))
@@ -242,7 +274,7 @@ for ci in catalog_items:
     ci_object = yaml.safe_load(process_ci.stdout)
     passed = True
     exceptions = {}
-    for f in [check_double_booking,check_name,check_tag_var,check_valid_agv_tag,check_valid_babylon_tag,check_anarchy_namespace,check_virtualenv]:
+    for f in [check_double_booking,check_name,check_tag_var,check_valid_agv_tag,check_valid_babylon_tag,check_anarchy_namespace,check_virtualenv,check_duplicate_directories]:
         try:
             if not f(ci_object,ci):
                 passed = False
