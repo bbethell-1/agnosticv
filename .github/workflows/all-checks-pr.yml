@@ -72,8 +72,8 @@ jobs:
           PR: ${{ github.event.number }}
         run: ./.tests/static-tests.sh
 
-  merge-integration:
-    name: Merge PR branch into integration
+  wait-for-agv:
+    name: Wait for AgnosticV operator to report back in the PR
     runs-on: self-hosted
     needs:
       - static-checks
@@ -88,13 +88,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Merge PR branch into integration branch
-        env:
-          GITHUB_TOKEN: "${{ secrets.RHPDS_BOT_REPO }}"
-          PR: ${{ github.event.number }}
-        run: ./.github/scripts/merge-pr-to-integration.sh
-        shell: bash
-
       - name: Wait for agnosticv-operator to report back
         env:
           GITHUB_TOKEN: "${{ secrets.RHPDS_BOT_REPO }}"
@@ -107,14 +100,17 @@ jobs:
             fi
           }
 
+          set -x
+
           changed=$(timeout 30 gh pr diff ${PR} --name-only)
 
           if [ $? != 0 ]; then
             echo "Problem with GitHub: couldn't get the list of changed files."
+            echo "Problem with GitHub: couldn't get the list of changed files." >&2
             exit 1
           fi
 
-          sha=$(git show-ref -s integration)
+          sha=$(git rev-parse HEAD)
 
           if ! [ "${changed}" ]; then
             exit 0
@@ -130,16 +126,16 @@ jobs:
           delay=10
           for i in $(seq 1 $retries); do
             if gh pr view ${PR} --comments --json comments --jq '.comments[].body' \
-            | grep operator \
+            | grep revision \
             | grep "${sha}" \
-            | grep success; then
+            | grep -i successfully; then
               exit 0
             fi
 
             if gh pr view ${PR} --comments --json comments --jq '.comments[].body' \
-            | grep operator \
+            | grep revision \
             | grep "${sha}" \
-            | grep failed; then
+            | grep -i failed; then
               exit 1
             fi
             sleep $delay
@@ -152,7 +148,7 @@ jobs:
       cancel-in-progress: false
 
     needs:
-      - merge-integration
+      - wait-for-agv
 
     uses: ./.github/workflows/e2e-pr.yml
     secrets: inherit
