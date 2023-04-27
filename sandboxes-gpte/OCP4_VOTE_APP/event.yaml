@@ -6,6 +6,52 @@
 purpose: event
 
 # -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/blues-man/vote-app-gitops.git
+ocp4_workload_gitops_bootstrap_repo_revision: v1.0.0
+ocp4_workload_gitops_bootstrap_repo_path: helm/bootstrap
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  user:
+    count: "{{ ocp4_workload_user_count }}"
+    prefix: "{{ ocp4_workload_user_base }}"
+  argocd:
+    git:
+      url: http://gitea.gitea.svc:3000
+      repo: vote-app-gitops
+      revision: v1.0.0
+      path: helm/argocd
+    values:
+      namespacePrefix: argocd-
+      repos:
+      - type: git
+        name: vote-app-gitops
+        password: "{{ common_user_password }}"
+      - type: git
+        name: pipelines-vote-api
+        password: "{{ common_user_password }}"
+  tekton:
+    git:
+      url: http://gitea.gitea.svc:3000
+      repo: vote-app-gitops
+      revision: v1.0.0
+      path: helm/tekton
+    values:
+      namespacePrefix: tekton-
+      app:
+        namespacePrefix: vote-app-
+        repo:
+          source:
+            name: pipelines-vote-api
+            revision: master
+            password: "{{ common_user_password }}"
+  usertool:
+    labAdminPassword: "{{ common_admin_password }}"
+    labUserPassword: openshift
+    labAccessToken: openshift
+
+# -------------------------------------------------------------------
 # AgnosticV meta variables
 # -------------------------------------------------------------------
 agnosticv_meta:
@@ -17,7 +63,7 @@ agnosticv_meta:
 # -------------------------------------------------------------------
 __meta__:
   deployer:
-    scm_ref: development
+    scm_ref: ocp4-vote-app-1.0
   catalog:
     parameters:
     - name: num_users
