@@ -202,7 +202,10 @@ def check_valid_babylon_tag(c,ci):
 
     ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
     if '__meta__' in c or 'agnosticv_meta' in c:
-        if (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt")):
+        if (
+            (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt")) and
+            (not ciAccNamStg.startswith("ansiblebu"))
+        ):
             bMetaProdRepo = "redhat-cop/agnosticd"
             bMetaRepo = ''
             # Getting tag value from __meta__ section
