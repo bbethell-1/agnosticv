@@ -1,5 +1,4 @@
 ---
-#include /includes/parameters/enable-lets-encrypt.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/terms-of-service.yaml
 
@@ -10,10 +9,9 @@
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-env_type: ocp4-cluster
-software_to_deploy: openshift4
+env_type: poc-ansible-windows-workshop
 project_tag: "{{ env_type }}-{{ guid }}"
-
+num_users: 1
 # -------------------------------------------------------------------
 # Platform
 # -------------------------------------------------------------------
@@ -22,150 +20,50 @@ platform: rhpds
 # -------------------------------------------------------------------
 # Cloud Provider
 # -------------------------------------------------------------------
-cloud_provider: ec2
-__image: RHEL84GOLD-latest
+cloud_provider: openshift_cnv
+__image: rhel-8.4
 __instance_type: t2.medium
-bastion_instance_image: RHEL84GOLD-latest
+bastion_instance_image: rhel-8.4
 bastion_instance_type: t3.medium
 
 key_name: opentlc_admin_backdoor
-region: us-east-2
 cloud_tags:
   env_type: "{{ env_type }}"
   platform: "{{ platform | d('unknown') }}"
-#num_users: 5
 aws_region: us-east-2
 user_base: student
 
 # -------------------------------------------------------------------
-# Security group
-# -------------------------------------------------------------------
-security_groups:
-- name: BastionSG
-  rules:
-  - name: BasSSHPublic
-    description: "SSH public"
-    from_port: 22
-    to_port: 22
-    protocol: tcp
-    cidr: "0.0.0.0/0"
-    rule_type: Ingress
-- name: WebSG
-  rules:
-  - name: HTTPPorts
-    description: "HTTP Public"
-    from_port: 80
-    to_port: 80
-    protocol: tcp
-    cidr: "0.0.0.0/0"
-    rule_type: Ingress
-  - name: HTTPSPorts
-    description: "HTTP Public"
-    from_port: 443
-    to_port: 443
-    protocol: tcp
-    cidr: "0.0.0.0/0"
-    rule_type: Ingress
-- name: HostSG
-  rules:
-  - name: FromHostSG
-    description: "Allow everything from HostSG nodes"
-    from_port: 0
-    to_port: 65535
-    protocol: -1
-    from_group: HostSG
-    rule_type: Ingress
-- name: WinSG
-  rules:
-  - name: WinSGTCP
-    description: "All TCP"
-    from_port: 1
-    to_port: 65535
-    protocol: tcp
-    cidr: "0.0.0.0/0"
-    rule_type: Ingress
-
-  - name: WinSGUdp
-    description: "All UDP"
-    from_port: 1
-    to_port: 65535
-    protocol: udp
-    cidr: "0.0.0.0/0"
-    rule_type: Ingress
-
-# -------------------------------------------------------------------
 # Instances vars
 # -------------------------------------------------------------------
-windows_password: 'jVMijRwLbI02gFCo2xkjlZ9lxEA7bm7zgg=='
+windows_password: 'P@ssw0rd'
 __windows_instance_type: m5.2xlarge
-__windows_instance_image: WIN2019
-__windows_instance_image_id: ami-0bf9c6c2e7ac638a4
 
 subdomain_base_suffix: "example.opentlc.com"
 ocp4_base_domain: "{{ subdomain_base_suffix }}"
 
 instances:
-- name: bastion
-  count: 1
-  unique: true
-  public_dns: true
-  dns_loadbalancer: true
-  floating_ip: true
-  image: "{{ bastion_instance_image | default(__image) }}"
-  flavor:
-    ec2: "{{ bastion_instance_type | default(__instance_type) }}"
-  tags:
-  - key: "AnsibleGroup"
-    value: "bastions"
-  - key: "ostype"
-    value: "linux"
-  rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
-  security_groups:
-  - BastionSG
-  - WebSG
-  - HostSG
 - name: win
   count: "{{ windows_server_instance_count | default(num_users) }}"
   public_dns: true
-  image:
-    name: "Windows_Server-2016-English-Full-Base*"
-  flavor:
-    ec2: "{{ windows_server_instance_type | default(__windows_instance_type) }}"
+  image: "windows-2016-installed"
+  disk_type: "sata"
+  cores: 2
+  memory: 4Gi
+  image_size: "60Gi"
   tags:
   - key: "AnsibleGroup"
     value: "servers"
   - key: "ostype"
     value: "windows"
-  security_groups:
-  - DefaultSG
-  - WinSG
-  - HostSG
-  UserData: |
-       UserData:
-              "Fn::Base64":
-                 "Fn::Join":
-                   - ""
-                   - - "<powershell>\n"
-                     - "$admin = [adsi]('WinNT://./administrator, user')\n"
-                     - "$admin.PSBase.Invoke('SetPassword', '{{windows_password}}')\n"
-                     - "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12\n"
-                     - "$scriptPath=((New-Object System.Net.Webclient).DownloadString('https://raw.githubusercontent.com/ansible/ansible/devel/examples/scripts/ConfigureRemotingForAnsible.ps1'))\n"
-                     - "Invoke-Command -ScriptBlock ([scriptblock]::Create($scriptPath)) -ArgumentList '-skipNetworkProfileCheck'\n"
-                     - "</powershell>"
+  networks:
+  - default
+  servicePort: 5986 # WinRM port, default is 22
 
 # -------------------------------------------------------------------
 # Common Password
 # -------------------------------------------------------------------
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + '_1' }}"
-
-# -------------------------------------------------------------------
-# OpenShift Installer Version
-# -------------------------------------------------------------------
-ocp4_installer_version: "4.10"
-master_instance_count: 3
-master_instance_type: m5.2xlarge
-worker_instance_count: 3
-worker_instance_type: m5.4xlarge
 
 # -------------------------------------------------------------------
 # Repos
@@ -197,8 +95,6 @@ requirements_content:
     version: 2.3.1
   - name: openstack.cloud
     version: 1.7.2
-  - name: amazon.aws
-    version: 2.2.0
   - name: community.general
     version: 4.6.1
   - name: ansible.posix
@@ -210,8 +106,6 @@ requirements_content:
 # Workloads
 # -------------------------------------------------------------------
 infra_workloads:
-- ocp4_workload_le_certificates            # all segments
-- ocp4_workload_authentication             # all segments
 - ocp4_workload_gitea_operator
 - ocp4_workload_pipelines
 - ocp4_workload_openshift_gitops
@@ -330,16 +224,14 @@ automationcontroller_manifest_url: https://gpte-public.s3.amazonaws.com/aap2-sub
 
 ssh_privatekey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path) }}"
 ssh_publickey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path_pub) }}"
-account_user_access_key: "{{ aws_access_key_id }}"
-account_user_secret_access_key: "{{ aws_secret_access_key }}"
 
-automation_controller_config_multiple_controllers: true
-automation_controller_config_multiple_controllers_dictionary: "{{ lookup('agnosticd_user_data','users')}}"
+automation_controller_config_multiple_controllers: false
+automation_controller_config_multiple_controllers_dictionary: {}
 
 automation_controller_users:
-- name: "{{ controller.key }}"
+- name: "student"
   password: "{{ common_password }}"
-  email: "{{ controller.key }}@fake.com"
+  email: "student@fake.com"
   superuser: true
 
 automation_controller_credentials:
@@ -360,10 +252,6 @@ automation_controller_credentials:
 - name: "Demo Credential"
   credential_type: Machine
   state: absent
-- name: aws_readonly_cred
-  credential_type: "Amazon Web Services"
-  username: "{{ account_user_access_key }}"
-  password: "{{ account_user_secret_access_key }}"
 
 automation_controller_projects:
 - name: "Demo Project"
@@ -378,27 +266,23 @@ automation_controller_inventories:
 automation_controller_inventory_groups:
 - name: windows
   inventory: "Workshop Inventory"
+  hosts:
+  - win
   variables:
     ansible_connection: winrm
     ansible_port: 5986
     ansible_winrm_server_cert_validation: ignore
     ansible_winrm_transport: basic
 
-automation_controller_inventory_sources:
-- name: "win_ec2"
+automation_controller_inventory_sources: []
+#- name: "win_cnv"
+#  inventory: "Workshop Inventory"
+#  source: scm
+
+automation_controller_inventory_hosts:
+- name: win
+  description: "Windows system"
   inventory: "Workshop Inventory"
-  credential: "aws_readonly_cred"
-  source: ec2
-  source_vars:
-    hostnames:
-    - tag:Name
-    compose:
-      ansible_host: public_ip_address
-    include_filters:
-    - tag:internaldns:
-      - "win{{ controller.key.split()[0] | last }}.{{ guid }}.internal"
-    groups:
-      windows: tags.internaldns == 'win{{ controller.key.split()[0] | last }}.{{ guid }}.internal'
 
 automation_controller_execution_environments:
 - name: "windows workshop execution environment"
@@ -429,7 +313,7 @@ automation_controller_jobtemplates:
 automation_controller_ad_hoc_commands:
 - module_name: win_user
   module_args: >-
-    name={{ controller.key }}
+    name="student"
     password={{ common_password }}
     groups=Administrators
     state=present
@@ -448,23 +332,14 @@ __meta__:
     virtualenv: windows-ansible2.9-python2.7-2022-01-11
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: POC Ansible Windows Workshop
+    display_name: POC Ansible Windows Workshop (CNV)
     category: Workshops
     keywords:
     - poc
     - win
     - aap2
     - ansible
-    parameters:
-    - name: num_users
-      description: >-
-        Number of users to provision within the cluster.
-      formLabel: OpenShift User Count
-      openAPIV3Schema:
-        type: integer
-        default: 2
-        minimum: 1
-        maximum: 50
+    parameters: []
     labels:
       Product: Red_Hat_Ansible_Automation_Platform
       Product_Family: Red_Hat_Cloud
