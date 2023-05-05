@@ -9,30 +9,87 @@
 #include /includes/parameters/gcp-region.yaml
 #include /includes/parameters/open-environment-annotation.yaml
 
-platform: RHPDS
-
 env_type: ocp4-cluster
 
-# Enable this if you want to create a user on the bastion
-# Mutually exclusive with {{ install_ipa_client }}
-install_student_user: true
-
-# This should be overwritten based on the user ordering the catalog item
-# It will be used by the bastion-student-user role and created on the bastion
-student_name: lab-user
-
-# Enable this if you want to use IPA for user authentication.
-# Mutually exclusive with {{ install_student_user }}
-install_ipa_client: false
-
-# FTL is used for grading and solving. It will pull in the external ftl-injector role.
-# This might be enabled when we have solvers to run or graders for ILT
-install_ftl: false
-
-# What we use in this environment to get the packages we need
-repo_method: satellite
-
 software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.12.12"
+ocp4_installer_use_dev_preview: false
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+
+# -------------------------------------------------------------------
+# GCP Specific
+# -------------------------------------------------------------------
+master_instance_type_family: n2-standard
+master_instance_type_size: >-
+  {{ '8' if worker_instance_count|int <= 10
+  else '16' if worker_instance_count|int <= 20
+  else '32'
+  }}
+master_instance_type: "{{ master_instance_type_family }}-{{ master_instance_type_size }}"
+
+worker_instance_type: n2-standard-4
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max\
+  \ }}"
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_project_request_template
+- ocp4_workload_opentlc_production
+- ocp4_workload_le_certificates
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+ocp4_workload_authentication_htpasswd_user_base: user
+# Generate user password
+ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_opentlc_production
+# -------------------------------------------------------------------
+ocp4_workload_opentlc_production_remove_self_provisioner: false
 
 # Google Cloud Platform specific vars
 # account, auth_type, credentials, and project id are all passed by a secret
@@ -40,30 +97,9 @@ software_to_deploy: openshift4
 cloud_provider: gcp
 remote_user: gcpuser
 ansible_user: gcpuser
-
 # OpenShift 4 (ocp4-cluster) specific vars
 cluster_dns_zone: gcp.redhatworkshops.io
 ocp4_base_domain: "{{ cluster_dns_zone }}"
-
-# Authentication
-ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_password: openshift
-ocp4_workload_authentication_htpasswd_user_count: 50
-ocp4_workload_authentication_admin_user: admin
-ocp4_workload_authentication_remove_kubeadmin: false
-
-# Use Let's Encrypt Prod certificates
-# After the role is updated this can be enabled
-lets_encrypt_production: false
-
-# --- Infra Workloads (YAML List)
-infra_workloads:
-- ocp4_workload_authentication
-# - ocp4_workload_le_certificates
-
-# --- Student Workloads (YAML List)
-student_workloads: []
 
 agnosticv_meta:
   deploy_with: babylon
