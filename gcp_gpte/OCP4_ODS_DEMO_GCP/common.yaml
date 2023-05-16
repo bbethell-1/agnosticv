@@ -1,0 +1,196 @@
+---
+#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/catalog-icon-gcp.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/gcp-region.yaml
+#include /includes/parameters/open-environment-annotation.yaml
+
+# Note this CI was created for the deutsche bank workshop by prutledg
+
+env_type: ocp4-cluster
+
+software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.12.12"
+ocp4_installer_use_dev_preview: false
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+
+# -------------------------------------------------------------------
+# GCP Specific
+# -------------------------------------------------------------------
+master_instance_type_family: n2-standard
+master_instance_type_size: >-
+  {{ '8' if worker_instance_count|int <= 10
+  else '16' if worker_instance_count|int <= 20
+  else '32'
+  }}
+master_instance_type: "{{ master_instance_type_family }}-{{ master_instance_type_size }}"
+
+worker_instance_type: n2-standard-4
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max\
+  \ }}"
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_project_request_template
+- ocp4_workload_opentlc_production
+- ocp4_workload_le_certificates
+- ocp-workload-terminal
+- ocp4_workload_rhods_olm
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+ocp4_workload_authentication_htpasswd_user_base: user
+# Generate user password
+ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_opentlc_production
+# -------------------------------------------------------------------
+ocp4_workload_opentlc_production_remove_self_provisioner: false
+
+# Google Cloud Platform specific vars
+# account, auth_type, credentials, and project id are all passed by a secret
+# output_dir also needs to be passed in by RHPDS or destroy has a bug
+cloud_provider: gcp
+remote_user: gcpuser
+ansible_user: gcpuser
+# OpenShift 4 (ocp4-cluster) specific vars
+cluster_dns_zone: gcp.redhatworkshops.io
+ocp4_base_domain: "{{ cluster_dns_zone }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhods_olm
+# -------------------------------------------------------------------
+become_override: false
+ocp_username: opentlc-mgr
+silent: false
+
+ocp4_workload_rhods_olm_install_operator_name: "rhods-operator"
+ocp4_workload_rhods_olm_channel_name: "rhods-operator"
+ocp4_workload_rhods_olm_operator_subscription_channel: "beta"
+ocp4_workload_rhods_olm_channel: "beta"
+
+ocp4_workload_rhods_olm_odh_namespace: "redhat-ods-operator"
+ocp4_workload_rhods_olm_applications_namespace: "redhat-ods-applications"
+ocp4_workload_rhods_olm_monitoring_namespace: "redhat-ods-monitoring"
+
+ocp4_workload_rhods_olm_namespace_list:
+- "{{ ocp4_workload_rhods_olm_applications_namespace }}"
+- "{{ ocp4_workload_rhods_olm_monitoring_namespace }}"
+
+ocp4_workload_rhods_olm_catalogsource_name: "addon-managed-odh-catalog"
+ocp4_workload_rhods_olm_catalogsource_namespace: "{{ ocp4_workload_rhods_olm_odh_namespace }}"
+ocp4_workload_rhods_olm_catalogsource_display_name: "Managed Open Data Hub Operator"
+
+ocp4_workload_rhods_olm_starting_csv: ""
+
+ocp4_workload_rhods_olm_catalog_snapshot_image: "quay.io/modh/qe-catalog-source"
+ocp4_workload_rhods_olm_catalog_snapshot_image_tag: "v180-14"
+
+# make the RHODS role output user data
+ocp4_workload_rhods_olm_is_workshop: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-gcp-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Machine Learning Workflows on RHODS on GCP
+    category: Workshops
+    keywords:
+    - workshop
+    - openshift
+    - ocp
+    - ocp412
+    - google
+    - rhods
+    - ods
+    - gcp
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: Hybrid_Platform_BU
+    multiuser: true
+    parameters:
+    - name: num_users
+      description: Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        default: 2
+        type: integer
+        minimum: 2
+        maximum: 100
+      validation: >-
+        user_is_admin ||
+        user_groups.includes('rhpds-devs') ||
+        num_users == 2 ||
+        check_salesforce_id(salesforce_id) ||
+        Error('User count greater than one requires a valid SalesForceID.')
+  deployer:
+    virtualenv: ansible2.9-python3.6-2021-11-30
+  owners:
+  - email: ejacobs@redhat.com
+    name: Erik Jacobs ejacobs@redhat.com
+  - email: sophie@redhat.com
+    name: Sophie Watson
+  secrets:
+  - name: ocp4_token
+    namespace: gpte
+  - name: satellite-rhel81-ha
+    namespace: gpte
+  - name: rhods-git-secret
+    namespace: gpte
+  - name: output-dir-s3
+    namespace: gpte
+  - name: gpte_gcp
+    namespace: gpte
