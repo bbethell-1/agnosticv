@@ -83,7 +83,7 @@ git diff \
 
 # add related files
 for f in $(cat ${changed_git}); do
-    agnosticv --list --related $f >> ${changed_ci}
+    agnosticv --list --related $f >> ${changed_ci} 2>>$errors
 done
 
 sort ${changed_ci} | uniq > ${changed_ci_uniq}
