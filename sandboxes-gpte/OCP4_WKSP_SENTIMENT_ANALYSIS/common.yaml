@@ -1,0 +1,155 @@
+---
+#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/agnosticd_open_environment.yaml
+#include /includes/parameters/num-users-salesforce.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+ocp4_installer_version: "4.12.12"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# AWS Specific
+# -------------------------------------------------------------------
+master_instance_type_family: m5
+master_instance_type_size: >-
+  {{ 'xlarge' if worker_instance_count|int <= 10
+  else '2xlarge' if worker_instance_count|int <= 20
+  else '4xlarge'
+  }}
+master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size\
+  \ }}"
+master_storage_type: >-
+  {{ 'io1' if worker_instance_count|int >= 10
+  else 'gp2' }}
+worker_instance_type: "m5.4xlarge"
+worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max\
+  \ }}"
+worker_storage_type: "gp2"
+bastion_instance_image: RHEL84GOLD-latest
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_project_request_template
+- ocp4_workload_opentlc_production
+- ocp4_workload_le_certificates
+- ocp4_workload_rhods_self_managed
+- ocp4_workload_cloud_architecture_workshop_summit2023
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_le_certificates
+# -------------------------------------------------------------------
+ocp4_workload_le_certificates_install_api: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_opentlc_production
+# -------------------------------------------------------------------
+ocp4_workload_opentlc_production_remove_self_provisioner: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhods_self_managed
+# -------------------------------------------------------------------
+ocp4_workload_rhods_self_managed_operator_group_name: "rhods-ods-operator"
+ocp4_workload_rhods_self_managed_operator_name: "rhods-operator"
+ocp4_workload_rhods_self_managed_namespace: "redhat-ods-operator"
+ocp4_workload_rhods_self_managed_channel: "stable"
+ocp4_workload_rhods_self_managed_catalogsource_setup: false
+ocp4_workload_rhods_self_managed_installPlanApproval: "Automatic"
+ocp4_workload_rhods_self_managed_source: "redhat-operators"
+ocp4_workload_rhods_self_managed_sourceNamespace: "openshift-marketplace"
+ocp4_workload_rhods_self_managed_csv_nameprefix: "rhods-operator"
+ocp4_workload_rhods_self_managed_startingCSV: "rhods-operator.1.25.0"
+ocp4_workload_rhods_self_managed_namespace_list:
+- "{{ ocp4_workload_rhods_self_managed_namespace }}"
+ocp4_workload_rhods_self_managed_applications_namespace: "redhat-ods-applications"
+ocp4_workload_rhods_self_managed_is_workshop: false
+ocp4_workload_rhods_self_managed_workshop_num_users: 25
+ocp4_workload_rhods_self_managed_workshop_username_base: "user"
+ocp4_workload_rhods_self_managed_workshop_password: "{{ student_password }}"
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  sandboxed: false
+  deploy_with: babylon
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  aws_sandboxed: true
+  deployer:
+    virtualenv: ansible2.9-python3.6-2021-11-30
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Building sentiment analysis with Kafka and AI/ML
+    category: Demos
+    keywords:
+    - workshop
+    - openshift
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    multiuser: true
+    parameters: []
+  secrets:
+  - namespace: gpte
+    name: ocp4-token
+  - namespace: gpte
+    name: satellite-rhel8-latest-ha
+  - name: output-dir-s3
+    namespace: gpte
+  - namespace: gpte
+    name: gpte-sandbox
+    var: aws_sandbox_manager
+  - namespace: gpte
+    name: rhods-git-secret
