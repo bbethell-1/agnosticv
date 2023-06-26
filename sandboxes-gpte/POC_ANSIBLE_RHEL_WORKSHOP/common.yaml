@@ -19,52 +19,6 @@ platform: RHPDS
 env_type: ansible-rhel-workshop
 
 # -------------------------------------------------------------------
-# AWS EC2 Environment Sizing
-# -------------------------------------------------------------------
-default_instance_image: RHEL87GOLD-latest
-aws_dns_zone_private: "example.com."
-chomped_zone_internal_dns: "example.com"
-instances:
-  - name: "{{ bastion_instance_name | default('ansible-1') }}"
-    count: 1
-    unique: true
-    public_dns: true
-    dns_loadbalancer: true
-    floating_ip: true
-    image: "{{ bastion_instance_image | default(default_instance_image) }}"
-    flavor:
-      ec2: "{{bastion_instance_type | default(default_instance_type) }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "bastions,{{ bastion_group_name | default('controls') }}"
-      - key: "ostype"
-        value: "linux"
-      - key: "instance_filter"
-        value: "{{ env_type }}-{{ email }}"
-    rootfs_size: "{{ default_rootfs_size }}"
-    security_groups:
-      - BastionSG
-      - DefaultSG
-
-  - name: "node"
-    count: 3
-    public_dns: false
-    image: "{{ node_instance_image | default(default_instance_image) }}"
-    flavor:
-      ec2: "{{node_instance_type | default(default_instance_type) }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "nodes"
-      - key: "ostype"
-        value: "rhel"
-      - key: "instance_filter"
-        value: "{{ env_type }}-{{ email }}"
-    rootfs_size: "{{ default_rootfs_size }}"
-    security_groups:
-      - DefaultSG
-      - NodeSG
-
-# -------------------------------------------------------------------
 # Common Password
 # -------------------------------------------------------------------
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
@@ -84,8 +38,6 @@ common_packages_el8:
   - vim-enhanced
   - httpd-tools
   - python3-pip
-  # - ansible-core
-  # - ansible-navigator
 
 # -------------------------------------------------------------------
 # Custom collections for this environment
@@ -102,6 +54,8 @@ requirements_content:
       version: 19.2.2
     - name: infra.controller_configuration
       version: 2.2.5
+    - name: containers.podman
+      version: 1.10.1
 
 # -------------------------------------------------------------------
 # Role: set-repositories
@@ -110,13 +64,15 @@ repo_method: satellite
 # use_content_view: true
 # set_repositories_rhel8_lock_release: '8'
 
-
 # -------------------------------------------------------------------
 # Role: deploy_automationcontroller
 # -------------------------------------------------------------------
-
 deploy_automationcontroller_installer_url: "{{ controller_bundle_installer.url }}"
 deploy_automationcontroller_manifest_url: "{{ controller_manifest.url }}"
+ansible_navigator_ee_images:
+  - registry.redhat.io/ansible-automation-platform-23/ee-supported-rhel8:latest
+  - registry.redhat.io/ansible-automation-platform-23/ee-minimal-rhel8
+  - registry.redhat.io/ansible-automation-platform-23/ee-29-rhel8
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
