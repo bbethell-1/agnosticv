@@ -99,7 +99,7 @@ for i in $(cat ${changed_ci_uniq}); do
         continue
     fi
 
-    agnosticv --merge $i > $temp1 2>$errtemp
+    agnosticv --git=false --merge $i | sed '/^#/d' > $temp1 2>$errtemp
     if [ $? != 0 ]; then
         # remove schema output as it's too verbose
         sed -i '/^Schema:/,/^Value:/d' $errtemp
@@ -120,7 +120,7 @@ for i in $(cat ${changed_ci_uniq}); do
         continue
     fi
 
-    agnosticv --merge $i > $temp2
+    agnosticv --git=false --merge $i | sed '/^#/d' > $temp2
     if [ $? != 0 ]; then
         echo "ERROR merging $i in branch $ORIG_REF" >&2
         # assuming it changed
@@ -129,7 +129,7 @@ for i in $(cat ${changed_ci_uniq}); do
     fi
 
     if ! diff -u $temp2 $temp1 > $difftemp; then
-        echo $i >> $changed
+        echo "${i}" >> $changed
     fi
 done
 
@@ -197,7 +197,7 @@ EOF
 fi
 
 if [ ! -z "${data}" ]; then
-    comment "${data}"
+    comment "$(head -c 65535 <<< "${data}")"
 fi
 
 exit ${RC:-0}
