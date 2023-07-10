@@ -24,6 +24,7 @@ platform: RHPDS
 env_type: ocp4-cluster
 software_to_deploy: openshift4
 cloud_provider: ec2
+student_name: lab-user
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -84,6 +85,7 @@ infra_workloads:
   - automation_platform_loader
   - automation_platform_bastion
   - eda_pods_on_bastion
+  - vscode-server
   # - ocp4_workload_gitops_eda
 
 # -------------------------------------------------------------------
@@ -135,7 +137,7 @@ ocp4_workload_gitea_operator_admin_password: "{{ common_password }}"
 
 ocp4_workload_gitea_operator_create_users: true
 ocp4_workload_gitea_operator_user_number: 1
-ocp4_workload_gitea_operator_generate_user_format: dev-user
+ocp4_workload_gitea_operator_generate_user_format: "{{ student_name }}"
 ocp4_workload_gitea_operator_user_password: "{{ common_password }}"
 ocp4_workload_gitea_operator_migrate_repositories: true
 ocp4_workload_gitea_operator_repositories_list:
@@ -173,11 +175,11 @@ ocp4_workload_codeserver_multi_user_username_base: "{{ ocp4_workload_authenticat
 ocp4_workload_codeserver_multi_user_namespace_base: codeserver
 
 # Repositories to set up in codeserver
-ocp4_workload_codeserver_repos_user: dev-user
+ocp4_workload_codeserver_repos_user: "{{ student_name }}"
 ocp4_workload_codeserver_repos_password: "{{ common_password }}"
 ocp4_workload_codeserver_repos:
   - name: event-driven-ansible
-    account: dev-user
+    account: "{{ student_name }}"
     branch: main
 
 # Codeserver image tags
@@ -228,7 +230,7 @@ controller_projects:
     scm_clean: 'no'
     scm_delete_on_update: 'no'
     scm_type: git
-    scm_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/dev-user/event-driven-ansible.git"
+    scm_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/event-driven-ansible.git"
 
 controller_templates:
   - name: create-volume-snapshot
@@ -264,7 +266,7 @@ controller_templates:
 # -------------------------------------------------------------------
 ocp4_workload_gitops_eda_service_account_role: cluster-admin
 
-ocp4_workload_gitops_eda_rulebook_repo_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/dev-user/event-driven-ansible.git"
+ocp4_workload_gitops_eda_rulebook_repo_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/event-driven-ansible.git"
 ocp4_workload_gitops_eda_rulebook_repo_version: main
 ocp4_workload_gitops_eda_rulebook_repo_path: gitops/eda/overlays
 
@@ -287,6 +289,24 @@ ocp4_workload_cert_manager_operator_channel_csv: cert-manager-operator.v1.10.2
 # -------------------------------------------------------------------
 eda_pods_on_bastion_ac_token: "{{ r_aap2_token.ansible_facts.controller_token.token }}"
 eda_pods_on_bastion_ac_web_url: "https://{{ automation_controller_hostname }}"
+
+
+# -------------------------------------------------------------------
+# Workload: vscode-server
+# -------------------------------------------------------------------
+install_vscode_server: true
+vscode_server_install_nginx: true
+vscode_server_ansible_become: true
+vscode_user_workspace_path: "/home/{{ student_name }}/demo"
+vscode_user_name: "{{ student_name }}"
+vscode_user_password: "{{ common_password }}"
+vscode_server_hostname: bastion.{{ guid }}.{{ sandbox_zone }}
+vscode_ansible_python_interpreter: /usr/libexec/platform-python
+vscode_server_default_extensions: []
+vscode_server_extension_urls:
+  - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
