@@ -1,16 +1,15 @@
 ---
-#include /includes/aws-sandbox-meta.yaml
-#include /includes/parameters/enable-lets-encrypt.yaml
 #include /includes/catalog-icon-openshift.yaml
-#include /includes/terms-of-service.yaml
-#include /includes/lifetime-standard.yaml
-#include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/aws-3regions.yaml
-#include /includes/parameters/ocp4-fips-enable.yaml
-#include /includes/parameters/num-users-salesforce.yaml
-#include /includes/parameters/agnosticd_open_environment.yaml
-#include /includes/parameters/controlplane-count.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/aws-sandbox-meta.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: Gartner DevOps MQ Demo
+# -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -21,17 +20,21 @@ software_to_deploy: openshift4
 # -------------------------------------------------------------------
 # Platform
 # -------------------------------------------------------------------
-platform: RHPDS
+platform: rhpds
 
 # -------------------------------------------------------------------
-# OpenShift Version
+# VM configuration
 # -------------------------------------------------------------------
-ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-ocp4_installer_version: "4.13.1"
-ocp4_installer_use_dev_preview: false
-
-# ocp4_installer_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp/fast-4.13/openshift-install-linux.tar.gz
-# ocp4_client_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp/fast-4.13/openshift-client-linux.tar.gz
+master_instance_type: c6in.4xlarge
+master_instance_count: 3
+master_storage_type: io1
+master_storage_size: 250
+worker_instance_type: m6a.4xlarge
+worker_instance_count: 3
+worker_storage_type: gp3
+worker_storage_size: 250
+bastion_instance_type: t2.small
+bastion_instance_image: RHEL84GOLD-latest
 
 # -------------------------------------------------------------------
 # Repos
@@ -40,79 +43,99 @@ repo_method: satellite
 update_packages: true
 
 # -------------------------------------------------------------------
-# Default Networking Stack
+# OpenShift Installer Version
 # -------------------------------------------------------------------
-ocp4_network_type: OVNKubernetes
+ocp4_installer_version: "4.13.4"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
+# instead of cluster-{{ guid }}.{{ guid }}.sandboxXXX.opentlc.com
+# -------------------------------------------------------------------
+ocp4_base_domain: "{{ sandbox_zone }}"
 
 # -------------------------------------------------------------------
 # Student User on Bastion
 # -------------------------------------------------------------------
-install_student_user: true
-student_name: lab-user
-student_sudo: true
-
-# -------------------------------------------------------------------
-# AWS Specific
-# -------------------------------------------------------------------
-master_instance_type_family: c6in
-master_instance_type_size: >-
-  {{ '2xlarge' if worker_instance_count|int <= 10
-  else '4xlarge' if worker_instance_count|int <= 20
-  else '8xlarge'
-  }}
-master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size\
-  \ }}"
-
-master_storage_type: >-
-  {{ 'io1' if worker_instance_count|int >= 10
-  else 'gp3' }}
-worker_instance_type: "m5a.4xlarge"
-worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max\
-  \ }}"
-
-worker_storage_type: gp3
-bastion_instance_image: RHEL84GOLD-latest
+install_student_user: false
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 # --- Infra Workloads (YAML List)
 infra_workloads:
-- ocp4_workload_authentication
 - ocp4_workload_le_certificates
+- ocp4_workload_authentication
+- ocp4_workload_openshift_gitops
+- ocp4_workload_gitops_bootstrap
 
-# --- Student Workloads (YAML List)
-student_workloads: []
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_le_certificates
+# -------------------------------------------------------------------
+# ocp4_workload_le_certificates_install_api: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
 ocp4_workload_authentication_idm_type: htpasswd
 ocp4_workload_authentication_admin_user: admin
-# Generate admin password
-ocp4_workload_authentication_htpasswd_admin_password: ""
-ocp4_workload_authentication_htpasswd_admin_password_length: 16
+ocp4_workload_authentication_htpasswd_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 ocp4_workload_authentication_htpasswd_user_base: user
-# Generate user password
-ocp4_workload_authentication_htpasswd_user_password: ""
-ocp4_workload_authentication_htpasswd_user_password_length: 16
-ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: 1
 ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.9
+
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.13_2023_06_26
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/coolstore-demo/coolstore
+ocp4_workload_gitops_bootstrap_repo_revision: rhdp
+ocp4_workload_gitops_bootstrap_repo_path: clusters/rhdp/argo/base
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
 # -------------------------------------------------------------------
 agnosticv_meta:
+  sandboxed: false
   deploy_with: babylon
-  params_to_variables:
-    username: student_name
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
   anarchy:
-    namespace: babylon-anarchy-ocp-wksp
+    namespace: babylon-anarchy-sandboxes-gpte
   deployer:
     virtualenv: ansible2.9-python3.6-2021-11-30
   catalog:
@@ -122,17 +145,19 @@ __meta__:
     keywords:
     - workshop
     - openshift
+    workshopUiDisabled: true
     labels:
+      Provider: RHDP
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: Red_Hat_Cloud
-      Provider: RHDP
-      Featured_Score: '43'
-    multiuser: true
     parameters: []
+  runtime:
+    default: 8h
+    maximum: 48h
   secrets:
   - namespace: gpte
-    name: ocp4-token
+    name: satellite-rhel81-ha
   - namespace: gpte
-    name: satellite-rhel8-latest-ha
+    name: ocp4-token
   - name: output-dir-s3
     namespace: gpte
