@@ -6,7 +6,7 @@
 #include /includes/lifetime-standard.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/aws-sandbox-meta.yaml
-
+#include /includes/ansible_control_plane/controller.aap5nack2i7p6mie.ansiblecloud.redhat.com.yaml
 # -------------------------------------------------------------------
 # --- Catalog Item: Heading to Production with Red Hat OSSM
 # -------------------------------------------------------------------
@@ -33,7 +33,7 @@ worker_instance_type: m6a.4xlarge
 worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
 worker_storage_type: gp3
 worker_storage_size: 250
-bastion_instance_type: t3a.medium
+bastion_instance_type: t2.small
 bastion_instance_image: RHEL84GOLD-latest
 
 # -------------------------------------------------------------------
@@ -86,6 +86,11 @@ common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:
 common_user_password: openshift
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_le_certificates
+# -------------------------------------------------------------------
+ocp4_workload_le_certificates_install_api: true
+
+# -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
 ocp4_workload_authentication_idm_type: htpasswd
@@ -100,11 +105,11 @@ ocp4_workload_authentication_enable_user_info_data: true
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.8
+ocp4_workload_openshift_gitops_channel: gitops-1.9
 
 ocp4_workload_openshift_gitops_use_catalog_snapshot: true
 ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.13_2023_06_26
 
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_update_resources: true
@@ -127,6 +132,14 @@ ocp4_workload_openshift_gitops_rbac_policy: |
   g, {{ ocp4_workload_authentication_admin_user }}, role:admin
 ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
 
+ocp4_workload_openshift_gitops_ignore_differences: |
+  resourceIdentifiers:
+  - group: apps
+    kind: Deployment
+    customization:
+      jqPathExpressions:
+      - .spec.template.spec.containers[] | select(.name == "redis")
+
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitea_operator
 # -------------------------------------------------------------------
@@ -135,9 +148,9 @@ ocp4_workload_gitea_operator_catalog_image_tag: v1.3.0
 ocp4_workload_gitea_operator_starting_csv: gitea-operator.v1.3.0
 
 ocp4_workload_gitea_operator_gitea_image: quay.io/gpte-devops-automation/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: "1.18.5"
+ocp4_workload_gitea_operator_gitea_image_tag: "1.19.3"
 ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel8/postgresql-13
-ocp4_workload_gitea_operator_postgresql_image_tag: 1-118.1682303950
+ocp4_workload_gitea_operator_postgresql_image_tag: 1-130
 
 ocp4_workload_gitea_operator_project: gitea
 ocp4_workload_gitea_operator_gitea_hostname: gitea
@@ -169,11 +182,6 @@ ocp4_workload_codeserver_multi_user_num_users: "{{ num_users }}"
 ocp4_workload_codeserver_multi_user_username_base: user
 
 ocp4_workload_codeserver_password: "{{ common_user_password }}"
-
-ocp4_workload_codeserver_init_request_memory: "512Mi"
-ocp4_workload_codeserver_init_limits_memory: "512Mi"
-ocp4_workload_codeserver_request_memory: "2Gi"
-ocp4_workload_codeserver_limits_memory: "2Gi"
 
 # Repositories to set up in codeserver
 ocp4_workload_codeserver_repos_password: "{{ common_user_password }}"
@@ -224,7 +232,8 @@ __meta__:
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   deployer:
-    virtualenv: ansible2.9-python3.6-2021-11-30
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.0.17
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: Heading to Production with Red Hat Openshift Service Mesh
