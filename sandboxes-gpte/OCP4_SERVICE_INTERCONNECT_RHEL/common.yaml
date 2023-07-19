@@ -3,13 +3,8 @@
 #include /includes/catalog-icon-service-interconnect.yaml
 #include /includes/lifetime-standard.yaml
 
-# -------------------------------------------------------------------
-# Mandatory Variables
-# -------------------------------------------------------------------
-env_type: rhel8-base
-
-# Unset key name
-key_name: ""
+#include /includes/parameters/open-environment-annotation.yaml
+#include /includes/secrets/satellite-rhel9.1-lab.yaml
 
 # -------------------------------------------------------------------
 # Platform
@@ -17,38 +12,52 @@ key_name: ""
 platform: RHPDS
 
 # -------------------------------------------------------------------
-# Platform
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: rhel9-workshop
+software_to_deploy: none
+
+# -------------------------------------------------------------------
+# Repos
 # -------------------------------------------------------------------
 repo_method: satellite
+use_content_view: true
+update_all_packages: true
 
 # -------------------------------------------------------------------
-# Instance Config
+# AWS machine vars
 # -------------------------------------------------------------------
-rhel8_instance_image: RHEL87GOLD-latest
-rhel8_instance_type: "t3a.large"
-rootfs_size_rhel8: 200
+workstation_instance_image: RHEL91GOLD-latest
+node_instance_image: RHEL91GOLD-latest
+leap_instance_image: RHEL86GOLD-latest
+set_repositories_rhel8_lock_release: '8.6'
+set_repositories_rhel9_lock_release: '9.1'
 
-instances:
-- name: "rhel8"
-  count: 1
-  unique: true
-  public_dns: true
-  floating_ip: true
-  image: "{{ rhel8_instance_image }}"
-  flavor:
-    ec2: "{{ rhel8_instance_type }}"
-  tags:
-  - key: "AnsibleGroup"
-    value: "bastions"
-  - key: "ostype"
-    value: "linux"
-  rootfs_size: "{{ rootfs_size_rhel8 }}"
-  volumes:
-  - device_name: "/dev/xvdb"
-    size: "20"
-    type: gp3
-  security_groups:
-  - BastionSG
+# -------------------------------------------------------------------
+# BookBag VARS
+# -------------------------------------------------------------------
+bookbag_git_repo: https://github.com/xtophd/RHEL9-Workshop-Bookbag.git
+bookbag_git_version: Summit_2023
+
+# -------------------------------------------------------------------
+# AWS user VARS
+# -------------------------------------------------------------------
+ansible_user: ec2-user
+remote_user: ec2-user
+key_name: ""
+student_name: student
+install_student_user: true
+admin_user: opentlc-mgr
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  deploy_with: babylon
+  params_to_variables:
+    user: ignore_user
+    username: student_name
+    region: aws_region
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -59,19 +68,19 @@ __meta__:
   deployer:
     virtualenv: ansible2.9-python3.6-2021-11-30
   catalog:
+    multiuser: false
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: Service Interconnect - RHEL
+    display_name: Service Interconnect - RHEL 9
     category: Demos
     keywords:
-    - rhel
+      - rhel9
+      - leap
     labels:
       Product: Red_Hat_Enterprise_Linux
       Product_Family: Red_Hat_Enterprise_Linux
-      Provider: RHDP
-    multiuser: true
+      Provider: TME_And_Industries_BU
+      Featured_Score: '70'
     parameters: []
   secrets:
-  - name: satellite-rhel8-base-microshift-ha
-    namespace: gpte
-  - name: output-dir-s3
-    namespace: gpte
+    - name: output-dir-s3
+      namespace: gpte
