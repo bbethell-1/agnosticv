@@ -177,6 +177,33 @@ def check_virtualenv(c, ci):
                     raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {r.status_code}")
     return True
 
+exeenv_check_result = {}
+def check_ee(c, ci):
+    """
+    Check that __meta__.deployer.virtualenv exists in GitHub upstream repo
+    """
+    if "__meta__" in c or "agnosticv_meta" in c:
+        deployer = c.get("__meta__", {}).get("deployer", {})
+        exe_env = deployer.get("execution_environment")
+        if exe_env:
+            exe_env_image = exe_env.get("image")
+            if exe_env_image:
+                url = f"{exe_env_image}"
+                cached_result = exeenv_check_result.get(url)
+                if cached_result:
+                    if cached_result != 200:
+                        raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {cached_result} (cached)")
+                else:
+                    headers = {"User-Agent": "Mozilla/5.0"}
+                    r = requests.get(url, headers=headers)
+                    result = r.status_code
+                    exeenv_check_result[url] = r.status_code
+                    if r.status_code != 200:
+                        raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {r.status_code}")
+            else:
+              return True
+    return True
+
 def check_valid_agv_tag(c,ci):
     '''Ensure configuration is having a valid git tag agnosticv meta'''
 
@@ -279,7 +306,7 @@ for ci in catalog_items:
     ci_object = yaml.safe_load(process_ci.stdout)
     passed = True
     exceptions = {}
-    for f in [check_double_booking,check_name,check_tag_var,check_valid_agv_tag,check_valid_babylon_tag,check_anarchy_namespace,check_virtualenv,check_duplicate_directories]:
+    for f in [check_double_booking,check_name,check_tag_var,check_valid_agv_tag,check_valid_babylon_tag,check_anarchy_namespace,check_virtualenv,check_ee,check_duplicate_directories]:
         try:
             if not f(ci_object,ci):
                 passed = False
