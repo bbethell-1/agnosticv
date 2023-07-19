@@ -158,45 +158,44 @@ def check_virtualenv(c, ci):
     """
     Check that __meta__.deployer.virtualenv exists in GitHub upstream repo
     """
-    if "__meta__" in c or "agnosticv_meta" in c:
-        deployer = c.get("__meta__", {}).get("deployer", {})
-        virtualenv = deployer.get("virtualenv") or c.get("agnosticv_meta", {}).get("virtualenv")
-        if virtualenv:
-            url = f"https://raw.githubusercontent.com/redhat-cop/agnosticd/development/tools/virtualenvs/{virtualenv}.txt"
-            cached_result = virtualenv_check_result.get(url)
-            if virtualenv == "babylon":
-                return True
-            elif cached_result:
+    virtualenv = c.get("__meta__", {}).get("deployer", {}).get("virtualenv") or c.get("agnosticv_meta", {}).get("virtualenv")
+    if virtualenv:
+        if virtualenv == "babylon":
+            return True
+        url = f"https://raw.githubusercontent.com/redhat-cop/agnosticd/development/tools/virtualenvs/{virtualenv}.txt"
+        cached_result = virtualenv_check_result.get(url)
+        if cached_result:
+            if cached_result != 200:
+                raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {cached_result} (cached)")
+        else:
+            headers = {"User-Agent": "Mozilla/5.0"}
+            r = requests.get(url, headers=headers)
+            result = r.status_code
+            virtualenv_check_result[url] = r.status_code
+            if r.status_code != 200:
+                raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {r.status_code}")
+    return True
+
+def check_ee(c, ci):
+    exe_env = c.get("__meta__", {}).get("deployer", {}).get("execution_environment")
+    if exe_env:
+        exe_env_image = exe_env.get("image")
+        if exe_env_image:
+            url = f"http://{exe_env_image}"
+            cached_result = exeenv_check_result.get(url)
+            if cached_result:
                 if cached_result != 200:
                     raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {cached_result} (cached)")
             else:
                 headers = {"User-Agent": "Mozilla/5.0"}
                 r = requests.get(url, headers=headers)
                 result = r.status_code
-                virtualenv_check_result[url] = r.status_code
+                exeenv_check_result[url] = r.status_code
                 if r.status_code != 200:
                     raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {r.status_code}")
         else:
-            exe_env = deployer.get("execution_environment")
-            if exe_env:
-                exe_env_image = exe_env.get("image")
-                if exe_env_image:
-                    url = f"http://{exe_env_image}"
-                    cached_result = exeenv_check_result.get(url)
-                    if cached_result:
-                        if cached_result != 200:
-                            raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {cached_result} (cached)")
-                    else:
-                        headers = {"User-Agent": "Mozilla/5.0"}
-                        r = requests.get(url, headers=headers)
-                        result = r.status_code
-                        exeenv_check_result[url] = r.status_code
-                        if r.status_code != 200:
-                            raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {r.status_code}")
-                else:
-                  return True
-            else:
-                raise ValueError(f"No Execution Environment or virtualenv defined.")
+            return True
+
     return True
 
 def check_valid_agv_tag(c,ci):
@@ -301,7 +300,7 @@ for ci in catalog_items:
     ci_object = yaml.safe_load(process_ci.stdout)
     passed = True
     exceptions = {}
-    for f in [check_double_booking,check_name,check_tag_var,check_valid_agv_tag,check_valid_babylon_tag,check_anarchy_namespace,check_virtualenv,check_duplicate_directories]:
+    for f in [check_double_booking,check_name,check_tag_var,check_valid_agv_tag,check_valid_babylon_tag,check_anarchy_namespace,check_virtualenv,check_ee, check_duplicate_directories]:
         try:
             if not f(ci_object,ci):
                 passed = False
