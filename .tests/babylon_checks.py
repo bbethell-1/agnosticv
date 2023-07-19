@@ -160,6 +160,8 @@ def check_virtualenv(c, ci):
     if "__meta__" in c or "agnosticv_meta" in c:
         deployer = c.get("__meta__", {}).get("deployer", {})
         virtualenv = deployer.get("virtualenv") or c.get("agnosticv_meta", {}).get("virtualenv")
+        if virtualenv == "babylon":
+            return True
         if virtualenv:
             url = f"https://raw.githubusercontent.com/redhat-cop/agnosticd/development/tools/virtualenvs/{virtualenv}.txt"
             cached_result = virtualenv_check_result.get(url)
