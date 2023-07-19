@@ -188,7 +188,7 @@ def check_ee(c, ci):
         if exe_env:
             exe_env_image = exe_env.get("image")
             if exe_env_image:
-                url = f"{exe_env_image}"
+                url = f"http://{exe_env_image}"
                 cached_result = exeenv_check_result.get(url)
                 if cached_result:
                     if cached_result != 200:
