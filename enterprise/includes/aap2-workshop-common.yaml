@@ -1,0 +1,113 @@
+---
+cloud_provider: ec2
+
+ansible_workshops_version: devel
+
+# Set custom output dir used by provisioner
+output_dir: "/runner/project/provisioner/{{ guid }}"
+
+# Sets the Route53 DNS zone to use for Amazon Web Services
+workshop_dns_zone: example.opentlc.com
+
+# region where the nodes will live
+ec2_region: "{{ aws_region }}"
+
+# name prefix for all the VMs
+ec2_name_prefix: "{{ guid }}"
+
+# creates student_total of workbenches for the workshop
+student_total: "{{ num_users }}"
+
+# turn DNS on for control nodes, and set to type in valid_dns_type
+dns_type: aws
+
+# password for Ansible control node
+admin_password: >-
+  {{ lookup("ansible.builtin.password", "/tmp/" ~ guid ~ "-admin_password chars=ascii_lowercase,digits length=8") }}
+
+# automatically installs Tower to control node
+controllerinstall: true
+
+# SHA value of targeted AAP bundle setup files.
+provided_sha_value: 161b45950284c0798cfa8fd6b0d6a0d80a29d1d0ca2063b83da1569f477190f7
+
+# Automation controller install setup command. Default: "./setup.sh -e gpgcheck=0" if undefined or empty
+controller_install_command: './setup.sh -e gpgcheck=0'
+
+# Enable user.info output for RHPDS
+rhpds_info_output: true
+
+# Use AWS CLI to destroy EC2 instances
+aws_cli_destroy_ec2: true
+
+# Use prebuilt AWS AMIs for faster deployment
+pre_build: true
+
+##########################
+# Babylon meta variables #
+##########################
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-aap2-workshop
+  aws_sandboxed: false
+  tower:
+    organization: RHPDS
+
+  deployer:
+    type: ansible-workshops
+    scm_url: https://github.com/redhat-gpe/workshops.git
+    actions:
+      provision:
+        entry_point: provisioner/provision_lab.yml
+      destroy:
+        entry_point: provisioner/teardown_lab.yml
+      start:
+        disable: true
+      stop:
+        disable: true
+      status:
+        disable: true
+      update:
+        disable: true
+    execution_environment:
+      name: aap2-workshop
+
+  ansible_control_plane:
+    type: controller
+    secret: babylon-aap2-controller-on-azure
+
+  secrets:
+    - namespace: gpte
+      name: aap2-workshop
+
+  # AMIs with pre-cached aap.tar.gz are only in these regions
+  # See roles/manage_ec2_instances/defaults/main/main.yml for more info
+  catalog:
+    workshopUiDisabled: true
+    parameters:
+      - name: aws_region
+        description: AWS Region to Provision Environment.
+        formLabel: Region
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: us-east-2
+          enum:
+            - us-east-2
+            - ap-southeast-1
+            - eu-central-1
+      - name: num_users
+        description: >-
+          Number of users to provision within the environment.
+        formLabel: User Count
+        openAPIV3Schema:
+          type: integer
+          default: 1
+          minimum: 1
+          maximum: 49
+        validation: >-
+          num_users == 1 ||
+          user_is_admin ||
+          user_groups.enterprise/includes('rhpds-devs') ||
+          check_salesforce_id(salesforce_id) ||
+          Error('User count greater than one requires a valid SalesForceID.')
