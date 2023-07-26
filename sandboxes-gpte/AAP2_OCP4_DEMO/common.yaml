@@ -1,0 +1,233 @@
+---
+#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/ocp4-fips-enable.yaml
+#include /includes/parameters/agnosticd_open_environment.yaml
+#include /includes/ee-multicloud.yaml
+#include /includes/ansible_control_plane/controller.aap5nack2i7p6mie.ansiblecloud.redhat.com.yaml
+#include /includes/access-restriction-devs-only.yaml
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+ocp4_installer_version: "4.12"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+master_instance_count: 1
+worker_instance_count: 0
+bastion_instance_image: RHEL86GOLD-latest
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+
+repo_method: satellite
+update_packages: true
+
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+#
+# --- Infra Workloads (YAML List)
+
+requirements_content:
+  collections:
+    - name: amazon.aws
+      version: 2.2.0
+    - name: ansible.posix
+      version: 1.3.0
+    - name: ansible.utils
+      version: 2.7.0
+    - name: awx.awx
+      version: 21.4.0
+    - name: community.general
+      version: 4.6.1
+    - name: infra.controller_configuration
+      version: 2.2.5
+    - name: kubernetes.core
+      version: 2.3.1
+
+bastion_student_show_user_info: true  # This var enables ssh bastion user_info data to be set early before bookbag
+
+infra_workloads:
+
+  - ocp4_workload_le_certificates
+  - ocp4_workload_ansible_automation_platform
+  - automation_platform_loader
+  - automation_platform_bastion
+
+# automation_platform_loader vars
+
+openshift_admin_user: kubeadmin
+automation_platform_loader_generate_ocp_token: true
+
+# workload ocp4_workload_ansible_automation_platform vars
+
+ocp4_workload_ansible_automation_platform_admin_password: "{{ common_password }}"
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+host_ocp4_installer_set_user_data_kubeadmin_password: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: AAP2 on OCP4 Featuring Linux, Windows, Networking, and Satellite
+    category: Demos
+    multiuser: false
+    keywords:
+      - ansible
+      - openshift
+      - ocp
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Provider: RHDP
+      Product_Family: Red_Hat_Cloud
+    parameters:
+
+      - name: master_instance_type
+        description: OpenShift compute master instance type
+        formLabel: Control Plane Instance Type
+        openAPIV3Schema:
+          type: string
+          default: m6a.2xlarge
+          enum:
+            - m6a.4xlarge
+            - m6a.2xlarge
+
+  secrets:
+
+    - namespace: gpte
+      name: ocp4-token
+
+    - namespace: gpte
+      name: satellite-rhel86-ha
+
+    - namespace: gpte
+      name: output-dir-s3
+
+    - namespace: gpte
+      name: ansible-tower-advanced-2
+
+# -------------------------------------------------------------------
+
+controller_configuration_dispatcher_roles:
+
+  - role: settings
+    var: controller_settings
+    tags: settings
+
+  - role: credentials
+    var: controller_credentials
+    tags: credentials
+
+  - role: organizations
+    var: controller_organizations
+    tags: organizations
+
+  - role: execution_environments
+    var: controller_execution_environments
+    tags: execution_environments
+
+  - role: projects
+    var: controller_projects
+    tags: projects
+
+  - role: job_templates
+    var: controller_job_templates
+    tags: job_templates
+
+controller_settings:
+  - name: TOWER_URL_BASE
+    value: "https://{{ aap_controller_fqdn }}" # var to be supplied by deployer
+  - name: AWX_COLLECTIONS_ENABLED
+    value: "false"
+
+controller_credentials:
+  - name: Controller Credential
+    credential_type: Red Hat Ansible Automation Platform
+    organization: Default
+    inputs:
+    host: "https://{{ aap_controller_fqdn }}" # var to be supplied by deployer
+    username: "{{ aap_controller_admin_username }}" # var to be supplied by deployer
+    password: "{{ aap_controller_admin_password }}" # var to be supplied by deployer
+
+  - name: OpenShift Credentials
+    description: Credentials for OpenShift
+    organization: Default
+    credential_type: "OpenShift or Kubernetes API Bearer Token"
+    inputs:
+      host: "{{ openshift_api_url }}"
+      verify_ssl: true
+      bearer_token: "{{ openshift_bearer_token }}"
+
+  - name: Automation Hub
+    organization: Default
+    credential_type: Ansible Galaxy/Automation Hub API Token
+    update_secrets: false
+    inputs:
+    url: https://console.redhat.com/api/automation-hub/
+    auth_url: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+
+controller_organizations:
+  - name: Default
+galaxy_credentials:
+  - Ansible Galaxy
+  - Automation Hub
+
+controller_execution_environments:
+  - name: product-demos
+    image: quay.io/acme_corp/product-demos-ee:latest
+
+controller_projects:
+  - name: Ansible official demo project
+    organization: Default
+    scm_type: git
+    scm_url: https://github.com/ansible/product-demos
+    scm_branch: use_defaults
+    wait: false
+
+controller_job_templates:
+  - name: "SETUP"
+    job_type: run
+    organization: Default
+    inventory: Demo Inventory
+    project: Ansible official demo project
+    playbook: setup_demo.yml
+    credentials: Controller Credential
+    allow_simultaneous: true
+    survey_enabled: yes
+    survey_spec:
+      name: 'Survey'
+      description: ''
+spec:
+  - type: multiplechoice
+    question_name: Demo Category
+    variable: demo
+    required: true
+choices:
+  - linux
+  - windows
+  - cloud
+  - network
+  - satellite
