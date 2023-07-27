@@ -1,0 +1,89 @@
+---
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/num-users-salesforce.yaml
+
+# Set to RHPDS or OPENTLC
+platform: RHPDS
+
+# https://github.com/redhat-cop/agnosticd/tree/development/ansible/configs/osp-migration
+env_type: osp-migration
+
+########################################
+# Mandatory vars #
+########################################
+migration_key_path: ~/.ssh/opentlc_admin_backdoor.pem
+
+output_dir: /tmp/workdir
+
+common_install_basic_packages_retries: 0
+repo_method: file
+install_student_user: true
+
+########################################
+# OSP specific VARS
+########################################
+
+# How many times Heat will retry to deploy template if it fails
+# Keep this low for development and a little higher for production
+heat_retries: 0
+
+# If you want DNS entries to be created automatically, choose one of these
+# Alternately, they can both be set to false.
+use_dynamic_dns: true
+
+# Enter project name from https://github.com/redhat-gpe/novello-templates/tree/master/heat-templates
+project: OPTLC-Ceph5-Playground-v0.8.2-bp
+heat_templates_private_repo_tag: OPTLC-Ceph5-Implementation-v0.8.2-bp-prod-0.8
+
+#########################################
+# Meta variables for admin host scripts #
+# ALL_agnosticv.sh                      #
+#########################################
+
+agnosticv_meta:
+  deploy_with: babylon
+  params_to_variables:
+    # This should be overwritten based on the user ordering the catalog item
+    # It will be used by the bastion-student-user role and created on the bastion
+    user: student_name
+
+#########################################
+# Babylon meta variables
+#########################################
+
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-openstack
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "CEPH5 Playground"
+    category: Demos
+    keywords: []
+    labels:
+      Product_Family: Red_Hat_Data_Services
+      Product: Red_Hat_Ceph_Storage
+      Provider: Hybrid_Platform_BU
+    multiuser: true
+    parameters: []
+  deployer:
+    virtualenv: ansible2.9-python3.6-2021-11-30
+    type: agnosticd
+  scheduler:
+    enable: true
+    data:
+      cloud_selector:
+        type: osp
+      cloud_preference:
+        purpose: production
+        datacenter: dal
+  secrets:
+  - name: novello_git_clone_key
+    namespace: gpte
+  - name: ibm-cos-secrets
+    namespace: gpte
+  - name: repos-cloudfront-ocp
+    namespace: gpte
