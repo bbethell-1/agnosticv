@@ -73,6 +73,7 @@ if args.from_file != '':
 
 valid = []
 invalid = []
+asset_uuids = {}
 
 def check_duplicate_directories(c, ci):
     '''Check for duplicate directories'''
@@ -287,8 +288,25 @@ def check_anarchy_namespace(c,ci):
 
     return True
 
+def check_asset_uuid(c,ci):
+    '''Ensure catalog item has a valid billing UUID'''
+
+    if ('__meta__' in c):
+        if dirname not in asset_uuids:
+            asset_uuids[dirname] = {}
+
+        asset_uuids[dirname] = c['__meta__']['asset_uuid']
+        for k, asset_uuid in asset_uuids.items():
+            if k == dirname:
+                continue
+            if c['__meta__']['asset_uuid'] == asset_uuid:
+                raise ValueError(f"__meta__.asset_uuid must be unique. UUID ({asset_uuid}) also found in ci {k}")
+
+    return True
+
 for ci in catalog_items:
     ci = ci.strip()
+    dirname = os.path.dirname(ci)
     process_ci = subprocess.run(
         [str(args.agnosticv_cli), '--merge', ci],
         stdout=subprocess.PIPE,
@@ -300,7 +318,7 @@ for ci in catalog_items:
     ci_object = yaml.safe_load(process_ci.stdout)
     passed = True
     exceptions = {}
-    for f in [check_double_booking,check_name,check_tag_var,check_valid_agv_tag,check_valid_babylon_tag,check_anarchy_namespace,check_virtualenv,check_ee, check_duplicate_directories]:
+    for f in [check_double_booking,check_name,check_tag_var,check_valid_agv_tag,check_valid_babylon_tag,check_anarchy_namespace,check_virtualenv,check_ee, check_duplicate_directories,check_asset_uuid]:
         try:
             if not f(ci_object,ci):
                 passed = False
