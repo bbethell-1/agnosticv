@@ -100,12 +100,23 @@ requirements_content:
 # -------------------------------------------------------------------
 # OpenShift Workloads
 # -------------------------------------------------------------------
-infra_workloads:
+preview_workloads:
   - ocp4_workload_authentication
   - ocp4_workload_le_certificates
   - ocp4_workload_gitea_operator
-  # - ocp4_workload_openshift_gitops
-  # - ocp4_workload_codeserver
+  - ocp4_workload_ansible_automation_platform
+  - ocp4_workload_eda_controller
+  - ocp4_workload_cert_manager_operator
+  - ocp4_workload_cert_utils_operator
+  - automation_platform_loader
+  - automation_platform_bastion
+  - eda_controller_config
+  - vscode-server
+
+prod_workloads:
+  - ocp4_workload_authentication
+  - ocp4_workload_le_certificates
+  - ocp4_workload_gitea_operator
   - ocp4_workload_ansible_automation_platform
   - ocp4_workload_cert_manager_operator
   - ocp4_workload_cert_utils_operator
@@ -113,7 +124,8 @@ infra_workloads:
   - automation_platform_bastion
   - eda_pods_on_bastion
   - vscode-server
-  # - ocp4_workload_gitops_eda
+
+infra_workloads: "{{ preview_workloads if tech_preview else prod_workloads }}"
 
 # -------------------------------------------------------------------
 # OpenShift variable
@@ -139,11 +151,12 @@ install_lets_encrypt_certificates: false
 # Workload: ocp4_workload_gitea_operator
 # -------------------------------------------------------------------
 ocp4_workload_gitea_operator_project: gitea
-ocp4_workload_gitea_operator_catalog_image_tag: v1.3.0
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.1
 
 ocp4_workload_gitea_operator_deploy_gitea_instance: true
-ocp4_workload_gitea_operator_gitea_image: quay.io/gpte-devops-automation/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: "1.16.8"
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.20.1"
 ocp4_workload_gitea_operator_name: gitea
 ocp4_workload_gitea_operator_gitea_hostname: gitea
 ocp4_workload_gitea_operator_gitea_volume_size: 2Gi
@@ -171,6 +184,14 @@ ocp4_workload_gitea_operator_repositories_list:
   - repo: https://github.com/redhat-gpte-devopsautomation/demo-event-driven-ansible.git
     name: event-driven-ansible
     private: false
+  - repo: https://github.com/miteshget/eda-rulebooks.git
+    name: eda-rulebooks
+    private: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ansible_automation_platform
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.4"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops
@@ -206,6 +227,9 @@ ocp4_workload_codeserver_repos_user: "{{ student_name }}"
 ocp4_workload_codeserver_repos_password: "{{ common_password }}"
 ocp4_workload_codeserver_repos:
   - name: event-driven-ansible
+    account: "{{ student_name }}"
+    branch: main
+  - name: eda-rulebooks
     account: "{{ student_name }}"
     branch: main
 
@@ -287,6 +311,10 @@ controller_templates:
     credentials:
       - OpenShift Credentials
     survey: {}
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_eda_controller
+# -------------------------------------------------------------------
+ocp4_workload_eda_controller_aap_controller_url: "{{ aap_controller_web_url }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitops_eda
@@ -317,6 +345,49 @@ ocp4_workload_cert_manager_operator_channel_csv: cert-manager-operator.v1.10.2
 eda_pods_on_bastion_ac_token: "{{ r_aap2_token.ansible_facts.controller_token.token }}"
 eda_pods_on_bastion_ac_web_url: "https://{{ automation_controller_hostname }}"
 
+# -------------------------------------------------------------------
+# Workload: eda_controller_config
+# -------------------------------------------------------------------
+eda_controller_config_url: "{{ eda_controller_web_url }}"
+eda_controller_config_username: "admin"
+eda_controller_config_password: "{{ common_password }}"
+
+eda_controller_config_awx_tokens:
+  - name: aap
+    token: "{{ r_aap2_token.ansible_facts.controller_token.token }}"
+
+eda_controller_config_decision_envs:
+  - name: "de-for-ocp"
+    description: "Decision Environment for OpenShift"
+    image_url: "quay.io/mitsharm/eda/de-for-ocp"
+
+eda_controller_config_projects:
+  - name: "OpenShift Event Rulebooks"
+    description: "Event-driven Ansible rulebooks"
+    repo_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/eda-rulebooks.git"
+
+eda_controller_config_rulebook_activations:
+  - name: "Patch Route With Cert"
+    description: "Patch OpenShift Routes"
+    project: "OpenShift Event Rulebooks"
+    rulebook: "patch_route.yml"
+    decision_env: "de-for-ocp"
+    restart_policy: "on-failure"
+    enabled: true
+  - name: "Set Resource Quota On Namespace"
+    description: "Set Resource Quota on OpenShift namespace"
+    project: "OpenShift Event Rulebooks"
+    rulebook: "resource_quota.yml"
+    decision_env: "de-for-ocp"
+    restart_policy: "on-failure"
+    enabled: true
+  - name: "Create Volume Snapshot"
+    description: "Create PVC volume snapshot"
+    project: "OpenShift Event Rulebooks"
+    rulebook: "volume_snapshot.yml"
+    decision_env: "de-for-ocp"
+    restart_policy: "on-failure"
+    enabled: true
 
 # -------------------------------------------------------------------
 # Workload: vscode-server
@@ -338,7 +409,6 @@ vscode_server_extension_urls:
 # -------------------------------------------------------------------
 # AgnosticV meta variables
 # -------------------------------------------------------------------
-
 agnosticv_meta:
   sandboxed: false
   idle_after_deploy: 9999
@@ -346,6 +416,7 @@ agnosticv_meta:
   deploy_with: babylon
 
 sandbox_user_info_messages_enable: true
+
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
@@ -378,6 +449,13 @@ __meta__:
           enum:
             - m6a.4xlarge
             - m6a.2xlarge
+      - description: Enable EDA Controller for Managing Rulebooks
+        formGroup: Features
+        formLabel: Technology Preview - EDA Controller
+        name: tech_preview
+        openAPIV3Schema:
+          default: false
+          type: boolean
   secrets:
     - namespace: gpte
       name: ocp4-token

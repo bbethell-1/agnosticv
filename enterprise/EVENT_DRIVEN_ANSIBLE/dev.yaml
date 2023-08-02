@@ -7,33 +7,6 @@ purpose: development
 # -------------------------------------------------------------------
 # OpenShift Workloads
 # -------------------------------------------------------------------
-preview_workload:
-  - ocp4_workload_authentication
-  - ocp4_workload_le_certificates
-  - ocp4_workload_gitea_operator
-  - ocp4_workload_ansible_automation_platform
-  - ocp4_workload_eda_controller
-  - ocp4_workload_cert_manager_operator
-  - ocp4_workload_cert_utils_operator
-  - automation_platform_loader
-  - automation_platform_bastion
-  - eda_controller_config
-  - vscode-server
-
-prod_workload:
-  - ocp4_workload_authentication
-  - ocp4_workload_le_certificates
-  - ocp4_workload_gitea_operator
-  - ocp4_workload_ansible_automation_platform
-  - ocp4_workload_cert_manager_operator
-  - ocp4_workload_cert_utils_operator
-  - automation_platform_loader
-  - automation_platform_bastion
-  - eda_pods_on_bastion
-  - vscode-server
-
-infra_workloads: "{{ preview_workload if tech_preview else prod_workload }}"
-
 # infra_workloads:
 #   - ocp4_workload_authentication
 #   - ocp4_workload_le_certificates
@@ -52,102 +25,8 @@ infra_workloads: "{{ preview_workload if tech_preview else prod_workload }}"
 #   # - ocp4_workload_gitops_eda
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_gitea_operator
-# -------------------------------------------------------------------
-ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
-ocp4_workload_gitea_operator_catalog_image_tag: v2.0.1
-
-ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: "1.20.1"
-ocp4_workload_gitea_operator_repositories_list:
-  - repo: https://github.com/redhat-gpte-devopsautomation/demo-event-driven-ansible.git
-    name: event-driven-ansible
-    private: false
-  - repo: https://github.com/miteshget/eda-rulebooks.git
-    name: eda-rulebooks
-    private: false
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_codeserver
-# -------------------------------------------------------------------
-ocp4_workload_codeserver_repos:
-  - name: event-driven-ansible
-    account: "{{ student_name }}"
-    branch: main
-  - name: eda-rulebooks
-    account: "{{ student_name }}"
-    branch: main
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_ansible_automation_platform
-# -------------------------------------------------------------------
-ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.4"
-
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_eda_controller
-# -------------------------------------------------------------------
-ocp4_workload_eda_controller_aap_controller_url: "{{ aap_controller_web_url }}"
-
-# -------------------------------------------------------------------
-# Workload: eda_controller_config
-# -------------------------------------------------------------------
-eda_controller_config_url: "{{ eda_controller_web_url }}"
-eda_controller_config_username: "admin"
-eda_controller_config_password: "{{ common_password }}"
-
-eda_controller_config_awx_tokens:
-  - name: aap
-    token: "{{ r_aap2_token.ansible_facts.controller_token.token }}"
-
-# --------------------------------------------------------
-# List of EDA credentials to be created if defined
-# --------------------------------------------------------
-eda_controller_config_decision_envs:
-  - name: "de-for-ocp"
-    description: "Decision Environment for OpenShift"
-    image_url: "quay.io/mitsharm/eda/de-for-ocp"
-
-eda_controller_config_projects:
-  - name: "OpenShift Event Rulebooks"
-    description: "Event-driven Ansible rulebooks"
-    repo_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/eda-rulebooks.git"
-
-eda_controller_config_rulebook_activations:
-  - name: "Patch Route With Cert"
-    description: "Patch OpenShift Routes"
-    project: "OpenShift Event Rulebooks"
-    rulebook: "patch_route.yml"
-    decision_env: "de-for-ocp"
-    restart_policy: "on-failure"
-    enabled: true
-  - name: "Set Resource Quota On Namespace"
-    description: "Set Resource Quota on OpenShift namespace"
-    project: "OpenShift Event Rulebooks"
-    rulebook: "resource_quota.yml"
-    decision_env: "de-for-ocp"
-    restart_policy: "on-failure"
-    enabled: true
-  - name: "Create Volume Snapshot"
-    description: "Create PVC volume snapshot"
-    project: "OpenShift Event Rulebooks"
-    rulebook: "volume_snapshot.yml"
-    decision_env: "de-for-ocp"
-    restart_policy: "on-failure"
-    enabled: true
-
-# -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
   deployer:
     scm_ref: development
-  catalog:
-    parameters:
-      - description: Enable EDA Controller for Managing Rulebooks
-        formGroup: Features
-        formLabel: Technology Preview - EDA Controller
-        name: tech_preview
-        openAPIV3Schema:
-          default: false
-          type: boolean
