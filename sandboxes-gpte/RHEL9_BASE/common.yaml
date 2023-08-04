@@ -1,0 +1,102 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/num-users-salesforce.yaml
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: rhel8-base
+
+# Unset key name
+key_name: ""
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+bastion_public_hostname: "rhel9.{{ guid }}.{{ sandbox_zone }}"
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+rhel9_instance_image: RHEL92GOLD-latest
+rhel9_instance_type: "t3a.large"
+rootfs_size_rhel9: 200
+
+instances:
+- name: "rhel9"
+  count: 1
+  unique: true
+  public_dns: true
+  floating_ip: true
+  image: "{{ rhel9_instance_image }}"
+  flavor:
+    ec2: "{{ rhel9_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions"
+  - key: "ostype"
+    value: "linux"
+  rootfs_size: "{{ rootfs_size_rhel9 }}"
+  volumes:
+  - device_name: "/dev/xvdb"
+    size: "20"
+    type: gp3
+  security_groups:
+  - BastionSG
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+repo_method: satellite
+use_content_view: true
+
+# -------------------------------------------------------------------
+# Role: common
+# -------------------------------------------------------------------
+common_packages_el9:
+- python3
+- unzip
+- bash-completion
+- tmux
+- bind-utils
+- wget
+- nano
+- git
+- vim-enhanced
+- httpd-tools
+- openldap-clients
+- podman
+- tree
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 3135dd90-3138-499a-96dd-53daed9a6697
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  deployer:
+    virtualenv: ansible2.9-python3.6-2021-11-30
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: RHEL 9 Base
+    category: Demos
+    keywords:
+    - rhel
+    - rhel9
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHDP
+    multiuser: true
+    parameters: []
+  secrets:
+  - name: satellite-rhel-8-and-9-latest-ha
+    namespace: gpte
+  - name: output-dir-s3
+    namespace: gpte
