@@ -29,6 +29,19 @@ ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 master_instance_count: 1
 worker_instance_count: 0
 bastion_instance_image: RHEL86GOLD-latest
+openshift_admin_user: kubeadmin
+
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
+
+project_tag: "{{ env_type }}-{{ guid }}"
+common_password: "{{openshift_kubeadmin_password}}" #"{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+ssh_privatekey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path) }}"
+ssh_publickey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path_pub) }}"
+bastion_student_show_user_info: true
+create_ssh_provision_key_enable_user_info_data: true
+host_ocp4_installer_set_user_data_kubeadmin_password: true
 
 # -------------------------------------------------------------------
 # Repos
@@ -36,8 +49,6 @@ bastion_instance_image: RHEL86GOLD-latest
 
 repo_method: satellite
 update_packages: true
-
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
 # -------------------------------------------------------------------
 # Workloads
@@ -48,7 +59,6 @@ student_workloads: []
 #
 # --- Infra Workloads (YAML List)
 infra_workloads:
-
   - ocp4_workload_le_certificates
   - ocp4_workload_ansible_automation_platform
   - automation_platform_loader
@@ -65,6 +75,8 @@ ocp4_workload_ansible_automation_platform_manifest:
   url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
   username: admin
   password: "{{ common_password }}"
+automation_platform_loader_generate_ocp_token: true
+automation_platform_loader_generate_ssh_keypair: false
 
 requirements_content:
   collections:
@@ -79,21 +91,117 @@ requirements_content:
     - name: community.general
       version: 4.6.1
     - name: infra.controller_configuration
-      version: 2.2.5
+      version: 2.5.0
     - name: kubernetes.core
       version: 2.3.1
 
-bastion_student_show_user_info: true  # This var enables ssh bastion user_info data to be set early before bookbag
-create_ssh_provision_key_enable_user_info_data: true
-ssh_privatekey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path) }}"
-ssh_publickey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path_pub) }}"
+controller_configuration_dispatcher_roles:
+  - role: settings
+    var: controller_settings
+    tags: settings
 
-# automation_platform_loader vars
+  - role: credentials
+    var: controller_credentials
+    tags: credentials
 
-openshift_admin_user: kubeadmin
-automation_platform_loader_generate_ocp_token: true
+  - role: execution_environments
+    var: controller_execution_environments
+    tags: execution_environments
 
-host_ocp4_installer_set_user_data_kubeadmin_password: true
+  - role: organizations
+    var: controller_organizations
+    tags: organizations
+
+  - role: projects
+    var: controller_projects
+    tags: projects
+
+  - role: job_templates
+    var: controller_templates
+    tags: job_templates
+
+controller_settings:
+  - name: TOWER_URL_BASE
+    value: "https://{{ automation_controller_hostname }}" # var to be supplied by deployer
+  - name: AWX_COLLECTIONS_ENABLED
+    value: "false"
+
+controller_credentials:
+  - name: Demo Credential
+    credential_type: Machine
+    organization: Default
+    update_secrets: true
+    inputs:
+      ssh_key_data: "{{ ssh_privatekey }}"
+
+  - name: Controller Credential
+    credential_type: Red Hat Ansible Automation Platform
+    organization: Default
+    inputs:
+      host: "https://{{ automation_controller_hostname }}" # var to be supplied by deployer
+      username: "{{ controller_username }}" # var to be supplied by deployer
+      password: "{{ ocp4_workload_ansible_automation_platform_admin_password }}" # var to be supplied by deployer
+
+  - name: OpenShift Credentials
+    description: Credentials for OpenShift
+    organization: Default
+    credential_type: "OpenShift or Kubernetes API Bearer Token"
+    inputs:
+      host: "{{ openshift_api_url }}"
+      verify_ssl: true
+      bearer_token: "{{ openshift_bearer_token }}"
+
+  - name: Automation Hub
+    organization: Default
+    credential_type: Ansible Galaxy/Automation Hub API Token
+    update_secrets: false
+    inputs:
+      url: https://console.redhat.com/api/automation-hub/
+      auth_url: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+
+controller_execution_environments:
+  - name: product-demos
+    image: quay.io/acme_corp/product-demos-ee:latest
+
+controller_organizations:
+  - name: Default
+    default_environment: 'product-demos'
+    galaxy_credentials:
+      - Ansible Galaxy
+      - Automation Hub
+    assign_default_ee_to_org: true
+
+controller_projects:
+  - name: Ansible official demo project
+    organization: Default
+    scm_type: git
+    scm_url: https://github.com/ansible/product-demos
+    scm_branch: use_defaults
+    wait: true
+
+controller_templates:
+  - name: "SETUP"
+    job_type: run
+    inventory: "Demo Inventory"
+    project: "Ansible official demo project"
+    playbook: "setup_demo.yml"
+    credentials: "Controller Credential"
+    allow_simultaneous: true
+    survey_enabled: yes
+    survey_spec:
+      name: 'Survey'
+      description: ''
+      spec:
+        - type: multiplechoice
+          question_name: Demo Category
+          variable: demo
+          required: true
+          choices:
+            - linux
+            - windows
+            - cloud
+            - network
+            - satellite
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -138,110 +246,3 @@ __meta__:
     - namespace: gpte
       name: output-dir-s3
 # -------------------------------------------------------------------
-
-controller_configuration_dispatcher_roles:
-
-  - role: settings
-    var: controller_settings
-    tags: settings
-
-  - role: credentials
-    var: controller_credentials
-    tags: credentials
-
-  - role: execution_environments
-    var: controller_execution_environments
-    tags: execution_environments
-
-  - role: organizations
-    var: controller_organizations
-    tags: organizations
-
-  - role: projects
-    var: controller_projects
-    tags: projects
-
-  - role: job_templates
-    var: controller_templates
-    tags: job_templates
-
-controller_settings:
-  - name: TOWER_URL_BASE
-    value: "https://{{ automation_controller_hostname }}" # var to be supplied by deployer
-  - name: AWX_COLLECTIONS_ENABLED
-    value: "false"
-
-controller_credentials:
-  - name: Demo Credential
-    credential_type: Machine
-    organization: Default
-    inputs:
-      ssh_key_data: "{{ ssh_privatekey }}"
-
-  - name: Controller Credential
-    credential_type: Red Hat Ansible Automation Platform
-    organization: Default
-    inputs:
-      host: "https://{{ automation_controller_hostname }}" # var to be supplied by deployer
-      username: "{{ controller_username }}" # var to be supplied by deployer
-      password: "{{ ocp4_workload_ansible_automation_platform_admin_password }}" # var to be supplied by deployer
-
-  - name: OpenShift Credentials
-    description: Credentials for OpenShift
-    organization: Default
-    credential_type: "OpenShift or Kubernetes API Bearer Token"
-    inputs:
-      host: "{{ openshift_api_url }}"
-      verify_ssl: true
-      bearer_token: "{{ openshift_bearer_token }}"
-
-  - name: Automation Hub
-    organization: Default
-    credential_type: Ansible Galaxy/Automation Hub API Token
-    update_secrets: false
-    inputs:
-      url: https://console.redhat.com/api/automation-hub/
-      auth_url: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
-
-controller_organizations:
-  - name: Default
-    default_environment: product-demos
-    galaxy_credentials:
-      - Ansible Galaxy
-      - Automation Hub
-
-controller_execution_environments:
-  - name: product-demos
-    image: quay.io/acme_corp/product-demos-ee:latest
-
-controller_projects:
-  - name: Ansible official demo project
-    organization: Default
-    scm_type: git
-    scm_url: https://github.com/ansible/product-demos
-    scm_branch: use_defaults
-    wait: true
-
-controller_templates:
-  - name: "SETUP"
-    job_type: run
-    inventory: "Demo Inventory"
-    project: "Ansible official demo project"
-    playbook: "setup_demo.yml"
-    credentials: "Controller Credential"
-    allow_simultaneous: true
-    survey_enabled: yes
-    survey_spec:
-      name: 'Survey'
-      description: ''
-      spec:
-        - type: multiplechoice
-          question_name: Demo Category
-          variable: demo
-          required: true
-          choices:
-            - linux
-            - windows
-            - cloud
-            - network
-            - satellite
