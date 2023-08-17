@@ -3,6 +3,201 @@
 # Purpose
 # -------------------------------------------------------------------
 purpose: dev
+
+# -------------------------------------------------
+# Role: control-user
+# -------------------------------------------------
+install_control_user: true
+#[ Ansible Service Account ]
+student_name: student1
+student_password: "{{ common_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ common_password }}"
+control_user_private_group: "{{ omit }}"
+control_user_ssh_config: ./files/ssh_config.j2
+
+
+# -------------------------------------------------
+# Role: bastion-lite
+# -------------------------------------------------
+install_bastion_lite: true
+
+# -------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------
+repo_method: satellite
+use_content_view: true
+set_repositories_rhel9_lock_release: '9'
+rhel_repos:
+  - rhel-9-for-x86_64-baseos-rpms
+  - rhel-9-for-x86_64-appstream-rpms
+  - ansible-automation-platform-2.3-for-rhel-9-x86_64-rpms
+
+# -------------------------------------------------
+# Role: common
+# -------------------------------------------------
+install_common: true
+common_packages_el8:
+  - python3
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - httpd-tools
+  - python3-pip
+# -------------------------------------------------
+# Role: vscode-server
+# -------------------------------------------------
+
+install_vscode_server: true
+vscode_server_install_nginx: false
+vscode_user_name: "{{ student_name }}"
+vscode_user_password: "{{ common_password }}"
+vscode_server_default_extensions: []
+vscode_server_extension_urls:
+  - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
+
+# -------------------------------------------------
+# Role: deploy_automationcontroller
+# -------------------------------------------------
+install_automationcontroller: true
+deploy_automationcontroller_admin_password: "{{ common_password }}"
+# deploy_automationcontroller_installer_url: <CHANGEME>
+# deploy_automationcontroller_manifest_url: <CHANGEME>
+# registry_username: <CHANGEME>
+# registry_password: <CHANGEME>
+
+# -------------------------------------------------
+# Role: aap_controller_cert_issue
+# -------------------------------------------------
+enable_letsencyrpt_cert: true
+controller_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------
+# Role: automation_platform_loader
+# -------------------------------------------------
+configure_automationcontroller: true
+
+aap_auth:
+  controller_host: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain_base }}"
+  controller_username: admin
+  controller_password: "{{ common_password }}"
+  controller_verify_ssl: false
+
+controller_configuration_dispatcher_roles:
+  # - role: projects
+  #   var: controller_projects
+  #   tags: projects
+  - role: credentials
+    var: controller_credentials
+    tags: credentials
+  - role: inventories
+    var: controller_inventories
+    tags: inventories
+  - role: hosts
+    var: controller_hosts
+    tags: hosts
+  - role: groups
+    var: controller_groups
+    tags: hosts
+
+# controller_projects:
+#   - name: "Workshop Project"
+#     scm_url: "https://github.com/ansible/workshop-examples.git"
+#     organization: Default
+#     default_environment: "Default execution environment"
+#     scm_type: git
+#     scm_branch: master
+#     scm_clean: true
+#     scm_delete_on_update: true
+#     scm_update_on_launch: true
+#     state: present
+
+controller_credentials:
+  - name: "Workshop Credentials"
+    organization: Default
+    credential_type: "Machine"
+    inputs:
+      username: "ec2-user"
+      ssh_key_data: "{{ lookup('file', hostvars.localhost.env_authorized_key_path) }}"
+    state: present
+
+controller_inventories:
+  - name: "Workshop Inventory"
+    organization: Default
+    state: present
+
+controller_hosts:
+  - name: "{{ groups['nodes'][0].split('.')[0] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['nodes'][0] }}"
+  - name: "{{ groups['nodes'][1].split('.')[0] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['nodes'][1] }}"
+  - name: "{{ groups['nodes'][2].split('.')[0] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['nodes'][2] }}"
+  - name: "{{ groups['bastions'][0].split('.')[0] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['bastions'][0] }}"
+
+controller_groups:
+  - name: web
+    inventory: "Workshop Inventory"
+    state: present
+    hosts:
+      - "{{ groups['nodes'][0].split('.')[0] }}"
+      - "{{ groups['nodes'][1].split('.')[0] }}"
+      - "{{ groups['nodes'][2].split('.')[0] }}"
+  - name: control
+    inventory: "Workshop Inventory"
+    state: present
+    hosts:
+      - "{{ groups['bastions'][0].split('.')[0] }}"
+
+
+# test
+software_workloads_for_bastion:
+  - ansible_bu_run_time_inventory
+  - deploy_automationcontroller
+  - automation_platform_loader
+  - aap_controller_cert_issue
+  - vscode-server
+  - ansible_bu_setup_workshop
+# -------------------------------------------------------------------
+# Role: deploy_automationcontroller
+# -------------------------------------------------------------------
+deploy_automationcontroller_installer_url: "{{ controller_bundle_installer.url }}"
+deploy_automationcontroller_manifest_url: "{{ controller_manifest.url }}"
+
+# -------------------------------------------------------------------
+# Role: vscode-server
+# -------------------------------------------------------------------
+vscode_server_ansible_become: true
+vscode_use_automationcontroller_nginx: true
+
+ansible_bu_setup_workshop_exercise_src: ansible_rhel
+ansible_bu_setup_workshop_exercise_dest: rhel-workshop
+
+ansible_bu_setup_workshop_ee_image:
+  - registry.redhat.io/ansible-automation-platform-20-early-access/ee-supported-rhel8:2.0.0
+  - registry.redhat.io/ansible-automation-platform-20-early-access/ee-minimal-rhel8:2.0.0
+  - registry.redhat.io/ansible-automation-platform-20-early-access/ee-29-rhel8:2.0.0
+
 # -------------------------------------------------------------------
 # AgnosticV meta variables
 # -------------------------------------------------------------------
