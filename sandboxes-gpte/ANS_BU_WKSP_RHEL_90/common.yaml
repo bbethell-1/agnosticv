@@ -1,0 +1,199 @@
+---
+#include /includes/catalog-icon-aap.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/secrets/satellite-rhel8-latest-ha.yaml
+#include /includes/parameters/automation-hub-enable.yaml
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ansible-bu-workshop
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+software_workloads_for_bastion:
+  - ansible_bu_run_time_inventory
+  - deploy_automationcontroller
+  - automation_platform_loader
+  - aap_controller_cert_issue
+  - vscode-server
+  - ansible_bu_setup_workshop
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Role: deploy_automationcontroller
+# -------------------------------------------------------------------
+install_automationcontroller: true
+deploy_automationcontroller_admin_password: "{{ common_password }}"
+deploy_automationcontroller_installer_url: "{{ controller_bundle_installer.url }}"
+deploy_automationcontroller_manifest_url: "{{ controller_manifest.url }}"
+
+# -------------------------------------------------------------------
+# Role: automation_platform_loader
+# -------------------------------------------------------------------
+configure_automationcontroller: true
+
+aap_auth:
+  controller_host: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain_base }}"
+  controller_username: admin
+  controller_password: "{{ common_password }}"
+  controller_verify_ssl: false
+
+controller_configuration_dispatcher_roles:
+  - role: credentials
+    var: controller_credentials
+    tags: credentials
+  - role: inventories
+    var: controller_inventories
+    tags: inventories
+  - role: hosts
+    var: controller_hosts
+    tags: hosts
+  - role: groups
+    var: controller_groups
+    tags: hosts
+
+controller_credentials:
+  - name: "Workshop Credentials"
+    organization: Default
+    credential_type: "Machine"
+    inputs:
+      username: "ec2-user"
+      ssh_key_data: "{{ lookup('file', hostvars.localhost.env_authorized_key_path) }}"
+    state: present
+
+controller_inventories:
+  - name: "Workshop Inventory"
+    organization: Default
+    state: present
+
+controller_hosts:
+  - name: "{{ groups['nodes'][0].split('.')[0] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['nodes'][0] }}"
+  - name: "{{ groups['nodes'][1].split('.')[0] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['nodes'][1] }}"
+  - name: "{{ groups['nodes'][2].split('.')[0] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['nodes'][2] }}"
+  - name: "{{ groups['bastions'][0].split('.')[0] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['bastions'][0] }}"
+
+controller_groups:
+  - name: web
+    inventory: "Workshop Inventory"
+    state: present
+    hosts:
+      - "{{ groups['nodes'][0].split('.')[0] }}"
+      - "{{ groups['nodes'][1].split('.')[0] }}"
+      - "{{ groups['nodes'][2].split('.')[0] }}"
+  - name: control
+    inventory: "Workshop Inventory"
+    state: present
+    hosts:
+      - "{{ groups['bastions'][0].split('.')[0] }}"
+
+# -------------------------------------------------------------------
+# Role: aap_controller_cert_issue
+# -------------------------------------------------------------------
+enable_letsencyrpt_cert: true
+controller_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Role: vscode-server
+# -------------------------------------------------------------------
+install_vscode_server: true
+vscode_server_install_nginx: false
+vscode_server_ansible_become: true
+vscode_use_automationcontroller_nginx: true
+vscode_user_name: "{{ student_name }}"
+vscode_user_password: "{{ common_password }}"
+vscode_server_default_extensions: []
+vscode_server_extension_urls:
+  - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
+
+
+# -------------------------------------------------------------------
+# Role: ansible_bu_setup_workshop
+# -------------------------------------------------------------------
+workshop_type: rhel_90
+workshop_version: 1.0.18
+ansible_bu_setup_workshop_exercise_src: ansible_rhel_90
+ansible_bu_setup_workshop_exercise_dest: rhel-workshop
+
+ansible_bu_setup_workshop_ee_image:
+  - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-29-rhel8
+    tag: 2.0.0
+  - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-supported-rhel8
+    tag: 2.0.0
+  - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-minimal-rhel8
+    tag: 2.0.0
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  deploy_with: babylon
+  params_to_variables:
+    user: ignore_user
+    username: student_name
+    region: aws_region
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 89d68ed6-e660-495c-8174-58d40628d47a
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  deployer:
+    virtualenv: ansible2.9-python3.6-2021-11-30
+  catalog:
+    multiuser: false
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Ansible Workshop - Ansible for Red Hat Enterprise Linux (90 mins)
+    category: Workshops
+    keywords:
+      - rhel
+      - rhel90
+      - ansible
+      - workshop
+      - aap2
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Automation
+      Provider: RHDP
+    parameters: []
+  secrets:
+    - name: satellite-rhel8-latest-ha
+      namespace: gpte
+    - name: ansible-tower-advanced-2
+      namespace: gpte
+    - name: output-dir-s3
+      namespace: gpte
