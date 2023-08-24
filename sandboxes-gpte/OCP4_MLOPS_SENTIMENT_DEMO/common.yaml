@@ -1,0 +1,301 @@
+---
+#include /enterprise/includes/aws-sandbox-meta.yaml
+#include /includes/parameters/enable-lets-encrypt.yaml
+#include /enterprise/includes/catalog-icon-openshift.yaml
+#include /enterprise/includes/parameters/salesforce-id.yaml
+#include /enterprise/includes/parameters/purpose.yaml
+#include /enterprise/includes/terms-of-service.yaml
+#include /enterprise/includes/lifetime-standard.yaml
+#include /enterprise/includes/parameters/aws-region.yaml
+#include /includes/parameters/agnosticd_open_environment.yaml
+#include /includes/parameters/num-users-salesforce.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+cloud_provider: ec2
+ocp4_installer_version: "4.12.12"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# AWS Specific
+# -------------------------------------------------------------------
+master_instance_type_family: m5
+master_instance_type_size: >-
+  {{ 'xlarge' if worker_instance_count|int <= 10
+  else '2xlarge' if worker_instance_count|int <= 20
+  else '4xlarge'
+  }}
+master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size\
+  \ }}"
+master_storage_type: >-
+  {{ 'io1' if worker_instance_count|int >= 10
+  else 'gp2' }}
+worker_instance_type: "m5.4xlarge"
+worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max\
+  \ }}"
+worker_storage_type: "gp2"
+bastion_instance_image: RHEL84GOLD-latest
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+# Workload variables #
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.12_2023_07_03
+# -------------------------------------------------------------------
+# Enable if the item is being deployed to a sandbox account
+# and you want credentials provided to the user
+# -------------------------------------------------------------------
+sandbox_student_user: true
+
+# -------------------------------------------------------------------
+# OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
+# instead of cluster-{{ guid }}.{{ guid }}.sandboxXXX.opentlc.com
+# -------------------------------------------------------------------
+ocp4_base_domain: "{{ sandbox_zone }}"
+
+# Show kubeadmin password
+ocp4_cluster_show_access_user_info: true
+
+install_ftl: false
+
+# -------------------------------------------------------------------
+# Custom collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  - name: kubernetes.core
+    version: 2.3.1
+  - name: openstack.cloud
+    version: 1.7.2
+  - name: amazon.aws
+    version: 2.2.0
+  - name: community.general
+    version: 4.6.1
+  - name: ansible.posix
+    version: 1.3.0
+  - name: awx.awx
+    version: 21.1.0
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_project_request_template
+- ocp4_workload_opentlc_production
+- ocp4_workload_le_certificates
+- ocp4_workload_pipelines
+- ocp4_workload_rhods_self_managed
+- ocp4_workload_sentiment_analysis_pattern
+- ocp4_workload_openshift_data_foundation
+- ocp4_workload_gitea_operator
+- ocp4_workload_retail_aiml_workshop
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_le_certificates
+# -------------------------------------------------------------------
+ocp4_workload_le_certificates_install_api: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_opentlc_production
+# -------------------------------------------------------------------
+ocp4_workload_opentlc_production_remove_self_provisioner: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhods_self_managed
+# -------------------------------------------------------------------
+ocp4_workload_rhods_self_managed_operator_group_name: "rhods-ods-operator"
+ocp4_workload_rhods_self_managed_operator_name: "rhods-operator"
+ocp4_workload_rhods_self_managed_namespace: "redhat-ods-operator"
+ocp4_workload_rhods_self_managed_channel: "stable"
+ocp4_workload_rhods_self_managed_catalogsource_setup: false
+ocp4_workload_rhods_self_managed_installPlanApproval: "Automatic"
+ocp4_workload_rhods_self_managed_source: "redhat-operators"
+ocp4_workload_rhods_self_managed_sourceNamespace: "openshift-marketplace"
+ocp4_workload_rhods_self_managed_csv_nameprefix: "rhods-operator"
+ocp4_workload_rhods_self_managed_startingCSV: "rhods-operator.1.28.1"
+ocp4_workload_rhods_self_managed_namespace_list:
+- "{{ ocp4_workload_rhods_self_managed_namespace }}"
+ocp4_workload_rhods_self_managed_applications_namespace: "redhat-ods-applications"
+ocp4_workload_rhods_self_managed_is_workshop: false
+ocp4_workload_rhods_self_managed_workshop_num_users: 25
+ocp4_workload_rhods_self_managed_workshop_username_base: "user"
+ocp4_workload_rhods_self_managed_workshop_password: "{{ student_password }}"
+
+# ---------------------------------------------------------
+# Workload: ocp4_workload_pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.10
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -----------------------------------
+# OpenShift Data Foundations Operator
+# -----------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.12
+ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
+ocp4_workload_openshift_data_foundation_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: v4.12_2023_02_20
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.1
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: 1.20.0
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 2Gi
+ocp4_workload_gitea_operator_postgresql_volume_size: 2Gi
+ocp4_workload_gitea_operator_ssl_route: true
+ocp4_workload_gitea_operator_gitea_image_pull_policy: IfNotPresent
+ocp4_workload_gitea_operator_postgresql_image_pull_policy: IfNotPresent
+ocp4_workload_gitea_operator_webhook_allowed_hosts_list: 'external,private'
+ocp4_workload_gitea_operator_webhook_skip_tls_verify: false
+#install_operator_namespace: gitea-operator
+#install_operator_catalogsource_namespace: gitea-operator
+ocp4_workload_gitea_operator_disable_registration: false
+ocp4_workload_gitea_operator_enable_captcha: false
+ocp4_workload_gitea_operator_allow_create_organization: true
+ocp4_workload_gitea_operator_register_email_confirm: false
+ocp4_workload_gitea_operator_enable_notify_email: false
+ocp4_workload_gitea_operator_mailer_enabled: false
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: opentlc-mgr
+ocp4_workload_gitea_operator_admin_email: opentlc-mgr@opentlc.com
+ocp4_workload_gitea_operator_admin_password: openshift
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: 1
+ocp4_workload_gitea_operator_generate_user_format: lab-user
+ocp4_workload_gitea_operator_user_password: openshift
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/globex-retail/gitops.git
+  name: gitops
+  private: false
+- repo: https://github.com/rh-aiservices-bu/arc-model
+  name: arc-model
+  private: false
+- repo: https://github.com/ritzshah/retail-dev-gitops
+  name: retail-dev-gitops
+  private: false
+- repo: https://github.com/ritzshah/retail-prod-gitops
+  name: retail-prod-gitops
+  private: false
+
+# Variable for ocp4_workload_object_detection_ai_ml_setup
+rhods_username: "admin"
+ocp4_workload_aiml_namespace: "{{ rhods_username }}-rhods-project"
+ocp4_workload_gitea_aiml_user: lab-user
+retail_rhods_project_gitea_password: b3BlbnNoaWZ0
+retail_rhods_project_gitea_username: bGFiLXVzZXI=
+
+# ------------------------------------------------
+# GitOps Deployment
+# ------------------------------------------------
+ocp4_workload_aiml_demo_gitops_setup: true
+ocp4_workload_aiml_home_directory: "/home/ec2-user"
+
+#Gitea user for aiml gitea route
+# Webhook Secret
+ocp4_workload_big_demo_gitea_webhook_secret: ""
+# Length of generated secret if secret is empty
+ocp4_workload_big_demo_gitea_webhook_secret_length: 12
+# Gitea repository
+ocp4_workload_big_demo_gitea_repo_object_detection: arc-model
+ocp4_workload_big_demo_gitea_repo_object_detection_branch: main
+# Base gitea route will be determined dynamically based on project and instance
+ocp4_workload_big_demo_gitea_project: gitea
+ocp4_workload_big_demo_gitea_instance: gitea
+ocp4_workload_big_demo_gitea_user: "{{ ocp4_workload_gitea_operator_generate_user_format }}"
+ocp4_workload_big_demo_gitea_user_password: "{{ ocp4_workload_gitea_operator_user_password }}"
+
+#Gitea repo mapping to variables
+ocp4_workload_gitea_repo_gitops: gitops
+ocp4_workload_gitea_repo_gitops_branch: main
+ocp4_workload_gitea_repo_arc_model: arc-model
+ocp4_workload_gitea_repo_arc_model_branch: main
+ocp4_workload_gitea_repo_retail_dev_gitops: retail-dev-gitops
+ocp4_workload_gitea_repo_retail_dev_gitops_branch: main
+ocp4_workload_gitea_repo_retail_prod_gitops: retail-prod-gitops
+ocp4_workload_gitea_repo_retail_prod_gitops_branch: main
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  sandboxed: false
+  deploy_with: babylon
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 05d29297-1d49-407e-9a45-f93034870ffe
+  anarchy:
+    namespace: babylon-anarchy-enterprise
+  deployer:
+    virtualenv: ansible2.9-python3.6-2021-11-30
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Building sentiment analysis with Kafka and AI/ML and leveraging MLOps
+    category: Demos
+    keywords:
+    - workshop
+    - openshift
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    multiuser: true
+    parameters: []
+  secrets:
+  - namespace: gpte
+    name: ocp4-token
+  - namespace: gpte
+    name: satellite-rhel8-latest-ha
+  - name: output-dir-s3
+    namespace: gpte
+  - namespace: gpte
+    name: rhods-git-secret
