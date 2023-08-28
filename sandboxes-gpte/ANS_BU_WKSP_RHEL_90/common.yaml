@@ -68,26 +68,57 @@ controller_configuration_dispatcher_roles:
   - role: inventories
     var: controller_inventories
     tags: inventories
+  - role: projects
+    var: controller_projects
+    tags: projects
   - role: hosts
     var: controller_hosts
     tags: hosts
   - role: groups
     var: controller_groups
     tags: hosts
+  - role: execution_environments
+    var: controller_execution_environments
+    tags: execution_environments
+  - role: settings
+    var: controller_settings
+    tags: settings
+  - role: job_templates
+    var: controller_templates
+    tags: templates
 
 controller_credentials:
-  - name: "Workshop Credentials"
+  - name: "Workshop Credential"
     organization: Default
     credential_type: "Machine"
     inputs:
       username: "ec2-user"
       ssh_key_data: "{{ lookup('file', hostvars.localhost.env_authorized_key_path) }}"
     state: present
+  - name: "Demo Credential"
+    credential_type: "Machine"
+    state: absent
 
 controller_inventories:
   - name: "Workshop Inventory"
     organization: Default
     state: present
+  - name: "Demo Inventory"
+    organization: Default
+    state: absent
+
+controller_projects:
+  - name: "Ansible official demo project"
+    scm_url: "https://github.com/RedHatGov/product-demos"
+    organization: Default
+    description: "prescriptive demos from Red Hat"
+    scm_type: git
+    scm_branch: movin_on_up
+    state: present
+  - name: "Demo Project"
+    scm_url: "https://github.com/RedHatGov/product-demos"
+    organization: Default
+    state: absent
 
 controller_hosts:
   - name: "{{ groups['nodes'][0].split('.')[0] }}"
@@ -110,6 +141,9 @@ controller_hosts:
     state: present
     variables:
       ansible_host: "{{ groups['bastions'][0] }}"
+  - name: "localhost"
+    inventory: "Demo Inventory"
+    state: absent
 
 controller_groups:
   - name: web
@@ -124,6 +158,29 @@ controller_groups:
     state: present
     hosts:
       - "{{ groups['bastions'][0].split('.')[0] }}"
+
+controller_templates:
+  - name: "SECURITY / Hardening"
+    description: "hardening for Linux servers"
+    job_type: run
+    inventory: Workshop Inventory
+    execution_environment: rhel_90 workshop execution environment
+    project: Ansible official demo project
+    playbook: helloworld.yml
+    credentials:
+      - Workshop Credential
+    # survey_enabled: true
+    # survey: "{{ lookup('template', 'template_surveys/basic_survey.json') | regex_replace('\\n', '') }}"
+
+controller_settings:
+  - name: AWX_COLLECTIONS_ENABLED
+    value: false
+
+controller_execution_environments:
+  - name: "rhel_90 workshop execution environment"
+    image: "quay.io/acme_corp/rhel_90_ee:latest"
+    pull: missing
+    state: present
 
 # -------------------------------------------------------------------
 # Role: aap_controller_cert_issue
@@ -156,6 +213,8 @@ ansible_bu_setup_workshop_exercise_src: ansible_rhel_90
 ansible_bu_setup_workshop_exercise_dest: rhel-workshop
 
 ansible_bu_setup_workshop_ee_image:
+  - name: quay.io/acme_corp/rhel_90_ee
+    tag: latest
   - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-29-rhel8
     tag: 2.0.0
   - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-supported-rhel8
