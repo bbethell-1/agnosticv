@@ -70,24 +70,28 @@ controller_configuration_dispatcher_roles:
   - role: credentials
     var: controller_credentials
     tags: credentials
-  - role: inventories
-    var: controller_inventories
-    tags: inventories
   - role: projects
     var: controller_projects
     tags: projects
+  - role: inventories
+    var: controller_inventories
+    tags: inventories
   - role: hosts
     var: controller_hosts
     tags: hosts
   - role: groups
     var: controller_groups
-    tags: hosts
+    tags: groups
   - role: execution_environments
     var: controller_execution_environments
     tags: execution_environments
   - role: job_templates
     var: controller_templates
     tags: templates
+
+controller_settings:
+  - name: AWX_COLLECTIONS_ENABLED
+    value: false
 
 controller_credentials:
   - name: "Workshop Credential"
@@ -110,14 +114,6 @@ controller_credentials:
     credential_type: "Machine"
     state: absent
 
-controller_inventories:
-  - name: "Workshop Inventory"
-    organization: Default
-    state: present
-  - name: "Demo Inventory"
-    organization: Default
-    state: absent
-
 controller_projects:
   - name: "Ansible official demo project"
     scm_url: "https://github.com/RedHatGov/product-demos"
@@ -128,6 +124,14 @@ controller_projects:
     state: present
   - name: "Demo Project"
     scm_url: "https://github.com/RedHatGov/product-demos"
+    organization: Default
+    state: absent
+
+controller_inventories:
+  - name: "Workshop Inventory"
+    organization: Default
+    state: present
+  - name: "Demo Inventory"
     organization: Default
     state: absent
 
@@ -169,20 +173,19 @@ controller_groups:
     hosts:
       - "{{ groups['bastions'][0].split('.')[0] }}"
 
+controller_execution_environments:
+  - name: "rhel_90 workshop execution environment"
+    image: "quay.io/acme_corp/rhel_90_ee:latest"
+    pull: missing
+    state: present
 
 automation_controller_job_template_survey_sec: >-
   { "name": "Hardening survey", "description": "Configure firewall, time, SSH and PCI baseline","spec":
-  [
-  { "question_name": "Enter host to configure","type": "text","variable": "_hosts","required": false },
-  { "question_name": "Configure Firewall?","type": "multiplechoice","variable": "harden_firewall",
-    "required": false,"choices": [ "Yes","No"] },
-  { "question_name": "Configure Time?","type": "multiplechoice","variable": "harden_time","required": false,
-    "choices": [ "Yes","No"] },
-  { "question_name": "Harden SSH?","type": "multiplechoice","variable": "harden_ssh","required": false,
-    "choices": [ "Yes", "No"] },
-  { "question_name": "PCI Baseline?","type": "multiplechoice","variable": "harden_pci","required": false,
-    "choices": [ "Yes", "No" ] }
-  ]
+    [
+      { "question_name": "Enter host to configure","type": "text","variable": "_hosts","required": false },"required": false,"choices": [ "Yes","No"] },
+      { "question_name": "Configure Time?","type": "multiplechoice","variable": "harden_time","required": false,"choices": [ "Yes","No"] },"choices": [ "Yes", "No"] },
+      { "question_name": "PCI Baseline?","type": "multiplechoice","variable": "harden_pci","required": false,"choices": [ "Yes", "No" ] }
+    ]
   }
 
 controller_templates:
@@ -198,15 +201,7 @@ controller_templates:
     survey_enabled: true
     survey: "{{ automation_controller_job_template_survey_sec }}"
 
-controller_settings:
-  - name: AWX_COLLECTIONS_ENABLED
-    value: false
 
-controller_execution_environments:
-  - name: "rhel_90 workshop execution environment"
-    image: "quay.io/acme_corp/rhel_90_ee:latest"
-    pull: missing
-    state: present
 
 # -------------------------------------------------------------------
 # Role: aap_controller_cert_issue
