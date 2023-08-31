@@ -5,6 +5,8 @@
 #include /includes/terms-of-service.yaml
 #include /includes/lifetime-standard.yaml
 #include /includes/parameters/requester_username.yaml
+#include /enterprise/includes/ansible_control_plane/current_controller.yaml
+
 # -------------------------------------------------------------------
 # --- Quay Shared Workload Deployment for RPDS
 # --- System: RHPDS
@@ -37,20 +39,26 @@ target_host:
 workload_shared_deployment: true
 
 
-# --- Workload Configuration
-ocp4_workload_quay_operator_project: "quay-{{ guid }}"
+# -----------------------------------
+# Quay Operator
+# -----------------------------------
+ocp4_workload_quay_operator_namespace: quay-registry
+ocp4_workload_quay_operator_catalogsource_namespace: quay-registry
+ocp4_workload_quay_operator_channel: stable-3.8
+ocp4_workload_quay_operator_starting_csv: quay-operator.v3.8.10
 ocp4_workload_quay_operator_use_catalog_snapshot: true
+ocp4_workload_quay_operator_catalogsource_name: redhat-operators-snapshot-quay
 ocp4_workload_quay_operator_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_quay_operator_catalog_snapshot_image_tag: "v4.4_2020_09_28"
+ocp4_workload_quay_operator_catalog_snapshot_image_tag: v4.12_2023_07_17
+ocp4_workload_quay_operator_registry_admin_password: "{{ common_password }}"
 
 
 # --- AgnosticV Meta variables
 agnosticv_meta:
-  virtualenv: aws-ansible-2.9
-  params_to_variables:
-    user: ocp_username
-  secrets:
-  - quay_token
+  sandboxed: false
+  idle_after_deploy: 9999
+  idle_after_start: 9999
+  deploy_with: babylon
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -60,7 +68,9 @@ __meta__:
   anarchy:
     namespace: babylon-anarchy-gpte
   deployer:
-    virtualenv: ansible2.9-python3.6-2021-11-30
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: Quay 3 on OpenShift 4
@@ -69,12 +79,11 @@ __meta__:
     - workshop
     - openshift
     - ocp
-    - ocp46
+    - ocp410
     - shared
     - quay
     - quay3
     labels:
-      #OpenShift_Version: "4.6"
       Product: Red_Hat_Quay
       Provider: RHDP
       Product_Family: Red_Hat_Cloud
