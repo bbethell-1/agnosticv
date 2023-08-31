@@ -1,0 +1,159 @@
+---
+#include /includes/parameters/event-lifetime-runtime.yaml
+#include /includes/access-restriction-summit2023-devs.yaml
+
+purpose: event
+
+requirements_content:
+  roles:
+  - name: ocp_application_validation
+    src: https://github.com/linuxnerds/ocp_application_validation.git
+    version: v3.0.4
+  collections:
+  - name: kubernetes.core
+    version: 2.3.1
+  - name: amazon.aws
+    version: 2.2.0
+  - name: community.general
+    version: 4.6.1
+  - name: ansible.posix
+    version: 1.3.0
+  - name: ansible.utils
+    version: 2.7.0
+
+# -------------------------------------------------------------------
+# Workload: cp4_workload_gitops_amqstreams
+# -------------------------------------------------------------------
+ocp4_workload_gitops_amqstreams_acm_clusters:
+- name: dev
+  purpose: development
+- name: prod
+  purpose: production
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_hashicorp_vault
+# -------------------------------------------------------------------
+ocp4_workload_gitops_hashicorp_vault_acm_clusters:
+- name: hub
+  purpose: management
+
+# -----------------------------------
+# OpenShift Data Foundations Operator
+# -----------------------------------
+ocp4_workload_gitops_openshift_data_foundation_acm_clusters:
+- name: hub
+  purpose: management
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_quay_registry
+# -------------------------------------------------------------------
+ocp4_workload_gitops_quay_registry_acm_clusters:
+- name: hub
+  purpose: management
+
+ocp4_workload_devsecops_validated_pattern_quay_registry_namespace: quay-enterprise
+ocp4_workload_gitops_quay_registry_admin_user: quayadmin
+ocp4_workload_gitops_quay_registry_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_sonarqube
+# -------------------------------------------------------------------
+ocp4_workload_gitops_sonarqube_acm_clusters:
+- name: hub
+  purpose: management
+ocp4_workload_devsecops_validated_pattern_sonarqube_namespace: sonarqube
+ocp4_workload_gitops_sonarqube_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_rhacs_secured_cluster
+# -------------------------------------------------------------------
+ocp4_workload_gitops_rhacs_secured_cluster_channel: rhacs-3.73
+ocp4_workload_gitops_rhacs_secured_cluster_starting_csv: rhacs-operator.v3.73.3
+ocp4_workload_gitops_rhacs_secured_cluster_catalogsource_name: redhat-operators
+ocp4_workload_gitops_rhacs_secured_cluster_catalogsource_image: registry.redhat.io/redhat/redhat-operator-index
+ocp4_workload_gitops_rhacs_secured_cluster_catalogsource_image_tag: v4.10
+ocp4_workload_gitops_rhacs_secured_cluster_central_admin_user: admin
+ocp4_workload_gitops_rhacs_secured_cluster_central_admin_password: "{{ common_password }}"
+ocp4_workload_gitops_rhacs_secured_cluster_acm_clusters:
+- name: dev
+  clusterName: aws_dev_cluster
+  purpose: development
+- name: prod
+  clusterName: aws_prod_cluster
+  purpose: production
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_gitops_openshift_gitops_channel: stable
+ocp4_workload_gitops_openshift_gitops_starting_csv: openshift-gitops-operator.v1.5.10
+ocp4_workload_gitops_openshift_gitops_catalogsource_name: redhat-operators-snapshot-argocd
+ocp4_workload_gitops_openshift_gitops_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_gitops_openshift_gitops_catalogsource_image_tag: v4.12_2023_02_27
+
+ocp4_workload_gitops_openshift_gitops_acm_clusters:
+- name: dev
+  purpose: development
+- name: prod
+  purpose: production
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_devsecops_validated_pattern
+# -------------------------------------------------------------------
+ocp4_workload_devsecops_validated_pattern_vault_namespace: vault
+
+# ---------------------------------------------------------
+# Workload: OpenShift Pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.9
+ocp4_workload_pipelines_tkn_version: 0.41.0
+ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.12_2023_02_20
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_codeserver
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_codeserver_name: codeserver
+ocp4_workload_codeserver_workspace_name: ide
+ocp4_workload_codeserver_password: "{{ common_password }}"
+ocp4_workload_codeserver_pvc_size: 3Gi
+ocp4_workload_codeserver_gitea_name: gitea
+ocp4_workload_codeserver_gitea_namespace: gitea
+ocp4_workload_codeserver_extensions:
+- filename: auchenberg.vscode-browser-preview-0.7.2.vsix
+  url: https://gpte-public.s3.amazonaws.com/vscode-plugins/auchenberg.vscode-browser-preview-0.7.2.vsix
+
+ocp4_workload_codeserver_multi_user_install: false
+ocp4_workload_codeserver_multi_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_codeserver_multi_user_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_codeserver_multi_user_namespace_base: codeserver
+
+# Repositories to set up in codeserver
+ocp4_workload_codeserver_repos_user: dev-user
+ocp4_workload_codeserver_repos_password: openshift  # openshift is used above
+# ocp4_workload_codeserver_repos_password: "{{ common_password }}"
+ocp4_workload_codeserver_repos:
+- name: agnosticg
+  account: dev-user
+  branch: main
+- name: globex-ui
+  account: dev-user
+  branch: main
+- name: securing-software-supply-chain
+  account: dev-user
+  branch: main
+
+# Codeserver image tags
+ocp4_workload_codeserver_image_tag: v4.8.3-java11
+ocp4_workload_codeserver_init_image_tag: v4.8.3
+
+#To test coolstore app desecops pipeline
+
+__meta__:
+  deployer:
+    scm_ref: multicluster-devsecops-1.0.2
+    scm_url: https://github.com/redhat-cop/agnosticd.git
+    virtualenv: hybrid_cloud_aws_azure-ansible2.9-python3.6-2022-07-06
