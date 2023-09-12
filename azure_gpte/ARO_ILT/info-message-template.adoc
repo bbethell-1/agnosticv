@@ -1,0 +1,87 @@
+== Azure Configs
+
+=== Dedicated Resource Group
+
+The resource group 'openenv-{guid}' was created in our Azure organization.
+If you have previously accepted an invitation your environment should be available at https://portal.azure.com
+Your Azure account should be SSO enabled, so please log into the portal with your Red Hat Credentials.
+Your account now has full access to this resource group.
+
+All resources must be in this resource group or you will see permission denied errors.
+When this OPEN environment is deleted, the resource group will be removed and all data will be irrecovably removed.
+Please regularly back up your data and script your changes in case you need to rebuild.
+Please see this page for more information: https://www.opentlc.com/azure/openenv_documentation.html
+
+== Your Azure environment
+
+=== Details
+
+* Resource Group: `openenv-{guid}`
+* Application: `openenv-{guid}`
+* Application/Client/Service Principal ID: `{azappid}`
+* Password: `{azpass}`
+* Tenant ID: `{azure_tenant}`
+* Subscription ID: `{azure_subscription_id}`
+
+=== Azure CLI quickstart:
+
+. Set up the environment and install the Azure command line tool
+
+[source,bash,subs="+macros,+attributes",role=execute]
+----
+export GUID={guid}
+export CLIENT_ID={aro_clientid}
+export PASSWORD='{azpass}'
+export TENANT={azure_tenant}
+export SUBSCRIPTION={azure_subscription_id}
+export RESOURCEGROUP=openenv-{guid}
+
+curl -L https://aka.ms/InstallAzureCli | bash
+az login --service-principal -u $CLIENT_ID -p $PASSWORD --tenant $TENANT
+----
+
+. More Information
+
+See https://docs.microsoft.com/en-us/cli/azure/install-azure-cli for more info on installing the Azure CLI.
+
+See https://docs.microsoft.com/en-us/cli/azure/ for full documentation of the azure CLI.
+
+=== Azure Admin User
+
+We have created a user to administer your Azure OPEN Environment in Azure Active Directory.
+{openenv_admin_upn} - Has administrative access to the Azure portal for resource group openenv-{guid}.
+It has the temporary password: {generated_password}
+You will be prompted to reset the password upon first login, you must do so.
+
+== ARO Clusters
+
+=== ARO Configs
+When creating ARO clusters, you must specify the following credentials in the `az aro create` command using this preconfigured service principal:
+
+* Resource Group: `openenv-{guid}`
+* Client ID: `{aro_clientid}`
+* Client Secret: `{az_aro_pass}`
+
+Example ARO installation commands (log in using `az login` command from above):
+
+=== ARO CLI Quickstart
+
+[source,bash,subs="+macros,+attributes",role=execute]
+----
+az network vnet create --resource-group openenv-nhgvf --name aro-vnet-nhgvf --address-prefixes 10.0.0.0/22
+az network vnet subnet create --resource-group openenv-nhgvf --vnet-name aro-vnet-nhgvf --name master-subnet --address-prefixes 10.0.0.0/23 --service-endpoints Microsoft.ContainerRegistry
+az network vnet subnet create --resource-group openenv-nhgvf --vnet-name aro-vnet-nhgvf --name worker-subnet --address-prefixes 10.0.2.0/23 --service-endpoints Microsoft.ContainerRegistry
+az network vnet subnet update --name master-subnet --resource-group openenv-nhgvf --vnet-name aro-vnet-nhgvf --disable-private-link-service-network-policies true
+az aro create --resource-group openenv-nhgvf --name aro-cluster-{guid} --vnet aro-vnet-nhgvf --master-subnet master-subnet --worker-subnet worker-subnet --client-id {aro_client_id} --client-secret '{az_aro_pass}' --pull-secret @/path/to/pull-secret.txt
+----
+
+== Bastion Access
+
+Use of the bastion is optional.
+
+* bastion_ssh_command: `{bastion_ssh_command}`
+* bastion_password: `{bastion_password}`
+
+== New ILT UI
+
+showroom_host: `http://{showroom_host}:8000`
