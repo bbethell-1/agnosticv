@@ -11,14 +11,22 @@
 #include /includes/parameters/open-environment-annotation.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
 
+# Admin pw not printing so testing var 'true'
+ocp4_workload_authentication_enable_user_info_messages: true
+
+# -------------------------------------------------------------------
+# Bookbag
+# -------------------------------------------------------------------
+# Repository must have a build-template.yaml and deploy-template.yaml
+bookbag_git_repo: https://github.com/sa-mw-dach/microservice-introduction-content.git
+bookbag_git_version: "{{ (gitops_repo_tag | default('v1')) }}"
+
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
 platform: RHPDS
 env_type: ocp4-cluster
 software_to_deploy: openshift4
-ocp4_installer_version: "4.11.36"
-ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 
 # -------------------------------------------------------------------
 # Repos
@@ -42,9 +50,15 @@ infra_workloads:
   - ocp4_workload_pipelines
   - ocp4_workload_openshift_gitops
   - ocp4_workload_gitea_operator
+  - ocp4_workload_web_terminal
   - ocp4_workload_le_certificates
   - ocp4_workload_opentour_dach_2022
+  - ocp4_workload_rhsso
   - bookbag
+
+ocp4_installer_version: "4.13.9"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
 
 # -------------------------------------------------------------------
 # Student Workloads ([] means no student workloads)
@@ -57,64 +71,63 @@ student_workloads: []
 ocp4_workload_opentour_dach_2022_user_prefix: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
 ocp4_workload_opentour_dach_2022_user_count: "{{ (num_users | default('1')) | int }}"
 ocp4_workload_opentour_dach_2022_infra_repo_tag: "{{ (gitops_repo_tag | default('v1')) }}"
+ocp4_workload_opentour_dach_2022_infra_repo: "https://github.com/sa-mw-dach/microservice-introduction-gitops-infra.git"
+# ocp4_workload_opentour_dach_2022_infra_repo_tag: "main"
 
 
 # ---------------------------------------------------------
 # Authentication
 # ---------------------------------------------------------
 ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_htpasswd_user_base: opentour-
-ocp4_workload_authentication_htpasswd_user_password: opentour
 ocp4_workload_authentication_htpasswd_add_default_users: false
 ocp4_workload_authentication_admin_user: admin
 ocp4_workload_authentication_htpasswd_admin_password_length: 16
 ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
 ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_htpasswd_user_base: user
+# How to forward password to gitea?
+# ocp4_workload_authentication_htpasswd_user_password_randomized: true
+ocp4_workload_authentication_htpasswd_user_password: "cds!2023"
 
 # ---------------------------------------------------------
 # Service Mesh Setup
 # ---------------------------------------------------------
 ocp4_workload_servicemesh_channel: "stable"
-ocp4_workload_servicemesh_starting_csv: "servicemeshoperator.v2.2.3"
+ocp4_workload_servicemesh_starting_csv: "servicemeshoperator.v2.4.0"
 ocp4_workload_servicemesh_jaeger_channel: "stable"
-ocp4_workload_servicemesh_jaeger_starting_csv: "jaeger-operator.v1.38.0-2"
+ocp4_workload_servicemesh_jaeger_starting_csv: "jaeger-operator.v1.42.0-5-0.1687199951.p"
 ocp4_workload_servicemesh_kiali_channel: "stable"
-ocp4_workload_servicemesh_kiali_starting_csv: "kiali-operator.v1.48.3"
+ocp4_workload_servicemesh_kiali_starting_csv: "kiali-operator.v1.65.6"
 ocp4_workload_servicemesh_use_catalog_snapshot: true
 ocp4_workload_servicemesh_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_servicemesh_catalog_snapshot_image_tag: v4.11_2022_10_24
+ocp4_workload_servicemesh_catalog_snapshot_image_tag: v4.13_2023_07_17
 
 # -------------------------------------------------------------------
 # OpenShift Pipelines
 # -------------------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.8
+ocp4_workload_pipelines_channel: pipelines-1.11
 ocp4_workload_pipelines_use_catalog_snapshot: true
-ocp4_workload_pipelines_starting_csv: openshift-pipelines-operator-rh.v1.8.0
+ocp4_workload_pipelines_starting_csv: openshift-pipelines-operator-rh.v1.11.0
 ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
 ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.11_2022_09_26
-
+ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.13_2023_07_17
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: latest
-ocp4_workload_openshift_gitops_pipelines_csv_prefix: openshift-pipelines-operator-rh
+ocp4_workload_openshift_gitops_channel: gitops-1.9
 ocp4_workload_openshift_gitops_use_catalog_snapshot: true
-ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
+ocp4_workload_openshift_gitops_starting_csv: "openshift-gitops-operator.v1.9.0"
 ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.11_2022_09_26
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.13_2023_07_17
 ocp4_workload_openshift_gitops_argo_cr_additional_values: |
   resourceTrackingMethod: annotation
-
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitea_operator
 # -------------------------------------------------------------------
 ocp4_workload_gitea_operator_project: gitea
-ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
-ocp4_workload_gitea_operator_catalog_image_tag: v2.0.1
 ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: "1.20.0"
+ocp4_workload_gitea_operator_gitea_image_tag: 1.20.0
 ocp4_workload_gitea_operator_deploy_gitea_instance: true
 ocp4_workload_gitea_operator_name: gitea
 ocp4_workload_gitea_operator_gitea_hostname: gitea
@@ -142,22 +155,35 @@ ocp4_workload_gitea_operator_admin_password: openshift
 ocp4_workload_gitea_operator_create_users: true
 ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
 ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_authentication_htpasswd_user_base }}%d"
-ocp4_workload_gitea_operator_user_password: opentour
+ocp4_workload_gitea_operator_user_password: "{{ ocp4_workload_authentication_htpasswd_user_password }}"
 ocp4_workload_gitea_operator_migrate_repositories: true
 ocp4_workload_gitea_operator_repositories_list:
-  - repo: https://github.com/sa-mw-dach/opentour-2022-hello.git
-    name: hello
+  - repo: https://github.com/sa-mw-dach/microservice-introduction-app-a.git
+    name: app-a
     private: false
-  - repo: https://github.com/sa-mw-dach/opentour-2022-hello-gitops.git
-    name: hello-gitops
+  - repo: https://github.com/sa-mw-dach/microservice-introduction-app-b.git
+    name: app-b
     private: false
+  - repo: https://github.com/sa-mw-dach/microservice-introduction-app-c.git
+    name: app-c
+    private: false
+  - repo: https://github.com/sa-mw-dach/microservice-introduction-gitops.git
+    name: gitops
+    private: false
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_web_terminal
+# -------------------------------------------------------------------
+ocp4_workload_web_terminal_use_catalog_snapshot: true
+ocp4_workload_web_terminal_starting_csv: "web-terminal.v1.8.0"
+ocp4_workload_web_terminal_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_web_terminal_catalog_snapshot_image_tag: v4.13_2023_07_31
 
 # -------------------------------------------------------------------
-# Bookbag
+# Workload: ocp4_workload_rhsso
 # -------------------------------------------------------------------
-# Repository must have a build-template.yaml and deploy-template.yaml
-bookbag_git_repo: https://github.com/sa-mw-dach/opentour-2022-bookbag
-bookbag_git_version: master
+ocp4_workload_rhsso_starting_csv: "rhsso-operator.7.6.4-opr-003"
+ocp4_workload_rhsso_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_rhsso_catalogsource_tag: v4.13_2023_07_31
 
 # ---------------------------------------------------------
 # AWS Instance Sizes
