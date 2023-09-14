@@ -1,0 +1,135 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/open-environment-annotation.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/access-restriction-devs-only.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog: Workshops
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# -------------------------------------------------------------------
+# Bastion
+# -------------------------------------------------------------------
+bastion_instance_image: RHEL84GOLD-latest
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.12"
+
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+# -------------------------------------------------------------------
+
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_le_certificates
+- ocp4_workload_kasten
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: cluster-mgr
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('1') }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# Enable if the item is being deployed to a sandbox account
+# and you want credentials provided to the user
+#sandbox_student_user: true
+
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
+install_ftl: false
+install_lets_encrypt_certificates: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 777DEF62-7F61-4E4D-9D3A-B2B0DF9CECFB
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.0.18
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OpenShift 4 Kasten Workshop
+    category: Workshops
+    keywords:
+    - workshop
+    - openshift
+    - ocp
+    - kasten
+    #labels:
+      #Product: Red_Hat_3scale_API_Management
+      #Product_Family: Red_Hat_Application_Services
+      #Provider: North_America_Office_of_Technology
+      #Use_case: Accelerate_Application_Development_and_Delivery
+    multiuser: true
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 50
+      validation: >-
+        num_users == 1 ||
+        user_is_admin ||
+        user_groups.includes('rhpds-devs') ||
+        check_salesforce_id(salesforce_id) ||
+        Error('User count greater than TWO requires a valid SalesForceID')
+  secrets:
+  - name: satellite-rhel8-latest-ha
+    namespace: gpte
+  - name: ocp4_token
+    namespace: gpte
+  - name: output-dir-s3
+    namespace: gpte
