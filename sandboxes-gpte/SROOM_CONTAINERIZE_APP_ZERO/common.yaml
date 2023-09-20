@@ -1,0 +1,131 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/num-users-salesforce.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: base-infra
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+  # bastion_public_hostname: "bastion.{{ guid }}.{{ sandbox_zone }}"
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+
+use_content_view: true
+update_packages: true      # Do you want to run a full yum update
+
+agd_bastion_packages:
+
+  - at
+  - bash-completion
+  - bind-utils
+  - git
+  - podman
+  - buildah
+  - tmux
+  - vim-enhanced
+  - wget
+
+rhel9_instance_image: RHEL92GOLD-latest
+rhel9_instance_type: "t3a.large"
+rootfs_size_rhel9: 200
+
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+instances:
+  - name: "rhel9"
+    count: 1
+    unique: true
+    public_dns: true
+    floating_ip: true
+    image: "{{ rhel9_instance_image }}"
+    flavor:
+      ec2: "{{ rhel9_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_rhel9 }}"
+    volumes:
+      - device_name: "/dev/xvdb"
+        size: "20"
+        type: gp3
+    security_groups:
+      - BastionSG
+      - WebSG
+      - ShowroomSG
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+
+repo_method: satellite
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+
+showroom_git_repo: "https://github.com/tonykay/showroom-containerize-your-app.git"
+showroom_theme: zero
+
+# showroom_tab_services:
+#   - single_terminal
+#
+# # theme
+# showroom_project_zero: true
+# showroom_antora_playbook: zero.yml
+
+# -------------------------------------------------------------------
+# Role: common
+# -------------------------------------------------------------------
+
+student_name: devops
+student_password: "{{ common_password }}"
+ansible_service_account_user_password: "{{ common_password }}"
+ansible_service_account_user_preferred_python: "3.9"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: B09927E7-3846-408D-B1DD-64502C4C9C96
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Showroom PoC Containerize your App - Zero Theme
+    category: Demos
+    keywords:
+      - rhel
+      - rhel9
+      - showroom
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHDP
+    multiuser: true
+    parameters: []
+  secrets:
+    - name: satellite-rhel-8-and-9-latest-ha
+      namespace: gpte
+    - name: output-dir-s3
+      namespace: gpte
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
