@@ -1,45 +1,59 @@
-== Azure Configs
+== ARO - Instructor Led Training
 
-=== Azure Portal and Dedicated Resource Group
+== Your Azure Environment
 
-The resource group 'openenv-{guid}' was created in Red Hat's Azure organization.
-You can access the Azure portal if you accept the invitation.
-The portal is https://portal.azure.com
-Your Azure account should be SSO enabled, so please log into the portal with your Red Hat Credentials.
-Your account now has full access to this resource group.
+=== Azure Subscription
 
-WARNING: All resources you create must be in this resource group or you will see permission denied errors.
+An Azure subscription was assigned to your Red Hat ID from Red Hat's pool of Azure subscriptions.
 
-When this OPEN environment is deleted, the resource group will be removed and all data will be irrecovably removed.
+WARNING: When this OPEN environment is deleted, all resources will thoroughly deleted.
+All data will be irrecovably removed.
 Please regularly back up your data and script your changes in case you need to rebuild.
 Please see this page for more information: https://www.opentlc.com/azure/openenv_documentation.html
 
-== Your Azure environment
+=== Azure Portal Access: `az login`
 
-=== Details
+Your Azure account should be SSO enabled, so please log into the portal with your Red Hat credentials.
+https://portal.azure.com/
 
-* Resource Group: `openenv-{guid}`
-* Application: `openenv-{guid}`
-* Application/Client/Service Principal ID: `{azappid}`
-* Password: `{azpass}`
-* Tenant ID: `{azure_tenant}`
-* Subscription ID: `{azure_subscription_id}`
+If this is your first time accessing the Azure portal, you will receive an invitation.
 
-=== Azure CLI quickstart:
+Simply enter `az login` to begin your login to the portal.
+The `az` client will offer your a confirmation code.
+Follow the link and use the confirmation code to enable association of the temporary subscription with your identity.
 
-. Set up the environment and install the Azure command line tool.
+Your account now has full access to this subscription.
 
+=== Azure Environment Details
+
+Your Azure environment details
+
+* Resource Group: openenv-{guid}
+* DNS Zone: {azure_dns_zone}
+* Application: openenv-{guid}
+* Application/Client/Service Principal ID: {azure_service_principal_id}
+* Password: {azure_service_principal_password}
+* Tenant ID: {azure_tenant}
+* Subscription ID: {azure_subscription}
+
+== Azure CLI Quickstart
+
+Set up the environment and install the Azure command line tool.
+
+Azure CLI quickstart:
 [source,bash,subs="+macros,+attributes"]
 ----
 export GUID={guid}
-export CLIENT_ID={azappid}
-export PASSWORD='{azpass}'
+export CLIENT_ID={azure_service_principal_id}
+export PASSWORD={azure_service_principal_password}
 export TENANT={azure_tenant}
-export SUBSCRIPTION={azure_subscription_id}
+export SUBSCRIPTION={azure_subscription}
 export RESOURCEGROUP=openenv-{guid}
 
 curl -L https://aka.ms/InstallAzureCli | bash
-az login --service-principal -u $CLIENT_ID -p $PASSWORD --tenant $TENANT
+
+# az login --service-principal -u $CLIENT_ID -p $PASSWORD --tenant $TENANT
+az login # you will be forwarded to the web browser to confirm your identity
 ----
 
 ==== More Information
@@ -57,32 +71,66 @@ You will be prompted to reset the password upon first login, and you *must* do s
 
 == ARO Clusters
 
-=== ARO Configs
-
-When creating ARO clusters, you must specify the following credentials in the `az aro create` command using this preconfigured service principal:
-
-* Resource Group: `openenv-{guid}`
-* Client ID: `{aro_clientid}`
-* Client Secret: `{az_aro_pass}`
+Use the environment variables above.
+`az login` will have you confirm your identity on the Azure portal.
+Only then can you proceed with ARO cluster creation.
 
 === ARO CLI Quickstart
 
-Example ARO installation commands:
+Example ARO installation commands
 
 [source,bash,subs="+macros,+attributes"]
 ----
-az login --service-principal -u $CLIENT_ID -p $PASSWORD --tenant $TENANT
+az login
 
-az network vnet create --resource-group openenv-nhgvf --name aro-vnet-nhgvf --address-prefixes 10.0.0.0/22
+AZR_RESOURCE_LOCATION=eastus
+AZR_RESOURCE_GROUP=openenv-{guid}
+AZR_CLUSTER=cluster-{guid}
+# bastion pull-secret.txt location
+AZR_PULL_SECRET=/home/azure/pull-secret.txt
+# mac pull-secret.txt location
+AZR_PULL_SECRET=~/Downloads/pull-secret.txt
 
-az network vnet subnet create --resource-group openenv-nhgvf --vnet-name aro-vnet-nhgvf --name master-subnet --address-prefixes 10.0.0.0/23 --service-endpoints Microsoft.ContainerRegistry
+az provider register -n Microsoft.RedHatOpenShift --wait
+az provider register -n Microsoft.Compute --wait
+az provider register -n Microsoft.Storage --wait
+az provider register -n Microsoft.Authorization --wait
 
-az network vnet subnet create --resource-group openenv-nhgvf --vnet-name aro-vnet-nhgvf --name worker-subnet --address-prefixes 10.0.2.0/23 --service-endpoints Microsoft.ContainerRegistry
+az group create --name $AZR_RESOURCE_GROUP \
+ --location $AZR_RESOURCE_LOCATION
 
-az network vnet subnet update --name master-subnet --resource-group openenv-nhgvf --vnet-name aro-vnet-nhgvf --disable-private-link-service-network-policies true
+echo "network create"
+az network vnet create --address-prefixes 10.0.0.0/22 \
+ --name "$AZR_CLUSTER-aro-vnet-$AZR_RESOURCE_LOCATION" \
+ --resource-group $AZR_RESOURCE_GROUP
 
-az aro create --resource-group openenv-nhgvf --name aro-cluster-{guid} --vnet aro-vnet-nhgvf --master-subnet master-subnet --worker-subnet worker-subnet --client-id {aro_clientid} --client-secret '{az_aro_pass}' --pull-secret @/path/to/pull-secret.txt
+az network vnet subnet create --resource-group $AZR_RESOURCE_GROUP \
+ --vnet-name "$AZR_CLUSTER-aro-vnet-$AZR_RESOURCE_LOCATION" \
+ --name "$AZR_CLUSTER-aro-control-subnet-$AZR_RESOURCE_LOCATION" \
+ --address-prefixes 10.0.0.0/23
+
+az network vnet subnet create --resource-group $AZR_RESOURCE_GROUP \
+ --vnet-name "$AZR_CLUSTER-aro-vnet-$AZR_RESOURCE_LOCATION" \
+ --name "$AZR_CLUSTER-aro-machine-subnet-$AZR_RESOURCE_LOCATION" \
+ --address-prefixes 10.0.2.0/23
+
+az network vnet subnet update \
+ --name "$AZR_CLUSTER-aro-control-subnet-$AZR_RESOURCE_LOCATION" \
+ --resource-group $AZR_RESOURCE_GROUP --vnet-name "$AZR_CLUSTER-aro-vnet-$AZR_RESOURCE_LOCATION" \
+ --disable-private-link-service-network-policies true
+
+az aro create --resource-group $AZR_RESOURCE_GROUP --name $AZR_CLUSTER \
+ --vnet "$AZR_CLUSTER-aro-vnet-$AZR_RESOURCE_LOCATION" \
+ --master-subnet "$AZR_CLUSTER-aro-control-subnet-$AZR_RESOURCE_LOCATION" \
+ --worker-subnet "$AZR_CLUSTER-aro-machine-subnet-$AZR_RESOURCE_LOCATION" \
+ --pull-secret @$AZR_PULL_SECRET
 ----
+
+Installation will take upwards of an hour.
+
+See https://learn.microsoft.com/en-us/cli/azure/aro?view=azure-cli-latest for more information on using `az aro`
+
+ifdef::bastion_ssh_command[]
 
 == Bastion Access
 
@@ -91,6 +139,24 @@ Use of the bastion is optional.
 * bastion_ssh_command: `{bastion_ssh_command}`
 * bastion_password: `{bastion_password}`
 
+endif::[]
+ifdef::showroom_host[]
+
 == New ILT UI (WiP)
 
-showroom_host: `{showroom_host}`
+showroom_host: `{showroom_primary_view_url}`
+endif::[]
+
+////
+OLD WAY
+
+az network vnet create --resource-group openenv-{guid} --name aro-vnet-{guid} --address-prefixes 10.0.0.0/22
+
+az network vnet subnet create --resource-group openenv-{guid} --vnet-name aro-vnet-{guid} --name master-subnet --address-prefixes 10.0.0.0/23 --service-endpoints Microsoft.ContainerRegistry
+
+az network vnet subnet create --resource-group openenv-nhgvf --vnet-name aro-vnet-nhgvf --name worker-subnet --address-prefixes 10.0.2.0/23 --service-endpoints Microsoft.ContainerRegistry
+
+az network vnet subnet update --name master-subnet --resource-group openenv-nhgvf --vnet-name aro-vnet-nhgvf --disable-private-link-service-network-policies true
+
+az aro create --resource-group openenv-nhgvf --name aro-cluster-{guid} --vnet aro-vnet-nhgvf --master-subnet master-subnet --worker-subnet worker-subnet --client-id {aro_clientid} --client-secret '{az_aro_pass}' --pull-secret @/path/to/pull-secret.txt
+////
