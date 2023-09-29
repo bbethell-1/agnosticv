@@ -1,0 +1,78 @@
+== Azure Blank Open Environment with Subscription
+
+We have temporarily allocated subscription {azure_subscription} in the redhat0.onmicrosoft.com Azure organization to you.
+You can log into https://portal.azure.com using your Red Hat SSO credentials.
+
+NOTE: This subscription may default to low quotas and disabled Resource Providers.
+You may request quota extensions and enable Resource Providers as needed.
+
+NOTE: When this OPEN environment is deleted, the subscription will be reallocated to someone else and all of its resource groups will be deleted.
+All data will be irrecovably removed.
+
+Before retiring your OPEN environment, please try to clean up any App Registrations that you have created to reduce clutter in Azure.
+Please regularly back up your data and script your changes in case you need to rebuild.
+Please see this page for more information: https://www.opentlc.com/azure/openenv_sub_based_documentation.html
+
+WARNING: Please do NOT delete your subscription. We will be notified and will have to re-enable it and it could cause problems for subsequent users.
+
+== Your Azure Environment Details
+
+* Resource Group: openenv-{guid}
+* DNS Zone: {guid}.azure.redhatworkshops.io
+* Application: openenv-{guid}
+* Application/Client/Service Principal ID: {azure_service_principal_id}
+* Password: {azpass}
+* Tenant ID: redhat0.onmicrosoft.com
+
+== Azure CLI Quickstart
+
+[source,bash,subs="+macros,+attributes"]
+----
+export GUID={guid}
+export CLIENT_ID={azure_service_principal_id}
+export PASSWORD={azpass}
+export TENANT={azure_tenant}
+export SUBSCRIPTION={azure_subscription}
+export RESOURCEGROUP=openenv-{guid}
+
+curl -L https://aka.ms/InstallAzureCli | bash
+----
+
+You can login to the subscription using the service principal
+
+ az login --service-principal -u $CLIENT_ID -p $PASSWORD --tenant $TENANT
+
+Or you can login to the subscription using web authentication and your SSO credentials
+
+ az login --tenant $TENANT
+
+Follow the instructions that appear next
+
+ az account set --subscription $SUBSCRIPTION
+
+See https://docs.microsoft.com/en-us/cli/azure/install-azure-cli for more info on installing the azure CLI
+
+See https://docs.microsoft.com/en-us/cli/azure/ for full documentation of the azure CLI
+
+=== ARO OpenShift Clusters
+
+When creating ARO clusters, you must specify the following credentials in the `az aro create` command using this preconfigured service principal:
+
+* Resource Group: `openenv-{guid}`
+* Client ID: `{aro_clientid}`
+* Client Secret: `{az_aro_pass}`
+
+NOTE: You'll need to indicate the location of your OCP Pull Secret, as indicated in the environment variable below.
+
+.Example ARO installation commands (log in using az login command from above):
+[source,bash,subs="+macros,+attributes"]
+----
+OCP_PULL_SECRET=$HOME/pull-secret.txt
+
+az login
+az network vnet create --resource-group openenv-{guid} --name aro-vnet-{guid} --address-prefixes 10.0.0.0/22
+az network vnet subnet create --resource-group openenv-{guid} --vnet-name aro-vnet-{guid} --name master-subnet --address-prefixes 10.0.0.0/23 --service-endpoints Microsoft.ContainerRegistry
+az network vnet subnet create --resource-group openenv-{guid} --vnet-name aro-vnet-{guid} --name worker-subnet --address-prefixes 10.0.2.0/23 --service-endpoints Microsoft.ContainerRegistry
+az network vnet subnet update --name master-subnet --resource-group openenv-{guid} --vnet-name aro-vnet-{guid} --disable-private-link-service-network-policies true
+az aro create --resource-group openenv-{guid} --name aro-cluster-{guid} --vnet aro-vnet-{guid} --master-subnet master-subnet --worker-subnet worker-subnet --client-id {aro_clientid} --client-secret '{az_aro_pass}' --pull-secret @$OCP_PULL_SECRET
+----
