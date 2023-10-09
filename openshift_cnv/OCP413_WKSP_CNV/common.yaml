@@ -48,26 +48,21 @@ student_name: lab-user
 student_sudo: true
 
 # -------------------------------------------------------------------
-# AWS Specific
+# CNV Specific
 # -------------------------------------------------------------------
-master_instance_type_family: c6in
-master_instance_type_size: >-
-  {{ '4xlarge' if master_instance_count|int <= 1
-  else '2xlarge' if worker_instance_count|int <= 10
-  else '4xlarge' if worker_instance_count|int <= 20
-  else '8xlarge'
+ai_control_plane_cores: >-
+  {{ 8 if worker_instance_count|int <= 10
+  else 16 if worker_instance_count|int <= 20
+  else 32
   }}
-master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size\
-  \ }}"
-
-master_storage_type: >-
-  {{ 'io1' if worker_instance_count|int >= 10
-  else 'gp3' }}
-worker_instance_type: "m5a.4xlarge"
+ai_control_plane_memory: >-
+  {{ '16Gi' if worker_instance_count|int <= 10
+  else '32Gi' if worker_instance_count|int <= 20
+  else '64Gi'
+  }}
 worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max\
   \ }}"
 
-worker_storage_type: gp3
 bastion_instance_image: rhel-8.4
 
 # -------------------------------------------------------------------
@@ -77,7 +72,7 @@ bastion_instance_image: rhel-8.4
 infra_workloads:
   - ocp4_workload_authentication
   - ocp4_workload_le_certificates
-  - ocp4_workload_odf_config
+  - ocp4_workload_external_odf
 
 # --- Student Workloads (YAML List)
 student_workloads: []
@@ -114,11 +109,11 @@ __meta__:
     namespace: babylon-anarchy-ocp-wksp
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:latest
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
       pull: missing
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: RHOCP 4.13 Workshop on CNV
+    display_name: Red Hat OpenShift Container Platform 4.13 Workshop
     category: Workshops
     keywords:
       - workshop
