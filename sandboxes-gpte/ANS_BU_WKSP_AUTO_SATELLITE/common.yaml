@@ -1,0 +1,544 @@
+---
+#include /includes/catalog-icon-aap.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/secrets/satellite-rhel8-latest-ha.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ansible-bu-workshop
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Instance Variable
+# -------------------------------------------------------------------
+security_groups:
+  - name: BastionSG
+    rules:
+      - name: BastionSSHPorts
+        description: "Bastion ssh"
+        from_port: 22
+        to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: WebSG
+    rules:
+      - name: WebHTTPSPorts
+        description: "HTTPS Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: WebHTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: NodeSG
+    rules:
+      - name: FromNodeSGtcp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: NodeSG
+        rule_type: Ingress
+
+      - name: FromNodeSGudp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: NodeSG
+        rule_type: Ingress
+
+instances:
+  - name: "{{ bastion_instance_name | default('ansible-1') }}"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ bastion_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{bastion_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ default_rootfs_size }}"
+    security_groups:
+      - BastionSG
+      - WebSG
+      - DefaultSG
+      - NodeSG
+
+  - name: "satellite"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image:
+      name: "rhel8.7-satellite-6.12-2023-09-26"
+    flavor:
+      ec2: "r5a.xlarge"
+    tags:
+      - key: "AnsibleGroup"
+        value: "satellites"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: 250
+    security_groups:
+      - WebSG
+      - DefaultSG
+      - NodeSG
+
+  - name: "rhel-node"
+    count: 3
+    public_dns: false
+    image: "RHEL78"
+    flavor:
+      ec2: "{{node_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ default_rootfs_size }}"
+    security_groups:
+      - DefaultSG
+      - NodeSG
+
+  - name: "centos-node"
+    count: 3
+    public_dns: false
+    image: "CENTOS79"
+    flavor:
+      ec2: "{{ node_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "centos_nodes"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: 10
+    security_groups:
+      - DefaultSG
+      - NodeSG
+    UserData: |
+      {% filter indent(width=6) %}
+      UserData:
+        "Fn::Base64":
+            "Fn::Join":
+              - ""
+              - - "#cloud-config\n"
+                - "users:\n"
+                - "  - default\n"
+                - "system_info:\n"
+                - "  default_user:\n"
+                - "    name: ec2-user\n"
+                - "    lock_passwd: true\n"
+                - "    gecos: Cloud User\n"
+                - "    groups: [adm, systemd-journal]\n"
+                - "    sudo: ['ALL=(ALL) NOPASSWD:ALL']\n"
+                - "    shell: /bin/bash\n"
+                - "  distro: rhel\n"
+                - "  paths:\n"
+                - "    cloud_dir: /var/lib/cloud\n"
+                - "    templates_dir: /etc/cloud/templates\n"
+                - "  ssh_svcname: sshd\n"
+      {% endfilter %}
+
+# -------------------------------------------------------------------
+# Pre-software Workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  localhost:
+    - infra-local-create-ssh_key
+  all:
+    - set_env_authorized_key
+  bastion:
+    - set-repositories
+    - common
+    - bastion-lite
+    - control-user
+    - ansible_bu_run_time_inventory
+    - deploy_automationcontroller
+    - automation_platform_loader
+    - aap_controller_cert_issue
+    - vscode-server
+    # - ansible_bu_setup_workshop
+
+# -------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------
+repo_method: satellite
+use_content_view: true
+
+# -------------------------------------------------------------------
+# Role: deploy_automationcontroller
+# -------------------------------------------------------------------
+install_automationcontroller: true
+deploy_automationcontroller_admin_password: "{{ common_password }}"
+deploy_automationcontroller_installer_url: "{{ controller_bundle_installer.url }}"
+deploy_automationcontroller_manifest_url: "{{ controller_manifest.url }}"
+
+# -------------------------------------------------------------------
+# Role: automation_platform_loader
+# -------------------------------------------------------------------
+configure_automationcontroller: true
+controller_configuration_job_templates_secure_logging: false
+controller_configuration_credentials_secure_logging: false
+
+aap_auth:
+  controller_host: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain_base }}"
+  controller_username: admin
+  controller_password: "{{ common_password }}"
+  controller_verify_ssl: false
+
+controller_configuration_dispatcher_roles:
+  - role: settings
+    var: controller_settings
+    tags: settings
+  - role: credentials
+    var: controller_credentials
+    tags: credentials
+  - role: execution_environments
+    var: controller_execution_environments
+    tags: execution_environments
+  - role: projects
+    var: controller_projects
+    tags: projects
+  - role: inventories
+    var: controller_inventories
+    tags: inventories
+  - role: hosts
+    var: controller_hosts
+    tags: hosts
+  - role: groups
+    var: controller_groups
+    tags: groups
+  - role: job_templates
+    var: controller_templates
+    tags: templates
+
+controller_settings:
+  - name: AWX_COLLECTIONS_ENABLED
+    value: false
+
+controller_credentials:
+  - name: "Inventory Credential"
+    organization: Default
+    credential_type: "Red Hat Satellite 6"
+    inputs:
+      host: "{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
+      username: "admin"
+      password: "satellite123"
+    state: present
+  - name: "Satellite Credential"
+    organization: Default
+    credential_type: "Satellite_Collection"
+    inputs:
+      host: "{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
+      username: "admin"
+      password: "satellite123"
+    state: present
+  - name: "Controller Credential"
+    organization: Default
+    credential_type: "Red hat Ansible Automation Platform"
+    inputs:
+      host: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain_base }}"
+      username: "admin"
+      password: "{{ common_password }}"
+    state: present
+  - name: "Workshop Credential"
+    organization: Default
+    credential_type: "Machine"
+    inputs:
+      username: "ec2-user"
+      ssh_key_data: "{{ lookup('file', hostvars.localhost.env_authorized_key_path) }}"
+    state: present
+  - name: "registry.redhat.io credential"
+    organization: Default
+    credential_type: "Container Registry"
+    inputs:
+      host: registry.redhat.io
+      username: "seanc@redhat.com"
+      password: "vi0hX86518UEfWhlx%E"
+      verify_ssl: true
+    state: present
+  - name: "Demo Credential"
+    credential_type: "Machine"
+    state: absent
+
+controller_execution_environments:
+  - name: "auto_satellite workshop execution environment"
+    image: "quay.io/s4v0/ee-automated-satellite-aap2:latest"
+    pull: missing
+    state: present
+  - name: "auto_satellite controller iac execution environment"
+    image: "quay.io/s4v0/ee-automated-smart-mgmt-aap2-dev:latest"
+    pull: missing
+    state: present
+
+controller_projects:
+  - name: "Automated Management"
+    scm_url: "https://github.com/redhat-partner-tech/automated-satellite.git"
+    organization: Default
+    description: "prescriptive demos from Red Hat"
+    scm_type: git
+    scm_branch: aap2-22
+    default_environment: "auto_satellite workshop execution environment"
+    state: present
+  - name: "Fact Scan"
+    scm_url: "https://github.com/ansible/awx-facts-playbooks.git"
+    organization: Default
+    description: "prescriptive demos from Red Hat"
+    scm_type: git
+    scm_branch: aap2-22
+    state: present
+  - name: "Demo Project"
+    organization: Default
+    state: absent
+
+controller_inventories:
+  - name: "Workshop Inventory"
+    organization: Default
+    state: present
+  - name: "Demo Inventory"
+    organization: Default
+    state: absent
+
+controller_hosts:
+  - name: "{{ groups['nodes'][0] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['nodes'][0] }}"
+  - name: "{{ groups['nodes'][1] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['nodes'][1] }}"
+  - name: "{{ groups['nodes'][2] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['nodes'][2] }}"
+  - name: "{{ groups['centos_nodes'][0] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['centos_nodes'][0] }}"
+  - name: "{{ groups['centos_nodes'][1] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['centos_nodes'][1] }}"
+  - name: "{{ groups['centos_nodes'][2] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['centos_nodes'][2] }}"
+  - name: "{{ groups['bastions'][0] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['bastions'][0] }}"
+  - name: "{{ groups['satellite'][0] }}"
+    inventory: "Workshop Inventory"
+    state: present
+    variables:
+      ansible_host: "{{ groups['satellites'][0] }}"
+
+controller_groups:
+  - name: rhel
+    inventory: "Workshop Inventory"
+    state: present
+    hosts:
+      - "{{ groups['nodes'][0] }}"
+      - "{{ groups['nodes'][1] }}"
+      - "{{ groups['nodes'][2] }}"
+  - name: rhel7
+    inventory: "Workshop Inventory"
+    state: present
+    hosts:
+      - "{{ groups['nodes'][0] }}"
+      - "{{ groups['nodes'][1] }}"
+      - "{{ groups['nodes'][2] }}"
+  - name: centos
+    inventory: "Workshop Inventory"
+    state: present
+    hosts:
+      - "{{ groups['centos_nodes'][0] }}"
+      - "{{ groups['centos_nodes'][1] }}"
+      - "{{ groups['centos_nodes'][2] }}"
+  - name: centos7
+    inventory: "Workshop Inventory"
+    state: present
+    hosts:
+      - "{{ groups['centos_nodes'][0] }}"
+      - "{{ groups['centos_nodes'][1] }}"
+      - "{{ groups['centos_nodes'][2] }}"
+  - name: node
+    inventory: "Workshop Inventory"
+    state: present
+    hosts:
+      - "{{ groups['nodes'][0] }}"
+      - "{{ groups['nodes'][1] }}"
+      - "{{ groups['nodes'][2] }}"
+      - "{{ groups['centos_nodes'][0] }}"
+      - "{{ groups['centos_nodes'][1] }}"
+      - "{{ groups['centos_nodes'][2] }}"
+  - name: control
+    inventory: "Workshop Inventory"
+    state: present
+    hosts:
+      - "{{ groups['bastions'][0] }}"
+  - name: satellite
+    inventory: "Workshop Inventory"
+    state: present
+    hosts:
+      - "{{ groups['satellite'][0] }}"
+
+
+controller_templates:
+  - name: "SETUP / Controller"
+    description: "Setup / controller"
+    job_type: run
+    inventory: "Workshop Inventory"
+    execution_environment: "auto_satellite controller iac execution environment"
+    project: "Automated Management"
+    playbook: setup_controller.yml
+    credentials:
+      - "Controller Credential"
+  - name: "SETUP / Satellite"
+    description: "SETUP / Satellite"
+    job_type: run
+    inventory: "Workshop Inventory"
+    project: "Automated Management"
+    playbook: setup_satellite.yml
+    credentials:
+      - "Satellite Credential"
+      - "Workshop Credential"
+    extra_vars:
+      refresh_satellite_manifest: false
+  - name: "Demo Job Template"
+    organization: Default
+    state: absent
+
+# -------------------------------------------------------------------
+# Role: aap_controller_cert_issue
+# -------------------------------------------------------------------
+enable_letsencyrpt_cert: true
+controller_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Role: vscode-server
+# -------------------------------------------------------------------
+install_vscode_server: true
+vscode_server_install_nginx: false
+vscode_server_ansible_become: true
+vscode_use_automationcontroller_nginx: true
+vscode_user_name: "{{ student_name }}"
+vscode_user_password: "{{ common_password }}"
+vscode_server_default_extensions: []
+vscode_server_extension_urls:
+  - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
+
+
+# -------------------------------------------------------------------
+# Role: ansible_bu_setup_workshop
+# -------------------------------------------------------------------
+workshop_type: auto_satellite
+workshop_version: 1.0.18
+ansible_bu_setup_workshop_exercise_src: ansible_rhel_90
+ansible_bu_setup_workshop_exercise_dest: rhel-workshop
+
+ansible_bu_setup_workshop_ee_image:
+  - name: quay.io/s4v0/ee-automated-smart-mgmt-aap2-dev
+    tag: latest
+  - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-29-rhel8
+    tag: 2.0.0
+  - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-supported-rhel8
+    tag: 2.0.0
+  - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-minimal-rhel8
+    tag: 2.0.0
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  deploy_with: babylon
+  params_to_variables:
+    user: ignore_user
+    username: student_name
+    region: aws_region
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 3498a737-467f-406e-b74b-6f2c5ce4823a
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    multiuser: false
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Ansible Workshop - Automated Satellite Workshop
+    category: Workshops
+    keywords:
+      - rhel
+      - satellite
+      - ansible
+      - workshop
+      - aap2
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Automation
+      Provider: RHDP
+    parameters: []
+  secrets:
+    - name: satellite-rhel8-latest-ha
+      namespace: gpte
+    - name: ansible-tower-advanced-2
+      namespace: gpte
+    - name: output-dir-s3
+      namespace: gpte
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.0.17
+      pull: missing
