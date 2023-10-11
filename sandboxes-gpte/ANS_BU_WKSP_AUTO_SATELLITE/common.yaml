@@ -121,7 +121,7 @@ instances:
       - DefaultSG
       - NodeSG
 
-  - name: "rhel-node"
+  - name: "node"
     count: 3
     public_dns: false
     image: "RHEL78"
@@ -198,7 +198,7 @@ pre_software_workloads:
     - automation_platform_loader
     - aap_controller_cert_issue
     - vscode-server
-    # - ansible_bu_setup_workshop
+    - ansible_bu_setup_workshop
 
 # -------------------------------------------------
 # Role: set-repositories
@@ -231,6 +231,9 @@ controller_configuration_dispatcher_roles:
   - role: settings
     var: controller_settings
     tags: settings
+  - role: credential_types
+    var: controller_credential_types
+    tags: credential_types
   - role: credentials
     var: controller_credentials
     tags: credentials
@@ -257,12 +260,53 @@ controller_settings:
   - name: AWX_COLLECTIONS_ENABLED
     value: false
 
+controller_credential_types:
+  - name: Satellite_Collection
+    description: Credential for redhat.satellite collection
+    inputs:
+      fields:
+        - id: username
+          type: string
+          label: Satellite Username
+        - id: password
+          type: string
+          label: Satellite Password
+          secret: true
+        - id: host
+          type: string
+          label: Satellite Hostname
+      required:
+        - username
+        - password
+        - host
+    injectors:
+      env:
+        SATELLITE_PASSWORD: '{{ workshop_satellite_user_password }}'
+        SATELLITE_USERNAME: '{{ workshop_satellite_user_name }}'
+        SATELLITE_SERVER_URL: "https://{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
+        SATELLITE_VALIDATE_CERTS: 'false'
+  # - name: GitHub_Personal_Access_Token
+  #   description: Credential for GitHub repo operations automation
+  #   inputs:
+  #     fields:
+  #       - id: personal_access_token
+  #         type: string
+  #         label: Personal Access Token
+  #         secret: true
+  #         help_text: GitHub Personal Access Token
+  #         multiline: true
+  #     required:
+  #       - personal_access_token
+  #   injectors:
+  #     env:
+  #       MY_PA_TOKEN: '{{ personal_access_token }}'
+
 controller_credentials:
   - name: "Inventory Credential"
     organization: Default
     credential_type: "Red Hat Satellite 6"
     inputs:
-      host: "{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
+      host: "https://{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
       username: "admin"
       password: "satellite123"
     state: present
@@ -270,13 +314,13 @@ controller_credentials:
     organization: Default
     credential_type: "Satellite_Collection"
     inputs:
-      host: "{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
+      host: "https://{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
       username: "admin"
       password: "satellite123"
     state: present
   - name: "Controller Credential"
     organization: Default
-    credential_type: "Red hat Ansible Automation Platform"
+    credential_type: "Red Hat Ansible Automation Platform"
     inputs:
       host: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain_base }}"
       username: "admin"
@@ -326,7 +370,7 @@ controller_projects:
     organization: Default
     description: "prescriptive demos from Red Hat"
     scm_type: git
-    scm_branch: aap2-22
+    scm_branch: master
     state: present
   - name: "Demo Project"
     organization: Default
@@ -343,44 +387,49 @@ controller_inventories:
 controller_hosts:
   - name: "{{ groups['nodes'][0] }}"
     inventory: "Workshop Inventory"
+    enabled: true
     state: present
     variables:
       ansible_host: "{{ groups['nodes'][0] }}"
   - name: "{{ groups['nodes'][1] }}"
     inventory: "Workshop Inventory"
+    enabled: true
     state: present
     variables:
       ansible_host: "{{ groups['nodes'][1] }}"
   - name: "{{ groups['nodes'][2] }}"
     inventory: "Workshop Inventory"
+    enabled: true
     state: present
     variables:
       ansible_host: "{{ groups['nodes'][2] }}"
   - name: "{{ groups['centos_nodes'][0] }}"
     inventory: "Workshop Inventory"
+    enabled: true
     state: present
     variables:
       ansible_host: "{{ groups['centos_nodes'][0] }}"
   - name: "{{ groups['centos_nodes'][1] }}"
     inventory: "Workshop Inventory"
+    enabled: true
     state: present
     variables:
       ansible_host: "{{ groups['centos_nodes'][1] }}"
   - name: "{{ groups['centos_nodes'][2] }}"
     inventory: "Workshop Inventory"
+    enabled: true
     state: present
     variables:
       ansible_host: "{{ groups['centos_nodes'][2] }}"
   - name: "{{ groups['bastions'][0] }}"
     inventory: "Workshop Inventory"
+    enabled: true
     state: present
-    variables:
-      ansible_host: "{{ groups['bastions'][0] }}"
-  - name: "{{ groups['satellite'][0] }}"
+  - name: "{{ groups['satellites'][0] }}"
     inventory: "Workshop Inventory"
+    enabled: true
     state: present
-    variables:
-      ansible_host: "{{ groups['satellites'][0] }}"
+
 
 controller_groups:
   - name: rhel
@@ -430,7 +479,7 @@ controller_groups:
     inventory: "Workshop Inventory"
     state: present
     hosts:
-      - "{{ groups['satellite'][0] }}"
+      - "{{ groups['satellites'][0] }}"
 
 
 controller_templates:
@@ -479,17 +528,16 @@ vscode_server_extension_urls:
   - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
   - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
 
-
 # -------------------------------------------------------------------
 # Role: ansible_bu_setup_workshop
 # -------------------------------------------------------------------
 workshop_type: auto_satellite
 workshop_version: 1.0.18
-ansible_bu_setup_workshop_exercise_src: ansible_rhel_90
-ansible_bu_setup_workshop_exercise_dest: rhel-workshop
+ansible_bu_setup_workshop_exercise_src: ansible_auto_satellite
+ansible_bu_setup_workshop_exercise_dest: auto_satellite-workshop
 
 ansible_bu_setup_workshop_ee_image:
-  - name: quay.io/s4v0/ee-automated-smart-mgmt-aap2-dev
+  - name: quay.io/s4v0/ee-automated-satellite-aap2
     tag: latest
   - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-29-rhel8
     tag: 2.0.0
@@ -497,6 +545,10 @@ ansible_bu_setup_workshop_ee_image:
     tag: 2.0.0
   - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-minimal-rhel8
     tag: 2.0.0
+
+workshop_satellite_user_name: admin
+workshop_satellite_user_password: satellite123
+ansible_virtualization_role: ""
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
