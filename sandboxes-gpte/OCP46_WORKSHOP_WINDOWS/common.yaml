@@ -11,6 +11,9 @@
 #include /includes/parameters/ocp4-fips-enable.yaml
 #include /includes/parameters/agnosticd_open_environment.yaml
 #include /includes/parameters/num-users-salesforce.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/parameters/controlplane-count.yaml
+
 # -------------------------------------------------------------------
 # --- Catalog: Workshops
 # --- Catalog Item: OpenShift 4.6 Windows
@@ -40,7 +43,7 @@ platform: rhpds
 # OpenShift Installer Version
 # -------------------------------------------------------------------
 
-ocp4_installer_version: "4.10"
+ocp4_installer_version: "4.12.20"
 #ocp4_installer_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp-dev-preview/latest-4.6/openshift-install-linux.tar.gz
 #ocp4_client_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp-dev-preview/latest-4.6/openshift-client-linux.tar.gz
 ocp4_network_type: OVNKubernetes
@@ -72,12 +75,24 @@ student_sudo: true
 # VM configuration
 # -------------------------------------------------------------------
 
-master_instance_type: m5.2xlarge
-master_instance_count: 3
-worker_instance_type: m5.4xlarge
-worker_instance_count: 2
-bastion_instance_type: t3.medium
-bastion_instance_image: RHEL84GOLD
+master_instance_type_family: c6in
+master_instance_type_size: >-
+  {{ '4xlarge' if master_instance_count|int <= 1
+  else '2xlarge' if worker_instance_count|int <= 10
+  else '4xlarge' if worker_instance_count|int <= 20
+  else '8xlarge'
+  }}
+master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size\
+  \ }}"
+
+master_storage_type: >-
+  {{ 'io1' if worker_instance_count|int >= 10
+  else 'gp3' }}
+worker_instance_type: "m5a.4xlarge"
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max\
+  \ }}"
+
+bastion_instance_image: RHEL84GOLD-latest
 
 # -------------------------------------------------------------------
 # Workloads
@@ -129,7 +144,9 @@ __meta__:
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   deployer:
-    virtualenv: ansible2.9-python3.6-2021-11-30
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.0.18
+      pull: missing
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: OpenShift 4 Windows Containers Demo
