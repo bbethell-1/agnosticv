@@ -183,18 +183,23 @@ instances:
       {% endfilter %}
 
 # -------------------------------------------------------------------
-# Pre-software Workloads
+# Config Pre/Software/Post Workloads
 # -------------------------------------------------------------------
 pre_software_workloads:
   localhost:
     - infra-local-create-ssh_key
   all:
     - set_env_authorized_key
-  bastion:
+  bastions:
     - set-repositories
     - common
     - bastion-lite
     - control-user
+  satellites:
+    - ansible_bu_satellite
+
+software_workloads:
+  bastions:
     - ansible_bu_run_time_inventory
     - deploy_automationcontroller
     - automation_platform_loader
@@ -262,6 +267,7 @@ controller_settings:
   - name: AWX_COLLECTIONS_ENABLED
     value: false
 
+controller_configuration_credential_types_secure_logging: false
 controller_credential_types:
   - name: Satellite_Collection
     description: Credential for redhat.satellite collection
@@ -283,9 +289,9 @@ controller_credential_types:
         - host
     injectors:
       env:
-        SATELLITE_PASSWORD: '{{ workshop_satellite_user_password }}'
-        SATELLITE_USERNAME: '{{ workshop_satellite_user_name }}'
-        SATELLITE_SERVER_URL: "https://{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
+        SATELLITE_PASSWORD: '{{ ansible_bu_satellite_user_password }}'
+        SATELLITE_USERNAME: '{{ ansible_bu_satellite_user_name }}'
+        SATELLITE_SERVER_URL: "https://{{ ansible_bu_satellite_external_fqdn }}"
         SATELLITE_VALIDATE_CERTS: 'false'
   # - name: GitHub_Personal_Access_Token
   #   description: Credential for GitHub repo operations automation
@@ -301,24 +307,24 @@ controller_credential_types:
   #       - personal_access_token
   #   injectors:
   #     env:
-  #       MY_PA_TOKEN: '{{ personal_access_token }}'
+  #       MY_PA_TOKEN: "{%raw%}'{{ personal_access_token }}'{%endraw%}"
 
 controller_credentials:
   - name: "Inventory Credential"
     organization: Default
     credential_type: "Red Hat Satellite 6"
     inputs:
-      host: "https://{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
-      username: "admin"
-      password: "satellite123"
+      host: "https://{{ ansible_bu_satellite_external_fqdn }}"
+      username: "{{ ansible_bu_satellite_user_name }}"
+      password: "{{ ansible_bu_satellite_user_password }}"
     state: present
   - name: "Satellite Credential"
     organization: Default
     credential_type: "Satellite_Collection"
     inputs:
-      host: "https://{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
-      username: "admin"
-      password: "satellite123"
+      host: "https://{{ ansible_bu_satellite_external_fqdn }}"
+      username: "{{ ansible_bu_satellite_user_name }}"
+      password: "{{ ansible_bu_satellite_user_password }}"
     state: present
   - name: "Controller Credential"
     organization: Default
@@ -483,7 +489,6 @@ controller_groups:
     hosts:
       - "{{ groups['satellites'][0] }}"
 
-
 controller_templates:
   - name: "SETUP / Controller"
     description: "Setup / controller"
@@ -503,6 +508,7 @@ controller_templates:
     credentials:
       - "Satellite Credential"
       - "Workshop Credential"
+    ask_variables_on_launch: true
     extra_vars:
       refresh_satellite_manifest: false
   - name: "Demo Job Template"
@@ -548,9 +554,12 @@ ansible_bu_setup_workshop_ee_image:
   - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-minimal-rhel8
     tag: 2.0.0
 
-workshop_satellite_user_name: admin
-workshop_satellite_user_password: satellite123
-ansible_virtualization_role: ""
+# -------------------------------------------------------------------
+# Role: ansible_bu_satellite
+# -------------------------------------------------------------------
+ansible_bu_satellite_external_fqdn: "{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
+ansible_bu_satellite_user_name: admin
+ansible_bu_satellite_user_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
