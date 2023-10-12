@@ -1,5 +1,13 @@
 ---
 #include /includes/catalog-icon-rhel.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /enterprise/includes/ansible_control_plane/controller.aap5nack2i7p6mie.ansiblecloud.redhat.com.yaml
+#include /includes/secrets/opentlc-mgr-migration-host.yaml
+#include /includes/secrets/demosat-rhel-9.0.yaml
+
 # Tech Networking 901
 # Catalog:
 # Catalog Item:
@@ -9,12 +17,15 @@
 # -------------------------------------------------------------------
 env_type: tech-networking-901
 software_to_deploy: none
+ssh_provision_key_name: "{{ env_authorized_key }}"
+migration_key_path: ~/.ssh/opentlc_admin_backdoor.pem
 # -------------------------------------------------------------------
 # End Mandatory Variables
 # -------------------------------------------------------------------
 
 # cloud-user password
-cloud_user_password: "r3dh4t1!"
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+cloud_user_password: "{{ common_password }}"
 
 # Platform
 platform: labs
@@ -37,7 +48,6 @@ repo_method: satellite
 satellite_activationkey: rhel-9.0
 set_repositories_rhel9_lock_release: '9.0'
 
-ssh_provision_key_name: "{{ env_authorized_key }}"
 bastion_instance_image: pntae-rhel-9.0-original
 
 find_ip_query: openstack_servers[?name=='{{ _instance_name }}'].public_v4
@@ -56,7 +66,9 @@ __meta__:
   anarchy:
     namespace: babylon-anarchy-openstack
   deployer:
-    virtualenv: openstack-ansible-2.9
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.1-alpha.2
+      pull: missing
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: Red Hat Enterprise Linux 9 - NetworkManager KeyFile
