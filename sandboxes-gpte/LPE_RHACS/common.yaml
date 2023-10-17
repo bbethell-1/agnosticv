@@ -9,16 +9,28 @@
 #include /includes/terms-of-service.yaml
 #include /includes/parameters/agnosticd_open_environment.yaml
 #include /includes/parameters/num-users-salesforce.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/parameters/controlplane-count.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
 env_type: ocp4-cluster
 software_to_deploy: openshift4
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
 
 # -------------------------------------------------------------------
 # Platform
 # -------------------------------------------------------------------
-platform: rhpds
+platform: RHPDS
 
 # -------------------------------------------------------------------
 # Repos
@@ -29,17 +41,14 @@ update_packages: true
 # -------------------------------------------------------------------
 # VM configuration (1 Node Cluster of m5.4xlarge)
 # -------------------------------------------------------------------
-bastion_instance_image: RHEL84GOLD-latest
-master_instance_type_family: m5
-master_instance_type_size: 2xlarge
-master_instance_count: 1
-worker_instance_count: 0
+bastion_instance_image: RHEL91GOLD-latest
 
-# -------------------------------------------------------------------
-# OpenShift Installer Version
-# -------------------------------------------------------------------
+#-------------------------------------------------------------------
+#OpenShift Installer Version
+#-------------------------------------------------------------------
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.13.1"
 ocp4_installer_use_dev_preview: false
-ocp4_installer_version: "4.10"
 
 # -------------------------------------------------------------------
 # --- Infra Workloads (YAML List)
@@ -54,37 +63,42 @@ infra_workloads:
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacs
 # -------------------------------------------------------------------
-ocp4_workload_rhacs_install_operator_channel: "rhacs-3.69"
-ocp4_workload_rhacs_install_operator_starting_csv: "rhacs-operator.v3.69.1"
+ocp4_workload_rhacs_install_operator_namespace: "rhacs-operator"
+ocp4_workload_rhacs_install_operator_channel: "rhacs-4.2"
+ocp4_workload_rhacs_install_operator_starting_csv: "rhacs-operator.v4.2.0"
 ocp4_workload_rhacs_install_operator_use_catalog_snapshot: true
-ocp4_workload_rhacs_install_operator_catalog_source_tag: "v4.10_2022_04_04"
+ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
 ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_admin_user: opentlc-mgr
+ocp4_workload_authentication_admin_user: admin
 # When no password specified it is generated
-# ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
 ocp4_workload_authentication_htpasswd_user_base: user
 # When no password specified it is generated
-# ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
 ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('5')) | int }}"
 ocp4_workload_authentication_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
 # Student User on Bastion
 # -------------------------------------------------------------------
-# --- Student User on Bastion
 install_student_user: true
-# --- student_name not set -> Requestor User ID is used as student_name
 student_name: lab-user
-# --- Student is allowed to sudo and switch to root
+student_password: "{{ common_password }}"
 student_sudo: true
+
+# -------------------------------------------------------------------
+# Student Workloads ([] means no student workloads)
+# -------------------------------------------------------------------
+studentvm_roles:
+# Set up the OpenShift 4 CLI tools (oc, odo, helm, tkn, kn, ...)
+- studentvm_ocp4
 
 # --- Student Workloads (YAML List)
 student_workloads: []
-
 # -------------------------------------------------------------------
 # AgnosticV meta variables
 # -------------------------------------------------------------------
@@ -102,9 +116,6 @@ __meta__:
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   catalog:
-    multiuser: true
-    namespace: babylon-catalog-{{ stage | default('?') }}
-    parameters: []
     labels:
       Provider: RHDP
       Product: Red_Hat_Advanced_Cluster_Security_Cloud_Service
@@ -121,12 +132,42 @@ __meta__:
     - advanceclustersecurity
     - lpeadvanceclustersecurity
     category: Workshops
+    multiuser: true
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    parameters:
+    - name: master_instance_type
+      description: OpenShift compute master instance type
+      formLabel: Control Plane Instance Type
+      openAPIV3Schema:
+        type: string
+        default: m5.xlarge
+        enum:
+        - m5.xlarge
+        - m5.2xlarge
+        - m5.4xlarge
+        - m5.8xlarge
+
+    - name: worker_instance_count
+      description: OpenShift compute worker instance count
+      formLabel: Compute Instance Count
+      openAPIV3Schema:
+        type: integer
+        default: 3
+        minimum: 0
+        maximum: 12
+
+    - name: worker_instance_type
+      description: OpenShift compute worker instance type
+      formLabel: Compute Instance Type
+      openAPIV3Schema:
+        type: string
+        default: m5.8xlarge
+        enum:
+        - m5.xlarge
+        - m5.2xlarge
+        - m5.4xlarge
+        - m5.8xlarge
   deployer:
-    virtualenv: ansible2.9-python3.6-2021-11-30
-  secrets:
-  - name: satellite-rhel81-ha
-    namespace: gpte
-  - name: ocp4_token
-    namespace: gpte
-  - name: output-dir-s3
-    namespace: gpte
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
