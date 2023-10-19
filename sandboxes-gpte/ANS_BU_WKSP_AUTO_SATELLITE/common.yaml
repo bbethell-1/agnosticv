@@ -93,28 +93,6 @@ instances:
         value: "linux"
       - key: "instance_filter"
         value: "{{ env_type }}-{{ email }}"
-      - key: "Workshop_ansible"
-        value: "ansible-1"
-      - key: "short_name"
-        value: "ansible-1"
-      - key: "Ansible_Workshops"
-        value: "This was provisioned through the ansible workshops provisioner"
-      - key: "Workshop"
-        value: "{{ workshop_type }}"
-      - key: "guid"
-        value: "{{ guid }}"
-      - key: "Workshop_type"
-        value: "{{ workshop_type }}"
-      - key: "Info"
-        value: "AWS_USERNAME that provisioned this"
-      - key: "Linklight"
-        value: "This was provisioned through the linklight provisioner"
-      - key: "username"
-        value: "ec2-user"
-      - key: "ansible-workshops"
-        value: "true"
-      - key: "Student"
-        value: "student1"
     rootfs_size: "{{ default_rootfs_size }}"
     security_groups:
       - BastionSG
@@ -139,24 +117,6 @@ instances:
         value: "linux"
       - key: "instance_filter"
         value: "{{ env_type }}-{{ email }}"
-      - key: "Workshop_satellite"
-        value: "satellite"
-      - key: "Workshop"
-        value: "{{ workshop_type }}"
-      - key: "guid"
-        value: "{{ guid }}"
-      - key: "Workshop_type"
-        value: "{{ workshop_type }}"
-      - key: "Info"
-        value: "AWS_USERNAME that provisioned this"
-      - key: "Linklight"
-        value: "This was provisioned through the linklight provisioner"
-      - key: "username"
-        value: "ec2-user"
-      - key: "ansible-workshops"
-        value: "true"
-      - key: "Student"
-        value: "student1"
     rootfs_size: 250
     security_groups:
       - WebSG
@@ -208,19 +168,15 @@ instances:
               - - "#cloud-config\n"
                 - "users:\n"
                 - "  - default\n"
-                - "system_info:\n"
-                - "  default_user:\n"
-                - "    name: ec2-user\n"
+                - "  - name: ec2-user\n"
                 - "    lock_passwd: true\n"
                 - "    gecos: Cloud User\n"
                 - "    groups: [adm, systemd-journal]\n"
                 - "    sudo: ['ALL=(ALL) NOPASSWD:ALL']\n"
                 - "    shell: /bin/bash\n"
-                - "  distro: rhel\n"
-                - "  paths:\n"
-                - "    cloud_dir: /var/lib/cloud\n"
-                - "    templates_dir: /etc/cloud/templates\n"
-                - "  ssh_svcname: sshd\n"
+                - "    ssh-authorized-keys:\n"
+                - "    ssh_authorized_keys:\n"
+                - "      - {{ hostvars.localhost.ssh_provision_pubkey_content | default('') }}\n"
       {% endfilter %}
 
   - name: "node5"
@@ -250,19 +206,15 @@ instances:
               - - "#cloud-config\n"
                 - "users:\n"
                 - "  - default\n"
-                - "system_info:\n"
-                - "  default_user:\n"
-                - "    name: ec2-user\n"
+                - "  - name: ec2-user\n"
                 - "    lock_passwd: true\n"
                 - "    gecos: Cloud User\n"
                 - "    groups: [adm, systemd-journal]\n"
                 - "    sudo: ['ALL=(ALL) NOPASSWD:ALL']\n"
                 - "    shell: /bin/bash\n"
-                - "  distro: rhel\n"
-                - "  paths:\n"
-                - "    cloud_dir: /var/lib/cloud\n"
-                - "    templates_dir: /etc/cloud/templates\n"
-                - "  ssh_svcname: sshd\n"
+                - "    ssh-authorized-keys:\n"
+                - "    ssh_authorized_keys:\n"
+                - "      - {{ hostvars.localhost.ssh_provision_pubkey_content | default('') }}\n"
       {% endfilter %}
 
   - name: "node6"
@@ -292,22 +244,20 @@ instances:
               - - "#cloud-config\n"
                 - "users:\n"
                 - "  - default\n"
-                - "system_info:\n"
-                - "  default_user:\n"
-                - "    name: ec2-user\n"
+                - "  - name: ec2-user\n"
                 - "    lock_passwd: true\n"
                 - "    gecos: Cloud User\n"
                 - "    groups: [adm, systemd-journal]\n"
                 - "    sudo: ['ALL=(ALL) NOPASSWD:ALL']\n"
                 - "    shell: /bin/bash\n"
-                - "  distro: rhel\n"
-                - "  paths:\n"
-                - "    cloud_dir: /var/lib/cloud\n"
-                - "    templates_dir: /etc/cloud/templates\n"
-                - "  ssh_svcname: sshd\n"
+                - "    ssh-authorized-keys:\n"
+                - "    ssh_authorized_keys:\n"
+                - "      - {{ hostvars.localhost.ssh_provision_pubkey_content | default('') }}\n"
       {% endfilter %}
 
-
+# -------------------------------------------------------------------
+# Role: ansible_bu_aws_access_policy
+# -------------------------------------------------------------------
 ec2_instance_common_tags: &common_tags
   guid: "{{ guid }}"
   ansible-workshops: "true"
@@ -318,8 +268,23 @@ ec2_instance_common_tags: &common_tags
   Info: "AWS_USERNAME that provisioned this"
   Linklight: "This was provisioned through the linklight provisioner"
 
-ec2_retag_instances:
+ansible_bu_aws_access_policy_ec2_instances_tags:
+  - name: ansible-1
+    iamprofile: false
+    tags:
+      Workshop_ansible: "ansible-1"
+      short_name: "ansible-1"
+      username: "ec2-user"
+      <<: *common_tags
+  - name: satellite
+    iamprofile: false
+    tags:
+      Workshop_satellite: "satellite"
+      short_name: "satellite"
+      username: "ec2-user"
+      <<: *common_tags
   - name: node1
+    iamprofile: true
     tags:
       Index: 1
       Workshop_node1: "node1"
@@ -327,6 +292,7 @@ ec2_retag_instances:
       username: "ec2-user"
       <<: *common_tags
   - name: node2
+    iamprofile: true
     tags:
       Index: 2
       Workshop_node2: "node2"
@@ -334,6 +300,7 @@ ec2_retag_instances:
       username: "ec2-user"
       <<: *common_tags
   - name: node3
+    iamprofile: true
     tags:
       Index: 3
       Workshop_node3: "node3"
@@ -341,6 +308,7 @@ ec2_retag_instances:
       username: "ec2-user"
       <<: *common_tags
   - name: node4
+    iamprofile: true
     tags:
       Index: 4
       Workshop_node4: "node4"
@@ -348,6 +316,7 @@ ec2_retag_instances:
       username: "centos"
       <<: *common_tags
   - name: node5
+    iamprofile: true
     tags:
       Index: 5
       Workshop_node5: "node5"
@@ -355,6 +324,7 @@ ec2_retag_instances:
       username: "ec2-user"
       <<: *common_tags
   - name: node6
+    iamprofile: true
     tags:
       Index: 6
       Workshop_node6: "node6"
@@ -368,9 +338,6 @@ ec2_retag_instances:
 pre_software_workloads:
   localhost:
     - ansible_bu_aws_access_policy
-    - infra-local-create-ssh_key
-  all:
-    - set_env_authorized_key
   bastions:
     - set-repositories
     - common
@@ -388,9 +355,9 @@ software_workloads:
     - automation_platform_loader
     - ansible_bu_setup_workshop
 
-# -------------------------------------------------
+# -------------------------------------------------------------------
 # Role: set-repositories
-# -------------------------------------------------
+# -------------------------------------------------------------------
 repo_method: satellite
 use_content_view: true
 
@@ -488,7 +455,7 @@ controller_credentials:
     credential_type: "Machine"
     inputs:
       username: "ec2-user"
-      ssh_key_data: "{{ lookup('file', hostvars.localhost.env_authorized_key_path) }}"
+      ssh_key_data: "{{ lookup('file', hostvars.localhost.ssh_provision_key_path) }}"
     state: present
   - name: "registry.redhat.io credential"
     organization: Default
