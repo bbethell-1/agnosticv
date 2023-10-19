@@ -30,3 +30,812 @@ __meta__:
       item: enterprise/ATE_CREDS_AZURE
       propagate_provision_data:
         - var: ate_creds_azure_data
+ssh_private_key: "{{ ate_base_data.ssh_private_key }}"
+ssh_public_key: "{{ ate_base_data.ssh_public_key }}"
+
+#
+# AWS, normalize AWS creds etc
+#
+
+controller_creds_aws:
+  aws_access_key_id: "{{ ate_creds_aws_data.aws_access_key_id }}"
+  aws_secret_access_key: "{{ ate_creds_aws_data.aws_secret_access_key }}"
+
+type: ec2   # required for ATHC upstream repos
+ec2_key_pair: "{{ ate_base_data.ssh_public_key }}"
+
+#
+# Azure, normalize Azure creds etc
+#
+
+controller_creds_azure:
+  client_id: "{{ ate_creds_azure_data.client_id }}"
+  tenant_id: "{{ ate_creds_azure_data.tenant_id }}"
+  subscription_id: "{{ ate_creds_azure_data.subscription_id }}"
+  password: "{{ ate_creds_azure_data.password }}"
+  resource_group: "{{ ate_creds_azure_data.resource_group }}"
+
+azure_location: eastus
+azure_ssh_public_key: "{{ ate_base_data.ssh_public_key }}"
+vault_azure_ssh_public_key: "{{ ate_base_data.ssh_public_key }}"
+
+controller_ansible_private_key: "{{ ate_base_data.ssh_private_key }}"
+controller_admin_password: "{{ ate_base_data.controller_password }}"
+
+controller_ah_enable: false     # enable/disable Automation Hub
+
+controller_configuration_dispatcher_roles:
+
+  - role: settings
+    var: controller_settings
+    tags: settings
+
+  - role: organizations
+    var: controller_organizations
+    tags: organizations
+
+  - role: credentials
+    var: controller_credentials
+    tags: credentials
+
+  - role: execution_environments
+    var: controller_execution_environments
+    tags: execution_environments
+
+  - role: projects
+    var: controller_projects
+    tags: projects
+
+  - role: inventories                     # Always inventories BEFORE sources
+    var: controller_inventories
+    tags: inventories
+
+  - role: inventory_sources
+    var: controller_inventory_sources
+    tags: inventory_sources
+
+  - role: job_templates
+    var: controller_templates
+    tags: job_templates
+
+  - role: workflow_job_templates
+    var: controller_workflows
+    tags: workflow_job_templates
+
+  - role: users
+    var: controller_user_accounts
+    tags: users
+
+  - role: roles
+    var: controller_roles
+    tags: roles
+
+  - role: schedules
+    var: controller_schedules
+    tags: schedules
+
+      # Controller Settings
+      #
+      # NOTES:
+      #
+
+controller_settings:
+  settings:
+    AWX_ROLES_ENABLED: "false"
+    AWX_COLLECTIONS_ENABLED: "false"
+
+      # Organizations
+      #
+      # NOTES:
+
+controller_organizations:
+
+  - name: Default
+    description: "Default organization for resources"
+
+  - name: engineering
+    description: "Engineering Organization"
+
+  - name: sales
+    description: "Sales Organization"
+
+  - name: marketing
+    description: "Marketing Organization"
+
+      # Execution Environments
+      #
+      # NOTES:
+      #  - 2023-04-01 (tok@redhat.com) Quay to secrets
+
+hybrid_cloud_ee: "Hybrid Cloud EE"    # Default EE for Automate the Hybrid Cloud
+hybrid_cloud_ee_image: "quay.io/agnosticd/ee-athc:1.0.0"
+
+credential_quay:
+  username: "openshift-release-dev+rhpdsadminsredhatcom1frgsiduzq2dznsj3iw0atmljh7"
+  password: "2LI1DU350UBBK584BLUA80EM55WDPD3WD24BJ6CB9W3EHR3KJRHXNHX2VYM2QE1T"
+
+controller_execution_environments:
+
+  - name: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+    image: "quay.io/redhat-pfe/ee-athc:1.0.0"
+    description: "Create execution environment for Azure"
+
+      # Projects
+      #
+      # NOTES:
+      #  - Increase retries as this can be too short by default(30)
+
+controller_configuration_projects_async_retries: 90
+
+controller_projects:
+
+  - name: "GitLab playbook-rhaap"
+    scm_url: "https://gitlab.com/ansible-ssa/playbook-rhaap.git"
+    organization: Default
+    scm_type: git
+    scm_branch: "{{ project_version | default('main') }}"
+    scm_update_on_launch: true
+    scm_delete_on_update: true
+    state: "{{ controller_state | default('present') }}"
+
+  - name: "GitLab playbook-lamp"
+    scm_url: "https://gitlab.com/ansible-ssa/playbook-lamp.git"
+    organization: Default
+    scm_type: git
+    scm_branch: "{{ project_version | default('main') }}"
+    scm_update_on_launch: true
+    scm_delete_on_update: true
+    state: "{{ controller_state | default('present') }}"
+
+  - name: "GitLab playbook-windows"
+    scm_url: "https://gitlab.com/ansible-ssa/playbook-windows.git"
+    organization: Default
+    scm_type: git
+    scm_branch: "{{ project_version | default('main') }}"
+    scm_update_on_launch: true
+    scm_delete_on_update: true
+    state: "{{ controller_state | default('present') }}"
+
+      # Inventories
+      #
+      # NOTES:
+      #  - Increase retries as this can be too short by default(30)
+
+
+controller_inventories:
+
+  - name: ec2
+    organization: Default
+
+  - name: azure
+    organization: Default
+
+  - name: LAMP
+    organization: Default
+    # state: present
+
+      # Inventory Sources
+      #
+      # NOTES:
+
+
+controller_inventory_sources:
+
+  - name: ec2
+    credential: ec2
+    inventory: LAMP
+    source: ec2
+    state: present
+    update_on_launch: true
+    overwrite: true
+    source_vars:
+      hostnames:
+        - tag:Name
+      compose:
+        ansible_host: public_dns_name
+
+  - name: azure
+    credential: azure
+    inventory: azure
+    source: azure_rm
+    state: present
+    update_on_launch: true
+    overwrite: true
+    source_vars:
+      hostnames:
+        - computer_name
+      compose:
+        ansible_host: public_ipv4_addresses[0]
+      keyed_groups:
+        - key: os_profile.system
+
+      # credentials
+      #
+      # NOTES:
+
+
+controller_credentials:
+
+  - name: ansible
+    credential_type: Machine
+    organization: Default
+    inputs:
+      username: ansible
+      ssh_key_data: "{{ controller_ansible_private_key }}"
+
+  - name: ansible-ec2
+    credential_type: Machine
+    organization: Default
+    inputs:
+      username: ec2-user
+      ssh_key_data: "{{ controller_ansible_private_key }}"
+
+  - name: developer
+    credential_type: Machine
+    organization: Default
+    # state: present
+    inputs:
+      username: developer
+      password: "{{ controller_admin_password }}"
+
+  - name: ec2
+    credential_type: "Amazon Web Services"
+    organization: Default
+    inputs:
+      username: "{{ controller_creds_aws.aws_access_key_id }}"
+      password: "{{ controller_creds_aws.aws_secret_access_key }}"
+
+  - name: azure
+    credential_type: "Microsoft Azure Resource Manager"
+    organization: Default
+    inputs:
+      client: "{{ controller_creds_azure.client_id }}"
+      tenant: "{{ controller_creds_azure.tenant_id }}"
+      subscription: "{{ controller_creds_azure.subscription_id }}"
+      secret: "{{ controller_creds_azure.password }}"
+
+  - name: Windows
+    credential_type: Machine
+    organization: Default
+    state: present
+    inputs:
+      username: ansible
+      password: "{{ controller_admin_password }}"
+
+  - name: Quay
+    credential_type: Machine
+    organization: Default
+    state: present
+    inputs:
+      username: ansible
+
+      # Job Templates
+      #
+      # NOTES:
+
+controller_templates:
+
+  - name: Instance - Deploy new Instance
+    state: present
+    organization: Default
+    inventory: "{{ type }}"
+    ask_inventory_on_launch: true
+    job_type: run
+    playbook: controller-instance.yml
+    project: GitLab playbook-rhaap
+    ask_credential_on_launch: true
+    survey_enabled: true
+    survey_spec: "{{ lookup('template', 'files/controller-deploy-survey.json.j2') }}"
+    extra_vars:
+      ec2_vpc_name: "{{ ec2_vpc_name | default(omit) }}"
+      azure_location: "{{ azure_location | default(omit) }}"
+      ec2_key_pair: "{{ ssh_public_key }}"
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  - name: LAMP Workflow - Deploy a new Instance on EC2
+    state: present
+    organization: Default
+    inventory: ec2
+    job_type: run
+    playbook: deploy-instance.yml
+    project: GitLab playbook-lamp
+    credentials:
+      - ansible-ec2
+      - ec2
+    survey_enabled: true
+    survey_spec: "{{ lookup('template', 'files/workflow-lamp-deploy-survey-ec2.json.j2') }}"
+    extra_vars:
+      ec2_vpc_name: "{{ ec2_vpc_name | default(omit) }}"
+      ec2_key_pair: "{{ ssh_public_key }}"
+      instance_flavor: t2.medium
+      instance_group: webapp
+      type: ec2
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  - name: "LAMP Workflow - Configure existing instance on EC2"
+    state: present
+    organization: Default
+    inventory: ec2
+    job_type: run
+    playbook: configure-instance.yml
+    project: GitLab playbook-lamp
+    limit: webapp-ec2
+    become_enabled: true
+    credentials:
+      - ec2
+      - ansible-ec2
+    survey_enabled: true
+    survey_spec: "{{ lookup('template', 'files/workflow-lamp-configure-survey.json.j2') }}"
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  - name: LAMP Workflow - Install Database Tier on EC2
+    state: present
+    organization: Default
+    inventory: ec2
+    job_type: run
+    playbook: deploy-database.yml
+    project: GitLab playbook-lamp
+    limit: webapp-ec2
+    become_enabled: true
+    credentials:
+      - ec2
+      - ansible-ec2
+    survey_enabled: true
+    survey_spec: "{{ lookup('template', 'files/workflow-lamp-database-survey.json.j2') }}"
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  - name: LAMP Workflow - Deploy Web App on EC2
+    state: present
+    organization: Default
+    inventory: ec2
+    job_type: run
+    playbook: deploy-webapp.yml
+    limit: webapp-ec2
+    become_enabled: true
+    project: GitLab playbook-lamp
+    credentials:
+      - ec2
+      - ansible-ec2
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  - name: LAMP Workflow - Check Compliance on EC2
+    state: present
+    organization: Default
+    inventory: ec2
+    job_type: check
+    diff_mode: true
+    playbook: hardening-instance.yml
+    limit: webapp-ec2
+    become_enabled: true
+    project: GitLab playbook-lamp
+    credentials:
+      - ec2
+      - ansible-ec2
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  - name: LAMP Workflow - Enforce Compliance on EC2
+    state: present
+    organization: Default
+    inventory: ec2
+    job_type: run
+    playbook: hardening-instance.yml
+    limit: webapp-ec2
+    become_enabled: true
+    project: GitLab playbook-lamp
+    credentials:
+      - ec2
+      - ansible-ec2
+
+  - name: LAMP Workflow - Deploy a new Instance on Azure
+    state: present
+    inventory: azure
+    job_type: run
+    playbook: deploy-instance.yml
+    project: GitLab playbook-lamp
+    credentials:
+      - azure
+      - ansible
+    survey_enabled: true
+    survey_spec: "{{ lookup('template', 'files/workflow-lamp-deploy-survey-azure.json.j2') }}"
+    extra_vars:
+      azure_location: "{{ azure_location }}"
+      azure_resource_group: "{{ azure_resource_group | default(omit) }}"
+      azure_private_network: "{{ azure_resource_group | default(omit) }}"
+      type: azure
+      instance_group: webapp
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  - name: LAMP Workflow - Configure existing instance on Azure
+    state: present
+    inventory: azure
+    job_type: run
+    playbook: configure-instance.yml
+    project: GitLab playbook-lamp
+    become_enabled: true
+    limit: webapp-azure
+    credentials:
+      - azure
+      - ansible
+    survey_enabled: true
+    survey_spec: "{{ lookup('template', 'files/workflow-lamp-configure-survey.json.j2') }}"
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  - name: LAMP Workflow - Install Database Tier on Azure
+    state: present
+    inventory: azure
+    job_type: run
+    playbook: deploy-database.yml
+    project: GitLab playbook-lamp
+    become_enabled: true
+    limit: webapp-azure
+    credentials:
+      - azure
+      - ansible
+    survey_enabled: true
+    survey_spec: "{{ lookup('template', 'files/workflow-lamp-database-survey.json.j2') }}"
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  - name: LAMP Workflow - Deploy Web App on Azure
+    state: present
+    inventory: azure
+    job_type: run
+    playbook: deploy-webapp.yml
+    become_enabled: true
+    project: GitLab playbook-lamp
+    limit: webapp-azure
+    credentials:
+      - azure
+      - ansible
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  - name: LAMP Workflow - Check Compliance on Azure
+    state: present
+    inventory: azure
+    job_type: check
+    diff_mode: true
+    playbook: hardening-instance.yml
+    limit: webapp-azure
+    become_enabled: true
+    project: GitLab playbook-lamp
+    credentials:
+      - azure
+      - ansible
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  - name: LAMP Workflow - Enforce Compliance on Azure
+    state: present
+    inventory: azure
+    job_type: run
+    playbook: hardening-instance.yml
+    limit: webapp-azure
+    become_enabled: true
+    project: GitLab playbook-lamp
+    credentials:
+      - azure
+      - ansible
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  #
+  # End of LAMP
+  #
+
+  #
+  # Start of Windows VM
+  #
+
+  - name: Windows - Deploy a new Instance on Azure
+    state: present
+    inventory: azure
+    credentials:
+      - azure
+    job_type: run
+    playbook: windows-server.yml
+    project: GitLab playbook-windows
+    survey_enabled: true
+    survey_spec: "{{ lookup('template', 'files/windows-deploy-survey-azure.json.j2') }}"
+    extra_vars:
+      azure_location: "{{ azure_location | default(omit) }}"
+      azure_image_offer: WindowsServer
+      azure_image_publisher: MicrosoftWindowsServer
+      azure_image_sku: 2019-datacenter-gensecond
+      azure_os_type: windows
+      instance_name: win-azure
+      instance_flavor: Standard_DS2
+      azure_resource_group: "{{ azure_resource_group | default(omit) }}"
+      azure_private_network: "{{ azure_resource_group | default(omit) }}"
+      type: azure
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  - name: Windows - Basic Configuration on Azure
+    state: present
+    inventory: azure
+    ask_inventory_on_launch: true
+    job_type: run
+    playbook: windows-base-packages.yml
+    project: GitLab playbook-windows
+    limit: "win-azure"
+    ask_limit: true
+    credentials:
+      - Windows
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  - name: Windows - Registry Modification on Azure
+    state: present
+    inventory: azure
+    job_type: run
+    playbook: windows-regedit.yml
+    project: GitLab playbook-windows
+    limit: "win-azure"
+    ask_limit: true
+    credentials:
+      - Windows
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  - name: Windows - Install Updates on Azure
+    state: present
+    inventory: azure
+    job_type: run
+    playbook: windows-update.yml
+    project: GitLab playbook-windows
+    limit: "win-azure"
+    ask_limit: true
+    credentials:
+      - Windows
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+  - name: Windows - Configure Developer Workstation on Azure
+    state: present
+    inventory: azure
+    job_type: run
+    playbook: windows-dev-workstation.yml
+    project: GitLab playbook-windows
+    limit: "win-azure"
+    ask_limit: true
+    credentials:
+      - Windows
+    execution_environment: "{{ hybrid_cloud_ee | default('Hybrid Cloud EE') }}"
+
+# Controller Workflows
+#
+# NOTES:
+
+controller_workflows:
+
+  - name: "LAMP Workflow - Deploy stack AWS/Azure"
+    description: created by Ansible Playbook
+    organization: Default
+    simplified_workflow_nodes:
+
+      - identifier: webtier-node-ec2
+        workflow: LAMP Workflow - Deploy stack
+        unified_job_template: LAMP Workflow - Deploy Web App on EC2
+        organization: Default
+
+      - identifier: webtier-node-azure
+        workflow: LAMP Workflow - Deploy stack
+        unified_job_template: LAMP Workflow - Deploy Web App on Azure
+        organization: Default
+
+      - identifier: db-node-azure
+        workflow: LAMP Workflow - Deploy stack
+        unified_job_template: LAMP Workflow - Install Database Tier on Azure
+        organization: Default
+        success_nodes:
+          - webtier-node-azure
+
+      - identifier: conf-node-azure
+        workflow: LAMP Workflow - Deploy stack
+        unified_job_template: LAMP Workflow - Configure existing instance on Azure
+        organization: Default
+        success_nodes:
+          - db-node-azure
+
+      - identifier: deploy-node-azure
+        workflow: LAMP Workflow - Deploy stack
+        unified_job_template: LAMP Workflow - Deploy a new Instance on Azure
+        organization: Default
+        success_nodes:
+          - conf-node-azure
+
+      - identifier: db-node-ec2
+        workflow: LAMP Workflow - Deploy stack
+        unified_job_template: LAMP Workflow - Install Database Tier on EC2
+        organization: Default
+        success_nodes:
+          - webtier-node-ec2
+
+      - identifier: conf-node-ec2
+        workflow: LAMP Workflow - Deploy stack
+        unified_job_template: LAMP Workflow - Configure existing instance on EC2
+        organization: Default
+        success_nodes:
+          - db-node-ec2
+
+      - identifier: deploy-node-ec2
+        workflow: LAMP Workflow - Deploy stack
+        unified_job_template: LAMP Workflow - Deploy a new Instance on EC2
+        organization: Default
+        success_nodes:
+          - conf-node-ec2
+
+  - name: Windows - Provision Developer Machine on Azure
+    description: Deploy Windows Server with Developer Tools
+    organization: Default
+    simplified_workflow_nodes:
+
+      - identifier: windows-all-updates-node-azure
+        workflow: Windows - Provision Developer Machine on Azure
+        unified_job_template: Windows - Install Updates on Azure
+        organization: Default
+
+      - identifier: windows-dev-workstation-node-azure
+        workflow: Windows - Provision Developer Machine on Azure
+        unified_job_template: Windows - Configure Developer Workstation on Azure
+        organization: Default
+        success_nodes:
+          - windows-all-updates-node-azure
+
+      - identifier: windows-basic-configuration-node-azure
+        workflow: Windows - Provision Developer Machine on Azure
+        unified_job_template: Windows - Basic Configuration on Azure
+        organization: Default
+        success_nodes:
+          - windows-dev-workstation-node-azure
+
+      - identifier: windows-deploy-instance-node-azure
+        workflow: Windows - Provision Developer Machine on Azure
+        unified_job_template: Windows - Deploy a new Instance on Azure
+        organization: Default
+        success_nodes:
+          - windows-basic-configuration-node-azure
+
+
+controller_user_accounts:
+
+  - username: developer
+    password: "{{ controller_admin_password }}"
+
+  - username: operator
+    password: "{{ controller_admin_password }}"
+
+  - username: engineering_developer
+    password: "{{ controller_admin_password }}"
+
+  - username: engineering_operator
+    password: "{{ controller_admin_password }}"
+
+  - username: sales_operator
+    password: "{{ controller_admin_password }}"
+
+  - username: sales_developer
+    password: "{{ controller_admin_password }}"
+
+  - username: marketing_operator
+    password: "{{ controller_admin_password }}"
+
+  - username: marketing_developer
+    password: "{{ controller_admin_password }}"
+
+
+controller_roles:
+
+  - user: developer
+    role: member
+    organization: Default
+
+  - user: developer
+    role: execute
+    # workflow: LAMP Workflow - Deploy stack
+    workflow: "LAMP Workflow - Deploy stack AWS/Azure"
+
+  - user: developer
+    role: admin
+    job_templates:
+      - LAMP Workflow - Deploy Web App on EC2
+      - LAMP Workflow - Install Database Tier on EC2
+      - LAMP Workflow - Configure existing instance on EC2
+      - LAMP Workflow - Deploy a new Instance on EC2
+      - LAMP Workflow - Deploy Web App on Azure
+      - LAMP Workflow - Install Database Tier on Azure
+      - LAMP Workflow - Configure existing instance on Azure
+      - LAMP Workflow - Deploy a new Instance on Azure
+
+  - user: developer
+    role: use
+    inventory: ec2
+
+  - user: developer
+    role: use
+    inventory: azure
+
+  - user: developer
+    role: admin
+    job_templates:
+      - Windows - Deploy a new Instance on Azure
+      - Windows - Basic Configuration on Azure
+      - Windows - Registry Modification on Azure
+      - Windows - Install Updates on Azure
+      - Windows - Configure Developer Workstation on Azure
+
+  - user: developer
+    role: admin
+    workflows:
+      - Windows - Provision Developer Machine on Azure
+
+  - user: operator
+    role: admin
+    workflow: "LAMP Workflow - Deploy stack AWS/Azure"
+
+  - user: operator
+    role: member
+    organization: Default
+
+  - user: operator
+    role: execute
+    job_templates:
+      - LAMP Workflow - Deploy Web App on EC2
+      - LAMP Workflow - Install Database Tier on EC2
+      - LAMP Workflow - Configure existing instance on EC2
+      - LAMP Workflow - Deploy a new Instance on EC2
+      - LAMP Workflow - Deploy Web App on Azure
+      - LAMP Workflow - Install Database Tier on Azure
+      - LAMP Workflow - Configure existing instance on Azure
+      - LAMP Workflow - Deploy a new Instance on Azure
+
+  - user: operator
+    role: use
+    inventory: LAMP
+
+  - user: operator
+    role: execute
+    job_templates:
+      - Windows - Deploy a new Instance on Azure
+      - Windows - Basic Configuration on Azure
+      - Windows - Registry Modification on Azure
+      - Windows - Install Updates on Azure
+      - Windows - Configure Developer Workstation on Azure
+
+  - user: operator
+    role: execute
+    workflows:
+      - Windows - Provision Developer Machine on Azure
+
+  - user: engineering_developer
+    role: member
+    organization: engineering
+
+  - user: engineering_operator
+    role: member
+    organization: engineering
+
+  - user: sales_operator
+    role: member
+    organization: sales
+
+  - user: sales_developer
+    role: member
+    organization: sales
+
+  - user: marketing_developer
+    role: member
+    organization: marketing
+
+  - user: marketing_operator
+    role: member
+    organization: marketing
+
+
+controller_schedules:
+
+  - name: Periodic Compliance Check on EC2
+    unified_job_template: LAMP Workflow - Check Compliance on EC2
+    enabled: false
+    state: present
+    rrule: "DTSTART:20200104T012500Z RRULE:INTERVAL=5;FREQ=MINUTELY"
+
+
+  - name: Periodic Compliance Check on Azure
+    unified_job_template: LAMP Workflow - Check Compliance on Azure
+    enabled: false
+    state: present
+    rrule: "DTSTART:20200104T012500Z RRULE:INTERVAL=5;FREQ=MINUTELY"
