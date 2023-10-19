@@ -1,0 +1,211 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-3regions.yaml
+#include /includes/parameters/num-users-salesforce.yaml
+#include /includes/secrets/demosat-nextgen-osp.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/parameters/agnosticd_open_environment.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/access-restriction-devs-only.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.13"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+
+# -------------------------------------------------------------------
+# AWS Specific
+# -------------------------------------------------------------------
+master_instance_type: c6in.2xlarge
+master_instance_count: 3
+
+master_storage_type: io1
+
+worker_instance_type: m5a.4xlarge
+worker_instance_count: 3
+
+worker_storage_type: gp3
+bastion_instance_image: RHEL92GOLD-latest
+
+# -------------------------------------------------------------------
+# Instances
+# -------------------------------------------------------------------
+instances:
+- name: "bastion"
+#  count: "{{ bastion_instance_count}}"
+#  unique: "{{ true if clientvm_instance_count | int <= 1 else false }}"
+  count: 1
+  unique: true
+  public_dns: true
+  alt_name:
+  - clientvm
+  image: "{{ bastion_instance_image }}"
+  flavor:
+    "ec2": "{{ bastion_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions,clientvms"
+  - key: "ostype"
+    value: "linux"
+  - key: "Purpose"
+    value: "{{ purpose }}"
+  - key: "project"
+    value: "{{ project_tag }}"
+  - key: "user"
+    value: "{{ student_name }}"
+  rootfs_size: "{{ bastion_rootfs_size }}"
+  security_groups:
+  - BastionSG
+
+- name: "dataplane"
+  count: 1
+  unique: false
+  public_dns: true
+  image: "{{ bastion_instance_image }}"
+  flavor:
+    "ec2": "{{ bastion_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "dataplanes"
+  - key: "ostype"
+    value: "linux"
+  - key: "Purpose"
+    value: "{{ purpose }}"
+  - key: "project"
+    value: "{{ project_tag }}"
+  - key: "user"
+    value: "{{ student_name }}"
+  rootfs_size: "{{ bastion_rootfs_size }}"
+  security_groups:
+  - DataplaneSG
+
+security_groups:
+- name: DataplaneSG
+  rules:
+  - name: DataplaneHTTPSPorts
+    description: "General HTTPS Public"
+    from_port: 443
+    to_port: 443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+  - name: FromDataplaneSGtcp
+    description: "Allow everything from HostSG nodes"
+    from_port: 0
+    to_port: 65535
+    protocol: tcp
+    from_group: DataplaneSG
+    rule_type: Ingress
+
+  - name: FromDataplaneSGudp
+    description: "Allow everything from HostSG nodes"
+    from_port: 0
+    to_port: 65535
+    protocol: udp
+    from_group: DataplaneSG
+    rule_type: Ingress
+
+  - name: FromBastionTCP
+    description: "Allow everything from Bastion"
+    from_port: 0
+    to_port: 65535
+    protocol: tcp
+    from_group: BastionSG
+    rule_type: Ingress
+
+  - name: FromBastionUDP
+    description: "Allow everything from Bastion"
+    from_port: 0
+    to_port: 65535
+    protocol: udp
+    from_group: BastionSG
+    rule_type: Ingress
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_le_certificates
+- ocp4-workload-quay-operator
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+ocp4_workload_authentication_htpasswd_user_base: user
+# Generate user password
+ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_count: 2
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 11567B0C-C70A-459F-9E82-041D8F095DA6
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Next Gen OpenStack Dev Preview Demo
+    category: Demos
+    keywords:
+    - osp
+    - next
+    - gen
+    labels:
+      Product: Red_Hat_OpenStack_Platform
+      Product_Family: Red_Hat_Cloud
+    multiuser: false
+    parameters: []
+  secrets: []
