@@ -1,0 +1,529 @@
+---
+#include /includes/catalog-icon-aap.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/secrets/satellite-rhel8-latest-ha.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ansible-bu-workshop
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Instance Variable
+# -------------------------------------------------------------------
+bastion_instance_type: m5.8xlarge
+
+security_groups:
+  - name: BastionSG
+    rules:
+      - name: BastionSSHPorts
+        description: "Bastion ssh"
+        from_port: 22
+        to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: WebSG
+    rules:
+      - name: WebHTTPSPorts
+        description: "HTTPS Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: WebHTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: WebCockpitPorts
+        description: "Cockpit HTTP Public"
+        from_port: 9090
+        to_port: 9090
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: NodeSG
+    rules:
+      - name: FromNodeSGtcp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: NodeSG
+        rule_type: Ingress
+
+      - name: FromNodeSGudp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: NodeSG
+        rule_type: Ingress
+
+instances:
+  - name: "{{ bastion_instance_name | default('ansible-1') }}"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ bastion_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ default_rootfs_size }}"
+    security_groups:
+      - BastionSG
+      - WebSG
+      - DefaultSG
+      - NodeSG
+
+  - name: "tidy-bengal"
+    count: 1
+    unique: true
+    public_dns: false
+    image: "RHEL79GOLD-latest"
+    flavor:
+      ec2: "{{ node_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "linux"
+      - key: "hostgroup"
+        value: rhel7_hosts
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ default_rootfs_size }}"
+    security_groups:
+      - DefaultSG
+      - NodeSG
+
+  - name: "strong-hyena"
+    count: 1
+    unique: true
+    public_dns: false
+    image: "RHEL79GOLD-latest"
+    flavor:
+      ec2: "{{ node_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "linux"
+      - key: "hostgroup"
+        value: rhel7_hosts
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ default_rootfs_size }}"
+    security_groups:
+      - DefaultSG
+      - NodeSG
+
+  - name: "more-calf"
+    count: 1
+    unique: true
+    public_dns: false
+    image: "RHEL82GOLD-latest"
+    flavor:
+      ec2: "{{ node_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "linux"
+      - key: "hostgroup"
+        value: rhel8_hosts
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ default_rootfs_size }}"
+    security_groups:
+      - DefaultSG
+      - NodeSG
+
+  - name: "upward-moray"
+    count: 1
+    unique: true
+    public_dns: false
+    image: "RHEL82GOLD-latest"
+    flavor:
+      ec2: "{{ node_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "linux"
+      - key: "hostgroup"
+        value: rhel8_hosts
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ default_rootfs_size }}"
+    security_groups:
+      - DefaultSG
+      - NodeSG
+
+# -------------------------------------------------------------------
+# Role: ansible_bu_aws_access_policy
+# -------------------------------------------------------------------
+ec2_instance_common_tags: &common_tags
+  guid: "{{ guid }}"
+  ansible-workshops: "true"
+  Workshop: "{{ workshop_type }}"
+  Workshop_type: "{{ workshop_type }}"
+  Student: "ansible-1"
+  Students: 1
+  Info: "AWS_USERNAME that provisioned this"
+  Linklight: "This was provisioned through the linklight provisioner"
+  username: "ec2-user"
+  operating_system: rhel
+
+ansible_bu_aws_access_policy_ec2_instances_tags:
+  - name: ansible-1
+    iamprofile: false
+    tags:
+      Workshop_ansible: "ansible-1"
+      short_name: "ansible-1"
+      <<: *common_tags
+  - name: tidy-bengal
+    iamprofile: true
+    tags:
+      Index: 1
+      Workshop_node1: "node1"
+      short_name: "tidy-bengal"
+      os_major_version: 7
+      <<: *common_tags
+  - name: strong-hyena
+    iamprofile: true
+    tags:
+      Index: 2
+      Workshop_node2: "node2"
+      short_name: "strong-hyena"
+      os_major_version: 7
+      <<: *common_tags
+  - name: more-calf
+    iamprofile: true
+    tags:
+      Index: 3
+      Workshop_node3: "node3"
+      short_name: "more-calf"
+      os_major_version: 8
+      <<: *common_tags
+  - name: upward-moray
+    iamprofile: true
+    tags:
+      Index: 4
+      Workshop_node4: "node4"
+      short_name: "upward-moray"
+      os_major_version: 9
+      <<: *common_tags
+
+# -------------------------------------------------------------------
+# Config Pre/Software/Post Workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  localhost:
+    - ansible_bu_aws_access_policy
+  bastions:
+    - set-repositories
+    - common
+    - bastion-lite
+    - control-user
+  nodes:
+    - common
+
+software_workloads:
+  bastions:
+    - ansible_bu_run_time_inventory
+    - deploy_automationcontroller
+    - aap_controller_cert_issue
+    - vscode-server
+    - automation_platform_loader
+    - ansible_bu_setup_workshop
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+repo_method: satellite
+use_content_view: true
+
+# -------------------------------------------------------------------
+# Role: common
+# -------------------------------------------------------------------
+install_common: true
+common_packages_el8:
+  - python3
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - httpd-tools
+  - python3-pip
+  - tree
+  - cockpit
+  - cockpit-system
+
+common_packages:
+  - cockpit
+  - cockpit-system
+
+# -------------------------------------------------------------------
+# Role: deploy_automationcontroller
+# -------------------------------------------------------------------
+install_automationcontroller: true
+deploy_automationcontroller_admin_password: "{{ common_password }}"
+deploy_automationcontroller_installer_url: "{{ controller_bundle_installer.url }}"
+deploy_automationcontroller_manifest_url: "{{ controller_manifest.url }}"
+
+# -------------------------------------------------------------------
+# Role: automation_platform_loader
+# -------------------------------------------------------------------
+configure_automationcontroller: true
+controller_configuration_job_templates_secure_logging: false
+controller_configuration_credentials_secure_logging: false
+
+aap_auth:
+  controller_host: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain_base }}"
+  controller_username: admin
+  controller_password: "{{ common_password }}"
+  controller_verify_ssl: false
+
+controller_configuration_dispatcher_roles:
+  - role: settings
+    var: controller_settings
+    tags: settings
+  - role: credential_types
+    var: controller_credential_types
+    tags: credential_types
+  - role: credentials
+    var: controller_credentials
+    tags: credentials
+  - role: execution_environments
+    var: controller_execution_environments
+    tags: execution_environments
+  - role: projects
+    var: controller_projects
+    tags: projects
+  - role: inventories
+    var: controller_inventories
+    tags: inventories
+  - role: hosts
+    var: controller_hosts
+    tags: hosts
+  - role: groups
+    var: controller_groups
+    tags: groups
+  - role: job_templates
+    var: controller_templates
+    tags: templates
+
+controller_settings:
+  - name: AWX_COLLECTIONS_ENABLED
+    value: true
+
+# -------------------------------------------------------------------
+# controller_credential_types variable value is defined in the agnosticd
+# config due to Jinja templating issue
+# https://github.com/redhat-cop/agnosticd/blob/development\
+# /ansible/configs/ansible-bu-workshop/default_vars.yml
+# -------------------------------------------------------------------
+
+controller_credentials:
+  - name: "Controller Credential"
+    organization: Default
+    credential_type: "Red Hat Ansible Automation Platform"
+    inputs:
+      host: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain_base }}"
+      username: "admin"
+      password: "{{ common_password }}"
+  - name: "Workshop Credential"
+    organization: Default
+    credential_type: "Machine"
+    inputs:
+      username: "ec2-user"
+      ssh_key_data: "{{ lookup('file', hostvars.localhost.ssh_provision_key_path) }}"
+    state: present
+  - name: "registry.redhat.io credential"
+    organization: Default
+    credential_type: "Container Registry"
+    inputs:
+      host: registry.redhat.io
+      username: "seanc@redhat.com"
+      password: "vi0hX86518UEfWhlx%E"
+      verify_ssl: true
+    state: present
+  - name: "Demo Credential"
+    credential_type: "Machine"
+    state: absent
+
+controller_execution_environments:
+  - name: "ripu workshop execution environment"
+    image: "registry.redhat.io/ansible-automation-platform-23/ee-supported-rhel8:1.0.0-208"
+    pull: missing
+    credential: "registry.redhat.io credential"
+    state: present
+
+controller_configuration_projects_async_delay: 30
+controller_projects:
+  - name: Project Leapp
+    organization: Default
+    scm_update_on_launch: true
+    scm_update_cache_timeout: 3600
+    scm_type: git
+    scm_url: https://github.com/redhat-partner-tech/leapp-project
+    scm_branch: main
+    default_environment: "ripu workshop execution environment"
+  - name: "Demo Project"
+    organization: Default
+    state: absent
+
+controller_inventories:
+  - name: "Workshop Inventory"
+    organization: Default
+    state: present
+  - name: "Demo Inventory"
+    organization: Default
+    state: absent
+
+controller_hosts:
+  - name: "{{ groups['bastions'][0].split('.')[0] }}"
+    inventory: "Workshop Inventory"
+    enabled: true
+    state: present
+
+controller_groups:
+  - name: control
+    inventory: "Workshop Inventory"
+    state: present
+    hosts:
+      - "{{ groups['bastions'][0].split('.')[0] }}"
+
+controller_templates:
+  - name: "SETUP / Controller"
+    project: Project Leapp
+    playbook: controller_iac.yml
+    inventory: Workshop Inventory
+    execution_environment: Default execution environment
+    credentials:
+      - Controller Credential
+  - name: "Demo Job Template"
+    organization: Default
+    state: absent
+
+# -------------------------------------------------------------------
+# Role: aap_controller_cert_issue
+# -------------------------------------------------------------------
+enable_letsencyrpt_cert: true
+controller_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Role: vscode-server
+# -------------------------------------------------------------------
+install_vscode_server: true
+vscode_server_install_nginx: false
+vscode_server_ansible_become: true
+vscode_use_automationcontroller_nginx: true
+vscode_user_name: "{{ student_name }}"
+vscode_user_password: "{{ common_password }}"
+vscode_server_default_extensions: []
+vscode_server_extension_urls:
+  - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
+
+# -------------------------------------------------------------------
+# Role: ansible_bu_setup_workshop
+# -------------------------------------------------------------------
+workshop_type: ripu
+workshop_version: 1.0.18
+ansible_bu_setup_workshop_exercise_src: ansible_ripu
+ansible_bu_setup_workshop_exercise_dest: ripu-workshop
+
+ansible_bu_setup_workshop_ee_image:
+  - name: registry.redhat.io/ansible-automation-platform-23/ee-supported-rhel8
+    tag: 1.0.0-208
+  - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-29-rhel8
+    tag: 2.0.0
+  - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-supported-rhel8
+    tag: 2.0.0
+  - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-minimal-rhel8
+    tag: 2.0.0
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  deploy_with: babylon
+  params_to_variables:
+    user: ignore_user
+    username: student_name
+    region: aws_region
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 0F34CC0F-61DE-46FE-B77B-E42D2839CC6F
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    multiuser: false
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Ansible Workshop -  RHEL In-place Upgrade Automation Workshop
+    category: Workshops
+    keywords:
+      - AAP2
+      - ripu
+      - rhel
+      - workshop
+      - ansible
+      - leapp
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Automation
+      Provider: RHDP
+    parameters: []
+  secrets:
+    - name: satellite-rhel8-latest-ha
+      namespace: gpte
+    - name: ansible-tower-advanced-2
+      namespace: gpte
+    - name: output-dir-s3
+      namespace: gpte
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.0.17
+      pull: missing
