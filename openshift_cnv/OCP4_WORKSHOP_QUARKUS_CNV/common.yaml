@@ -1,0 +1,145 @@
+---
+#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog: Workshops
+# --- Catalog Item: OCP4 Quarkus Workshop
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.12.12"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+# -------------------------------------------------------------------
+infra_workloads:
+  - ocp4_workload_authentication
+  - ocp4_workload_le_certificates
+  - ocp4-workload-quarkus-workshop
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+ai_control_plane_cores: >-
+  {{ 8 if worker_instance_count|int <= 10
+  else 16 if worker_instance_count|int <= 20
+  else 32
+  }}
+ai_control_plane_memory: >-
+  {{ '16Gi' if worker_instance_count|int <= 10
+  else '32Gi' if worker_instance_count|int <= 20
+  else '64Gi'
+  }}
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max\
+  \ }}"
+
+bastion_instance_image: rhel-8.4
+
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('3') }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  deploy_with: babylon
+  params_to_variables:
+    username: student_name
+    course_module_list: module_type
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 46638270-3377-4809-857e-72f714dd9ab5
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    multiuser: true
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    parameters:
+      - name: module_type
+        description: Semicolon-seperated list of Modules to Enable
+        formLabel: Module
+        required: true
+        openAPIV3Schema:
+          default: m1;m2;m3
+          type: string
+      - name: num_users
+        description: >-
+          Number of users to provision within the cluster.
+        formLabel: OpenShift User Count
+        openAPIV3Schema:
+          type: integer
+          default: 3
+          minimum: 3
+          maximum: 100
+        validation: >-
+          num_users == 3 ||
+          user_is_admin ||
+          user_groups.includes('rhpds-devs') ||
+          check_salesforce_id(salesforce_id) ||
+          Error('User count greater than one requires a valid SalesForceID.')
+    keywords: []
+    labels:
+      Provider: Hybrid_Platform_BU
+      Product: Red_Hat_Runtimes
+      Product_Family: Red_Hat_Application_Services
+      Use_Case: Accelerate_Application_Development_And_Delivery
+    display_name: Quarkus on OpenShift workshop
+    category: Workshops
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.0.18
+      pull: missing
+  secrets:
+    - name: ocp4-token
+      namespace: gpte
+    - name: satellite-rhel81-ha
+      namespace: gpte
+    - name: output-dir-s3
+      namespace: gpte
+    - name: ocp4_ai_offline_token
+      namespace: gpte
+    - name: openshift_cnv_ocpv01
+      namespace: gpte
+    - name: dynamic-dns
+      namespace: gpte
