@@ -153,6 +153,24 @@ def check_tag_var(c,ci):
                     )
     return True
 
+def check_sandbox_api(c, ci):
+    '''Ensure catalog item is using the sandbox API'''
+
+    if c.get('__meta__', {}).get('aws_sandboxed', False):
+        secrets = c.get('__meta__', {}).get('secrets', [])
+
+        for secret in secrets:
+            if secret.get('name', '') == 'sandbox-api':
+                return True
+
+    raise ValueError(
+        '''catalog item has aws_sandboxed set to true
+        but doesn't have the sandbox API secret.
+
+        Please add the following to the catalog item:
+        #include /includes/aws-sandbox-meta.yaml
+        ''')
+
 virtualenv_check_result = {}
 exeenv_check_result = {}
 def check_virtualenv(c, ci):
@@ -318,7 +336,18 @@ for ci in catalog_items:
     ci_object = yaml.safe_load(process_ci.stdout)
     passed = True
     exceptions = {}
-    for f in [check_double_booking,check_name,check_tag_var,check_valid_agv_tag,check_valid_babylon_tag,check_anarchy_namespace,check_virtualenv,check_ee, check_duplicate_directories,check_asset_uuid]:
+    for f in [
+            check_double_booking,
+            check_name,
+            check_tag_var,
+            check_valid_agv_tag,
+            check_valid_babylon_tag,
+            check_anarchy_namespace,
+            check_virtualenv,
+            check_ee,
+            check_duplicate_directories,
+            check_asset_uuid,
+            check_sandbox_api]:
         try:
             if not f(ci_object,ci):
                 passed = False
