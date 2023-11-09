@@ -163,13 +163,14 @@ def check_sandbox_api(c, ci):
             if secret.get('name', '') == 'sandbox-api':
                 return True
 
-    raise ValueError(
-        '''catalog item has aws_sandboxed set to true
-        but doesn't have the sandbox API secret.
-
-        Please add the following to the catalog item:
-        #include /includes/aws-sandbox-meta.yaml
-        ''')
+        raise ValueError(
+            '''catalog item has aws_sandboxed set to true
+            but doesn't have the sandbox API secret.
+    
+            Please add the following to the catalog item:
+            #include /includes/aws-sandbox-meta.yaml
+            ''')
+    return True
 
 virtualenv_check_result = {}
 exeenv_check_result = {}
