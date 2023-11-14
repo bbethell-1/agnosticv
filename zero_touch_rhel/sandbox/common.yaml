@@ -1,0 +1,105 @@
+---
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+# TODO: Move to new config zero-touch-base-rhel
+
+env_type: zero-touch-base-rhel
+cloud_provider: openshift_cnv
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: ZEROTOUCH
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+
+use_content_view: true
+update_packages: true      # Do you want to run a full yum update
+
+agd_bastion_packages:
+  - at
+  - bash-completion
+  - bind-utils
+  - git
+  - podman
+  - buildah
+  - python3-pip
+  - tmux
+  - vim-enhanced
+  - wget
+
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+
+repo_method: satellite
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+
+showroom_git_repo: https://github.com/rhpds/rhel_zero_sandbox
+showroom_ui: zero-touch
+
+showroom_showroom_default_ssh_user: root
+showroom_enable_root_ssh: true
+showroom_ssh_method: sshkey
+showroom_lab_users:
+  - "{{ showroom_showroom_default_ssh_user }}"
+
+showroom_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Role: zero_touch_rhel_user
+# -------------------------------------------------------------------
+
+zero_touch_rhel_user_user_name: rhel
+zero_touch_rhel_user_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: 8196625D-61FB-4ABA-A765-9B5A2299BAA6
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: RHEL Open Environment (Sandbox)
+    category: Demos
+    keywords:
+      - rhel
+      - rhel9
+      - zero-touch
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: Red_Hat_Demo_Platform
+    multiuser: false
+    parameters: []
+  secrets:
+    - name: satellite-rhel-8-and-9-latest-ha
+      namespace: gpte
+    - name: output-dir-s3
+      namespace: gpte
+    - name: openshift_cnv_ocpv01
+      namespace: gpte
+    - name: dynamic-dns
+      namespace: gpte
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
