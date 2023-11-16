@@ -8,6 +8,7 @@
 #include /includes/lifetime-standard.yaml
 #include /includes/parameters/aws-region.yaml
 #include /includes/parameters/open-environment-annotation.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
 
 # -------------------------------------------------------------------
 # Red Hat Summit 2021
@@ -69,7 +70,7 @@ infra_workloads:
 - ocp4_workload_le_certificates
 - ocp4_workload_project_request_template
 - ocp-workload-terminal
-- ocp4_workload_rhods_olm
+- ocp4_workload_rhods_self_managed
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhods_olm
@@ -78,24 +79,27 @@ become_override: false
 ocp_username: opentlc-mgr
 silent: false
 
-ocp4_workload_rhods_olm_install_operator_name: "rhods-operator"
-ocp4_workload_rhods_olm_channel_name: "rhods-operator"
-ocp4_workload_rhods_olm_operator_subscription_channel: "beta"
-ocp4_workload_rhods_olm_channel: "beta"
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhods_self_managed
+# -------------------------------------------------------------------
+ocp4_workload_rhods_self_managed_operator_group_name: "rhods-ods-operator"
+ocp4_workload_rhods_self_managed_operator_name: "rhods-operator"
+ocp4_workload_rhods_self_managed_namespace: "redhat-ods-operator"
+ocp4_workload_rhods_self_managed_channel: "stable"
+ocp4_workload_rhods_self_managed_catalogsource_setup: false
+ocp4_workload_rhods_self_managed_installPlanApproval: "Automatic"
+ocp4_workload_rhods_self_managed_source: "redhat-operators"
+ocp4_workload_rhods_self_managed_sourceNamespace: "openshift-marketplace"
+ocp4_workload_rhods_self_managed_csv_nameprefix: "rhods-operator"
+ocp4_workload_rhods_self_managed_startingCSV: "rhods-operator.1.28.1"
+ocp4_workload_rhods_self_managed_namespace_list:
+- "{{ ocp4_workload_rhods_self_managed_namespace }}"
+ocp4_workload_rhods_self_managed_applications_namespace: "redhat-ods-applications"
+ocp4_workload_rhods_self_managed_is_workshop: false
+ocp4_workload_rhods_self_managed_workshop_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_rhods_self_managed_workshop_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_rhods_self_managed_workshop_password: "{{ ocp4_workload_authentication_htpasswd_user_password }}"
 
-ocp4_workload_rhods_olm_odh_namespace: "redhat-ods-operator"
-ocp4_workload_rhods_olm_applications_namespace: "redhat-ods-applications"
-ocp4_workload_rhods_olm_monitoring_namespace: "redhat-ods-monitoring"
-
-ocp4_workload_rhods_olm_namespace_list:
-- "{{ ocp4_workload_rhods_olm_applications_namespace }}"
-- "{{ ocp4_workload_rhods_olm_monitoring_namespace }}"
-
-ocp4_workload_rhods_olm_catalogsource_name: "addon-managed-odh-catalog"
-ocp4_workload_rhods_olm_catalogsource_namespace: "{{ ocp4_workload_rhods_olm_odh_namespace }}"
-ocp4_workload_rhods_olm_catalogsource_display_name: "Managed Open Data Hub Operator"
-
-ocp4_workload_rhods_olm_starting_csv: ""
 
 # used when you are conducting a workshop
 # will cause user data to be output
@@ -104,8 +108,10 @@ ocp4_workload_rhods_olm_starting_csv: ""
 #ocp4_workload_rhods_olm_workshop_username_base: "users"
 #ocp4_workload_rhods_olm_workshop_password: "openshift"
 
-ocp4_workload_rhods_olm_catalog_snapshot_image: "quay.io/modh/qe-catalog-source"
-ocp4_workload_rhods_olm_catalog_snapshot_image_tag: "v180-14"
+# Workload variables #
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.12_2023_07_03
+
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -122,9 +128,7 @@ ocp4_workload_authentication_htpasswd_user_password: openshift
 
 # Create number of htpasswd users
 ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('2')) | int }}"
-ocp4_workload_rhods_olm_workshop_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
-ocp4_workload_rhods_olm_workshop_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
-ocp4_workload_rhods_olm_workshop_password: "{{ ocp4_workload_authentication_htpasswd_user_password }}"
+
 
 # Remove the standard kubeadmin user
 ocp4_workload_authentication_remove_kubeadmin: true
@@ -145,6 +149,8 @@ student_sudo: true
 # --- Student Workloads (YAML List)
 student_workloads: []
 
+# OpenShift Data Science git repo version.
+rhods_git_repo_version: 0.1
 # -------------------------------------------------------------------
 # AgnosticV meta variables
 # -------------------------------------------------------------------
@@ -189,8 +195,9 @@ __meta__:
         check_salesforce_id(salesforce_id) ||
         Error('User count greater than one requires a valid SalesForceID.')
   deployer:
-    scm_ref: development
-    virtualenv: ansible2.9-python3.6-2021-11-30
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.1
+      pull: missing
   owners:
   - email: ejacobs@redhat.com
     name: Erik Jacobs ejacobs@redhat.com
