@@ -1,23 +1,25 @@
 ---
+#include /includes/aws-sandbox-meta.yaml
 #include /includes/catalog-icon-rhel.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/lifetime-standard.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-region.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel92.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-# TODO: Move to new config zero-touch-base-rhel
-
 env_type: zero-touch-base-rhel
-cloud_provider: openshift_cnv
 
 # -------------------------------------------------------------------
 # Platform
 # -------------------------------------------------------------------
 platform: ZEROTOUCH
+  # bastion_public_hostname: "bastion.{{ guid }}.{{ sandbox_zone }}"
 
 # -------------------------------------------------------------------
 # Instance Config
@@ -27,18 +29,46 @@ use_content_view: true
 update_packages: true      # Do you want to run a full yum update
 
 agd_bastion_packages:
+
   - at
   - bash-completion
   - bind-utils
   - git
   - podman
   - buildah
-  - python3-pip
   - tmux
   - vim-enhanced
   - wget
 
+rhel9_instance_image: RHEL92GOLD-latest
+rhel9_instance_type: "t3a.small"
+rootfs_size_rhel9: 40
+
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+instances:
+  - name: "rhel9"
+    count: 1
+    unique: true
+    public_dns: true
+    floating_ip: true
+    image: "{{ rhel9_instance_image }}"
+    flavor:
+      ec2: "{{ rhel9_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_rhel9 }}"
+    volumes:
+      - device_name: "/dev/xvdb"
+        size: "20"
+        type: gp3
+    security_groups:
+      - BastionSG
+      - WebSG
+      - ShowroomSG
 
 # -------------------------------------------------------------------
 # Role: set-repositories
@@ -50,51 +80,54 @@ repo_method: satellite
 # Role: showroom
 # -------------------------------------------------------------------
 
-showroom_git_repo: https://github.com/rhpds/showroom_template_zero.git
-showroom_ui: zero-touch
-showroom_ssh_method: sshkey
-showroom_lab_users:
-  - rhel
+showroom_git_repo: https://github.com/rhpds/testcase_zero_touch_showroom
+showroom_enable_root_ssh: true
+showroom_theme: zero
 
 # -------------------------------------------------------------------
-# Role: zero_touch_rhel_user_user_name
+# Role: common
 # -------------------------------------------------------------------
 
-zero_touch_rhel_user_user_name: rhel
-zero_touch_rhel_user_user_password: "{{ common_password }}"
+student_name: rhel
+student_password: "{{ common_password }}"
+ansible_service_account_user_password: "{{ common_password }}"
+ansible_service_account_user_preferred_python: "3.9"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 
 __meta__:
-  asset_uuid: B6A7D454-9412-4842-A705-77A4D1C4F7B4
+  asset_uuid: 4B51109C-D305-4B05-A63D-87291CDD0FB1
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: Demo Zero Touch Showroom Template
-    category: Demos
+    display_name: TestCase Zero Touch - a test CI for testing new features
+    category: Labs
     keywords:
       - rhel
       - rhel9
-      - showroom
+      - zero_touch
+      - test
     labels:
+      Owner: RHEL_BU
       Product: Red_Hat_Enterprise_Linux
       Product_Family: Red_Hat_Enterprise_Linux
       Provider: Red_Hat_Demo_Platform
     multiuser: false
     parameters: []
-  secrets:
-    - name: satellite-rhel-8-and-9-latest-ha
-      namespace: gpte
-    - name: output-dir-s3
-      namespace: gpte
-    - name: openshift_cnv_ocpv01
-      namespace: gpte
-    - name: dynamic-dns
-      namespace: gpte
+  secrets: []
   deployer:
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:v0.1.0
       pull: missing
+  lifespan:
+    default: 1h
+    maximum: 2h
+    relativeMaximum: 1h
+  access_control:
+    allow_groups:
+      - babylon-admins
+      - babylon-devs
+      - rhpds-devs
