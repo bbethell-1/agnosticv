@@ -31,7 +31,7 @@ platform: RHPDS
 # -------------------------------------------------------------------
 # OpenShift Version
 # -------------------------------------------------------------------
-ocp4_installer_version: "4.13"
+ocp4_installer_version: "4.14"
 
 # -------------------------------------------------------------------
 # Repos
@@ -54,7 +54,7 @@ student_sudo: true
 # -------------------------------------------------------------------
 # AWS Specific
 # -------------------------------------------------------------------
-master_instance_type: m5a.2xlarge
+master_instance_type: m5a.4xlarge
 master_instance_count: 3
 master_storage_type: io1
 master_storage_size: 150
@@ -100,10 +100,6 @@ instances:
   networks:
   - external
   - internalapi
-  - storage
-  - tenant
-  - storageMgmt
-  - ctlplane
   security_groups:
   - BastionSG
 
@@ -129,10 +125,6 @@ instances:
   networks:
   - external
   - internalapi
-  - storage
-  - tenant
-  - storageMgmt
-  - ctlplane
   security_groups:
   - BastionSG
 
@@ -148,17 +140,6 @@ networks:
   allocation_start: 10.0.0.100
   allocation_end: 10.0.0.250
 
-- name: ctlplane
-  subnet_cidr: 192.168.122.0/24
-  enable_dhcp: False
-  shared: "false"
-  gateway_ip: 10.20.0.1
-  dns_nameservers: [8.8.8.8]
-  create_router: False
-  router_network: external
-  allocation_start: 192.168.122.100
-  allocation_end: 192.168.122.250
-
 - name: internalapi
   shared: "false"
   subnet_cidr: 172.17.0.0/24
@@ -169,42 +150,14 @@ networks:
   allocation_start: 172.17.0.100
   allocation_end: 172.17.0.250
 
-- name: storage
-  shared: "false"
-  subnet_cidr: 172.18.0.0/24
-  enable_dhcp: False
-  gateway_ip: 0.0.0.0
-  dns_nameservers: []
-  create_router: false
-  allocation_start: 172.18.0.100
-  allocation_end: 172.18.0.250
-
-- name: tenant
-  shared: "false"
-  subnet_cidr: 172.19.0.0/24
-  enable_dhcp: False
-  gateway_ip: 0.0.0.0
-  dns_nameservers: []
-  create_router: false
-  allocation_start: 172.19.0.100
-  allocation_end: 172.19.0.250
-
-- name: storageMgmt
-  shared: "false"
-  subnet_cidr: 172.20.0.0/24
-  enable_dhcp: False
-  gateway_ip: 0.0.0.0
-  dns_nameservers: []
-  create_router: false
-  allocation_start: 172.20.0.100
-  allocation_end: 172.20.0.250
-
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 # --- Infra Workloads (YAML List)
 infra_workloads:
 - ocp4_workload_authentication
+- ocp4_workload_openshift_data_foundation
+- ocp4_workload_quay_operator
 - ocp4_workload_le_certificates
 
 # --- Student Workloads (YAML List)
@@ -224,6 +177,126 @@ ocp4_workload_authentication_htpasswd_user_password: ""
 ocp4_workload_authentication_htpasswd_user_password_length: 16
 ocp4_workload_authentication_htpasswd_user_count: 2
 ocp4_workload_authentication_remove_kubeadmin: true
+
+# -----------------------------------
+# OpenShift Data Foundations Operator
+# -----------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.14
+ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
+ocp4_workload_openshift_data_foundation_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: v4.14_2023_11_20
+
+# --------------------------------
+# Storage System parameters
+# --------------------------------
+ocp4_workload_openshift_data_foundation_ceph_storage_class_name: gp3-csi
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 500Gi
+
+# Install Ceph Toolbox
+ocp4_workload_openshift_data_foundation_install_toolbox: false
+
+# --------------------------------
+# Storage Classes
+# --------------------------------
+ocp4_workload_openshift_data_foundation_update_default_storage_class: false
+ocp4_workload_openshift_data_foundation_old_default_storage_class_name: gp2
+ocp4_workload_openshift_data_foundation_new_default_storage_class_name: ocs-storagecluster-ceph-rbd
+
+# --------------------------------
+# Tolerations for ODF Pods
+# --------------------------------
+ocp4_workload_openshift_data_foundation_tolerations: []
+# ocp4_workload_openshift_data_foundation_tolerations:
+# - key: metal
+#   operator: Exists
+
+# --------------------------------
+# Quay Operator
+# --------------------------------
+
+# Install the Quay Operator
+ocp4_workload_quay_operator_install_operator: true
+
+# Operator channel to subscribe to
+ocp4_workload_quay_operator_channel: "stable-3.8"
+
+# Set automatic InstallPlan approval. If set to false it is also suggested
+# to set the starting_csv to pin a specific version
+# This variable has no effect when using a catalog snapshot (always true)
+ocp4_workload_quay_operator_automatic_install_plan_approval: true
+
+# Set a starting ClusterServiceVersion.
+# Recommended to leave empty to get latest in the channel when not using
+# a catalog snapshot.
+# Highly recommended to be set when using a catalog snapshot but can be
+# empty to get the latest available in the channel at the time when
+# the catalog snapshot got created.
+ocp4_workload_quay_operator_starting_csv: ""
+#ocp4_workload_quay_operator_starting_csv: "quay-operator.v3.6.2"
+
+# --------------------------------
+# Operator Catalog Snapshot Settings
+# --------------------------------
+# See https://github.com/redhat-cop/agnosticd/blob/development/docs/Operator_Catalog_Snapshots.adoc
+# for instructions on how to set up catalog snapshot images
+# --- Workload Configuration
+ocp4_workload_quay_operator_project: "quay-{{ guid }"
+
+# Use a catalog snapshot
+ocp4_workload_quay_operator_use_catalog_snapshot: true
+
+# Catalog Source Name when using a catalog snapshot. This should be unique
+# in the cluster to avoid clashes
+ocp4_workload_quay_operator_catalogsource_name: redhat-operators-snapshot-quay-operator
+
+# Catalog snapshot image
+ocp4_workload_quay_operator_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+
+# Catalog snapshot image tag
+ocp4_workload_quay_operator_catalog_snapshot_image_tag: "v4.14_2023_11_20"
+
+# ----------------------
+# QuayRegistry
+# ----------------------
+
+# Install a Quay Registry
+ocp4_workload_quay_operator_registry_install: true
+
+# Namespace to install the QuayRegistry into
+ocp4_workload_quay_operator_registry_namespace: quay-osp
+
+# Name of the Quay Registry
+ocp4_workload_quay_operator_registry_name: quay
+
+# Quay Route. Can be overwritten with a fully qualified hostname.
+# When empty the route will be quay-{{guid}}.basedomain
+ocp4_workload_quay_operator_registry_route: ""
+
+ocp4_workload_quay_operator_registry_display_name: "Red Hat Product Demo System Quay"
+
+# Quay Admin User
+ocp4_workload_quay_operator_registry_configure_admin: true
+ocp4_workload_quay_operator_registry_admin_user: quayadmin
+
+# Set password for admin user.
+# If the password is not specified or empty it will be generated with length specified
+# in {{ ocp4_workload_quay_operator_registry_admin_password_length }}
+ocp4_workload_quay_operator_registry_admin_password: "quaypass"
+
+
+# Quay Registry Features
+ocp4_workload_quay_operator_registry_enable_clair: true
+ocp4_workload_quay_operator_registry_enable_hpa: false
+ocp4_workload_quay_operator_registry_enable_mirror: false
+ocp4_workload_quay_operator_registry_enable_monitoring: false
+
+# ---------------------------------------
+# Internal variables. Don't set or change
+# ---------------------------------------
+#_ocp4_workload_quay_operator_registry_route: ""
+#_ocp4_workload_quay_operator_registry_admin_password: ""
+#_ocp4_workload_quay_operator_registry_admin_token: ""
 
 # -------------------------------------------------------------------
 # Babylon meta variables
