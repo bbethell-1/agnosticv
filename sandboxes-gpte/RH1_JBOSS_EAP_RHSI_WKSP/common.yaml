@@ -1,0 +1,254 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-3regions.yaml
+#include /includes/parameters/ocp4-fips-enable.yaml
+#include /includes/parameters/num-users-salesforce.yaml
+#include /includes/parameters/agnosticd_open_environment.yaml
+#include /includes/parameters/controlplane-count.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.13.1"
+ocp4_installer_use_dev_preview: false
+
+# ocp4_installer_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp/fast-4.13/openshift-install-linux.tar.gz
+# ocp4_client_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp/fast-4.13/openshift-client-linux.tar.gz
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Common Packges for RHEL9
+# -------------------------------------------------------------------
+install_common: true  
+common_packages_el9:
+  - python3
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - httpd-tools
+  - podman
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Student Workloads ([] means no student workloads)
+# -------------------------------------------------------------------
+studentvm_roles:
+# Set up the OpenShift 4 CLI tools (oc, odo, helm, tkn, kn, ...)
+- studentvm_ocp4
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_password: "{{ common_password }}"
+student_sudo: true
+
+# -------------------------------------------------------------------
+# AWS Specific
+# -------------------------------------------------------------------
+worker_storage_type: gp3
+bastion_instance_image: RHEL91GOLD-latest
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_le_certificates
+- ocp4_workload_authentication
+- ocp4_workload_project_request_template
+- ocp4_workload_opentlc_production
+- ocp4_workload_gitea_operator
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.1
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.20.1"
+ocp4_workload_gitea_operator_project: gitea
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 2Gi
+ocp4_workload_gitea_operator_postgresql_volume_size: 2Gi
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_disable_registration: false
+ocp4_workload_gitea_operator_enable_captcha: false
+ocp4_workload_gitea_operator_allow_create_organization: true
+ocp4_workload_gitea_operator_register_email_confirm: false
+ocp4_workload_gitea_operator_enable_notify_email: false
+ocp4_workload_gitea_operator_mailer_enabled: false
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: dev-admin
+ocp4_workload_gitea_operator_admin_email: dev-admin@opentlc.com
+ocp4_workload_gitea_operator_admin_password: openshift
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: 1
+ocp4_workload_gitea_operator_generate_user_format: dev-user
+ocp4_workload_gitea_operator_user_password: openshift
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/redhat-gpte-devopsautomation/globex-ui.git
+  name: globex-ui
+  private: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: dev-admin
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_password: openshift
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+ocp4_workload_authentication_htpasswd_user_base: dev-user
+# Generate user password
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_opentlc_production
+# -------------------------------------------------------------------
+ocp4_workload_opentlc_production_remove_self_provisioner: false
+
+
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  deploy_with: babylon
+  params_to_variables:
+    username: student_name
+
+# -------------------------------------------------------------------
+# Security group
+# -------------------------------------------------------------------
+security_groups:
+- name: BastionSG
+  rules:
+  - name: BasSSHPublic
+    description: "SSH public"
+    from_port: 22
+    to_port: 22
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: BasHTTPPublic
+    description: "HTTP public for Let's Encrypt verification"
+    from_port: 80
+    to_port: 80
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: ShowroomPublic
+    description: "Showroom public"
+    from_port: 443
+    to_port: 443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 5cc8bca3-a87d-486e-8762-2f00de6dc7ae
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "JBoss & Fuse with OpenShift & RH Interconnect" 
+    category: Workshops
+    keywords:
+    - workshop
+    - openshift
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+      Featured_Score: '67'
+    multiuser: true
+    parameters:
+    - name: master_instance_type
+      description: OpenShift compute master instance type
+      formLabel: Control Plane Instance Type
+      openAPIV3Schema:
+        type: string
+        default: m5.xlarge
+        enum:
+        - m5.xlarge
+        - m5.2xlarge
+        - m5.4xlarge
+        - m5.8xlarge
+
+    - name: worker_instance_count
+      description: OpenShift compute worker instance count
+      formLabel: Compute Instance Count
+      openAPIV3Schema:
+        type: integer
+        default: 3
+        minimum: 0
+        maximum: 12
+
+    - name: worker_instance_type
+      description: OpenShift compute worker instance type
+      formLabel: Compute Instance Type
+      openAPIV3Schema:
+        type: string
+        default: m5.8xlarge
+        enum:
+        - m5.xlarge
+        - m5.2xlarge
+        - m5.4xlarge
+        - m5.8xlarge
