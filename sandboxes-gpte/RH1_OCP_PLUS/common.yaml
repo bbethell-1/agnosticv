@@ -1,0 +1,212 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/open-environment-annotation.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog: Red Hat One Lab
+# --- Catalog Item: OpenShift Platform Plus:
+#                   A Security-Focused, Multi-Cluster
+#                   Kubernetes Solution
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+#-------------------------------------------------------------------
+#VM configuration
+#-------------------------------------------------------------------
+master_instance_type: m6a.2xlarge
+master_instance_count: 3
+master_storage_type: gp3
+master_storage_size: 250
+worker_instance_type: m6a.2xlarge
+worker_instance_count: 3
+worker_storage_type: gp3
+worker_storage_size: 250
+bastion_instance_type: t3a.medium
+bastion_instance_image: RHEL92GOLD-latest
+
+agnosticd_aws_capacity_reservation_enable: true
+agnosticd_aws_capacity_reservation_single_zone: true
+host_ocp4_installer_set_user_data_kubeadmin_password: true
+
+#-------------------------------------------------------------------
+#OpenShift Installer Version
+#-------------------------------------------------------------------
+ocp4_installer_version: "4.14"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# Other variables
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+WORKSHOP_FILE: workshop-summit.yaml
+HOMEROOM_IMAGE: ocp4-dev
+
+requirements_content:
+  collections:
+  - name: kubernetes.core
+    version: 2.4.0
+  - name: amazon.aws
+    version: 6.3.0
+  - name: community.general
+    version: 7.1.0
+  - name: ansible.posix
+    version: 1.5.4
+  - name: community.crypto
+    version: 2.14.0
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+# -------------------------------------------------------------------
+
+infra_workloads:
+- ocp4-workload-workshop-admin-storage
+- studentvm_ocp4
+- ocp4_workload_pipelines
+- ocp4_workload_rhacs
+- ocp4_workload_le_certificates
+- ocp4_workload_rhacm
+- ocp4_workload_rhacm_hypershift
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+# --- Student User on Bastion
+install_student_user: true
+# --- student_name not set -> Requestor User ID is used as student_name
+student_name: demo-user
+# --- student_password not set -> generate random password
+student_password: "{{ common_password }}"
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# Enable if the item is being deployed to a sandbox account
+# and you want credentials provided to the user
+sandbox_student_user: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: cluster-mgr
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('1') }}"
+ocp4_workload_authentication_remove_kubeadmin: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacm
+# -------------------------------------------------------------------
+ocp4_workload_rhacm_acm_channel: "release-2.9"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacm_hypershift
+# -------------------------------------------------------------------
+ocp4_workload_rhacm_hypershift_deploy_clusters:
+- name: development
+  infra_id: "dev-{{ guid }}"
+  ocp_release: 4.14.3
+  region: us-west-2
+  zones:
+  - us-west-2a
+  control_plane_availability: SingleReplica
+  infra_availability: SingleReplica
+  etcd_storage_class: gp3-csi
+  nodepool_replicas: 1
+  worker_instance_type: m6a.2xlarge
+  root_volume_type: gp3
+  root_volume_size: 120
+  labels:
+    rhdp_type: sandbox
+    rhdp_usage: development
+    guid: "{{ guid }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_pipelines
+# -------------------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.12
+ocp4_workload_pipelines_tkn_version: 0.41.0
+ocp4_workload_pipelines_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacs
+# -------------------------------------------------------------------
+ocp4_workload_rhacs_install_operator_namespace: "rhacs-operator"
+ocp4_workload_rhacs_install_operator_channel: "rhacs-4.0"
+ocp4_workload_rhacs_install_operator_use_catalog_snapshot: false
+ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 34ca255c-9fbb-4ad3-abc9-85440c6b11a5
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    parameters:
+    - name: aws_region
+      description: AWS Region to Provision Environment.
+      formLabel: Region
+      required: true
+      openAPIV3Schema:
+        type: string
+        default: us-east-1
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Red Hat One - OpenShift Platform Plus: A Security-Focused, Multi-Cluster Kubernetes Solution"
+    category: Workshops
+    keywords:
+    - workshop
+    - openshift
+    - ocp
+    - rhacm
+    - rhacs
+    - admin
+    - storage
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: Hybrid_Platform_BU
+    multiuser: false
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
