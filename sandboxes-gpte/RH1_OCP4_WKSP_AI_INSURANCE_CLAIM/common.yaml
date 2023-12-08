@@ -43,10 +43,19 @@ bastion_instance_type: t3.medium
 #bastion_instance_image: RHEL84GOLD-latest
 bastion_instance_image: RHEL91GOLD-latest
 
+# Workload variables #
+ocp4_workload_user_base: user
+ocp4_workload_user_count: "{{ num_users }}"
+ocp4_workload_multi_user: "{{ true if num_users | int > 1 else false }}"
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.13_2023_11_20
+
 # -------------------------------------------------------------------
 # Common Password
 # -------------------------------------------------------------------
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: openshift
 
 # -------------------------------------------------------------------
 # Security group
@@ -149,18 +158,28 @@ infra_workloads:
   - ocp4_workload_authentication # all segments
   - ocp4_workload_machinesets
   - ocp4_workload_nvidia_gpu_setup
+  - ocp4_workload_openshift_data_foundation
   - ocp4_workload_pipelines
   - ocp4_workload_openshift_gitops
   - ocp4_workload_gitea_operator
   - ocp4_workload_serverless
+  - ocp4_workload_ossm
   - ocp4_workload_rhods_self_managed
   - ocp4_workload_web_terminal
   - ocp4_workload_le_certificates # all segments
   - ocp4_workload_showroom
 
-# Workload variables #
-ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.12_2023_07_03
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: "{{ ocp4_workload_user_base }}"
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ ocp4_workload_user_count }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_machinesets
@@ -211,6 +230,50 @@ nvidia_gpu_operator_catalogsource_name: ""
 nvidia_gpu_operator_catalog_snapshot_image: ""
 nvidia_gpu_operator_catalog_snapshot_image_tag: ""
 
+# -----------------------------------
+# OpenShift Data Foundations Operator
+# -----------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.13
+ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
+ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_openshift_data_foundation_ceph_storage_class_name: gp3-csi
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 500Gi
+
+# Install Ceph Toolbox
+ocp4_workload_openshift_data_foundation_install_toolbox: false
+
+# --------------------------------
+# Storage Classes
+# --------------------------------
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_new_default_storage_class_name: ocs-storagecluster-ceph-rbd
+
+# -------------------------------------------------------------------
+# Workload ocp4_workload_ossm - Service Mesh
+# -------------------------------------------------------------------
+ocp4_workload_ossm_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_ossm_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# Elasticsearch
+ocp4_workload_ossm_es_channel: stable
+ocp4_workload_ossm_es_startingcsv: ""
+
+# Jaeger
+ocp4_workload_ossm_jaeger_channel: stable
+ocp4_workload_ossm_jaeger_startingcsv: ""
+
+# Kiali
+ocp4_workload_ossm_kiali_channel: stable
+ocp4_workload_ossm_kiali_startingcsv: ""
+
+# Service Mesh
+ocp4_workload_ossm_servicemesh_channel: stable
+ocp4_workload_ossm_servicemesh_startingcsv: ""
+
+ocp4_workload_rhsso_starting_csv: rhsso-operator.7.6.3-opr-002
+
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhods_self_managed
 # -------------------------------------------------------------------
@@ -253,7 +316,7 @@ ocp4_workload_le_certificates_wait_after_cert_setup: 12
 # ---------------------------------------------------------
 # Workload: ocp4_workload_pipelines
 # ---------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.10
+ocp4_workload_pipelines_channel: pipelines-1.11
 
 ocp4_workload_pipelines_use_catalog_snapshot: true
 ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
@@ -262,12 +325,45 @@ ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsou
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: stable
-ocp4_workload_openshift_gitops_pipelines_csv_prefix: openshift-pipelines-operator-rh
+ocp4_workload_openshift_gitops_channel: gitops-1.9
+
 ocp4_workload_openshift_gitops_use_catalog_snapshot: true
-ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
-ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.12_2023_02_20
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+ocp4_workload_openshift_gitops_ignore_differences: |
+  resourceIdentifiers:
+  - group: jaegertracing.io
+    kind: Jaeger
+    customization:
+      jsonPointers:
+      - /spec/strategy
+  - group: apps
+    kind: Deployment
+    customization:
+      jqPathExpressions:
+      - .spec.template.spec.containers[] | select(.name == "redis")
 
 # -------------------------------------------------------------------
 # Role: ocp4_workload_showroom
@@ -301,8 +397,6 @@ ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
 ocp4_workload_gitea_operator_gitea_image_tag: 1.20.0
 ocp4_workload_gitea_operator_name: gitea
 ocp4_workload_gitea_operator_gitea_hostname: gitea
-ocp4_workload_gitea_operator_gitea_volume_size: 2Gi
-ocp4_workload_gitea_operator_postgresql_volume_size: 2Gi
 ocp4_workload_gitea_operator_ssl_route: true
 ocp4_workload_gitea_operator_gitea_image_pull_policy: IfNotPresent
 ocp4_workload_gitea_operator_postgresql_image_pull_policy: IfNotPresent
@@ -321,6 +415,14 @@ ocp4_workload_gitea_operator_create_admin: true
 ocp4_workload_gitea_operator_admin_user: opentlc-mgr
 ocp4_workload_gitea_operator_admin_email: opentlc-mgr@opentlc.com
 ocp4_workload_gitea_operator_admin_password: openshift
+
+# PVC size for Gitea, empty storage class uses default storage class
+ocp4_workload_gitea_operator_gitea_volume_size: 10Gi
+ocp4_workload_gitea_operator_gitea_volume_storage_class: 'gp3-csi'
+
+# PVC size for PostgreSQL, empty storage class uses default storage class
+ocp4_workload_gitea_operator_postgresql_volume_size: 10Gi
+ocp4_workload_gitea_operator_postgresql_volume_storage_class: 'gp3-csi'
 
 ocp4_workload_gitea_operator_create_users: true
 ocp4_workload_gitea_operator_user_number: 1
@@ -389,10 +491,8 @@ __meta__:
         formLabel: Worker Node Instance Count
         openAPIV3Schema:
           type: integer
-          default: 2
+          default: 4
           enum:
-            - 1
-            - 2
             - 3
             - 4
             - 5
