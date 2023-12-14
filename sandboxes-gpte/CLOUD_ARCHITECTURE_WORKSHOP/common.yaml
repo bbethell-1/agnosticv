@@ -16,7 +16,11 @@
 # -------------------------------------------------------------------
 env_type: ocp4-cluster
 software_to_deploy: openshift4
-ocp4_installer_version: "4.12.12"
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.14"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 
 # -------------------------------------------------------------------
@@ -33,6 +37,7 @@ update_packages: true
 # -------------------------------------------------------------------
 # AWS Specific
 # -------------------------------------------------------------------
+master_instance_count: 3
 master_instance_type_family: m5
 master_instance_type_size: >-
   {{ 'xlarge' if worker_instance_count|int <= 10
@@ -47,7 +52,7 @@ master_storage_type: >-
 worker_instance_type: "m5.4xlarge"
 worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max\
   \ }}"
-worker_storage_type: "gp2"
+worker_storage_type: "gp3"
 bastion_instance_image: RHEL84GOLD-latest
 
 # -------------------------------------------------------------------
@@ -72,11 +77,16 @@ infra_workloads:
 student_workloads: []
 
 # -------------------------------------------------------------------
+# Common Admin Password
+# -------------------------------------------------------------------
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
 ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_admin_user: opentlc-mgr
-ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
 ocp4_workload_authentication_htpasswd_user_base: user
 ocp4_workload_authentication_htpasswd_user_password: openshift
 ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
@@ -109,8 +119,8 @@ __meta__:
     namespace: babylon-anarchy-sandboxes-gpte
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: OpenShift and App Services - a cloud architecture workshop
-    category: Demos
+    display_name: OpenShift and App Services - Cloud Architectures Workshop
+    category: Workshops
     keywords:
     - workshop
     - openshift
