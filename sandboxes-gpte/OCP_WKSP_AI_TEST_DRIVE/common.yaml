@@ -92,9 +92,12 @@ ocp4_installer_version: "4.13.9"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 master_instance_count: 3
 master_instance_type: m5.2xlarge
-worker_instance_count: 2
-worker_instance_type: m5.2xlarge
-
+worker_instance_count: 3
+worker_instance_type: m5.4xlarge
+openshift_machineset_aws_zones:
+  - "{{ instance_zone_a }}"
+  - "{{ instance_zone_b }}"
+  - "{{ instance_zone_c }}"
 # -------------------------------------------------------------------
 # OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
 # instead of cluster-{{ guid }}.{{ guid }}.sandboxXXX.opentlc.com
@@ -164,7 +167,7 @@ infra_workloads:
   - ocp4_workload_gitea_operator
   - ocp4_workload_serverless
   - ocp4_workload_ossm
-  - ocp4_workload_rhods_self_managed
+  - ocp4_workload_openshift_ai
   - ocp4_workload_web_terminal
   - ocp4_workload_le_certificates # all segments
   - ocp4_workload_showroom
@@ -202,7 +205,7 @@ ocp4_workload_machinesets_machineset_groups:
       - key: nvidia.com/gpu
         value: true
         effect: NoSchedule
-    instance_type: "g5.2xlarge"
+    instance_type: "{{ gpu_instance_type }}"
 
 # ------------------------------------------------
 # Node Feature Discovery Operator
@@ -275,25 +278,37 @@ ocp4_workload_ossm_servicemesh_startingcsv: ""
 ocp4_workload_rhsso_starting_csv: rhsso-operator.7.6.3-opr-002
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_rhods_self_managed
+# Workload: ocp4_workload_openshift_ai
 # -------------------------------------------------------------------
-ocp4_workload_rhods_self_managed_operator_group_name: "rhods-ods-operator"
-ocp4_workload_rhods_self_managed_operator_name: "rhods-operator"
-ocp4_workload_rhods_self_managed_namespace: "redhat-ods-operator"
-ocp4_workload_rhods_self_managed_channel: "stable"
-ocp4_workload_rhods_self_managed_catalogsource_setup: false
-ocp4_workload_rhods_self_managed_installPlanApproval: "Automatic"
-ocp4_workload_rhods_self_managed_source: "redhat-operators"
-ocp4_workload_rhods_self_managed_sourceNamespace: "openshift-marketplace"
-ocp4_workload_rhods_self_managed_csv_nameprefix: "rhods-operator"
-ocp4_workload_rhods_self_managed_startingCSV: "rhods-operator.1.33.0"
-ocp4_workload_rhods_self_managed_namespace_list:
-  - "{{ ocp4_workload_rhods_self_managed_namespace }}"
-ocp4_workload_rhods_self_managed_applications_namespace: "redhat-ods-applications"
-ocp4_workload_rhods_self_managed_is_workshop: false
-ocp4_workload_rhods_self_managed_workshop_num_users: "{{ num_users }}"
-ocp4_workload_rhods_self_managed_workshop_username_base: "user"
-ocp4_workload_rhods_self_managed_workshop_password: "{{ common_password }}"
+ocp4_workload_openshift_ai_operator_group_name: "rhods-ods-operator"
+ocp4_workload_openshift_ai_operator_name: "rhods-operator"
+ocp4_workload_openshift_ai_namespace: "redhat-ods-operator"
+ocp4_workload_openshift_ai_channel: "stable"
+ocp4_workload_openshift_ai_catalogsource_setup: "False"
+ocp4_workload_openshift_ai_installPlanApproval: "Automatic"
+# Set automatic InstallPlan approval. If set to false it is also suggested
+# to set the starting_csv to pin a specific version
+install_openshift_ai_operator_automatic_install_plan_approval: "false"
+ocp4_workload_openshift_ai_source: "redhat-operators"
+ocp4_workload_openshift_ai_sourceNamespace: "openshift-marketplace"
+ocp4_workload_openshift_ai_csv_nameprefix: "rhods-operator"
+ocp4_workload_openshift_ai_startingCSV: "rhods-operator.2.5.0"
+ocp4_workload_openshift_ai_install_csv_ignore_error: "false"
+ocp4_workload_openshift_ai_namespace_list:
+  - "{{ ocp4_workload_openshift_ai_namespace }}"
+ocp4_workload_openshift_ai_applications_namespace: "redhat-ods-applications"
+ocp4_workload_openshift_ai_is_workshop: "false"
+ocp4_workload_openshift_ai_workshop_num_users: 10
+ocp4_workload_openshift_ai_workshop_username_base: "user"
+ocp4_workload_openshift_ai_workshop_password: "openshift"
+ocp4_workload_openshift_ai_codeflare: "Removed"
+ocp4_workload_openshift_ai_dashboard: "Managed"
+ocp4_workload_openshift_ai_datasciencepipelines: "Managed"
+ocp4_workload_openshift_ai_kserve: "Removed"
+ocp4_workload_openshift_ai_modelmeshserving: "Managed"
+ocp4_workload_openshift_ai_ray: "Removed"
+ocp4_workload_openshift_ai_trustyai: "Removed"
+ocp4_workload_openshift_ai_workbenches: "Managed"
 
 # For ocp4_workload_le_certificates
 # Install certificates for Ingress Controllers
@@ -418,11 +433,11 @@ ocp4_workload_gitea_operator_admin_password: openshift
 
 # PVC size for Gitea, empty storage class uses default storage class
 ocp4_workload_gitea_operator_gitea_volume_size: 10Gi
-ocp4_workload_gitea_operator_gitea_volume_storage_class: 'gp3-csi'
+ocp4_workload_gitea_operator_gitea_volume_storage_class: ''
 
 # PVC size for PostgreSQL, empty storage class uses default storage class
 ocp4_workload_gitea_operator_postgresql_volume_size: 10Gi
-ocp4_workload_gitea_operator_postgresql_volume_storage_class: 'gp3-csi'
+ocp4_workload_gitea_operator_postgresql_volume_storage_class: ''
 
 ocp4_workload_gitea_operator_create_users: true
 ocp4_workload_gitea_operator_user_number: 1
@@ -449,7 +464,7 @@ agnosticv_meta:
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
-  asset_uuid: 17E2D497-0DD4-41D5-8F3B-51AC600B412E
+  asset_uuid: 3079A734-029D-403F-96F2-1DD703882E42
   access_control:
     allow_groups:
       - rhpds-devs
@@ -494,7 +509,7 @@ __meta__:
         formLabel: Worker Node Instance Count
         openAPIV3Schema:
           type: integer
-          default: 4
+          default: 3
           enum:
             - 3
             - 4
@@ -505,10 +520,53 @@ __meta__:
         formLabel: Worker Node Instance Type
         openAPIV3Schema:
           type: string
-          default: m5.2xlarge
+          default: m5.4xlarge
           enum:
             - m5.2xlarge
             - m5.4xlarge
+      - name: instance_zone_a
+        description: OpenShift Worker Node Instance Zone
+        formLabel: Worker Node Instance Zone A
+        openAPIV3Schema:
+          type: string
+          default: us-east-2a
+          enum:
+            - us-east-2a
+            - ap-southeast-1a
+            - eu-central-1a
+            - eu-west-1a
+      - name: instance_zone_b
+        description: Plesae select same region for this zone as the above
+        formLabel: Worker Node Instance Zone B
+        openAPIV3Schema:
+          type: string
+          default: us-east-2b
+          enum:
+            - us-east-2b
+            - ap-southeast-1b
+            - eu-central-1b
+            - eu-west-1b
+      - name: instance_zone_c
+        description: Plesae select same region for this zone as the above
+        formLabel: Worker Node Instance Zone C
+        openAPIV3Schema:
+          type: string
+          default: us-east-2c
+          enum:
+            - us-east-2c
+            - ap-southeast-1c
+            - eu-central-1c
+            - eu-west-1c
+      - name: gpu_instance_type
+        description: OpenShift GPU Worker Node Instance Type
+        formLabel: GPU Worker Node Instance Type
+        openAPIV3Schema:
+          type: string
+          default: g5.2xlarge
+          enum:
+            - g5.2xlarge
+            - g5.4xlarge
+            - g5.8xlarge
     labels:
       Product: Red_Hat_OpenShift_Data_Science
       Product_Family: Red_Hat_Cloud
