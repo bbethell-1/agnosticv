@@ -1,0 +1,141 @@
+---
+#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/num-users-salesforce.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog: Multi-Product Demo
+# --- Catalog Item: Quarkus Superheroes Demo
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+ocp4_installer_version: "4.14.2"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+cloud_provider: openshift_cnv
+ai_cluster_version: "{{ ocp4_installer_version }}"
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+ai_control_plane_cores: 8
+ai_control_plane_memory: 32Gi
+worker_instance_count: 4
+ai_workers_cores: 16
+ai_workers_memory: 64Gi
+
+bastion_instance_image: rhel-8.4
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+# --- student_name not set -> Requestor User ID is used as student_name
+student_name: lab-user
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_project_request_template
+- ocp4_workload_opentlc_production
+- ocp4_workload_le_certificates
+- ocp4_workload_quarkus_super_heroes_demo
+- ocp4_workload_external_odf
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: opentlc-mgr
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_password: openshift
+# Create 100 users
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+# Remove the standard kubeadmin user
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_opentlc_production
+# -------------------------------------------------------------------
+ocp4_workload_opentlc_production_remove_self_provisioner: false
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  deploy_with: babylon
+  params_to_variables:
+    username: student_name
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 01eae6f7-26b3-4dfa-9363-fdb4623d9bb8
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.1
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Quarkus Superheroes Demo
+    category: Demos
+    keywords:
+    - Demo
+    - Quarkus
+    - AMQ Streams
+    - Microservices
+    labels:
+      ##OpenShift_Version: "4.10"
+      Provider: Hybrid_Platform_BU
+      Product: Red_Hat_Runtimes
+      Product_Family: Red_Hat_Application_Services
+    multiuser: true
+    parameters: []
+  secrets:
+  - namespace: gpte
+    name: ocp4-token
+  - namespace: gpte
+    name: satellite-rhel8-latest-ha
+  - name: output-dir-s3
+    namespace: gpte
+  - name: openshift_cnv_ocpv01
+    namespace: gpte
+  - name: ocp4_ai_offline_token
+    namespace: gpte
+  - name: dynamic-aws-dns
+    namespace: gpte
