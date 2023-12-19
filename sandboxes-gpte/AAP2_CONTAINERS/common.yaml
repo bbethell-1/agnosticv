@@ -7,14 +7,15 @@
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/aws-region.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
 
 # ---------------------------------------------------------------------
 # Mandatory Variables
 # ---------------------------------------------------------------------
-#
 
 env_type: base-infra
 cloud_provider: ec2
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
 # --------------------------------------------------------------------
 # Platform
@@ -23,7 +24,7 @@ cloud_provider: ec2
 platform: RHPDS
 
 # --------------------------------------------------------------------
-# Instance Config
+# Repos and packages
 # --------------------------------------------------------------------
 
 use_content_view: true
@@ -41,8 +42,6 @@ agd_bastion_packages:
   - vim-enhanced
   - wget
 
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-
 # -------------------------------------------------------------------
 # Role: set-repositories
 # -------------------------------------------------------------------
@@ -50,50 +49,135 @@ common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 repo_method: satellite
 
 # -------------------------------------------------------------------
+# asset_injector_assets
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+
+  - name: Multi Tier App multi-tier-app-deployer
+    src: https://github.com/tonykay/multi-tier-app-deployer.git
+    dest: "/home/devops/multi-tier-app-deployer"
+    type: git
+    scm_ref: main
+    owner: devops
+
+  - name: AAP2 Manifest
+    type: http
+    dest: /home/devops/manifest_31_10_2022.zip
+    src: https://d18h2xbjo1t4w8.cloudfront.net/aap2_assets/manifest_31_10_2022.zip
+    url_username: "{{ s3_rhpds_private_username }}"
+    url_password: "{{ s3_rhpds_private_password }}"
+    owner: devops
+    group: users
+    mode: u=rw,g=r,o=r
+
+  - name: AAP2 x86 Installer
+    type: http
+    dest: /home/devops/ansible-automation-platform-containerized-setup-bundle-2.4-1-x86_64.tar.gz
+    src: >-
+      https://d18h2xbjo1t4w8.cloudfront.net/aap2_assets/ansible-automation-platform-containerized-setup-bundle-2.4-1-x86_64.tar.gz
+    url_username: "{{ s3_rhpds_private_username }}"
+    url_password: "{{ s3_rhpds_private_password }}"
+    owner: devops
+    group: users
+    mode: u=rw,g=r,o=r
+
+  - name: Make ssh config
+    type: 'template'
+    src: ./files/ssh_config.j2
+    dest: /home/devops/ssh-config
+    owner: devops
+    group: users
+    mode: "u=r,g-rwx,o-rwx"
+
+  - name: Multi-tier app inventory
+    type: template
+    src: ./files/hosts_template.j2
+    dest: /home/devops/multi-tier-inventory
+    owner: devops
+    group: users
+    mode: u=rw,g=r,o=r
+
+  - name: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - name: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+# -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
 
 showroom_git_repo: "https://github.com/rhpds/showroom_rh1_aap2_containerized"
+showroom_user: showroom
+showroom_ui: rh1
 
-showroom_ui: default
-  # showroom_ansible_runner_api: true # TODO: leave for now as placeholder
-showroom_showroom_default_ssh_user: "{{ student_name }}"
-  # showroom_enable_root_ssh: false # TODO: leave for now as placeholder
-showroom_lab_users:
-  - "{{ student_name }}"
+showroom_user_password: "{{ common_password }}"
 showroom_ssh_method: sshkey
+
+showroom_tab_services:
+  - double_tty
+  - web1
+
+showroom_ttys_enable_tmux: true
+
+showroom_lab_users:
+  - "{{ ansible_service_account_user_name }}"
+
+showroom_tab_double_tty_top_username: "{{ student_name }}"
+showroom_tab_double_tty_bottom_username: "{{ student_name }}"
+
+showroom_tab_web1_url: https://docs.ansible.com
+showroom_tab_web1_name: Ansible Docs
+
 # -------------------------------------------------------------------
 # Role: common
 # -------------------------------------------------------------------
 
 student_name: devops
 student_password: "{{ common_password }}"
+
 ansible_service_account_user_password: "{{ common_password }}"
 ansible_service_account_user_preferred_python: "3.9"
 
-# ------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Instance Config
-# ------------------------------------------------------------------
+# -------------------------------------------------------------------
 
-rootfs_size_rhel9: 200
+rootfs_size_rhel9: 50
 
-__instance_type: t3a.small
+cloud_tags:
+  env_type: "{{ env_type }}"
+  platform: "{{ platform | default('unknown') }}"
 
-bastion_instance_type: t3a.xlarge              # Runs AAP2 Containerized, needs 16GB etc
-frontend_instance_type: "{{ __instance_type }}"
-app_instance_type: "{{ __instance_type }}"
-appdb_instance_type: "{{ __instance_type }}"
+default_instance_type: t3a.medium
+default_instance_image: RHEL93GOLD-latest
 
-__instance_image: RHEL93GOLD-latest
+bastion_instance_type: "{{ default_instance_type }}"
+bastion_instance_image: "{{ default_instance_image }}"
 
-bastion_instance_image: "{{ __instance_image }}"
-frontend_instance_image: "{{ __instance_image }}"
-app_instance_image: "{{ __instance_image }}"
-appdb_instance_image: "{{ __instance_image }}"
+aap2_rootfs_size: 200
+aap2_instance_type: t3a.xlarge  # Runs AAP2 Containerized, needs 16GB etc
+aap2_instance_image: "{{ default_instance_image }}"
+
+aap2_database_instance_type: "{{ default_instance_type }}"
+aap2_database_instance_image: "{{ default_instance_image }}"
+
+  # -------------------------------------------------------------------
+  # Multi-Tier App Instance Config
+  # -------------------------------------------------------------------
+
+app_frontend_instance_type: "{{ default_instance_type }}"
+app_frontend_instance_image: "{{ default_instance_image }}"
+
+app_backend_instance_type: "{{ default_instance_type }}"
+app_backend_instance_image: "{{ default_instance_image }}"
 
 instances:
 
-  - name: bastion   # TODO: Move name to control
+  - name: bastion
     count: 1
     unique: true
     public_dns: true
@@ -112,37 +196,39 @@ instances:
     rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
     security_groups:
       - BastionSG
-      - WebSG # For code server
       - ShowroomSG
 
-  - name: frontend
+  - name: aap2
     count: 1
+    unique: true
     public_dns: true
-    dns_loadbalancer: false
-    image: "{{ frontend_instance_image }}"
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ aap2_instance_image }}"
     flavor:
-      ec2: "{{ frontend_instance_type  }}"
+      ec2: "{{ aap2_instance_type }}"
     tags:
       - key: "AnsibleGroup"
-        value: "load_balancers"
+        value: "aap2"
       - key: "ostype"
         value: "linux"
       - key: "instance_filter"
         value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ rootfs_size_controller | default(50)  }}"
     security_groups:
-      - DefaultSG
-      - FrontendSG
-      - HostSG
+      - BastionSG
+      - AAP2SG
 
-  - name: app
-    count: "{{ app_instance_count | default(2) }}"
+  - name: aap2-database
+    count: 1
+    unique: true
     public_dns: false
-    image: "{{ app_instance_image }}"
+    image: "{{ aap2_database_instance_image }}"
     flavor:
-      ec2: "{{ app_instance_type }}"
+      ec2: "{{ aap2_database_instance_type }}"
     tags:
       - key: "AnsibleGroup"
-        value: "app_servers"
+        value: "aap2_database"
       - key: "ostype"
         value: "rhel"
       - key: "instance_filter"
@@ -151,15 +237,35 @@ instances:
       - DefaultSG
       - HostSG
 
-  - name: appdb
+  - name: app-frontend
+    # TODO: 1 or more? Validate count: "{{ app_instance_count | default(2) }}"
     count: 1
+    unique: true
     public_dns: false
-    image: "{{ appdb_instance_image }}"
+    image: "{{ app_frontend_instance_image }}"
     flavor:
-      ec2: "{{ appdb_instance_type }}"
+      ec2: "{{ app_frontend_instance_type }}"
     tags:
       - key: "AnsibleGroup"
-        value: "database_servers"
+        value: "app_frontend"
+      - key: "ostype"
+        value: "rhel"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    security_groups:
+      - DefaultSG
+      - HostSG
+
+  - name: app-backend
+    count: 1
+    unique: true
+    public_dns: false
+    image: "{{ app_backend_instance_image }}"
+    flavor:
+      ec2: "{{ app_backend_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "app_backend"
       - key: "ostype"
         value: "rhel"
       - key: "instance_filter"
@@ -176,7 +282,6 @@ security_groups:
 
   - name: FrontendSG
     rules:
-
       - name: FrontHTTPPorts
         description: "HTTP Public"
         from_port: 80
@@ -187,7 +292,6 @@ security_groups:
 
   - name: WebSG
     rules:
-
       - name: HTTPPorts
         description: "HTTP Public"
         from_port: 80
@@ -206,7 +310,6 @@ security_groups:
 
   - name: HostSG
     rules:
-
       - name: FromHostSG
         description: "Allow everything from HostSG nodes"
         from_port: 0
@@ -217,19 +320,29 @@ security_groups:
 
   - name: ShowroomSG
     rules:
-
       - name: ShowroomHTTPS
         description: "Primary showroom endpoint - for reverse proxy"
-        from_port: 8443
-        to_port: 8443
+        from_port: 443
+        to_port: 443
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
-      - name: ShowroomExposed
-        description: "Showroom views or exposed services, up to 26 of them"
-        from_port: 8500
-        to_port: 8525
+  - name: AAP2SG
+    rules:
+
+      - name: AAP2HTTP
+        description: "AAP2 HTTP endpoints for Controller, Hub, EDA"
+        from_port: 80
+        to_port: 83
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: AAP2HTTPS
+        description: "AAP2 HTTPS endpoints for Controller, Hub, EDA"
+        from_port: 443
+        to_port: 446
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
