@@ -1,14 +1,72 @@
 ---
-#include /includes/parameters/event-lifetime-runtime.yaml
 #include /includes/parameters/event-selector.yaml
+#include /includes/parameters/event-lifetime-runtime.yaml
+#include /includes/access-restriction-RH1-devs.yaml
+# #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 
 # -------------------------------------------------------------------
 # Purpose - Cost tag. One of development, ilt, production, event
 # -------------------------------------------------------------------
 purpose: event
 
+ocp4_installer_version: "4.14"
+bastion_instance_image: RHEL93GOLD-latest
+master_instance_type: m6a.4xlarge
+
+infra_workloads:
+- ocp4_workload_le_certificates
+- ocp4_workload_authentication
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: cluster-mgr
+# When no password specified it is generated
+# ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+# ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: 5
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
 __meta__:
   anarchy:
     namespace: babylon-anarchy-events
+  access_control:
+    allow_groups:
+    - rhpds-devs
+    - rhpds-devs-rh1
+  catalog:
+    display_name: OpenShift as an Application Platform - Edge
+    category: Red_Hat_One
+    parameters:
+    - name: ocp4_installer_version
+      description: Version of OpenShift to Install
+      formLabel: OpenShift Version
+      required: false
+      openAPIV3Schema:
+        type: string
+        default: '4.14'
+        enum:
+        - '4.14'
+    - name: master_instance_type
+      description: OpenShift compute master instance type
+      formLabel: Control Plane Instance Type
+      openAPIV3Schema:
+        type: string
+        default: m6a.4xlarge
+        enum:
+        - m6a.4xlarge
+
   deployer:
-    scm_ref: one-node-ocp-1.1
+    scm_ref: one-node-ocp-1.2
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
+  secrets:
+  - namespace: gpte
+    name: satellite-rhel-8-and-9-latest-ha
