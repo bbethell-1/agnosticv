@@ -1,22 +1,26 @@
 ---
-#include /includes/aws-sandbox-meta.yaml
-#include /includes/parameters/enable-lets-encrypt.yaml
-#include /includes/catalog-icon-openshift.yaml
-#include /includes/parameters/purpose.yaml
-#include /includes/terms-of-service.yaml
-#include /includes/lifetime-standard.yaml
-#include /includes/parameters/open-environment-annotation.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
-#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-#include /includes/secrets/ocp4_token.yaml
-#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-
 # -------------------------------------------------------------------
 # --- Catalog: Red Hat One Lab
 # --- Catalog Item: OpenShift Platform Plus:
 #                   A Security-Focused, Multi-Cluster
 #                   Kubernetes Solution
 # -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV Includes
+# -------------------------------------------------------------------
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-3regions.yaml
+
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -38,28 +42,28 @@ repo_method: satellite
 update_packages: true
 
 #-------------------------------------------------------------------
-#VM configuration
+# Instance configuration
 #-------------------------------------------------------------------
 master_instance_type: m6a.2xlarge
 master_instance_count: 3
 master_storage_type: gp3
 master_storage_size: 250
 worker_instance_type: m6a.4xlarge
-worker_instance_count: 3
+worker_instance_count: 4
 worker_storage_type: gp3
 worker_storage_size: 250
 bastion_instance_type: t3a.medium
-bastion_instance_image: RHEL92GOLD-latest
+bastion_instance_image: RHEL93GOLD-latest
 
 agnosticd_aws_capacity_reservation_enable: true
 agnosticd_aws_capacity_reservation_single_zone: true
-host_ocp4_installer_set_user_data_kubeadmin_password: true
 
 #-------------------------------------------------------------------
 #OpenShift Installer Version
 #-------------------------------------------------------------------
 ocp4_installer_version: "4.14"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+host_ocp4_installer_set_user_data_kubeadmin_password: true
 
 # -------------------------------------------------------------------
 # Other variables
@@ -99,6 +103,7 @@ infra_workloads:
 - ocp4_workload_le_certificates
 - ocp4_workload_rhacm
 - ocp4_workload_rhacm_hypershift
+- ocp4_workload_showroom
 
 # -------------------------------------------------------------------
 # Student User on Bastion
@@ -168,25 +173,23 @@ ocp4_workload_rhacs_install_operator_use_catalog_snapshot: false
 ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/acowles-redhat/rh1-opp-lab.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_deployment_type: helm
+
+ocp4_workload_showroom_content_only: false
+ocp4_workload_showroom_terminal_type: showroom
+
+# -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
   asset_uuid: 34ca255c-9fbb-4ad3-abc9-85440c6b11a6
-  access_control:
-    allow_groups:
-    - rhpds-devs
-    - rhpds-devs-rh1
   anarchy:
-    namespace: babylon-anarchy-sandboxes-gpte
+    namespace: babylon-anarchy-events
   catalog:
-    parameters:
-    - name: aws_region
-      description: AWS Region to Provision Environment.
-      formLabel: Region
-      required: true
-      openAPIV3Schema:
-        type: string
-        default: us-east-1
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: "OpenShift Platform Plus: A Security-Focused, Multi-Cluster Kubernetes Solution"
     category: Red_Hat_One
