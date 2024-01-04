@@ -54,14 +54,14 @@ repo_method: satellite
 
 asset_injector_assets:
 
-  - name: Multi Tier App multi-tier-app-deployer
+  - description: Multi Tier App multi-tier-app-deployer
     src: https://github.com/tonykay/multi-tier-app-deployer.git
     dest: "/home/devops/multi-tier-app-deployer"
     type: git
     scm_ref: main
     owner: devops
 
-  - name: AAP2 Manifest
+  - description: AAP2 Manifest
     type: http
     dest: /home/devops/manifest_31_10_2022.zip
     src: https://d18h2xbjo1t4w8.cloudfront.net/aap2_assets/manifest_31_10_2022.zip
@@ -71,7 +71,7 @@ asset_injector_assets:
     group: users
     mode: u=rw,g=r,o=r
 
-  - name: AAP2 x86 Installer
+  - description: AAP2 x86 Installer
     type: http
     dest: /home/devops/ansible-automation-platform-containerized-setup-bundle-2.4-1-x86_64.tar.gz
     src: >-
@@ -82,7 +82,7 @@ asset_injector_assets:
     group: users
     mode: u=rw,g=r,o=r
 
-  - name: Make ssh config
+  - description: Make ssh config
     type: 'template'
     src: ./files/ssh_config.j2
     dest: /home/devops/ssh-config
@@ -90,7 +90,7 @@ asset_injector_assets:
     group: users
     mode: "u=r,g-rwx,o-rwx"
 
-  - name: Multi-tier app inventory
+  - description: Multi-tier app inventory
     type: template
     src: ./files/hosts_template.j2
     dest: /home/devops/multi-tier-inventory
@@ -98,22 +98,44 @@ asset_injector_assets:
     group: users
     mode: u=rw,g=r,o=r
 
-  - name: Remove 50-cloud-init.conf, ssh issue
+  - description: Remove 50-cloud-init.conf, ssh issue
     type: remove
     path: /etc/ssh/sshd_config.d/50-cloud-init.conf
 
-  - name: Remove 50-redhat.conf, ssh issue
+  - description: Remove 50-redhat.conf, ssh issue
     type: remove
     path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new configuration
+    type: service
+    name: sshd
+    state: restarted
 
 # -------------------------------------------------------------------
 # inventory_groups (optional but nice to have)
 # -------------------------------------------------------------------
 
 inventory_groups:
-  - app_frontend
-  - app_backend
-
+  - bastions
+  - aap2
+  - aap2_database
+  - app_frontends
+  - app_backends
 # -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
