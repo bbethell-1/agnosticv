@@ -9,6 +9,8 @@
 #include /includes/parameters/requester_username.yaml
 #include /includes/parameters/student-email.yaml
 #include /includes/parameters/open-environment-annotation-hidden.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
 # -------------------------------------------------------------------
 # --- Catalog Item: Heading to Production with Red Hat OSSM ROSA
 # -------------------------------------------------------------------
@@ -16,19 +18,22 @@
 # -------------------------------------------------------------------
 # Top level vars
 # -------------------------------------------------------------------
-env_type: rosa
-
-agnosticd_open_environment: true
-sandbox_user_info_messages_enable: false
-host_ocp4_installer_set_user_data_kubeadmin_password: true
-
+env_type: rosa-consolidated
 platform: rhpds
 
 # -------------------------------------------------------------------
-# VM configuration
+# Platform
 # -------------------------------------------------------------------
 bastion_instance_type: t2.small
-bastion_instance_image: RHEL84GOLD-latest
+bastion_instance_image: RHEL91GOLD-latest
+
+# -------------------------------------------------------------------
+# ROSA
+# -------------------------------------------------------------------
+# version is 'default' if not set
+# rosa_version: latest
+rosa_version: "4.13.28"
+rosa_setup_cluster_admin_login: true
 
 # -------------------------------------------------------------------
 # Workloads
@@ -61,18 +66,6 @@ ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_update_resources: true
 ocp4_workload_openshift_gitops_update_route_tls: true
 
-# ocp4_workload_openshift_gitops_controller_update: true
-# ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
-# ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
-# ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
-# ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
-
-# ocp4_workload_openshift_gitops_repo_update: true
-# ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
-# ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
-# ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
-# ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
-
 ocp4_workload_openshift_gitops_rbac_update: true
 ocp4_workload_openshift_gitops_rbac_policy: |
   g, cluster-admin, role:admin
@@ -89,12 +82,13 @@ ocp4_workload_openshift_gitops_ignore_differences: |
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitea_operator
 # -------------------------------------------------------------------
-ocp4_workload_gitea_operator_catalog_image: quay.io/gpte-devops-automation/gitea-catalog
-ocp4_workload_gitea_operator_catalog_image_tag: v1.3.0
-ocp4_workload_gitea_operator_starting_csv: gitea-operator.v1.3.0
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.1
+#ocp4_workload_gitea_operator_starting_csv: gitea-operator.v1.3.0
 
-ocp4_workload_gitea_operator_gitea_image: quay.io/gpte-devops-automation/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: "1.19.3"
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.20.1"
+
 ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel8/postgresql-13
 ocp4_workload_gitea_operator_postgresql_image_tag: 1-130
 
@@ -180,12 +174,14 @@ __meta__:
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.1
+      pull: missing
     actions:
       start:
         disable: true
       stop:
         disable: true
-    virtualenv: hybrid_cloud_aws_azure-ansible2.9-python3.6-2022-07-06
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: Heading to Production with Red Hat Openshift Service Mesh Powered-by ROSA
@@ -220,3 +216,5 @@ __meta__:
   secrets:
   - namespace: gpte
     name: rosa-token
+  - namespace: gpte
+    name: ocp4-token
