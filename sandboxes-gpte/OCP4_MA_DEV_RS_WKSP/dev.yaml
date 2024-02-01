@@ -38,6 +38,33 @@ infra_workloads:
 - ocp4_workload_mta6
 - ocp4_workload_openshift_gitops_fix_argocd
 
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_machinesets
+# -------------------------------------------------------------------
+ocp4_workload_machinesets_disable_default_machinesets: false
+ocp4_workload_machinesets_wait_for_nodes: false
+
+# Add a MachineSet for AWS Bare Metal instances
+ocp4_workload_machinesets_machineset_groups:
+- name: metal
+  role: metal
+  instance_type: c5n.metal
+  root_volume_size: 250
+  root_volume_type: io1
+  root_volume_iops: 2000
+  autoscale: false
+  total_replicas: "{{ [(num_users | int / 25) | round(0, 'ceil') | int, 2] | max }}"
+  # Autoscaler settings - minimum and maximum number of Machines
+  total_replicas_min: 2
+  total_replicas_max: 4
+  # The role of the nodes (node-role.kubernetes.io/metal: "")
+  machineConfigPool:
+    setup: true
+    maxPodsPerNode: 400
+  taints:
+  - key: metal
+    value: "true"
+    effect: NoSchedule
 
 # -------------------------------------------------------------------
 # Updates to test deployment on OCP 4.14
