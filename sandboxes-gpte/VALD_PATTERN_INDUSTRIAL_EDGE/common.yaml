@@ -1,0 +1,208 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/agnosticd_open_environment.yaml
+#include /includes/parameters/num-users-salesforce.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog: Validated Patterns
+# --- Catalog Item: Industrial Edge - Deployed
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Set OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: '4.12'
+
+#
+# Override installer root_url
+#
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+
+# Satellite is used for RHEL repos
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# -------------------------------------------------------------------
+# AWS Specific
+# -------------------------------------------------------------------
+cloudformation_retries: 0
+
+master_instance_type: m5.2xlarge
+worker_instance_type: m5.2xlarge
+bastion_instance_type: t3.medium
+bastion_instance_image: RHEL84GOLD-latest
+
+# -------------------------------------------------------------------
+# Number of VMs
+# worker_instance_count from Catalog Item
+# -------------------------------------------------------------------
+master_instance_count: 3
+worker_instance_count: 2
+
+# -------------------------------------------------------------------
+# Generate Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:16] }}"
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+# --- student_name not set -> Requestor User ID is used as student_name
+student_name: lab-user
+# --- student_password not set -> generate random password
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_le_certificates
+- ocp4_workload_authentication
+- ocp4_workload_gitea_operator
+- ocp4_workload_validated_pattern
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
+# Remove the standard kubeadmin user
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.1
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: 1.20.0
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 2Gi
+ocp4_workload_gitea_operator_postgresql_volume_size: 2Gi
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_gitea_image_pull_policy: IfNotPresent
+ocp4_workload_gitea_operator_postgresql_image_pull_policy: IfNotPresent
+ocp4_workload_gitea_operator_webhook_allowed_hosts_list: 'external,private'
+ocp4_workload_gitea_operator_webhook_skip_tls_verify: false
+install_operator_namespace: gitea-operator
+install_operator_catalogsource_namespace: gitea-operator
+
+ocp4_workload_gitea_operator_disable_registration: false
+ocp4_workload_gitea_operator_enable_captcha: false
+ocp4_workload_gitea_operator_allow_create_organization: true
+ocp4_workload_gitea_operator_register_email_confirm: false
+ocp4_workload_gitea_operator_enable_notify_email: false
+ocp4_workload_gitea_operator_mailer_enabled: false
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: opentlc-mgr
+ocp4_workload_gitea_operator_admin_email: opentlc-mgr@opentlc.com
+ocp4_workload_gitea_operator_admin_password: "{{ common_password }}"
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: 1
+ocp4_workload_gitea_operator_generate_user_format: lab-user
+ocp4_workload_gitea_operator_user_password: "{{ common_password }}"
+
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/validatedpatterns/industrial-edge.git
+  name: industrial-edge
+  private: false
+- repo: https://github.com/validatedpatterns-demos/manuela-dev.git
+  name: manuela-dev
+  private: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_validated_pattern
+# -------------------------------------------------------------------
+
+ocp4_workload_validated_pattern_name: industrial-edge
+ocp4_workload_validated_pattern_display_name: Indsutrial Edge Demo
+ocp4_workload_validated_pattern_repository_name: industrial-edge
+ocp4_workload_validated_pattern_cluster_group_name: hub
+ocp4_workload_validated_pattern_repository_tag: "main"
+ocp4_workload_validated_pattern_s3_bucket_create: true
+ocp4_workload_validated_pattern_s3_bucket_region: "{{ aws_region }}"
+ocp4_workload_validated_pattern_gitea_user: lab-user
+ocp4_workload_validated_pattern_gitea_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  deploy_with: babylon
+  params_to_variables:
+    username: student_name
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 48AEAD1A-9C5D-4BF6-AF32-B169C5C15872
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.0.18
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    parameters: []
+    keywords:
+    - demos
+    - openshift
+    - ocp
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      #OpenShift_Version: '4.8'
+      Provider: RHDP
+    display_name: Red Hat OpenShift Industrial Edge - Deployed
+    category: Demos
+  secrets:
+  - namespace: gpte
+    name: ocp4-token
+  - namespace: gpte
+    name: satellite-rhel81-ha
