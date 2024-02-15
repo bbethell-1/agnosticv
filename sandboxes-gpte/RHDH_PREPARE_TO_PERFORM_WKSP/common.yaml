@@ -1,0 +1,398 @@
+---
+#include /enterprise/includes/parameters/salesforce-id.yaml
+#include /enterprise/includes/parameters/purpose.yaml
+#include /enterprise/includes/aws-sandbox-meta.yaml
+#include /enterprise/includes/catalog-icon-rhdh.yaml
+#include /enterprise/includes/ansible_control_plane/current_controller.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: RHDH MULTI-USER Workshop
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+project_tag: "{{ env_type }}-{{ guid }}"
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Cloud Provider
+# -------------------------------------------------------------------
+cloud_provider: ec2
+bastion_instance_type: m5.8xlarge
+bastion_instance_image: RHEL92GOLD-latest
+
+key_name: opentlc_admin_backdoor
+region: us-east-2
+cloud_tags:
+  env_type: "{{ env_type }}"
+  #guid: "{{ guid }}"
+  #course_name: "{{ course_name | d('unknown') }}"
+  platform: "{{ platform | d('unknown') }}"
+  #purpose: "{{ purpose | d('unknown') }}"
+aws_region: us-east-2
+
+# -------------------------------------------------------------------
+# Security group
+# -------------------------------------------------------------------
+security_groups:
+- name: BastionSG
+  rules:
+  - name: BasSSHPublic
+    description: "SSH public"
+    from_port: 22
+    to_port: 22
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: BasHTTPPublic
+    description: "HTTP public for Let's Encrypt verification"
+    from_port: 80
+    to_port: 80
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: BasHTTPSPublic
+    description: "HTTPS public for Let's Encrypt verification"
+    from_port: 443
+    to_port: 443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.12.12"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+master_instance_count: 3
+master_instance_type: m5.4xlarge
+worker_instance_count: 3
+worker_instance_type: m5.8xlarge
+
+# -------------------------------------------------------------------
+# OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
+# instead of cluster-{{ guid }}.{{ guid }}.sandboxXXX.opentlc.com
+# -------------------------------------------------------------------
+ocp4_base_domain: "{{ sandbox_zone }}"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+# --- student_name not set -> Requestor User ID is used as student_name
+student_name: dev-admin
+# --- student_password not set -> generate random password
+student_password: "{{ common_password }}"
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
+
+install_ftl: false
+
+# -------------------------------------------------------------------
+# Custom collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  - name: kubernetes.core
+    version: 2.3.1
+  - name: openstack.cloud
+    version: 1.7.2
+  - name: amazon.aws
+    version: 2.2.0
+  - name: community.general
+    version: 4.6.1
+  - name: ansible.posix
+    version: 1.3.0
+  - name: awx.awx
+    version: 21.1.0
+  - name: ansible.utils
+    version: 2.7.0
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_le_certificates
+- ocp4_workload_openshift_data_foundation
+- ocp4_workload_rhacm
+- ocp4_workload_redhat_developer_hub_bootstrap
+- ocp4_workload_pipelines
+- ocp4_workload_gitops_gitlab
+- ocp4_workload_redhat_developer_hub
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacm
+# -------------------------------------------------------------------
+
+ocp4_workload_rhacm_acm_channel: "release-2.6"
+ocp4_workload_rhacm_use_catalog_snapshot: true
+ocp4_workload_rhacm_catalogsource_name: catalogsource-rhacm
+ocp4_workload_rhacm_catalog_source_image: "quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog"
+ocp4_workload_rhacm_catalog_source_tag: "v4.12_2023_02_20"
+
+# -----------------------------------
+# Quay Operator
+# -----------------------------------
+ocp4_workload_quay_operator_namespace: quay-registry
+ocp4_workload_quay_operator_catalogsource_namespace: quay-registry
+ocp4_workload_quay_operator_channel: stable-3.8
+ocp4_workload_quay_operator_starting_csv: quay-operator.v3.8.10
+ocp4_workload_quay_operator_use_catalog_snapshot: true
+ocp4_workload_quay_operator_catalogsource_name: redhat-operators-snapshot-quay
+ocp4_workload_quay_operator_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_quay_operator_catalog_snapshot_image_tag: v4.12_2023_07_17
+ocp4_workload_quay_operator_registry_admin_password: "{{ common_password }}"
+
+# -----------------------------------
+# OpenShift Data Foundations Operator
+# -----------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.12
+ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
+ocp4_workload_openshift_data_foundation_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: v4.12_2023_02_20
+
+# ---------------------------------------------------------
+# Workload: OpenShift Pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.9
+ocp4_workload_pipelines_tkn_version: 0.41.0
+ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.12_2023_02_20
+
+# -------------------------------------------------------------------
+# GitLab
+# -------------------------------------------------------------------
+ocp4_workload_gitops_gitlab_gitops_type: argocd
+ocp4_workload_gitops_gitlab_config_email_display_name: Janus Admin
+ocp4_workload_gitops_gitlab_config_email_reply_to: "noreply@redhat.com"
+ocp4_workload_gitops_gitlab_config_smtp_enabled: "false"
+ocp4_workload_gitops_gitlab_config_smtp_domain: "example.com"
+ocp4_workload_gitops_gitlab_config_smtp_port: "587"
+ocp4_workload_gitops_gitlab_config_smtp_user: "gitlab"
+ocp4_workload_gitops_gitlab_config_smtp_password: "gitlab"
+ocp4_workload_gitops_gitlab_config_ssh_port: "22"
+ocp4_workload_gitops_gitlab_config_rootPassword: "{{ common_password }}"
+ocp4_workload_gitops_gitlab_config_https: "true"
+ocp4_workload_gitops_gitlab_config_root_email: "root@opentlc.com"
+ocp4_workload_gitops_gitlab_config_keybase_db: "0123456789"
+ocp4_workload_gitops_gitlab_config_keybase_otp: "0123456789"
+ocp4_workload_gitops_gitlab_config_keybase_secret: "0123456789"
+
+ocp4_workload_gitops_gitlab_db_user_name: gitlab
+ocp4_workload_gitops_gitlab_db_password: passw0rd
+ocp4_workload_gitops_gitlab_db_name: gitlab_production
+
+ocp4_workload_gitops_gitlab_gitops_repo: https://github.com/redhat-gpte-devopsautomation/agnosticg.git
+
+ocp4_workload_gitops_gitlab_import_repos:
+- name: rhdh
+  repo:
+  - name: software-templates
+    url: https://github.com/redhat-gpte-devopsautomation/software-templates.git
+- name: summit-lab
+  repo:
+  - name: backstage-workshop
+    url: https://github.com/redhat-gpte-devopsautomation/backstage-workshop.git
+- name: gitops
+  repo:
+  - name: janus-idp-gitops
+    url: https://github.com/redhat-gpte-devopsautomation/janus-idp-gitops.git
+
+ocp4_workload_gitops_gitlab_users_count: "{{ num_users | default(1) }}"
+ocp4_workload_gitops_gitlab_users_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_redhat_developer_hub
+# -------------------------------------------------------------------
+
+ocp4_workload_redhat_developer_hub_gitlab_root_password: "{{ ocp4_workload_gitops_gitlab_config_rootPassword }}"
+ocp4_workload_redhat_developer_hub_janus_bootstrap_repo: https://github.com/redhat-gpte-devopsautomation/janus-idp-bootstrap.git
+ocp4_workload_redhat_developer_hub_janus_bootstrap_repo_target_revision: main
+ocp4_workload_redhat_developer_hub_backstage_gitlab_user_create: "{{ ocp4_workload_gitops_gitlab_user_create }}"
+ocp4_workload_redhat_developer_hub_backstage_gitlab_user_username: "{{ ocp4_workload_gitops_gitlab_user_username | default(omit) }}"
+ocp4_workload_redhat_developer_hub_backstage_gitlab_user_password: "{{ ocp4_workload_gitops_gitlab_user_password }}"
+ocp4_workload_redhat_developer_hub_admin_user: admin
+ocp4_workload_redhat_developer_hub_admin_password: "{{ common_password }}"
+ocp4_workload_redhat_developer_hub_gitlab_template_locations:
+- group: rhdh
+  project: software-templates
+  branch: main
+  file: showcase-templates.yaml
+  rules:
+    allow: Template
+  templates:
+  - scaffolder-templates/quarkus-web-template/template.yaml
+- group: rhdh
+  project: software-templates
+  branch: main
+  file: org.yaml
+  rules:
+    allow: Group, User
+  templates: []
+- group: summit-lab
+  project: backstage-workshop
+  branch: master
+  file: showcase-templates.yaml
+  rules:
+    allow: Template
+  templates:
+  - scaffolder-templates/poi-map/template.yaml
+  - scaffolder-templates/poi-gateway/template.yaml
+  - scaffolder-templates/poi-backend/template.yaml
+
+ocp4_workload_redhat_developer_hub_users_count: "{{ num_users | default(1) }}"
+ocp4_workload_redhat_developer_hub_users_password: "{{ common_password }}"
+
+ocp4_workload_redhat_developer_hub_backstage_helm_chart_repo: https://redhat-developer.github.io/rhdh-chart
+ocp4_workload_redhat_developer_hub_backstage_helm_chart: backstage
+ocp4_workload_redhat_developer_hub_backstage_helm_chart_version: 2.10.3
+ocp4_workload_redhat_developer_hub_backstage_image_registry: quay.io
+ocp4_workload_redhat_developer_hub_backstage_image_repository: rhdh/rhdh-hub-rhel9
+ocp4_workload_redhat_developer_hub_backstage_image_tag: "{{ '1.1' if rhdh_version == 'latest' else '1.1-44' }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_redhat_developer_hub_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_redhat_developer_hub_bootstrap_janus_bootstrap_repo: https://github.com/redhat-gpte-devopsautomation/janus-idp-bootstrap.git
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+userdata: >-
+  {
+  {% for i in range(1,num_users + 1) %}
+  "user{{i}}": {
+    "rhdh_url": "https://backstage-backstage.apps.cluster-{{ guid }}{{ subdomain_base_suffix }}",
+    "rhdh_user": "user{{i}}",
+    "rhdh_user_password": "{{ common_password }}",
+    "gitlab_url": "https://gitlab-gitlab.apps.cluster-{{ guid }}{{ subdomain_base_suffix }}",
+    "gitlab_user": "user{{i}}",
+    "gitlab_user_password": "{{ common_password }}",
+    "devspaces_url": "https://devspaces.apps.cluster-{{ guid }}{{ subdomain_base_suffix }}",
+    "devspaces_user": "user{{i}}",
+    "devspaces_user_password": "{{ common_password }}"
+    },
+  {% endfor %}
+  }
+
+agnosticd_passthrough_user_data: |
+  {{ {}
+   | combine( {
+     "users": userdata })
+  }}
+
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+
+agnosticv_meta:
+  sandboxed: false
+  idle_after_deploy: 9999
+  idle_after_start: 9999
+  deploy_with: babylon
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 491BA2B6-DBD7-4631-A9CF-2E876B66EB97
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    multiuser: true
+    display_name: Red Hat Developer Hub: Prepare to Perform with the Software Catalog
+    category: Workshops
+    keywords:
+    - Janus
+    - project-janus
+    - developer-hub
+    - gitops
+    - openshift
+    - backstage
+    parameters:
+    - name: rhdh_version
+      description: Version of Developer Hub
+      formGroup: Features
+      formLabel: Developer Hub Version
+      required: false
+      openAPIV3Schema:
+        type: string
+        default: stable
+        enum:
+        - stable
+        - latest
+      annotation: demo.redhat.com/rhdh-version
+      variable: rhdh_version
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 200
+      validation: >-
+        num_users <= 2 ||
+        user_is_admin ||
+        user_groups.includes('rhpds-devs') ||
+        check_salesforce_id(salesforce_id) ||
+        Error('User count greater than TWO requires a valid SalesForceID')
+    labels:
+      Base_Component: 'False'
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+      Featured_Score: '67'
+  lifespan:
+    default: 5d
+    maximum: 999d
+    relativeMaximum: 7d
+  runtime:
+    default: 8h
+    maximum: 999h
+  secrets:
+  - name: ocp4-token
+    namespace: gpte
+  - name: rhods-git-secret
+    namespace: gpte
+  - name: output-dir-s3
+    namespace: gpte
+  - name: redhat-gpte-devhub-pull-secret
+    namespace: gpte
+
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
