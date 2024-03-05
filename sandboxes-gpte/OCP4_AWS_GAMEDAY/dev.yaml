@@ -4,57 +4,86 @@
 # -------------------------------------------------------------------
 purpose: development
 
+rosa_installer_version: latest
+rosa_deploy: true
+rosa_deploy_hcp: true
+
 rosa_version: latest
 rosa_version_base: "openshift-v4.15"
-rosa_installer_version: latest
-# rosa_setup_cluster_admin_login: true
-# rosa_setup_cluster_admin_delete_after_workloads: true
-bastion_instance_image: RHEL93GOLD-latest
+
+rosa_setup_cluster_admin: true
+rosa_setup_cluster_admin_login: true
 rosa_compute_machine_type: m6a.4xlarge
+
+bastion_instance_type: "t3a.small"
+bastion_instance_image: RHEL93GOLD-latest
+bastion_remove_insights_motd: true
+bastion_custom_motd: |-
+  ----------------------------------------------------------------------------
+      Welcome to the Red Hat OpenShift Service on AWS Game Day Environment
+  ----------------------------------------------------------------------------
+
+  By continuing to use this service you agree to use this environment
+  solely for the purposes of completing the steps in the lab guide.
+
+  Any other use is a violation of this service and appropriate action
+  will be taken. If you disagree with these terms you must disconnect now.
+  ----------------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 infra_workloads:
 - ocp4_workload_authentication_rosa
-#- ocp4_workload_openshift_gitops
-#- ocp4_workload_gitops_bootstrap
+- ocp4_workload_pipelines
+- ocp4_workload_serverless
+- ocp4_workload_openshift_ai
 
 # -------------------------------------------------------------------
-# ocp4_workload_openshift_gitops
+# ocp4_workload_authentication_rosa
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.11
+ocp4_workload_authentication_rosa_user_count: 1
+ocp4_workload_authentication_rosa_user_name: awsdeveloper
+# ocp4_workload_authentication_rosa_user_password: hellorosa
 
-ocp4_workload_openshift_gitops_use_catalog_snapshot: false
-# ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-# ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.13_2023_06_26
+ocp4_workload_authentication_rosa_token: "{{ rosa_token }}"
 
-ocp4_workload_openshift_gitops_setup_cluster_admin: true
-ocp4_workload_openshift_gitops_update_resources: true
-ocp4_workload_openshift_gitops_update_route_tls: true
+ocp4_workload_authentication_rosa_aws_access_key_id: "{{ lookup('env','AWS_ACCESS_KEY_ID') | default(aws_access_key_id, true) | mandatory }}"
+ocp4_workload_authentication_rosa_aws_secret_access_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') | default(aws_secret_access_key, true) | mandatory }}"
+ocp4_workload_authentication_rosa_aws_region: "{{ lookup('env','AWS_DEFAULT_REGION') | default(aws_region, true) | mandatory }}"
 
-ocp4_workload_openshift_gitops_rbac_update: true
-ocp4_workload_openshift_gitops_rbac_policy: |
-  g, cluster-admin, role:admin
-ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
-
-# ocp4_workload_openshift_gitops_ignore_differences: |
-#   resourceIdentifiers:
-#   - group: apps
-#     kind: Deployment
-#     customization:
-#       jqPathExpressions:
-#       - .spec.template.spec.containers[] | select(.name == "redis")
+# ---------------------------------------------------------
+# OpenShift Pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.14
+ocp4_workload_pipelines_use_catalog_snapshot: false
 
 # -------------------------------------------------------------------
-# ocp4_workload_gitops_bootstrap
+# ocp4_workload_serverless
 # -------------------------------------------------------------------
-ocp4_workload_gitops_bootstrap_repo_url: https://github.com/OpenShiftDemos/coolstore-portfolio.git
-ocp4_workload_gitops_bootstrap_repo_revision: main
-ocp4_workload_gitops_bootstrap_repo_path: helm/coolstore
+ocp4_workload_serverless_channel: stable
+ocp4_workload_serverless_use_catalog_snapshot: false
+ocp4_workload_serverless_install_serving: false
+ocp4_workload_serverless_install_eventing: false
 
-ocp4_workload_gitops_bootstrap_helm_values:
-  namespace: coolstore
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_ai
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_channel: fast
+#
+# Data Science Cluster Configuration
+ocp4_workload_openshift_ai_deploy_dsc: true
+ocp4_workload_openshift_ai_codeflare: Removed
+ocp4_workload_openshift_ai_dashboard: Managed
+ocp4_workload_openshift_ai_datasciencepipelines: Managed
+ocp4_workload_openshift_ai_kserve: Removed
+ocp4_workload_openshift_ai_modelmeshserving: Managed
+ocp4_workload_openshift_ai_ray: Removed
+ocp4_workload_openshift_ai_trustyai: Removed
+ocp4_workload_openshift_ai_workbenches: Managed
+
+ocp4_workload_openshift_ai_catalogsource_setup: false
+ocp4_workload_openshift_ai_startingCSV: ""
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
@@ -68,5 +97,5 @@ agnosticv_meta:
 # -------------------------------------------------------------------
 __meta__:
   deployer:
-    scm_url: https://github.com/juliaaano/agnosticd.git
+    scm_url: https://github.com/redhat-cop/agnosticd.git
     scm_ref: development
