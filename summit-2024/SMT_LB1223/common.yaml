@@ -1,0 +1,763 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/open-environment-annotation.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/access-restriction-devs-only.yaml
+# -------------------------------------------------------------------
+# --- System: RHDP
+# --- Catalog: Demos
+# --- Catalog Item: Modern App Dev Roadshow - Dev Track v2
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# VM configuration
+# -------------------------------------------------------------------
+master_instance_type: m5a.2xlarge
+master_instance_count: 3
+master_storage_type: io1
+master_storage_size: 250
+worker_instance_type: m6a.8xlarge
+worker_instance_count: "{{ [(num_users | int / 2.5) | round(0, 'ceil') | int, 3] | max }}"
+worker_storage_type: gp3
+worker_storage_size: 250
+bastion_instance_type: t3a.medium
+bastion_instance_image: RHEL84GOLD-latest
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.14"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
+# instead of cluster-{{ guid }}.{{ guid }}.sandboxXXX.opentlc.com
+# -------------------------------------------------------------------
+ocp4_base_domain: "{{ sandbox_zone }}"
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+# --- student_password not set -> generate random password
+# student_password: ""
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Customizations to packages and virtualenvs to enable ovirt.ovirt
+# -------------------------------------------------------------------
+# Add prereqs for ovirt-engine-sdk-python Python package
+host_virtualenv_package_prereqs:
+- gcc
+- python3
+- python3-devel
+- python3-libselinux
+- python3-pip
+- libcurl-devel
+- openssl-devel
+- libxml2-devel
+
+# Add required Python packages to virtualenv for ovirt.ovirt collection
+host_virtualenv_requirements_override:
+- ovirt-engine-sdk-python==4.5.0
+- passlib==1.7.4
+
+# Custom collections for this environment
+requirements_content:
+  collections:
+  - name: kubernetes.core
+    version: 2.4.0
+  - name: amazon.aws
+    version: 2.3.0
+  - name: community.general
+    version: 6.4.0
+  - name: ansible.posix
+    version: 1.5.1
+  - name: ovirt.ovirt
+    version: 3.1.1
+
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
+
+ocp4_network_type: OVNKubernetes
+
+# Because this environment includes Bare Metal instances wait longer for
+# CSRs to appear
+ocp4_approve_certificate_signing_requests_initial_delay: 240
+ocp4_approve_certificate_signing_requests_recheck_delay: 60
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_openshift_data_foundation
+- ocp4_workload_machinesets
+- ocp4_workload_le_certificates
+- ocp4_workload_authentication
+- ocp4_workload_gitea_operator
+- ocp4_workload_kubevirt
+- ocp4_workload_pipelines
+- ocp4_workload_openshift_gitops
+- ocp4_workload_mad_roadshow_v2
+- ocp4_workload_ama_demo_app_services_shared
+- ocp4_workload_codeserver
+# - ocp4_workload_mtv
+- ocp4_workload_mta6
+- ocp4_workload_openshift_gitops_fix_argocd
+- ocp4_workload_rhsso_authentication
+
+# Do not run any student customization.
+# This will result in a default OpenShift 4 installation.
+student_workloads: []
+
+# Remove Workloads when deleting the cluster
+remove_workloads_bastion:
+- ocp4_workload_mad_roadshow
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Common Admin Password
+# -------------------------------------------------------------------
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_data_foundations
+# -------------------------------------------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.14
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_old_default_storage_class_name: gp3-csi
+ocp4_workload_openshift_data_foundation_tolerations:
+- key: metal
+  operator: Exists
+
+ocp4_workload_openshift_data_foundation_catalogsource_setup: true
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
+ocp4_workload_openshift_data_foundation_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: v4.14_2023_11_27
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_machinesets
+# -------------------------------------------------------------------
+ocp4_workload_machinesets_disable_default_machinesets: false
+ocp4_workload_machinesets_wait_for_nodes: false
+
+# Add a MachineSet for AWS Bare Metal instances
+ocp4_workload_machinesets_machineset_groups:
+- name: metal
+  role: metal
+  instance_type: c5n.metal
+  root_volume_size: 250
+  root_volume_type: io1
+  root_volume_iops: 2000
+  autoscale: false
+  total_replicas: "{{ [(num_users | int / 25) | round(0, 'ceil') | int, 1] | max }}"
+  # Autoscaler settings - minimum and maximum number of Machines
+  total_replicas_min: 2
+  total_replicas_max: 4
+  # The role of the nodes (node-role.kubernetes.io/metal: "")
+  machineConfigPool:
+    setup: true
+    maxPodsPerNode: 400
+  taints:
+  - key: metal
+    value: "true"
+    effect: NoSchedule
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: openshift
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.1
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/rh-mad-workshop/modern-app-dev.git
+  name: modern-app-dev
+  branch: patch-postgres
+  private: false
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.20.4"
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
+ocp4_workload_gitea_operator_gitea_volume_storage_class: gp3-csi
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel8/postgresql-13
+ocp4_workload_gitea_operator_postgresql_image_tag: latest
+ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
+ocp4_workload_gitea_operator_postgresql_volume_storage_class: gp3-csi
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_disable_registration: false
+ocp4_workload_gitea_operator_enable_captcha: false
+ocp4_workload_gitea_operator_allow_create_organization: true
+ocp4_workload_gitea_operator_register_email_confirm: false
+ocp4_workload_gitea_operator_enable_notify_email: false
+ocp4_workload_gitea_operator_mailer_enabled: false
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: opentlc-mgr
+ocp4_workload_gitea_operator_admin_email: opentlc-mgr@opentlc.com
+ocp4_workload_gitea_operator_admin_password: "{{ common_admin_password }}"
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_authentication_htpasswd_user_base }}%d"
+ocp4_workload_gitea_operator_user_password: openshift
+ocp4_workload_gitea_operator_migrate_repositories: true
+
+# ---------------------------------------------------------
+# OpenShift Pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.11
+
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.14_2023_11_27
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.10
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
+ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.14_2023_11_27
+
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+ocp4_workload_openshift_gitops_update_route_tls: true
+ocp4_workload_openshift_gitops_resource_customizations: |
+  operators.coreos.com/Subscription:
+    health.lua: |
+      health_status = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          numDegraded = 0
+          numPending = 0
+          msg = ""
+          for i, condition in pairs(obj.status.conditions) do
+            msg = msg .. i .. ": " .. condition.type .. " | " .. condition.status .. "\n"
+            if condition.type == "InstallPlanPending" and condition.status == "True" then
+              numPending = numPending + 1
+            elseif (condition.type == "InstallPlanMissing" and condition.reason ~= "ReferencedInstallPlanNotFound") then
+              numDegraded = numDegraded + 1
+            elseif (condition.type == "CatalogSourcesUnhealthy" or condition.type == "InstallPlanFailed") and condition.status == "True" then
+              numDegraded = numDegraded + 1
+            end
+          end
+          if numDegraded == 0 and numPending == 0 then
+            health_status.status = "Healthy"
+            health_status.message = msg
+            return health_status
+          elseif numPending > 0 and numDegraded == 0 then
+            health_status.status = "Progressing"
+            health_status.message = "An install plan for a subscription is pending installation"
+            return health_status
+          else
+            health_status.status = "Degraded"
+            health_status.message = msg
+            return health_status
+          end
+        end
+      end
+      health_status.status = "Progressing"
+      health_status.message = "An install plan for a subscription is pending installation"
+      return health_status
+
+# -------------------------------------------------------------------
+# ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+ocp4_workload_kubevirt_workload_tolerations:
+- key: metal
+  operator: Exists
+
+ocp4_workload_kubevirt_use_catalog_snapshot: true
+ocp4_workload_kubevirt_catalogsource_name: redhat-operators-snapshot-kubevirt
+ocp4_workload_kubevirt_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_kubevirt_catalog_snapshot_image_tag: v4.14_2023_11_27
+
+# -------------------------------------------------------------------
+# ocp4_workload_mta6
+# -------------------------------------------------------------------
+ocp4_workload_mta6_channel: stable-v6.2
+ocp4_workload_mta6_catalogsource_setup: true
+ocp4_workload_mta6_catalogsource_name: redhat-operators-snapshot-mta6
+ocp4_workload_mta6_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_mta6_catalogsource_image_tag: v4.14_2023_11_27
+
+ocp4_workload_mta6_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_mta6_namespace_base: mta
+ocp4_workload_mta6_user: admin
+
+# Base for multi user setup
+ocp4_workload_mta6_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+
+# Role to grant users for the mga namespace
+ocp4_workload_mta6_role: edit
+
+# Seed MTA with information
+ocp4_workload_mta6_seed: true
+ocp4_workload_mta6_seed_tag: release-0.3
+
+# -------------------------------------------------------------------
+# ocp4_workload_mtv
+# -------------------------------------------------------------------
+ocp4_workload_mtv_channel: release-v2.4
+ocp4_workload_mtv_wait_for_forkliftcontroller: false
+
+ocp4_workload_mtv_use_catalog_snapshot: true
+ocp4_workload_mtv_catalogsource_name: redhat-operators-snapshot-mtv
+ocp4_workload_mtv_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_mtv_catalog_snapshot_image_tag: v4.14_2023_11_27
+
+# -------------------------------------------------------------------
+# ocp4_workload_rhods
+# -------------------------------------------------------------------
+ocp4_workload_mad_roadshow_rhods_catalogsource_image_tag: v4.14_2023_11_27
+ocp4_workload_mad_roadshow_rhods_install_operator_starting_csv: ""
+
+# -------------------------------------------------------------------
+# legacy_vm_openshift_virt
+# -------------------------------------------------------------------
+ocp4_workload_mad_roadshow_kubevirt_psql_image_location: https://s3.us-east.cloud-object-storage.appdomain.cloud/julianotest/postgresql-database.qcow2
+ocp4_workload_mad_roadshow_kubevirt_psql_vm_repo_path: postgresql-vm
+
+ocp4_workload_mad_roadshow_kubevirt_tomcat_image_location: https://s3.us-east.cloud-object-storage.appdomain.cloud/julianotest/mad-tomcat.qcow2
+ocp4_workload_mad_roadshow_kubevirt_tomcat_vm_repo_path: tomcat-vm
+
+# -------------------------------------------------------------------
+# ocp4_workload_mad_roadshow
+# -------------------------------------------------------------------
+ocp4_workload_mad_roadshow_rhv_user_password_validity: 7
+
+ocp4_workload_mad_roadshow_oracle_vm_setup: true
+ocp4_workload_mad_roadshow_oracle_vm_install_from_scratch: false
+
+ocp4_workload_mad_roadshow_oracle_vm_template: ama-template-oracle
+#ocp4_workload_mad_roadshow_oracle_vm_template: rhel85-empty
+
+ocp4_workload_mad_roadshow_oracle_vm_name: "oracle-{{ guid }}"
+
+ocp4_workload_mad_roadshow_oracle_dba_password: redhat
+ocp4_workload_mad_roadshow_oracle_db_password: redhat
+
+ocp4_workload_mad_roadshow_tomcat_vm_setup: true
+ocp4_workload_mad_roadshow_tomcat_vm_install_from_scratch: false
+
+ocp4_workload_mad_roadshow_tomcat_vm_template: ama-template-tomcat
+#ocp4_workload_mad_roadshow_tomcat_vm_template: rhel85-empty
+
+ocp4_workload_mad_roadshow_tomcat_vm_name: "tomcat-{{ guid }}"
+
+ocp4_workload_mad_roadshow_vm_user_name: lab-user
+ocp4_workload_mad_roadshow_vm_user_password: "{{ common_admin_password }}"
+
+ocp4_workload_mad_roadshow_tomcat_repo_user: "{{ ocp4_workload_gitea_operator_generate_user_format }}1"
+ocp4_workload_mad_roadshow_tomcat_repo_user_password: "{{ ocp4_workload_gitea_operator_user_password }}"
+ocp4_workload_mad_roadshow_tomcat_repo_name: modern-app-dev
+ocp4_workload_mad_roadshow_tomcat_repo_branch: main
+
+ocp4_workload_mad_roadshow_gitea_user_count: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_mad_roadshow_gitea_user_prefix: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_mad_roadshow_gitea_user_password: "{{ ocp4_workload_gitea_operator_user_password }}"
+
+ocp4_workload_mad_roadshow_kubevirt_vm_deploy: true
+ocp4_workload_mad_roadshow_oracle_image_location: https://gpte-public.s3.amazonaws.com/ama_demo/ama-demo-database.qcow2
+ocp4_workload_mad_roadshow_kubevirt_image_storage_class: ocs-storagecluster-ceph-rbd
+
+ocp4_workload_mad_roadshow_kubevirt_vm_node_selector:
+  "node-role.kubernetes.io/metal": ""
+
+ocp4_workload_mad_roadshow_kubevirt_vm_tolerations:
+- key: metal
+  operator: Exists
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhdh
+# -------------------------------------------------------------------
+ocp4_workload_mad_roadshow_rhdh_on: "{{ module_enable_m7 }}"
+ocp4_workload_redhat_developer_hub_gitlab_root_user: root
+ocp4_workload_redhat_developer_hub_gitlab_root_password: openshift
+ocp4_workload_mad_roadshow_rhdh_namespace: rhdhub
+ocp4_workload_mad_roadshow_rhdh_namespace_prefix: rhdhub-
+ocp4_workload_redhat_developer_hub_gitlab_namespace: gitlab
+ocp4_workload_rhdh: true
+ocp4_workload_mad_roadshow_rhdh_repo: https://github.com/redhat-gpte-devopsautomation/agnosticd_workload_helm_charts.git
+ocp4_workload_mad_roadshow_rhdh_repo_tag: main
+ocp4_workload_mad_roadshow_rhdh_repo_path_config: rhdh/config
+ocp4_workload_mad_roadshow_rhdh_repo_path: rhdh/deploy
+ocp4_workload_mad_roadshow_rhdh_repo_path_plugins: rhdh/plugins
+ocp4_workload_mad_roadshow_rhdh_repo_path_sso: rhdh/sso
+ocp4_workload_mad_roadshow_rhdh_app_name: developer-hub
+ocp4_workload_mad_roadshow_rhdh_app_name_plugins: developer-hub-plugins
+ocp4_workload_mad_roadshow_rhdh_app_name_config: developer-hub-config
+ocp4_workload_redhat_developer_hub_postgresql_password: "postgres"
+ocp4_workload_redhat_developer_hub_postgresql_adminDatabasePassword: "postgres"
+ocp4_workload_redhat_developer_hub_postgresql_databasePassword: "postgres"
+ocp4_workload_redhat_developer_hub_postgresql_databasePort: "5432"
+ocp4_workload_redhat_developer_hub_postgresql_databaseUser: "postgres"
+ocp4_workload_redhat_developer_hub_postgresql_databaseAdminUser: "postgres"
+ocp4_workload_redhat_developer_hub_oauth2Proxy_cookieSecret: "kReUs5e7iJ_SjSKbGIE7ELtxz5uqp2ckCyy3Q7iGo5U="
+ocp4_workload_redhat_developer_hub_oauth2Proxy_port: 4180
+ocp4_workload_redhat_developer_hub_oauth2Proxy_clientId: "rhdh"
+ocp4_workload_redhat_developer_hub_oauth_service_account: default
+ocp4_workload_redhat_developer_hub_keycloak_realm: "openshift"
+ocp4_workload_redhat_developer_hub_keycloak_displayName: "rhdhub - sso"
+ocp4_workload_rhdh_user: admin
+# Base for multi user setup
+ocp4_workload_rhdh_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+# Role to grant users for the mga namespace
+ocp4_workload_rhdh_role: edit
+# -------------------------------------------------------------------
+# GitLab
+# -------------------------------------------------------------------
+ocp4_workload_redhat_developer_hub_gitlab_user_password: "openshift"
+ocp4_workload_redhat_developer_hub_gitlab_users_count: "{{ ocp4_workload_mad_roadshow_gitea_user_count }}"
+ocp4_workload_gitops_gitlab_gitops_type: argocd
+ocp4_workload_gitops_gitlab_config_email_display_name: RHDH Admin
+ocp4_workload_gitops_gitlab_config_email_reply_to: "noreply@redhat.com"
+ocp4_workload_gitops_gitlab_config_smtp_enabled: "false"
+ocp4_workload_gitops_gitlab_config_smtp_domain: "example.com"
+ocp4_workload_gitops_gitlab_config_smtp_port: "587"
+ocp4_workload_gitops_gitlab_config_smtp_user: "gitlab"
+ocp4_workload_gitops_gitlab_config_smtp_password: "gitlab"
+ocp4_workload_gitops_gitlab_config_ssh_port: "22"
+ocp4_workload_gitops_gitlab_config_rootPassword: "openshift"
+ocp4_workload_gitops_gitlab_config_https: "true"
+ocp4_workload_gitops_gitlab_config_root_email: "root@opentlc.com"
+ocp4_workload_gitops_gitlab_config_keybase_db: "0123456789"
+ocp4_workload_gitops_gitlab_config_keybase_otp: "0123456789"
+ocp4_workload_gitops_gitlab_config_keybase_secret: "0123456789"
+ocp4_workload_gitops_gitlab_db_user_name: gitlab
+ocp4_workload_gitops_gitlab_db_password: passw0rd
+ocp4_workload_gitops_gitlab_db_name: gitlab_production
+ocp4_workload_gitops_gitlab_user_create: true
+ocp4_workload_gitops_gitlab_user_name: RHDH IDP
+ocp4_workload_gitops_gitlab_user_username: dev-user
+ocp4_workload_gitops_gitlab_user_password: "openshift"
+ocp4_workload_gitops_gitlab_user_email: dev-user@opentlc.com
+ocp4_workload_gitops_gitlab_gitops_repo: https://github.com/redhat-gpte-devopsautomation/agnosticd_workload_helm_charts.git
+ocp4_workload_gitops_gitlab_import_repos:
+- name: rhdhub
+  repo:
+  - name: software-templates
+    url: https://github.com/rh-mad-workshop/coolstore-software-templates.git
+    target: main
+# --------------DEVSPACES----------------------------------
+ocp4_workload_mad_roadshow_devspaces_repo: https://github.com/redhat-gpte-devopsautomation/agnosticd_workload_helm_charts.git
+ocp4_workload_mad_roadshow_devspaces_repo_tag: main
+ocp4_workload_mad_roadshow_devspaces_repo_path: devspaces
+ocp4_workload_mad_roadshow_devspaces_app_name: devspaces
+ocp4_workload_mad_roadshow_devspaces_namespace: openshift-operators
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhsso
+# -------------------------------------------------------------------
+ocp4_workload_rhsso_namespace: rhsso
+# ---------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+ocp4_workload_rhsso_authentication_namespace: rhsso
+ocp4_workload_rhsso_authentication_target_namespaces: ["rhsso"]
+ocp4_workload_rhsso_authentication_channel: stable
+ocp4_workload_rhsso_authentication_starting_csv: rhsso-operator.7.6.3-opr-002
+ocp4_workload_rhsso_authentication_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_rhsso_authentication_catalogsource_tag: v4.13_2023_06_26
+
+ocp4_workload_rhsso_authentication_admin_create: true
+ocp4_workload_rhsso_authentication_admin_username: admin
+ocp4_workload_rhsso_authentication_admin_password: "{{ common_password }}"
+
+ocp4_workload_rhsso_authentication_user_count: "{{ num_users | default(0) }}"
+ocp4_workload_rhsso_authentication_user_name_base: user
+ocp4_workload_rhsso_authentication_user_password: openshift
+
+# ----------------------------------------
+# Dev Track - Guides and User distribution
+# ----------------------------------------
+ocp4_workload_mad_roadshow_guides_deploy: true
+ocp4_workload_mad_roadshow_guides_user_selector_title: "Modern App Development - Dev Track"
+ocp4_workload_mad_roadshow_guides_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_mad_roadshow_guides_user_selector_lab_user_prefix: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_mad_roadshow_guides_user_selector_lab_user_password: openshift
+ocp4_workload_mad_roadshow_guides_user_selector_lab_admin_password: "{{ common_admin_password }}"
+ocp4_workload_mad_roadshow_guides_user_selector_lab_user_access_token: openshift
+ocp4_workload_mad_roadshow_guides_namespace: dev-guides
+ocp4_workload_mad_roadshow_guides_namespace_display: Dev Track Guides
+ocp4_workload_mad_roadshow_guides_repo: https://github.com/rh-mad-workshop
+ocp4_workload_mad_roadshow_guides_repo_name_prefix: mad-dev-guides
+
+ocp4_workload_mad_roadshow_guides_module_type: "{{ module_type }}"
+ocp4_workload_mad_roadshow_guides_module_titles:
+- name: m1
+  title: "Assessment and Analysis"
+  path: "/{{ ocp4_workload_mad_roadshow_guides_repo_name_prefix }}-m1/main/1-introduction.html"
+- name: m2
+  title: "Refactor and Deployment"
+  path: "/{{ ocp4_workload_mad_roadshow_guides_repo_name_prefix }}-m2/main/1-introduction.html"
+- name: m3
+  title: "Enable CI/CD Pipeline and GitOps"
+  path: "/{{ ocp4_workload_mad_roadshow_guides_repo_name_prefix }}-m3/main/1-introduction.html"
+- name: m4
+  title: "Manage and Secure APIs"
+  path: "/{{ ocp4_workload_mad_roadshow_guides_repo_name_prefix }}-m4/main/introduction.html"
+- name: m5
+  title: "Build Event-driven Architecture"
+  path: "/{{ ocp4_workload_mad_roadshow_guides_repo_name_prefix }}-m5/main/introduction.html"
+- name: m6
+  title: "Create an Intelligent Application"
+  path: "/{{ ocp4_workload_mad_roadshow_guides_repo_name_prefix }}-m6/main/1-introduction.html"
+- name: m7
+  title: "Accelerating Software Development with Red Hat Developer Hub"
+  path: "/{{ ocp4_workload_mad_roadshow_guides_repo_name_prefix }}-m7/main/1-introduction.html"
+
+module_type: >-
+  {{
+    ";".join(
+      (["m1"] if module_enable_m1 | default(false) | bool else []) +
+      (["m2"] if module_enable_m2 | default(false) | bool else []) +
+      (["m3"] if module_enable_m3 | default(false) | bool else []) +
+      (["m4"] if module_enable_m4 | default(false) | bool else []) +
+      (["m5"] if module_enable_m5 | default(false) | bool else []) +
+      (["m6"] if module_enable_m6 | default(false) | bool else []) +
+      (["m7"] if module_enable_m7 | default(false) | bool else [])
+    )
+  }}
+
+ocp4_workload_mad_roadshow_guides_user_selector_lab_duration: 1week
+ocp4_workload_mad_roadshow_guides_user_selector_redis_name: redis
+ocp4_workload_mad_roadshow_guides_user_selector_redis_namespace: "{{ ocp4_workload_mad_roadshow_guides_namespace }}"
+ocp4_workload_mad_roadshow_guides_user_selector_redis_image: image-registry.openshift-image-registry.svc:5000/openshift/redis
+ocp4_workload_mad_roadshow_guides_user_selector_redis_tag: 6-el8
+ocp4_workload_mad_roadshow_guides_user_selector_redis_pvc_size: 1Gi
+ocp4_workload_mad_roadshow_guides_user_selector_redis_password: "redis"
+ocp4_workload_mad_roadshow_guides_user_selector_redis_memory: 1Gi
+
+ocp4_workload_mad_roadshow_guides_user_selector_name: get-a-username
+ocp4_workload_mad_roadshow_guides_user_selector_image: quay.io/openshiftlabs/username-distribution
+ocp4_workload_mad_roadshow_guides_user_selector_tag: "1.4"
+
+# -------------------------------------------------------------------
+# ocp4_workload_codeserver
+# -------------------------------------------------------------------
+ocp4_workload_codeserver_name: codeserver
+ocp4_workload_codeserver_workspace_name: ModernAppDev
+
+ocp4_workload_codeserver_image_tag: v4.16.1-java11
+ocp4_workload_codeserver_init_image_tag: v4.16.1
+
+
+ocp4_workload_codeserver_password: openshift
+ocp4_workload_codeserver_storageclass: ocs-storagecluster-ceph-rbd
+ocp4_workload_codeserver_pvc_size: 5Gi
+ocp4_workload_codeserver_gitea_name: gitea
+ocp4_workload_codeserver_gitea_namespace: gitea
+ocp4_workload_codeserver_extensions:
+- filename: auchenberg.vscode-browser-preview-0.7.2.vsix
+  url: https://gpte-public.s3.amazonaws.com/vscode-plugins/auchenberg.vscode-browser-preview-0.7.2.vsix
+
+ocp4_workload_codeserver_multi_user_install: true
+ocp4_workload_codeserver_multi_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_codeserver_multi_user_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_codeserver_multi_user_namespace_base: codeserver
+
+# Repositories to set up in codeserver
+ocp4_workload_codeserver_repos_password: "{{ ocp4_workload_gitea_operator_user_password }}"
+ocp4_workload_codeserver_repos:
+- name: modern-app-dev
+  account: ""
+  branch: main
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ama_demo_app_services_shared
+# -------------------------------------------------------------------
+ocp4_workload_ama_demo_app_services_shared_lab_setup: true
+
+ocp4_workload_ama_demo_app_services_shared_user_count: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_ama_demo_app_services_shared_user_prefix: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+
+ocp4_workload_ama_demo_app_services_shared_namespace_prefix: globex-
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops_fix_argocd
+# -------------------------------------------------------------------
+# Sleep 10 minutes before attempting to fix argocd dex pods
+ocp4_workload_openshift_gitops_fix_argocd_delay: "10"
+ocp4_workload_openshift_gitops_fix_argocd_create_namespace: false
+#ocp4_workload_openshift_gitops_fix_argocd_namespace: openshift-gitops
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  sandboxed: false
+  deploy_with: babylon
+  params_to_variables:
+    course_module_list: ocp4_workload_mad_roadshow_guides_module_type
+
+# -------------------------------------------------------------------
+# Babylon Meta Variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 1252cf6e-fa25-4653-a277-d716bb665fb8
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    workshopUiDisabled: true
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    multiuser: true
+    parameters:
+    - name: module_enable_m1
+      description: Enable module m1
+      formGroup: Modules
+      formLabel: Module 1 - Assessment and Analysis
+      openAPIV3Schema:
+        type: boolean
+        default: true
+    - name: module_enable_m2
+      description: Enable module m2
+      formGroup: Modules
+      formLabel: Module 2 - Refactor and Deployment
+      openAPIV3Schema:
+        type: boolean
+        default: true
+    - name: module_enable_m3
+      description: Enable module m3
+      formGroup: Modules
+      formLabel: Module 3 - Enable CI/CD Pipeline and GitOps
+      openAPIV3Schema:
+        type: boolean
+        default: true
+    - name: module_enable_m4
+      description: Enable module m4
+      formGroup: Modules
+      formLabel: Module 4 - Manage and Secure APIs
+      openAPIV3Schema:
+        type: boolean
+        default: true
+    - name: module_enable_m5
+      description: Enable module m5
+      formGroup: Modules
+      formLabel: Module 5 - Build Event-driven Architecture
+      openAPIV3Schema:
+        type: boolean
+        default: true
+    - name: module_enable_m6
+      description: Enable module m6
+      formGroup: Modules
+      formLabel: Module 6 - Create an Intelligent Application
+      openAPIV3Schema:
+        type: boolean
+        default: true
+    - name: module_enable_m7
+      description: Enable module m7
+      formGroup: Modules
+      formLabel: Module 7 - Accelerating Software Development with Red Hat Developer Hub
+      openAPIV3Schema:
+        type: boolean
+        default: true
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 40
+      validation: >-
+        num_users <= 2 ||
+        user_is_admin ||
+        user_groups.includes('rhpds-devs') ||
+        check_salesforce_id(salesforce_id) ||
+        Error('User count greater than TWO requires a valid SalesForceID')
+    keywords:
+    - workshop
+    - openshift
+    - ocp
+    - development
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: Hybrid_Platform_BU
+    display_name: "Modern App Dev Roadshow - Dev Track v2"
+    category: Workshops
+  runtime:
+    default: 8h
+    maximum: 48h
+  tower:
+    timeout: 14400
+  secrets:
+  - namespace: gpte
+    name: satellite-rhel81-ha
+  - namespace: gpte
+    name: ocp4-token
+  - namespace: gpte
+    name: output-dir-s3
+  - namespace: gpte
+    name: rhev_dev_credentials
+  - name: redhat-gpte-devhub-pull-secret
+    namespace: gpte
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
