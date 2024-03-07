@@ -1,0 +1,216 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog: Red Hat One Lab
+# --- Catalog Item: OpenShift Platform Plus:
+#                   A Security-Focused, Multi-Cluster
+#                   Kubernetes Solution
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV Includes
+# -------------------------------------------------------------------
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-region2.yaml
+
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+#-------------------------------------------------------------------
+# Instance configuration
+#-------------------------------------------------------------------
+master_instance_type: m6a.2xlarge
+master_instance_count: 3
+master_storage_type: gp3
+master_storage_size: 250
+worker_instance_type: m6a.4xlarge
+worker_instance_count: 4
+worker_storage_type: gp3
+worker_storage_size: 250
+bastion_instance_type: t3a.medium
+bastion_instance_image: RHEL93GOLD-latest
+
+agnosticd_aws_capacity_reservation_enable: true
+agnosticd_aws_capacity_reservation_single_zone: true
+
+#-------------------------------------------------------------------
+#OpenShift Installer Version
+#-------------------------------------------------------------------
+ocp4_installer_version: "4.15"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+host_ocp4_installer_set_user_data_kubeadmin_password: true
+
+# -------------------------------------------------------------------
+# Other variables
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+WORKSHOP_FILE: workshop-summit.yaml
+HOMEROOM_IMAGE: ocp4-dev
+
+#requirements_content:
+#  collections:
+#  - name: kubernetes.core
+#    version: 2.4.0
+#  - name: amazon.aws
+#    version: 6.3.0
+#  - name: community.general
+#    version: 7.1.0
+#  - name: ansible.posix
+#    version: 1.5.4
+#  - name: community.crypto
+#    version: 2.14.0
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+# -------------------------------------------------------------------
+
+infra_workloads:
+- ocp4_workload_openshift_data_foundation
+- ocp4-workload-workshop-admin-storage
+- ocp4_workload_pipelines
+- ocp4_workload_rhacs
+- ocp4_workload_le_certificates
+- ocp4_workload_rhacm
+- ocp4_workload_rhacm_hypershift
+- ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+# --- Student User on Bastion
+install_student_user: true
+# --- student_name not set -> Requestor User ID is used as student_name
+student_name: demo-user
+# --- student_password not set -> generate random password
+student_password: "{{ common_password }}"
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# Enable if the item is being deployed to a sandbox account
+# and you want credentials provided to the user
+sandbox_student_user: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_data_foundations
+# -------------------------------------------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.14
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 500Gi
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_old_default_storage_class_name: gp3-csi
+
+ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacm
+# -------------------------------------------------------------------
+ocp4_workload_rhacm_acm_channel: "release-2.9"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacm_hypershift
+# -------------------------------------------------------------------
+ocp4_workload_rhacm_hypershift_deploy_clusters:
+- name: development
+  infra_id: "dev-{{ guid }}"
+  ocp_release: 4.15.0
+  region: us-west-2
+  zones:
+  - us-west-2a
+  control_plane_availability: SingleReplica
+  infra_availability: SingleReplica
+  etcd_storage_class: gp3-csi
+  nodepool_replicas: 1
+  worker_instance_type: m6a.2xlarge
+  root_volume_type: gp3
+  root_volume_size: 120
+  labels:
+    rhdp_type: sandbox
+    rhdp_usage: development
+    guid: "{{ guid }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_pipelines
+# -------------------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.14
+ocp4_workload_pipelines_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacs
+# -------------------------------------------------------------------
+ocp4_workload_rhacs_install_operator_namespace: "rhacs-operator"
+ocp4_workload_rhacs_install_operator_channel: "rhacs-4.3"
+ocp4_workload_rhacs_install_operator_use_catalog_snapshot: false
+ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/mfosterrox/summit-opp-lab.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_deployer_chart_version: 1.0.5
+
+ocp4_workload_showroom_content_only: false
+ocp4_workload_showroom_terminal_type: showroom
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: f8b390ec-efc1-4c88-acff-d1441c80febc
+  anarchy:
+    namespace: babylon-anarchy-events
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Hands-on lab with Red Hat OpenShift Platform Plus"
+    category: Red_Hat_Summit_2024
+    keywords:
+    - workshop
+    - openshift
+    - ocp
+    - rhacm
+    - rhacs
+    - quay
+    - admin
+    - storage
+    - rh1
+    - ocpplus
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: Hybrid_Platform_BU
+    multiuser: false
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
