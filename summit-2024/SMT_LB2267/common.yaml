@@ -12,6 +12,11 @@
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 
+
+# Add Machineset workload and set up infra nodes for registry etc.
+# Install DeveloperHub
+# Install Gitlab
+
 # -------------------------------------------------------------------
 # --- Catalog Item: Vote App
 # -------------------------------------------------------------------
@@ -70,15 +75,24 @@ install_student_user: false
 # -------------------------------------------------------------------
 # --- Infra Workloads (YAML List)
 infra_workloads:
+- ocp4_workload_machinesets
 - ocp4_workload_le_certificates
 - ocp4_workload_authentication
+- ocp4_workload_redhat_developer_hub_bootstrap
 - ocp4_workload_pipelines
 - ocp4_workload_openshift_gitops
-- ocp4_workload_gitea_operator
+- ocp4_workload_gitops_gitlab
+- ocp4_workload_redhat_developer_hub
 - ocp4_workload_devspaces
 - ocp4_workload_voteapp
 - ocp4_workload_gitops_bootstrap
-# - ocp4_workload_openshift_gitops_fix_argocd
+- ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: openshift
 
 # -------------------------------------------------------------------
 # Workload variables
@@ -96,10 +110,29 @@ ocp4_workload_devspaces_startingcsv: devspacesoperator.v3.11.0
 ocp4_workload_devspaces_devworkspace: false
 
 # -------------------------------------------------------------------
-# Common Password
+# ocp4_workload_machinesets
 # -------------------------------------------------------------------
-common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-common_user_password: openshift
+# Add a MachineSet for Infra Nodes
+ocp4_workload_machinesets_machineset_groups:
+- name: infra
+  role: infra
+  instance_type: m6a.2xlarge
+  root_volume_size: 250
+  autoscale: false
+  total_replicas: 2
+  # Autoscaler settings - minimum and maximum number of Machines
+  total_replicas_min: 2
+  total_replicas_max: 2
+  machineConfigPool:
+    setup: false
+    maxPodsPerNode: 250
+  taints:
+  - key: infra
+    value: reserved
+    effect: NoSchedule
+  - key: infra
+    value: reserved
+    effect: NoExecute
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -165,35 +198,108 @@ ocp4_workload_openshift_gitops_ignore_differences: |
       - .spec.template.spec.containers[] | select(.name == "redis")
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_gitea_operator
+# GitLab
 # -------------------------------------------------------------------
-ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
-ocp4_workload_gitea_operator_catalog_image_tag: v2.0.5
+ocp4_workload_gitops_gitlab_gitops_type: argocd
+ocp4_workload_gitops_gitlab_config_email_display_name: Janus Admin
+ocp4_workload_gitops_gitlab_config_email_reply_to: "noreply@redhat.com"
+ocp4_workload_gitops_gitlab_config_smtp_enabled: "false"
+ocp4_workload_gitops_gitlab_config_smtp_domain: "example.com"
+ocp4_workload_gitops_gitlab_config_smtp_port: "587"
+ocp4_workload_gitops_gitlab_config_smtp_user: "gitlab"
+ocp4_workload_gitops_gitlab_config_smtp_password: "gitlab"
+ocp4_workload_gitops_gitlab_config_ssh_port: "22"
+ocp4_workload_gitops_gitlab_config_rootPassword: "{{ common_password }}"
+ocp4_workload_gitops_gitlab_config_https: "true"
+ocp4_workload_gitops_gitlab_config_root_email: "root@opentlc.com"
+ocp4_workload_gitops_gitlab_config_keybase_db: "0123456789"
+ocp4_workload_gitops_gitlab_config_keybase_otp: "0123456789"
+ocp4_workload_gitops_gitlab_config_keybase_secret: "0123456789"
 
-ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: "1.21.7"
-ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel8/postgresql-13
-ocp4_workload_gitea_operator_postgresql_image_tag: 1-118.1682303950
+ocp4_workload_gitops_gitlab_db_user_name: gitlab
+ocp4_workload_gitops_gitlab_db_password: passw0rd
+ocp4_workload_gitops_gitlab_db_name: gitlab_production
 
-ocp4_workload_gitea_operator_project: gitea
-ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitops_gitlab_gitops_repo: https://github.com/redhat-gpte-devopsautomation/agnosticg.git
 
-ocp4_workload_gitea_operator_create_admin: true
-ocp4_workload_gitea_operator_create_users: true
-ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_user_count }}"
-ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_user_base }}%d"
-ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
-ocp4_workload_gitea_operator_migrate_repositories: true
-ocp4_workload_gitea_operator_repositories_list:
-- repo: https://github.com/blues-man/vote-app-gitops.git
-  name: vote-app-gitops
-  private: false
-- repo: https://github.com/blues-man/pipelines-vote-ui
-  name: pipelines-vote-ui
-  private: false
-- repo: https://github.com/blues-man/pipelines-vote-api
-  name: pipelines-vote-api
-  private: false
+# ocp4_workload_gitea_operator_repositories_list:
+# - repo: https://github.com/blues-man/vote-app-gitops.git
+#   name: vote-app-gitops
+#   private: false
+# - repo: https://github.com/blues-man/pipelines-vote-ui
+#   name: pipelines-vote-ui
+#   private: false
+# - repo: https://github.com/blues-man/pipelines-vote-api
+#   name: pipelines-vote-api
+#   private: false
+ocp4_workload_gitops_gitlab_import_repos:
+- name: vote-app
+  repo:
+  - name: vote-app-gitops
+    url: https://github.com/blues-man/vote-app-gitops.git
+- name: vote-ui
+  repo:
+  - name: pipelines-vote-ui
+    url: https://github.com/blues-man/pipelines-vote-ui
+- name: vote-api
+  repo:
+  - name: pipelines-vote-api
+    url: https://github.com/blues-man/pipelines-vote-api
+
+ocp4_workload_gitops_gitlab_users_count: "{{ num_users | default(1) }}"
+ocp4_workload_gitops_gitlab_users_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_redhat_developer_hub
+# -------------------------------------------------------------------
+ocp4_workload_redhat_developer_hub_gitlab_root_password: "{{ ocp4_workload_gitops_gitlab_config_rootPassword }}"
+ocp4_workload_redhat_developer_hub_janus_bootstrap_repo: https://github.com/redhat-gpte-devopsautomation/janus-idp-bootstrap.git
+ocp4_workload_redhat_developer_hub_janus_bootstrap_repo_target_revision: main
+ocp4_workload_redhat_developer_hub_backstage_gitlab_user_create: "{{ ocp4_workload_gitops_gitlab_user_create }}"
+ocp4_workload_redhat_developer_hub_backstage_gitlab_user_username: "{{ ocp4_workload_gitops_gitlab_user_username | default(omit) }}"
+ocp4_workload_redhat_developer_hub_backstage_gitlab_user_password: "{{ ocp4_workload_gitops_gitlab_user_password }}"
+ocp4_workload_redhat_developer_hub_admin_user: admin
+ocp4_workload_redhat_developer_hub_admin_password: "{{ common_password }}"
+ocp4_workload_redhat_developer_hub_gitlab_template_locations:
+- group: rhdh
+  project: software-templates
+  branch: main
+  file: showcase-templates.yaml
+  rules:
+    allow: Template
+  templates:
+  - scaffolder-templates/quarkus-web-template/template.yaml
+- group: rhdh
+  project: software-templates
+  branch: main
+  file: org.yaml
+  rules:
+    allow: Group, User
+  templates: []
+- group: summit-lab
+  project: backstage-workshop
+  branch: master
+  file: showcase-templates.yaml
+  rules:
+    allow: Template
+  templates:
+  - scaffolder-templates/poi-map/template.yaml
+  - scaffolder-templates/poi-gateway/template.yaml
+  - scaffolder-templates/poi-backend/template.yaml
+
+ocp4_workload_redhat_developer_hub_users_count: "{{ num_users | default(1) }}"
+ocp4_workload_redhat_developer_hub_users_password: "{{ common_password }}"
+ocp4_workload_redhat_developer_hub_backstage_helm_chart_repo: https://redhat-developer.github.io/rhdh-chart
+ocp4_workload_redhat_developer_hub_backstage_helm_chart: backstage
+ocp4_workload_redhat_developer_hub_backstage_helm_chart_version: 2.10.3
+ocp4_workload_redhat_developer_hub_backstage_image_registry: quay.io
+ocp4_workload_redhat_developer_hub_backstage_image_repository: rhdh/rhdh-hub-rhel9
+ocp4_workload_redhat_developer_hub_backstage_image_tag: "{{ '1.1' if rhdh_version == 'latest' else '1.1-44' }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_redhat_developer_hub_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_redhat_developer_hub_bootstrap_janus_bootstrap_repo: https://github.com/redhat-gpte-devopsautomation/janus-idp-bootstrap.git
 
 # -------------------------------------------------------------------
 # ocp4_workload_gitops_bootstrap
@@ -250,8 +356,19 @@ ocp4_workload_voteapp_my_var: myvar
 # ocp4_workload_openshift_gitops_fix_argocd
 # -------------------------------------------------------------------
 # Sleep 10 minutes before attempting to fix argocd dex pods
-ocp4_workload_openshift_gitops_fix_argocd_delay: "10"
-ocp4_workload_openshift_gitops_fix_argocd_create_namespace: false
+# ocp4_workload_openshift_gitops_fix_argocd_delay: "10"
+# ocp4_workload_openshift_gitops_fix_argocd_create_namespace: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/blues-man/showroom_template_summit_2024
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_deployer_chart_version: 1.0.5
+
+ocp4_workload_showroom_content_only: false
+ocp4_workload_showroom_terminal_type: showroom
 
 # -------------------------------------------------------------------
 # Babylon meta variables
