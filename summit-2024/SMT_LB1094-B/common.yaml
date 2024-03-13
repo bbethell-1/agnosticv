@@ -1,0 +1,343 @@
+---
+# -------------------------------------------------------------------
+# AgnosticV Includes
+# -------------------------------------------------------------------
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-region2.yaml
+
+#include /includes/secrets/demosat-rhel-9-lab.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: Open Hybrid Cloud - Parallel
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+project_tag: "{{ env_type }}-{{ guid }}"
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Cloud Provider
+# -------------------------------------------------------------------
+cloud_provider: ec2
+bastion_instance_type: t3.medium
+bastion_instance_image: RHEL91GOLD-latest
+#bastion_instance_image: RHEL84GOLD-latest
+
+key_name: opentlc_admin_backdoor
+#region: us-east-2
+cloud_tags:
+  env_type: "{{ env_type }}"
+  #guid: "{{ guid }}"
+  #course_name: "{{ course_name | d('unknown') }}"
+  platform: "{{ platform | d('unknown') }}"
+  #purpose: "{{ purpose | d('unknown') }}"
+num_users: 5
+#aws_region: us-east-2
+
+# -------------------------------------------------------------------
+# Security group
+# -------------------------------------------------------------------
+security_groups:
+- name: BastionSG
+  rules:
+  - name: BasSSHPublic
+    description: "SSH public"
+    from_port: 22
+    to_port: 22
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: BasHTTPPublic
+    description: "HTTP public for Let's Encrypt verification"
+    from_port: 80
+    to_port: 80
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Role: create_ssh_provision_key
+# -------------------------------------------------------------------
+create_ssh_provision_key_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.11.36"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+master_instance_count: 3
+master_instance_type: m5.2xlarge
+worker_instance_count: 3
+worker_instance_type: m5.4xlarge
+
+# -------------------------------------------------------------------
+# OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
+# instead of cluster-{{ guid }}.{{ guid }}.sandboxXXX.opentlc.com
+# -------------------------------------------------------------------
+ocp4_base_domain: "{{ sandbox_zone }}"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+# --- student_name not set -> Requestor User ID is used as student_name
+student_name: dev-admin
+# --- student_password not set -> generate random password
+student_password: "{{ common_password }}"
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
+
+install_ftl: false
+
+# -------------------------------------------------------------------
+# Custom collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  - name: kubernetes.core
+    version: 2.3.1
+  - name: openstack.cloud
+    version: 1.7.2
+  - name: amazon.aws
+    version: 2.2.0
+  - name: community.general
+    version: 4.6.1
+  - name: ansible.posix
+    version: 1.3.0
+  - name: awx.awx
+    version: 21.1.0
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_le_certificates            # all segments
+- ocp4_workload_authentication             # all segments
+- ocp4_workload_gitea_operator
+- ocp4_workload_pipelines
+- ocp4_workload_openshift_gitops
+- ocp4_workload_openshift_data_foundation
+- ocp4_workload_aws_info
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_count: 5
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_remove_kubeadmin: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.1
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: 1.20.1
+
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 2Gi
+ocp4_workload_gitea_operator_postgresql_volume_size: 2Gi
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_disable_registration: false
+ocp4_workload_gitea_operator_enable_captcha: false
+ocp4_workload_gitea_operator_allow_create_organization: true
+ocp4_workload_gitea_operator_register_email_confirm: false
+ocp4_workload_gitea_operator_enable_notify_email: false
+ocp4_workload_gitea_operator_mailer_enabled: false
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: dev-admin
+ocp4_workload_gitea_operator_admin_email: dev-admin@opentlc.com
+ocp4_workload_gitea_operator_admin_password: openshift
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: 1
+ocp4_workload_gitea_operator_generate_user_format: dev-user
+ocp4_workload_gitea_operator_user_password: openshift
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/AhilanPonnusamy/coolstore-RH-demo
+  name: coolstore-microservice
+  private: false
+- repo: https://github.com/redhat-gpte-devopsautomation/coolstore-argocd.git
+  name: coolstore-argocd
+  private: false
+
+# ---------------------------------------------------------
+# Workload: OpenShift Pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.7
+ocp4_workload_pipelines_tkn_version: 0.23.1
+ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.10_2022_06_06
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: stable
+ocp4_workload_openshift_gitops_pipelines_csv_prefix: openshift-pipelines-operator-rh
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
+ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.10_2022_06_06
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacs
+# -------------------------------------------------------------------
+ocp4_workload_rhacs_install_operator_channel: "rhacs-3.69"
+ocp4_workload_rhacs_install_operator_starting_csv: "rhacs-operator.v3.69.1"
+ocp4_workload_rhacs_install_operator_use_catalog_snapshot: true
+ocp4_workload_rhacs_install_operator_catalog_source_tag: "v4.10_2022_04_04"
+ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_codeserver
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_codeserver_name: codeserver
+ocp4_workload_codeserver_workspace_name: ide
+ocp4_workload_codeserver_password: "{{ common_password }}"
+ocp4_workload_codeserver_pvc_size: 3Gi
+ocp4_workload_codeserver_gitea_name: gitea
+ocp4_workload_codeserver_gitea_namespace: gitea
+ocp4_workload_codeserver_extensions:
+- filename: auchenberg.vscode-browser-preview-0.7.2.vsix
+  url: https://gpte-public.s3.amazonaws.com/vscode-plugins/auchenberg.vscode-browser-preview-0.7.2.vsix
+
+ocp4_workload_codeserver_multi_user_install: false
+ocp4_workload_codeserver_multi_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_codeserver_multi_user_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_codeserver_multi_user_namespace_base: codeserver
+
+# Repositories to set up in codeserver
+ocp4_workload_codeserver_repos_user: dev-user
+ocp4_workload_codeserver_repos_password: openshift  # openshift is used above
+# ocp4_workload_codeserver_repos_password: "{{ common_password }}"
+ocp4_workload_codeserver_repos:
+- name: coolstore-microservice
+  account: dev-user
+  branch: main
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_data_foundations
+# -------------------------------------------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.11
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_tolerations:
+- key: metal
+  operator: Exists
+
+ocp4_workload_openshift_data_foundation_catalogsource_setup: true
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
+ocp4_workload_openshift_data_foundation_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: v4.11_2022_09_19
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_coolstore-apac_summit
+# -------------------------------------------------------------------
+ocp4_workload_coolstore_apac_home_directory: "~{{ ansible_user }}"
+
+# Gitea deployment to use
+# Base gitea route will be determined dynamically based on project and instance
+ocp4_workload_coolstore_apac_summit_project: gitea
+ocp4_workload_coolstore_apac_summit_instance: gitea
+ocp4_workload_coolstore_apac_summit_user: dev-user
+# Set via config
+ocp4_workload_coolstore_apac_summit_user_password: "openshift"
+
+# Gitea repositories
+ocp4_workload_coolstore_apac_summit_repo: coolstore-microservice
+ocp4_workload_coolstore_apac_summit_repo_branch: main
+
+ocp4_workload_coolstore_apac_summit_repo_gitops: coolstore-argocd
+ocp4_workload_coolstore_apac_summit_repo_gitops_branch: main
+
+# Demo pipeline setup
+ocp4_workload_coolstore_apac_summit_ci_namespace: ci
+ocp4_workload_coolstore_apac_summit_coolstore_namespace: coolstore
+
+# Run the pipeline during deployment
+ocp4_workload_coolstore_apac_pipeline_execute: false
+
+# Webhook Secret
+ocp4_workload_coolstore_apac_summit_webhook_secret: ""
+# Length of generated secret if secret is empty
+ocp4_workload_coolstore_apac_summit_webhook_secret_length: 12
+
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+
+agnosticv_meta:
+  sandboxed: false
+  idle_after_deploy: 9999
+  idle_after_start: 9999
+  deploy_with: babylon
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 9234ABE0-1C5B-424D-A62A-CEAE2A8F9355
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.1
+      pull: always
+  catalog:
+    display_name: A - Achieve business continuity with Red Hat OpenShift Container Platform
+    category: Red_Hat_Summit_2024
+    keywords: []
+    parameters: []
+    labels:
+      Base_Component: 'False'
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+  secrets:
+  - name: rhods-git-secret
+    namespace: gpte
