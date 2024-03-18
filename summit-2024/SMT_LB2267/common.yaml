@@ -8,14 +8,10 @@
 #include /includes/aws-sandbox-meta.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
 
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/ocp4_token.yaml
-#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-
-
-# Add Machineset workload and set up infra nodes for registry etc.
-# Install DeveloperHub
-# Install Gitlab
+#include /includes/secrets/redhat_gpte_devhub_pull_secret.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: Vote App
@@ -56,7 +52,7 @@ update_packages: true
 # -------------------------------------------------------------------
 # OpenShift Installer Version
 # -------------------------------------------------------------------
-ocp4_installer_version: "4.15"
+ocp4_installer_version: "4.14"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 
 # -------------------------------------------------------------------
@@ -76,15 +72,12 @@ install_student_user: false
 # --- Infra Workloads (YAML List)
 infra_workloads:
 - ocp4_workload_machinesets
+- ocp4_workload_openshift_data_foundation
 - ocp4_workload_le_certificates
-- ocp4_workload_authentication
 - ocp4_workload_redhat_developer_hub_bootstrap
 - ocp4_workload_pipelines
-- ocp4_workload_openshift_gitops
 - ocp4_workload_gitops_gitlab
 - ocp4_workload_redhat_developer_hub
-- ocp4_workload_devspaces
-- ocp4_workload_voteapp
 - ocp4_workload_gitops_bootstrap
 - ocp4_workload_showroom
 
@@ -93,6 +86,7 @@ infra_workloads:
 # -------------------------------------------------------------------
 common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 common_user_password: openshift
+common_password: "{{ common_admin_password }}"
 
 # -------------------------------------------------------------------
 # Workload variables
@@ -101,13 +95,13 @@ ocp4_workload_user_base: user
 ocp4_workload_user_count: "{{ num_users }}"
 
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.15_2024_03_11
+ocp4_workload_catalogsource_tag: v4.14_2024_03_18
 
-ocp4_workload_devspaces_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_devspaces_catalogsource_tag: v4.15_2024_03_11
-ocp4_workload_devspaces_startingcsv: devspacesoperator.v3.11.0
+# ocp4_workload_devspaces_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+# ocp4_workload_devspaces_catalogsource_tag: v4.15_2024_03_18
+# ocp4_workload_devspaces_startingcsv: devspacesoperator.v3.11.0
 
-ocp4_workload_devspaces_devworkspace: false
+# ocp4_workload_devspaces_devworkspace: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_machinesets
@@ -134,68 +128,17 @@ ocp4_workload_machinesets_machineset_groups:
     value: reserved
     effect: NoExecute
 
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication
-# -------------------------------------------------------------------
-ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
-ocp4_workload_authentication_htpasswd_user_base: "{{ ocp4_workload_user_base }}"
-ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
-ocp4_workload_authentication_htpasswd_user_count: "{{ ocp4_workload_user_count }}"
-ocp4_workload_authentication_remove_kubeadmin: true
+# -----------------------------------
+# OpenShift Data Foundations Operator
+# -----------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.14
+ocp4_workload_openshift_data_foundation_catalogsource_setup: false
 
 # ---------------------------------------------------------
 # Workload: ocp4_workload_pipelines
 # ---------------------------------------------------------
 ocp4_workload_pipelines_channel: pipelines-1.14
-
 ocp4_workload_pipelines_use_catalog_snapshot: false
-ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_openshift_gitops
-# -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.11
-
-ocp4_workload_openshift_gitops_use_catalog_snapshot: false
-ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-ocp4_workload_openshift_gitops_setup_cluster_admin: true
-ocp4_workload_openshift_gitops_update_resources: true
-ocp4_workload_openshift_gitops_update_route_tls: true
-
-ocp4_workload_openshift_gitops_controller_update: true
-ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
-ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
-ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
-ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
-
-ocp4_workload_openshift_gitops_repo_update: true
-ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
-ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
-ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
-ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
-
-ocp4_workload_openshift_gitops_rbac_update: true
-ocp4_workload_openshift_gitops_rbac_policy: |
-  g, {{ ocp4_workload_authentication_admin_user }}, role:admin
-ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
-
-ocp4_workload_openshift_gitops_ignore_differences: |
-  resourceIdentifiers:
-  - group: org.eclipse.che
-    kind: CheCluster
-    customization:
-      jsonPointers:
-      - /spec/devEnvironments
-  - group: apps
-    kind: Deployment
-    customization:
-      jqPathExpressions:
-      - .spec.template.spec.containers[] | select(.name == "redis")
 
 # -------------------------------------------------------------------
 # GitLab
@@ -233,6 +176,16 @@ ocp4_workload_gitops_gitlab_gitops_repo: https://github.com/redhat-gpte-devopsau
 #   name: pipelines-vote-api
 #   private: false
 ocp4_workload_gitops_gitlab_import_repos:
+- name: rhdh
+  repo:
+  - name: software-templates
+    url: https://github.com/redhat-gpte-devopsautomation/software-templates.git
+  - name: prepare-to-perform-templates
+    url: https://github.com/ryanj/lb1990-templates.git
+- name: gitops
+  repo:
+  - name: janus-idp-gitops
+    url: https://github.com/redhat-gpte-devopsautomation/janus-idp-gitops.git
 - name: vote-app
   repo:
   - name: vote-app-gitops
@@ -276,30 +229,35 @@ ocp4_workload_redhat_developer_hub_gitlab_template_locations:
   rules:
     allow: Group, User
   templates: []
-- group: summit-lab
-  project: backstage-workshop
-  branch: master
-  file: showcase-templates.yaml
-  rules:
-    allow: Template
-  templates:
-  - scaffolder-templates/poi-map/template.yaml
-  - scaffolder-templates/poi-gateway/template.yaml
-  - scaffolder-templates/poi-backend/template.yaml
+# - group: summit-lab
+#   project: backstage-workshop
+#   branch: master
+#   file: showcase-templates.yaml
+#   rules:
+#     allow: Template
+#   templates:
+#   - scaffolder-templates/poi-map/template.yaml
+#   - scaffolder-templates/poi-gateway/template.yaml
+#   - scaffolder-templates/poi-backend/template.yaml
 
 ocp4_workload_redhat_developer_hub_users_count: "{{ num_users | default(1) }}"
 ocp4_workload_redhat_developer_hub_users_password: "{{ common_password }}"
 ocp4_workload_redhat_developer_hub_backstage_helm_chart_repo: https://redhat-developer.github.io/rhdh-chart
 ocp4_workload_redhat_developer_hub_backstage_helm_chart: backstage
-ocp4_workload_redhat_developer_hub_backstage_helm_chart_version: 2.10.3
+ocp4_workload_redhat_developer_hub_backstage_helm_chart_version: 2.15.0
 ocp4_workload_redhat_developer_hub_backstage_image_registry: quay.io
 ocp4_workload_redhat_developer_hub_backstage_image_repository: rhdh/rhdh-hub-rhel9
-ocp4_workload_redhat_developer_hub_backstage_image_tag: "{{ '1.1' if rhdh_version == 'latest' else '1.1-44' }}"
+# ocp4_workload_redhat_developer_hub_backstage_image_tag: "{{ '1.1' if rhdh_version == 'latest' else '1.1-97' }}"
+ocp4_workload_redhat_developer_hub_backstage_image_tag: "1.1-97"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_redhat_developer_hub_bootstrap
 # -------------------------------------------------------------------
 ocp4_workload_redhat_developer_hub_bootstrap_janus_bootstrap_repo: https://github.com/redhat-gpte-devopsautomation/janus-idp-bootstrap.git
+# ocp4_workload_redhat_developer_hub_bootstrap_admin_password: "{{ common_admin_password }}"
+
+# Quay operator workload is called from ocp4_workload_redhat_developer_hub_bootstrap workload
+ocp4_workload_quay_operator_channel: "stable-3.10"
 
 # -------------------------------------------------------------------
 # ocp4_workload_gitops_bootstrap
@@ -314,7 +272,7 @@ ocp4_workload_gitops_bootstrap_helm_values:
     prefix: "{{ ocp4_workload_user_base }}"
   argocd:
     git:
-      url: http://gitea.gitea.svc:3000
+      url: http://gitlab.gitlab.svc:80
       revision: v1.0.2
     values:
       repos:
@@ -323,7 +281,7 @@ ocp4_workload_gitops_bootstrap_helm_values:
         password: "{{ common_user_password }}"
   tekton:
     git:
-      url: http://gitea.gitea.svc:3000
+      url: http://gitlab.gitlab.svc:80
       revision: v1.0.2
     values:
       app:
@@ -336,7 +294,7 @@ ocp4_workload_gitops_bootstrap_helm_values:
             password: "{{ common_user_password }}"
   devspaces:
     git:
-      url: http://gitea.gitea.svc:3000
+      url: http://gitlab.gitlab.svc:80
     values:
       app:
         repo:
@@ -346,18 +304,6 @@ ocp4_workload_gitops_bootstrap_helm_values:
     labAdminPassword: "{{ common_admin_password }}"
     labUserPassword: "{{ common_user_password }}"
     labAccessToken: "{{ common_user_password }}"
-
-# -------------------------------------------------------------------
-# ocp4_workload_voteapp
-# -------------------------------------------------------------------
-ocp4_workload_voteapp_my_var: myvar
-
-# -------------------------------------------------------------------
-# ocp4_workload_openshift_gitops_fix_argocd
-# -------------------------------------------------------------------
-# Sleep 10 minutes before attempting to fix argocd dex pods
-# ocp4_workload_openshift_gitops_fix_argocd_delay: "10"
-# ocp4_workload_openshift_gitops_fix_argocd_create_namespace: false
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
@@ -404,5 +350,5 @@ __meta__:
     maximum: 48h
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2-rc
       pull: missing
