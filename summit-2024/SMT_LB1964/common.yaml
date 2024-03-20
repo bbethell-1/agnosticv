@@ -1,0 +1,100 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+#
+env_type: base-infra
+cloud_provider: ec2
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+bastion_instance_image: RHEL93GOLD-latest
+
+install_student_user: true
+student_name: lab-user
+student_password: "{{ common_password }}"
+student_sudo: true
+
+use_content_view: true
+update_packages: true      # Do you want to run a full yum update
+
+agd_bastion_packages:
+  - at
+  - bash-completion
+  - bind-utils
+  - git
+  - podman
+  - buildah
+  - python3-pip
+  - tmux
+  - vim-enhanced
+  - wget
+  - ansible
+
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+
+repo_method: satellite
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+showroom_deploy: true
+showroom_git_repo: https://github.com/rhpds/summit_2024_RHELevant_Security_Practices_Lab_LB1964.git
+showroom_git_ref: main
+showroom_var_inject: true
+showroom_ssh_method: sshkey
+showroom_ssh_username: "{{ student_name }}"
+showroom_default_ssh_user: "{{ student_name }}"
+showroom_ssh_host: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain_base }}"
+showroom_lab_users:
+  - "{{ student_name }}"
+showroom_tab_services: []
+
+showroom_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: b900df23-5c4b-4515-a364-9d164ed667a9
+  anarchy:
+    namespace: babylon-anarchy-events
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: RHELevant Security Practices Lab
+    category: Demos
+    keywords:
+      - rhel
+      - rhel9
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: Red_Hat_Demo_Platform
+    multiuser: false
+    parameters: []
+  secrets: []
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
