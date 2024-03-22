@@ -1,0 +1,269 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+#
+
+env_type: base-infra
+cloud_provider: ec2
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+bastion_instance_image: RHEL93GOLD-latest
+bastion_instance_type: t3a.medium
+node_instance_image: RHEL93GOLD-latest
+
+# Windows server config#
+windows_password: 'P@ssw0rd'
+windows_server_instance_type: m5.xlarge
+windows_instance_image: WIN2022
+
+install_student_user: true
+student_name: lab-user
+student_password: "{{ common_password }}"
+student_sudo: true
+
+use_content_view: true
+update_packages: false      # This CI will be wanting out of date packages for insights to pick up and fix
+
+common_packages_el9:
+- at
+- python3
+- unzip
+- bash-completion
+- tmux
+- bind-utils
+- wget
+- nano
+- git
+- vim-enhanced
+- httpd-tools
+- python3-pip
+- tree
+- ansible
+
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+inventory_groups:
+- nodes
+- windows
+
+security_groups:
+- name: BastionSG
+  rules:
+  - name: BasSSHPublic
+    description: "SSH public"
+    from_port: 22
+    to_port: 22
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+- name: WebSG
+  rules:
+  - name: HTTPPorts
+    description: "HTTP Public"
+    from_port: 80
+    to_port: 80
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: HTTPSPorts
+    description: "HTTP Public"
+    from_port: 443
+    to_port: 443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+- name: HostSG
+  rules:
+  - name: FromHostSG
+    description: "Allow everything from HostSG nodes"
+    from_port: 0
+    to_port: 65535
+    protocol: -1
+    from_group: HostSG
+    rule_type: Ingress
+
+- name: WinSG
+  rules:
+  - name: WinSGTCP
+    description: "All TCP"
+    from_port: 1
+    to_port: 65535
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: WinSGUdp
+    description: "All UDP"
+    from_port: 1
+    to_port: 65535
+    protocol: udp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+- name: ShowroomSG
+  rules:
+  - name: ShowroomHTTPS
+    description: "Primary showroom endpoint - for reverse proxy"
+    from_port: 8443
+    to_port: 8443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+  - name: ShowroomExposed
+    description: "Showroom views or exposed services, up to 26 of them"
+    from_port: 8500
+    to_port: 8525
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+instances:
+- name: "{{ bastion_hostname | default('bastion') }}"
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: true
+  floating_ip: true
+  image: "{{ bastion_instance_image | default(default_instance_image) }}"
+  flavor:
+    ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions,showroom"
+  - key: "ostype"
+    value: "linux"
+  rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+  security_groups:
+  - BastionSG
+  - WebSG
+  - ShowroomSG
+
+- name: "node"
+  count: 2
+  public_dns: false
+  image: "{{ node_instance_image | default(default_instance_image) }}"
+  flavor:
+    ec2: "{{ node_instance_type | default(default_instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "nodes"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  rootfs_size: "{{ default_rootfs_size }}"
+  security_groups:
+  - DefaultSG
+  - NodeSG
+
+- name: "windows"
+  count: 1
+  public_dns: true
+  image: "{{ windows_instance_image | default('WIN2019') }}"
+  flavor:
+    ec2: "{{ windows_server_instance_type | default('m5.xlarge') }}"
+  networks:
+  - default
+  servicePort: 5986 # WinRM port, default is 22
+  tags:
+  - key: "AnsibleGroup"
+    value: "windows"
+  - key: "ostype"
+    value: "windows"
+  security_groups:
+  - DefaultSG
+  - WinSG
+  - HostSG
+  UserData: |
+    UserData:
+            "Fn::Base64":
+              "Fn::Join":
+                - ""
+                - - "<powershell>\n"
+                  - "$admin = [adsi]('WinNT://./administrator, user')\n"
+                  - "$admin.PSBase.Invoke('SetPassword', '{{windows_password}}')\n"
+                  - "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12\n"
+                  - "$scriptPath=((New-Object System.Net.Webclient).DownloadString('https://gpte-public.s3.amazonaws.com/CI+Assets/Ansible+Windows+Workshop/ConfigureRemotingForAnsible.ps1'))\n"
+                  - "Invoke-Command -ScriptBlock ([scriptblock]::Create($scriptPath)) -ArgumentList '-skipNetworkProfileCheck'\n"
+                  - "Enable-WSManCredSSP -Role 'Server' -Force"
+                  - "</powershell>"
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+
+repo_method: satellite
+
+# -------------------------------------------------------------------
+# Role: asset-injector
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+- description: Identity Management Anisble Directory
+  src: https://github.com/mralph-rh/idm_20240206.git
+  dest: "/home/{{ student_name }}/idm_20240206"
+  type: git
+  scm_ref: main
+  owner: "{{ student_name }}"
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+showroom_deploy: true
+showroom_git_repo: https://github.com/rhpds/Summit_2024_LB1401_Deploying_Red_Hat_Identity_Management.git
+showroom_git_ref: main
+showroom_var_inject: true
+showroom_ssh_method: sshkey
+showroom_ssh_username: "{{ student_name }}"
+showroom_default_ssh_user: "{{ student_name }}"
+showroom_ssh_host: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain_base }}"
+showroom_lab_users:
+- "{{ student_name }}"
+showroom_tab_services: []
+
+showroom_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: 164a32c5-78b6-4e6b-8d0a-6f5f5a857b29
+  anarchy:
+    namespace: babylon-anarchy-events
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: LB1401 - Deploying Red Hat Identity Management as a Lazy Sysadmin
+    category: Red_Hat_Summit_2024
+    keywords: []
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: Red_Hat_Demo_Platform
+    multiuser: false
+    parameters: []
+  secrets: []
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
