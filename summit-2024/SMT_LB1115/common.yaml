@@ -2,147 +2,103 @@
 # -------------------------------------------------------------------
 # AgnosticV Includes
 # -------------------------------------------------------------------
-#include /includes/aws-sandbox-meta.yaml
 #include /includes/catalog-icon-openshift.yaml
-#include /includes/terms-of-service.yaml
-
 #include /includes/parameters/purpose.yaml
-#include /includes/parameters/aws-region2.yaml
+#include /includes/parameters/aws-3regions.yaml
+#include /includes/aws-sandbox-meta.yaml
 
-#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-#include /includes/secrets/ocp4_token.yaml
-#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-
-# -------------------------------------------------------------------
-# --- Catalog Item: Cloud-Native Integration with Red Hat build of Apache Camel
-# -------------------------------------------------------------------
+#include /includes/parameters/showroom-ocp-defaults.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
 cloud_provider: ec2
-env_type: ocp4-cluster
-software_to_deploy: openshift4
+env_type: rosa-consolidated
+
+agnosticd_open_environment: true
+sandbox_user_info_messages_enable: false
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+bastion_instance_type: t3a.small
+bastion_instance_image: RHEL92GOLD-latest
+
+# ------------------------------------------------------
+# Bastion user
+# ------------------------------------------------------
+bastion_user_name: rosa
+bastion_user_enable_sudo: true
+bastion_user_password: ""
+bastion_user_password_length: 16
+
+# ------------------------------------------------------
+# ROSA properties
+# ------------------------------------------------------
+rosa_installer_version: latest
+rosa_deploy: true
+rosa_deploy_hcp: true
+
+rosa_version: latest
+rosa_version_base: "openshift-v4.15"
+
+rosa_setup_cluster_admin: true
+rosa_setup_cluster_admin_login: true
+
+# -------------------------------------------------------------------
+# Billing account for ROSA HCP
+# -------------------------------------------------------------------
+aws_billing_account_id: "017310218799"
+
+# ROSA Version can be "default", "latest", "latest-upgrade", or semantic version
+# Value controlled by catalog parameter below.
+# rosa_version: latest-upgrade
+
+# Make sure to set the base to a version that actually has an upgrade available
+# Check with `rosa list versions -o json` and make sure there is one with available_upgrades set
+# rosa_version_base: "openshift-v4.14"
 
 # -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
 repo_method: satellite
-
-# Update RHEL to the latest packages (and reboot)
+install_common: true
 update_packages: true
 
-#-------------------------------------------------------------------
-# Instance configuration
-#-------------------------------------------------------------------
-master_instance_type: m6a.2xlarge
-master_instance_count: 3
-master_storage_type: gp3
-master_storage_size: 250
-worker_instance_type: m6a.4xlarge
-worker_instance_count: 4
-worker_storage_type: gp3
-worker_storage_size: 250
-
-agnosticd_aws_capacity_reservation_enable: true
-agnosticd_aws_capacity_reservation_single_zone: true
-
-#-------------------------------------------------------------------
-#OpenShift Installer Version
-#-------------------------------------------------------------------
-ocp4_installer_version: "4.14"
-ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-host_ocp4_installer_set_user_data_kubeadmin_password: true
-
-# -------------------------------------------------------------------
-# Other variables
-# -------------------------------------------------------------------
-ocp4_network_type: OVNKubernetes
-
-# -------------------------------------------------------------------
-# Platform
-# -------------------------------------------------------------------
-bastion_instance_type: t3a.medium
-bastion_instance_image: RHEL93GOLD-latest
-bastion_remove_insights_motd: true
-bastion_custom_motd: |-
-  ----------------------------------------------------------------------------
-   Welcome to Cloud-Native Integration with Red Hat build of Apache Camel
-  ----------------------------------------------------------------------------
-
-  By continuing to use this service you agree to use this environment
-  solely for the purposes of completing the steps in the lab guide.
-
-  Any other use is a violation of this service and appropriate action
-  will be taken. If you disagree with these terms you must disconnect now.
-  ----------------------------------------------------------------------------
+common_extra_packages:
+- java-11-openjdk-devel
+- tzdata-java
+- maven
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 infra_workloads:
-- ocp4_workload_authentication
-- ocp4_workload_le_certificates
+- ocp4_workload_authentication_rosa
 - ocp4_workload_summit_2024_cloud_native_camel
 - ocp4_workload_showroom
 
-# TODO:
-  #kafka
-  #
-  #single shared kafka cluser
-  #OCP 4.14
-  #showroom repo - NO TERMINAL
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_rosa
+# -------------------------------------------------------------------
+ocp4_workload_authentication_rosa_user_base: user
+ocp4_workload_authentication_rosa_user_password_randomized: true
 
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication
-# -------------------------------------------------------------------
+ocp4_workload_authentication_rosa_token: "{{ rosa_token }}"
+
+ocp4_workload_authentication_rosa_aws_access_key_id: "{{ lookup('env','AWS_ACCESS_KEY_ID') | default(aws_access_key_id, true) | mandatory }}"
+ocp4_workload_authentication_rosa_aws_secret_access_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') | default(aws_secret_access_key, true) | mandatory }}"
+ocp4_workload_authentication_rosa_aws_region: "{{ lookup('env','AWS_DEFAULT_REGION') | default(aws_region, true) | mandatory }}"
+
 common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 common_user_password: "{{ (guid[:5] | reverse | hash('md5') | int(base=16) | b64encode)[:8] }}"
-
-ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
-ocp4_workload_authentication_htpasswd_user_base: user
-# Generate user password
-ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
-ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
-ocp4_workload_authentication_remove_kubeadmin: true
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_pipelines
-# -------------------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.14
-ocp4_workload_pipelines_use_catalog_snapshot: false
-
-# -------------------------------------------------------------------
-# ocp4_workload_devspaces
-# -------------------------------------------------------------------
-ocp4_workload_devspaces_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_devspaces_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
-ocp4_workload_devspaces_startingcsv: devspacesoperator.v3.11.0
-ocp4_workload_devspaces_devworkspace: false
-
-# -----------------------------------------------------------------
-# gitea
-# -----------------------------------------------------------------
-ocp4_workload_gitea_operator_create_admin: true
-ocp4_workload_gitea_operator_admin_password: openshift
-ocp4_workload_gitea_operator_create_users: true
-ocp4_workload_gitea_operator_user_password: openshift
-ocp4_workload_gitea_operator_migrate_repositories: true
-ocp4_workload_gitea_operator_repositories_list:
-- repo: "https://github.com/FIXME/FIXME.git"
-  name: "FIXME"
-  private: false
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
 # -------------------------------------------------------------------
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom_template_summit_2024.git
-ocp4_workload_showroom_content_git_repo_ref: main
-ocp4_workload_showroom_deployment_type: helm
-ocp4_workload_showroom_deployer_chart_version: 1.0.7
-
 ocp4_workload_showroom_content_only: true
 
 # -------------------------------------------------------------------
@@ -165,6 +121,17 @@ __meta__:
     display_name: LB1115 - Cloud-Native Integration with Red Hat build of Apache Camel
     category: Red_Hat_Summit_2024
     keywords: []
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 65
+        minimum: 2
+        maximum: 65
+          #    multiuser: true
     labels:
       Provider: RHDP
       Product: Red_Hat_OpenShift_Apache_Camel

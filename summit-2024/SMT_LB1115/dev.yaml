@@ -1,30 +1,152 @@
 ---
 # -------------------------------------------------------------------
-# Purpose - Cost tag. One of development, ilt, production, event
+# AgnosticV Includes
 # -------------------------------------------------------------------
-purpose: development
-
-update_packages: false
 
 # -------------------------------------------------------------------
-# AgnosticV meta variables
+# Mandatory Variables
 # -------------------------------------------------------------------
-agnosticv_meta:
-  idle_after_deploy: 9999
-  idle_after_start: 9999
+cloud_provider: ec2
+env_type: rosa-consolidated
+
+agnosticd_open_environment: true
+sandbox_user_info_messages_enable: false
 
 # -------------------------------------------------------------------
-# fewer workers for development
+# Platform
 # -------------------------------------------------------------------
-worker_instance_count: 1
+platform: rhpds
+
+bastion_instance_type: t3a.small
+bastion_instance_image: RHEL92GOLD-latest
+
+# ------------------------------------------------------
+# Bastion user
+# ------------------------------------------------------
+bastion_user_name: rosa
+bastion_user_enable_sudo: true
+bastion_user_password: ""
+bastion_user_password_length: 16
+
+# ------------------------------------------------------
+# ROSA properties
+# ------------------------------------------------------
+rosa_installer_version: latest
+rosa_deploy: true
+rosa_deploy_hcp: true
+
+rosa_version: latest
+rosa_version_base: "openshift-v4.15"
+
+rosa_setup_cluster_admin: true
+rosa_setup_cluster_admin_login: true
+
+# -------------------------------------------------------------------
+# Billing account for ROSA HCP
+# -------------------------------------------------------------------
+aws_billing_account_id: "017310218799"
+
+# ROSA Version can be "default", "latest", "latest-upgrade", or semantic version
+# Value controlled by catalog parameter below.
+# rosa_version: latest-upgrade
+
+# Make sure to set the base to a version that actually has an upgrade available
+# Check with `rosa list versions -o json` and make sure there is one with available_upgrades set
+# rosa_version_base: "openshift-v4.14"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+install_common: true
+update_packages: true
+
+common_extra_packages:
+- java-11-openjdk-devel
+- tzdata-java
+- maven
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_authentication_rosa
+- ocp4_workload_summit_2024_cloud_native_camel
+- ocp4_workload_showroom
+
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: "{{ (guid[:5] | reverse | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_rosa
+# -------------------------------------------------------------------
+ocp4_workload_authentication_rosa_user_base: user
+ocp4_workload_authentication_rosa_user_password_randomized: false
+ocp4_workload_authentication_rosa_user_password: "{{ common_user_password }}"
+
+ocp4_workload_authentication_rosa_token: "{{ rosa_token }}"
+
+ocp4_workload_authentication_rosa_aws_access_key_id: "{{ lookup('env','AWS_ACCESS_KEY_ID') | default(aws_access_key_id, true) | mandatory }}"
+ocp4_workload_authentication_rosa_aws_secret_access_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') | default(aws_secret_access_key, true) | mandatory }}"
+ocp4_workload_authentication_rosa_aws_region: "{{ lookup('env','AWS_DEFAULT_REGION') | default(aws_region, true) | mandatory }}"
+
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom_template_summit_2024.git
+ocp4_workload_showroom_content_only: true
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
-#https://github.com/redhat-na-ssa/agnosticd/tree/summit_2024_camel/ansible/roles_ocp_workloads/ocp4_workload_summit_2024_cloud_native_camel
 __meta__:
+  asset_uuid: b4ce36a9-5a12-4960-9303-3bf4649be420
+  anarchy:
+    namespace: babylon-anarchy-events
   deployer:
+    actions:
+      start:
+        disable: true
+      stop:
+        disable: true
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.1
     scm_ref: summit_2024_camel
     scm_type: git
     scm_url: https://github.com/redhat-na-ssa/agnosticd.git
     type: agnosticd
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: LB1115 - Cloud-Native Integration with Red Hat build of Apache Camel
+    category: Red_Hat_Summit_2024
+    keywords: []
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 65
+        minimum: 2
+        maximum: 65
+          #    multiuser: true
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Apache_Camel
+      Product_Family: Red_Hat
+  lifespan:
+    default: 2d
+    maximum: 999d
+    relativeMaximum: 7d
+  runtime:
+    default: 9999h
+    maximum: 9999h
+  secrets:
+  - namespace: gpte
+    name: rosa-token
