@@ -2,11 +2,8 @@
 #include /includes/catalog-icon-openshift.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/aws-3regions.yaml
-#include /includes/parameters/salesforce-id.yaml
-#include /includes/lifetime-standard.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/aws-sandbox-meta.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
 
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
@@ -212,9 +209,22 @@ ocp4_workload_redhat_developer_hub_gitlab_template_locations:
   rules:
     allow: Group, User
   templates: []
+# To be replaced with Natale's templates
+- group: rhdh
+  project: prepare-to-perform-templates
+  branch: master
+  file: showcase-templates.yaml
+  rules:
+    allow: Template
+  templates:
+  - custom-component-patch/template.yaml
+  - custom-deployment-patch/template.yaml
+  - nestjs-with-postgres/template.yaml
+  - quarkus-with-angular/template.yaml
 
 ocp4_workload_redhat_developer_hub_users_count: "{{ num_users | default(1) }}"
 ocp4_workload_redhat_developer_hub_users_password: "{{ common_password }}"
+
 ocp4_workload_redhat_developer_hub_backstage_helm_chart_repo: https://redhat-developer.github.io/rhdh-chart
 ocp4_workload_redhat_developer_hub_backstage_helm_chart: backstage
 ocp4_workload_redhat_developer_hub_backstage_helm_chart_version: 2.15.0
@@ -226,7 +236,6 @@ ocp4_workload_redhat_developer_hub_backstage_image_tag: "1.1-97"
 # Workload: ocp4_workload_redhat_developer_hub_bootstrap
 # -------------------------------------------------------------------
 ocp4_workload_redhat_developer_hub_bootstrap_janus_bootstrap_repo: https://github.com/redhat-gpte-devopsautomation/janus-idp-bootstrap.git
-# ocp4_workload_redhat_developer_hub_bootstrap_admin_password: "{{ common_admin_password }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
@@ -238,6 +247,32 @@ ocp4_workload_showroom_deployer_chart_version: 1.0.7
 
 ocp4_workload_showroom_content_only: false
 ocp4_workload_showroom_terminal_type: showroom
+
+# -------------------------------------------------------------------
+# Babylon userdata
+# -------------------------------------------------------------------
+userdata: >-
+  {
+  {% for i in range(1,num_users + 1) %}
+  "user{{i}}": {
+    "rhdh_url": "https://backstage-backstage.apps.cluster-{{ guid }}{{ subdomain_base_suffix }}",
+    "rhdh_user": "user{{i}}",
+    "rhdh_user_password": "{{ common_password }}",
+    "gitlab_url": "https://gitlab-gitlab.apps.cluster-{{ guid }}{{ subdomain_base_suffix }}",
+    "gitlab_user": "user{{i}}",
+    "gitlab_user_password": "{{ common_password }}",
+    "devspaces_url": "https://devspaces.apps.cluster-{{ guid }}{{ subdomain_base_suffix }}",
+    "devspaces_user": "user{{i}}",
+    "devspaces_user_password": "{{ common_password }}"
+    },
+  {% endfor %}
+  }
+
+agnosticd_passthrough_user_data: |
+  {{ {}
+   | combine( {
+     "users": userdata })
+  }}
 
 # -------------------------------------------------------------------
 # Babylon meta variables
