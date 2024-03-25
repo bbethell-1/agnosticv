@@ -78,8 +78,6 @@ infra_workloads:
 - ocp4_workload_pipelines
 - ocp4_workload_gitops_gitlab
 - ocp4_workload_redhat_developer_hub
-- ocp4_workload_voteapp
-- ocp4_workload_gitops_bootstrap
 - ocp4_workload_showroom
 
 # -------------------------------------------------------------------
@@ -96,13 +94,7 @@ ocp4_workload_user_base: user
 ocp4_workload_user_count: "{{ num_users }}"
 
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.14_2024_03_18
-
-# ocp4_workload_devspaces_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-# ocp4_workload_devspaces_catalogsource_tag: v4.15_2024_03_18
-# ocp4_workload_devspaces_startingcsv: devspacesoperator.v3.11.0
-
-# ocp4_workload_devspaces_devworkspace: false
+ocp4_workload_catalogsource_tag: v4.14_2024_03_25
 
 # -------------------------------------------------------------------
 # ocp4_workload_machinesets
@@ -134,6 +126,9 @@ ocp4_workload_machinesets_machineset_groups:
 # -------------------------------------------------------------------
 ocp4_workload_openshift_data_foundation_channel: stable-4.14
 ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+ocp4_workload_openshift_data_foundation_tolerations:
+- key: infra
+  operator: Exists
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_pipelines
@@ -166,21 +161,12 @@ ocp4_workload_gitops_gitlab_db_name: gitlab_production
 
 ocp4_workload_gitops_gitlab_gitops_repo: https://github.com/redhat-gpte-devopsautomation/agnosticg.git
 
-# ocp4_workload_gitea_operator_repositories_list:
-# - repo: https://github.com/blues-man/vote-app-gitops.git
-#   name: vote-app-gitops
-#   private: false
-# - repo: https://github.com/blues-man/pipelines-vote-ui
-#   name: pipelines-vote-ui
-#   private: false
-# - repo: https://github.com/blues-man/pipelines-vote-api
-#   name: pipelines-vote-api
-#   private: false
 ocp4_workload_gitops_gitlab_import_repos:
 - name: rhdh
   repo:
   - name: software-templates
     url: https://github.com/redhat-gpte-devopsautomation/software-templates.git
+  # To be replaced with: Natale's templates repository
   - name: prepare-to-perform-templates
     url: https://github.com/ryanj/lb1990-templates.git
 - name: gitops
@@ -191,12 +177,8 @@ ocp4_workload_gitops_gitlab_import_repos:
   repo:
   - name: vote-app-gitops
     url: https://github.com/blues-man/vote-app-gitops.git
-- name: vote-ui
-  repo:
   - name: pipelines-vote-ui
     url: https://github.com/blues-man/pipelines-vote-ui
-- name: vote-api
-  repo:
   - name: pipelines-vote-api
     url: https://github.com/blues-man/pipelines-vote-api
 
@@ -230,16 +212,6 @@ ocp4_workload_redhat_developer_hub_gitlab_template_locations:
   rules:
     allow: Group, User
   templates: []
-# - group: summit-lab
-#   project: backstage-workshop
-#   branch: master
-#   file: showcase-templates.yaml
-#   rules:
-#     allow: Template
-#   templates:
-#   - scaffolder-templates/poi-map/template.yaml
-#   - scaffolder-templates/poi-gateway/template.yaml
-#   - scaffolder-templates/poi-backend/template.yaml
 
 ocp4_workload_redhat_developer_hub_users_count: "{{ num_users | default(1) }}"
 ocp4_workload_redhat_developer_hub_users_password: "{{ common_password }}"
@@ -248,7 +220,6 @@ ocp4_workload_redhat_developer_hub_backstage_helm_chart: backstage
 ocp4_workload_redhat_developer_hub_backstage_helm_chart_version: 2.15.0
 ocp4_workload_redhat_developer_hub_backstage_image_registry: quay.io
 ocp4_workload_redhat_developer_hub_backstage_image_repository: rhdh/rhdh-hub-rhel9
-# ocp4_workload_redhat_developer_hub_backstage_image_tag: "{{ '1.1' if rhdh_version == 'latest' else '1.1-97' }}"
 ocp4_workload_redhat_developer_hub_backstage_image_tag: "1.1-97"
 
 # -------------------------------------------------------------------
@@ -256,61 +227,6 @@ ocp4_workload_redhat_developer_hub_backstage_image_tag: "1.1-97"
 # -------------------------------------------------------------------
 ocp4_workload_redhat_developer_hub_bootstrap_janus_bootstrap_repo: https://github.com/redhat-gpte-devopsautomation/janus-idp-bootstrap.git
 # ocp4_workload_redhat_developer_hub_bootstrap_admin_password: "{{ common_admin_password }}"
-
-# Quay operator workload is called from ocp4_workload_redhat_developer_hub_bootstrap workload
-ocp4_workload_quay_operator_channel: "stable-3.10"
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_voteapp
-# -------------------------------------------------------------------
-ocp4_workload_voteapp_devspace_subscription_name: devworkspace-operator-fast-redhat-operators-openshift-marketplace
-ocp4_workload_voteapp_devspace_subscription_namespace: openshift-operators
-
-# -------------------------------------------------------------------
-# ocp4_workload_gitops_bootstrap
-# -------------------------------------------------------------------
-ocp4_workload_gitops_bootstrap_repo_url: https://github.com/blues-man/vote-app-gitops
-ocp4_workload_gitops_bootstrap_repo_revision: v1.0.2
-ocp4_workload_gitops_bootstrap_repo_path: helm/bootstrap
-
-ocp4_workload_gitops_bootstrap_helm_values:
-  user:
-    count: "{{ ocp4_workload_user_count }}"
-    prefix: "{{ ocp4_workload_user_base }}"
-  argocd:
-    git:
-      url: http://gitlab.gitlab.svc:80
-      revision: v1.0.2
-    values:
-      repos:
-      - type: git
-        name: vote-app-gitops
-        password: "{{ common_user_password }}"
-  tekton:
-    git:
-      url: http://gitlab.gitlab.svc:80
-      revision: v1.0.2
-    values:
-      app:
-        repo:
-          api:
-            password: "{{ common_user_password }}"
-          ui:
-            password: "{{ common_user_password }}"
-          gitops:
-            password: "{{ common_user_password }}"
-  devspaces:
-    git:
-      url: http://gitlab.gitlab.svc:80
-    values:
-      app:
-        repo:
-          ui:
-            password: "{{ common_user_password }}"
-  usertool:
-    labAdminPassword: "{{ common_admin_password }}"
-    labUserPassword: "{{ common_user_password }}"
-    labAccessToken: "{{ common_user_password }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
