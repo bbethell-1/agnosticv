@@ -44,9 +44,7 @@ rosa_setup_cluster_admin_login: true
 rosa_compute_machine_type: m5.8xlarge
 
 # Minimum number of replicas is 2
-rosa_compute_enable_autoscaling: true
-rosa_compute_autoscaling_min_replicas: 2
-rosa_compute_autoscaling_max_replicas: 5
+rosa_compute_replicas: 7
 
 # -------------------------------------------------------------------
 # Billing account for ROSA HCP
@@ -79,6 +77,7 @@ common_extra_packages:
 infra_workloads:
 - ocp4_workload_authentication_rosa
 - ocp4_workload_summit_2024_cloud_native_camel
+- ocp4_workload_gitea_operator
 - ocp4_workload_showroom
 
 common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
@@ -101,6 +100,54 @@ ocp4_workload_authentication_rosa_aws_access_key_id: "{{ lookup('env','AWS_ACCES
 ocp4_workload_authentication_rosa_aws_secret_access_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') | default(aws_secret_access_key, true) | mandatory }}"
 ocp4_workload_authentication_rosa_aws_region: "{{ lookup('env','AWS_DEFAULT_REGION') | default(aws_region, true) | mandatory }}"
 
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.1
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: 1.20.0
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_ssl_route: true
+ocp4_workload_gitea_operator_gitea_image_pull_policy: IfNotPresent
+ocp4_workload_gitea_operator_postgresql_image_pull_policy: IfNotPresent
+ocp4_workload_gitea_operator_webhook_allowed_hosts_list: 'external,private'
+ocp4_workload_gitea_operator_webhook_skip_tls_verify: true
+#install_operator_namespace: gitea-operator
+#install_operator_catalogsource_namespace: gitea-operator
+ocp4_workload_gitea_operator_disable_registration: false
+ocp4_workload_gitea_operator_enable_captcha: false
+ocp4_workload_gitea_operator_allow_create_organization: true
+ocp4_workload_gitea_operator_register_email_confirm: false
+ocp4_workload_gitea_operator_enable_notify_email: false
+ocp4_workload_gitea_operator_mailer_enabled: false
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: opentlc-mgr
+ocp4_workload_gitea_operator_admin_email: opentlc-mgr@opentlc.com
+ocp4_workload_gitea_operator_admin_password: openshift
+
+# PVC size for Gitea, empty storage class uses default storage class
+ocp4_workload_gitea_operator_gitea_volume_size: 10Gi
+ocp4_workload_gitea_operator_gitea_volume_storage_class: ''
+
+# PVC size for PostgreSQL, empty storage class uses default storage class
+ocp4_workload_gitea_operator_postgresql_volume_size: 10Gi
+ocp4_workload_gitea_operator_postgresql_volume_storage_class: ''
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: 1
+ocp4_workload_gitea_operator_generate_user_format: user
+ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/redhat-na-ssa/workshop_camel_workspace
+  name: workshop_camel_workspace
+  private: false
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
@@ -142,7 +189,7 @@ __meta__:
         default: 65
         minimum: 2
         maximum: 65
-          #    multiuser: true
+        multiuser: true
     labels:
       Provider: RHDP
       Product: Red_Hat_OpenShift_Apache_Camel
