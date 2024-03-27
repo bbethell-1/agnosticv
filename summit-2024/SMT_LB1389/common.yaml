@@ -44,12 +44,18 @@ bastion_instance_type: t3a.medium
 node_instance_type: t3a.medium
 
 # -------------------------------------------------------------------
+# Lab Variables
+# -------------------------------------------------------------------
+
+crypto_lab_setup: false
+
+# -------------------------------------------------------------------
 # Instance Variable
 # -------------------------------------------------------------------
 
 bastion_instance_image: RHEL93GOLD-latest
 node_instance_image: RHEL93GOLD-latest
-node7_instance_image: RHEL77GOLD-latest
+#node7_instance_image: RHEL77GOLD-latest
 nbde_instance_image: RHEL81NBDE
 
 install_student_user: true
@@ -59,6 +65,224 @@ student_password: "{{ common_password }}"
 student_sudo: true
 
 use_content_view: true
+
+instances:
+- name: "bastion"
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: false
+  image: "{{ bastion_instance_image }}"
+  flavor:
+    ec2: "{{ bastion_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  volumes:
+  - name: '/dev/sda1'
+    size: 20
+  security_groups:
+  - BastionSG
+  - OpenEverythingSG
+
+- name: "openscap"
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: false
+  image: "{{ bastion_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "openscap"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  volumes:
+  - name: '/dev/sda1'
+    size: 20
+  security_groups:
+  - BastionSG
+  - OpenEverythingSG
+  - RemoteDesktopRDPSG
+  - RemoteDesktopVNCSG
+
+- name: "aide"
+  count: 1
+  unique: true
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ node_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "aide"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenEverythingSG
+
+- name: "gpg"
+  count: 1
+  unique: true
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ node_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "gpg"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenEverythingSG
+
+- name: "audit"
+  count: 1
+  unique: true
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ node_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "audit"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenEverythingSG
+
+- name: "firewalld"
+  count: 1
+  unique: true
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ node_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "firewalld"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenEverythingSG
+
+- name: "ipsec"
+  count: 2
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ node_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "ipsec"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenIPSECports
+  - OpenEverythingSG
+
+- name: "cryptopolicies"
+  count: 1
+  unique: true
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ node_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "cryptopolicies"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenEverythingSG
+
+- name: "sessionrecording"
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: false
+  image: "{{ node_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "sessionrecording"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenEverythingSG
+
+- name: "rhel8selinux"
+  count: 2
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ node_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "rhel8selinux"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenEverythingSG
+
+- name: "nbde"
+  count: 3
+  # TODO: enable when we have a solution for number of maximum public IP address. Which is 5 currently in AWS
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ nbde_instance_image }}"
+  flavor:
+    ec2: "t2.medium"
+    azure: Standard_A2_V2
+  security_groups:
+  - OpenNBDESG
+  tags:
+  - key: "AnsibleGroup"
+    value: "nbde"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+
 # -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
