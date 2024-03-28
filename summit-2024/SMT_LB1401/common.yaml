@@ -23,8 +23,31 @@ cloud_provider: ec2
 platform: RHPDS
 
 # -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  - name: ansible.windows
+    version: 2.3.0
+
+# -------------------------------------------------------------------
 # Instance Config
 # -------------------------------------------------------------------
+infra_images_predefined:
+  RHEL93GOLD-latest:
+    owner: "{{ infra_images_redhat_owner_id }}"
+    name: RHEL-9.3.*_HVM-*Access*
+    architecture: x86_64
+    aws_filters:
+      is-public: false
+
+  WIN2019-latest:
+    owner: "{{ windows_image_owner }}"
+    name: Windows_Server-2019-English-Core-Base-*
+    architecture: x86_64
+    aws_filters:
+      is-public: true
+
 bastion_instance_image: RHEL93GOLD-latest
 bastion_instance_type: t3a.medium
 node_instance_image: RHEL93GOLD-latest
@@ -35,8 +58,10 @@ default_rootfs_size: 30
 base_infra_windows_enable: true             # Bool from base-infra config to enable windows configuration
 windows_password: 'P@ssw0rd'
 windows_server_instance_type: m5.xlarge
-windows_instance_image: "{{ windows_ami }}" # This is pulled from the windows-ami-finder role in agnosticD
+windows_instance_image: WIN2019-latest #"{{ windows_ami }}" # This is pulled from the windows-ami-finder role in agnosticD
 agnosticd_images_windows: "{{ windows_ami }}"
+windows_image_owner: "801119661308"
+infra_images_redhat_owner_id: "309956199498"
 
 install_student_user: true
 student_name: lab-user
@@ -182,14 +207,15 @@ instances:
 
 - name: "windows"
   count: 1
+  unique: true
   public_dns: true
-  image:
-    name: "{{ windows_instance_image | default('WIN2019') }}"
+  image: "{{ windows_instance_image | default('WIN2019-latest') }}"
   flavor:
     ec2: "{{ windows_server_instance_type | default('m5.xlarge') }}"
   networks:
   - default
   servicePort: 5986 # WinRM port, default is 22
+  owner: "{{ windows_image_owner }}"
   tags:
   - key: "AnsibleGroup"
     value: "windows"
