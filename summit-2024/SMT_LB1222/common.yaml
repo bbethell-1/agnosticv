@@ -32,20 +32,16 @@ requirements_content:
     version: 8.4.0
 
 # -------------------------------------------------------------------
+# Role Variables
+# -------------------------------------------------------------------
+# pet_name_generator
+pet_name_generator_enable: true
+pet_name_generator_instances:
+- bastion_hostname
+# -------------------------------------------------------------------
 # Instance Config
 # -------------------------------------------------------------------
-infra_images_redhat_owner_id: "309956199498"
-infra_images_predefined:
-  RHEL85GOLD-latest:
-    owner: "{{ infra_images_redhat_owner_id }}"
-    name: RHEL-8.5.*_HVM-*Access*
-    architecture: x86_64
-    aws_filters:
-      is-public: true
-
-bastion_instance_image: RHEL85GOLD-latest
-
-bastion_hostname: "{{ lookup('community.general.random_pet') }}" ## Unique hostnames for easy insights identification
+bastion_instance_image: RHEL85GOLD
 
 install_student_user: true
 student_name: lab-user
@@ -75,6 +71,28 @@ agd_bastion_packages:
 - rhc-worker-playbook
 
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+instances:
+
+- name: "{{ bastion_hostname | default('bastion') }}"
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: true
+  floating_ip: true
+  image: "{{ bastion_instance_image | default(default_instance_image) }}"
+  flavor:
+    ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions,showroom"
+  - key: "ostype"
+    value: "linux"
+  rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+  security_groups:
+  - BastionSG
+  - WebSG
+  - ShowroomSG
 
 # -------------------------------------------------------------------
 # Role: set-repositories
