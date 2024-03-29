@@ -25,6 +25,7 @@ platform: RHPDS
 # Instance Config
 # -------------------------------------------------------------------
 bastion_instance_image: RHEL93GOLD-latest
+node_instance_image: RHEL93GOLD-latest
 
 install_student_user: true
 student_name: lab-user
@@ -67,6 +68,46 @@ common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
 inventory_groups:
 - bastions
+- nodes
+
+instances:
+- name: "{{ bastion_hostname | default('bastion') }}"
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: true
+  floating_ip: true
+  image: "{{ bastion_instance_image | default(default_instance_image) }}"
+  flavor:
+    ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions,showroom"
+  - key: "ostype"
+    value: "linux"
+  rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+  security_groups:
+  - BastionSG
+  - WebSG
+  - ShowroomSG
+
+- name: "node"
+  count: 1
+  public_dns: false
+  image: "{{ node_instance_image | default(default_instance_image) }}"
+  flavor:
+    ec2: "{{ node_instance_type | default(default_instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "nodes"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  rootfs_size: "{{ default_rootfs_size }}"
+  security_groups:
+  - DefaultSG
+  - HostSG
 
 # -------------------------------------------------------------------
 # Role: set-repositories
