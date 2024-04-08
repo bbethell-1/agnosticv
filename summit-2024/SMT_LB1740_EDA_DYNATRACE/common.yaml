@@ -179,10 +179,12 @@ ocp4_workload_gitea_operator_generate_user_format: "{{ student_name }}"
 ocp4_workload_gitea_operator_user_password: "{{ common_password }}"
 ocp4_workload_gitea_operator_migrate_repositories: true
 ocp4_workload_gitea_operator_repositories_list:
-  - repo: https://github.com/redhat-gpte-devopsautomation/demo-event-driven-ansible.git
+  - repo: https://github.com/ikke-t/demo-event-driven-ansible.git
+    branch: lb1740-ikke-t-dev
     name: event-driven-ansible
     private: false
-  - repo: https://github.com/redhat-gpte-devopsautomation/eda-rulebooks.git
+  - repo: https://github.com/ikke-t/eda-rulebooks.git
+    branch: lb1740-ikke-t-dev
     name: eda-rulebooks
     private: false
 
@@ -261,6 +263,8 @@ controller_configuration_dispatcher_roles:
     tags: job_templates
 
 controller_credentials:
+  # TODO: Can we add dynatrace url and token here?
+  # Which kinda secret would work? Perhaps openshift, as it has url and token?
   - name: OpenShift Credentials
     description: Credentials for OpenShift
     organization: Default
@@ -282,6 +286,23 @@ controller_projects:
     scm_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/event-driven-ansible.git"
 
 controller_templates:
+  - name: easytravel-fix
+    job_type: run
+    inventory: Demo Inventory
+    project: event-driven-ansible
+    playbook: automation_controller/easytravel-fix.yml
+    ask_variables_on_launch: true
+    credentials:
+    survey: {}
+  - name: easytravel-break
+    job_type: run
+    inventory: Demo Inventory
+    project: event-driven-ansible
+    playbook: automation_controller/easytravel-break.yml
+    ask_variables_on_launch: true
+    credentials:
+    survey: {}
+  # TODO: Add dynatrace lab setup here for adding the token and url for rulebook activation
   - name: create-volume-snapshot
     job_type: run
     inventory: Demo Inventory
@@ -358,13 +379,23 @@ eda_controller_config_decision_envs:
   - name: "de-for-ocp"
     description: "Decision Environment for OpenShift"
     image_url: "quay.io/mitsharm/eda/de-for-ocp"
-
+  - name: de-for-dynatrace
+    description: Decision Environment for Dynatrace
+    image_url: quay.io/ikke/de-dynatrace:1.1.4620c3f
 eda_controller_config_projects:
   - name: "OpenShift Event Rulebooks"
     description: "Event-driven Ansible rulebooks"
     repo_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/eda-rulebooks.git"
 
 eda_controller_config_rulebook_activations:
+  # TODO: Add the dynatrace token and url, and enable
+  - name: Listen to Dynatrace events
+    description: Listen to Dynatrace events
+    project: OpenShift Event Rulebooks
+    rulebook: dynatrace_event.yml
+    decision_env: de-for-dynatrace
+    restart_policy: on-failure
+    enabled: false
   - name: "Patch Route With Cert"
     description: "Patch OpenShift Routes"
     project: "OpenShift Event Rulebooks"
