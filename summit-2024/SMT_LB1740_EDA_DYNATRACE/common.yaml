@@ -98,32 +98,19 @@ requirements_content:
 # -------------------------------------------------------------------
 # OpenShift Workloads
 # -------------------------------------------------------------------
-preview_workloads:
+
+infra_workloads:
+
   - ocp4_workload_authentication
   - ocp4_workload_le_certificates
-  - ocp4_workload_gitea_operator
   - ocp4_workload_ansible_automation_platform
   - ocp4_workload_eda_controller
   - ocp4_workload_cert_manager_operator
   - ocp4_workload_cert_utils_operator
+  - ocp-workload-etherpad
   - automation_platform_loader
   - automation_platform_bastion
   - eda_controller_config
-  - vscode-server
-
-prod_workloads:
-  - ocp4_workload_authentication
-  - ocp4_workload_le_certificates
-  - ocp4_workload_gitea_operator
-  - ocp4_workload_ansible_automation_platform
-  - ocp4_workload_cert_manager_operator
-  - ocp4_workload_cert_utils_operator
-  - automation_platform_loader
-  - automation_platform_bastion
-  - eda_pods_on_bastion
-  - vscode-server
-
-infra_workloads: "{{ preview_workloads if tech_preview else prod_workloads }}"
 
 # -------------------------------------------------------------------
 # OpenShift variable
@@ -146,47 +133,6 @@ ocp4_workload_authentication_remove_kubeadmin: false
 install_lets_encrypt_certificates: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_gitea_operator
-# -------------------------------------------------------------------
-ocp4_workload_gitea_operator_project: gitea
-ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
-ocp4_workload_gitea_operator_catalog_image_tag: v2.0.1
-
-ocp4_workload_gitea_operator_deploy_gitea_instance: true
-ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: "1.20.1"
-ocp4_workload_gitea_operator_name: gitea
-ocp4_workload_gitea_operator_gitea_hostname: gitea
-ocp4_workload_gitea_operator_gitea_volume_size: 2Gi
-ocp4_workload_gitea_operator_postgresql_volume_size: 2Gi
-ocp4_workload_gitea_operator_ssl_route: true
-
-ocp4_workload_gitea_operator_disable_registration: false
-ocp4_workload_gitea_operator_enable_captcha: false
-ocp4_workload_gitea_operator_allow_create_organization: true
-ocp4_workload_gitea_operator_register_email_confirm: false
-ocp4_workload_gitea_operator_enable_notify_email: false
-ocp4_workload_gitea_operator_mailer_enabled: false
-
-ocp4_workload_gitea_operator_create_admin: true
-ocp4_workload_gitea_operator_admin_user: dev-admin
-ocp4_workload_gitea_operator_admin_email: dev-admin@opentlc.com
-ocp4_workload_gitea_operator_admin_password: "{{ common_password }}"
-
-ocp4_workload_gitea_operator_create_users: true
-ocp4_workload_gitea_operator_user_number: 1
-ocp4_workload_gitea_operator_generate_user_format: "{{ student_name }}"
-ocp4_workload_gitea_operator_user_password: "{{ common_password }}"
-ocp4_workload_gitea_operator_migrate_repositories: true
-ocp4_workload_gitea_operator_repositories_list:
-  - repo: https://github.com/ikke-t/demo-event-driven-ansible.git
-    name: event-driven-ansible
-    private: false
-  - repo: https://github.com/ikke-t/eda-rulebooks.git
-    name: eda-rulebooks
-    private: false
-
-# -------------------------------------------------------------------
 # Workload: ocp4_workload_ansible_automation_platform
 # -------------------------------------------------------------------
 ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.4"
@@ -200,40 +146,6 @@ ocp4_workload_openshift_gitops_use_catalog_snapshot: true
 ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
 ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
 ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.12_2023_02_20
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_codeserver
-# -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_setup_cluster_admin: true
-ocp4_workload_codeserver_name: codeserver
-ocp4_workload_codeserver_workspace_name: ide
-ocp4_workload_codeserver_password: "{{ common_password }}"
-ocp4_workload_codeserver_pvc_size: 3Gi
-ocp4_workload_codeserver_gitea_name: gitea
-ocp4_workload_codeserver_gitea_namespace: gitea
-ocp4_workload_codeserver_extensions:
-  - filename: auchenberg.vscode-browser-preview-0.7.2.vsix
-    url: https://gpte-public.s3.amazonaws.com/vscode-plugins/auchenberg.vscode-browser-preview-0.7.2.vsix
-
-ocp4_workload_codeserver_multi_user_install: false
-ocp4_workload_codeserver_multi_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
-ocp4_workload_codeserver_multi_user_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
-ocp4_workload_codeserver_multi_user_namespace_base: codeserver
-
-# Repositories to set up in codeserver
-ocp4_workload_codeserver_repos_user: "{{ student_name }}"
-ocp4_workload_codeserver_repos_password: "{{ common_password }}"
-ocp4_workload_codeserver_repos:
-  - name: event-driven-ansible
-    account: "{{ student_name }}"
-    branch: main
-  - name: eda-rulebooks
-    account: "{{ student_name }}"
-    branch: main
-
-# Codeserver image tags
-ocp4_workload_codeserver_image_tag: v4.8.3-java11
-ocp4_workload_codeserver_init_image_tag: v4.8.3
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_ansible_automation_platform
@@ -281,7 +193,7 @@ controller_projects:
     scm_clean: 'no'
     scm_delete_on_update: 'no'
     scm_type: git
-    scm_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/event-driven-ansible.git"
+    scm_url: "https://github.com/ikke-t/demo-event-driven-ansible.git"
 
 controller_templates:
   - name: easytravel-fix
@@ -334,23 +246,6 @@ controller_templates:
 ocp4_workload_eda_controller_aap_controller_url: "{{ aap_controller_web_url }}"
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_gitops_eda
-# -------------------------------------------------------------------
-ocp4_workload_gitops_eda_service_account_role: cluster-admin
-
-ocp4_workload_gitops_eda_rulebook_repo_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/event-driven-ansible.git"
-ocp4_workload_gitops_eda_rulebook_repo_version: main
-ocp4_workload_gitops_eda_rulebook_repo_path: gitops/eda/overlays
-
-ocp4_workload_gitops_eda_openshift_api_url: "{{ _ocp4_workload_authentication_api_server }}"
-ocp4_workload_gitops_eda_openshift_bearer_token: "{{ openshift_bearer_token }}"
-ocp4_workload_gitops_eda_openshift_user_name: "{{ ocp4_workload_authentication_admin_user }}"
-ocp4_workload_gitops_eda_openshift_user_password: "{{ _ocp4_workload_authentication_admin_password }}"
-
-ocp4_workload_gitops_eda_automation_controller_url: "https://{{ automation_controller_hostname }}"
-ocp4_workload_gitops_eda_automation_token: "{{ r_aap2_token.ansible_facts.controller_token.token }}"
-
-# -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager_operator
 # -------------------------------------------------------------------
 ocp4_workload_cert_manager_operator_channel: stable-v1
@@ -383,7 +278,7 @@ eda_controller_config_decision_envs:
 eda_controller_config_projects:
   - name: "OpenShift Event Rulebooks"
     description: "Event-driven Ansible rulebooks"
-    repo_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/eda-rulebooks.git"
+    repo_url: "{{ https://github.com/ikke-t/eda-rulebooks.git }}"
 
 eda_controller_config_rulebook_activations:
   # TODO: Add the dynatrace token and url, and enable
@@ -415,23 +310,6 @@ eda_controller_config_rulebook_activations:
     decision_env: "de-for-ocp"
     restart_policy: "on-failure"
     enabled: true
-
-# -------------------------------------------------------------------
-# Workload: vscode-server
-# -------------------------------------------------------------------
-install_vscode_server: true
-vscode_server_install_nginx: true
-vscode_server_ansible_become: true
-vscode_user_workspace_path: "/home/{{ student_name }}/demo"
-vscode_user_name: "{{ student_name }}"
-vscode_user_password: "{{ common_password }}"
-vscode_server_hostname: bastion.{{ guid }}.{{ sandbox_zone }}
-vscode_ansible_python_interpreter: /usr/libexec/platform-python
-vscode_server_default_extensions: []
-vscode_server_extension_urls:
-  - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
-  - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
-  - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -468,7 +346,7 @@ __meta__:
             - m6a.2xlarge
       - description: Enable EDA Controller for Managing Rulebooks
         formGroup: Features
-        formLabel: Technology Preview - EDA Controller
+        formLabel: EDA Controller
         name: tech_preview
         openAPIV3Schema:
           default: false
