@@ -253,7 +253,10 @@ def check_valid_babylon_tag(c,ci):
             bMetaRepo = ''
             # Getting tag value from __meta__ section
             bMetaTag = ''
-            if 'deployer' in c['__meta__']:
+            if (
+                'deployer' in c['__meta__'] and
+                not c['__meta__']['deployer'].get('scm_ref', '').endswith('-hotfix')
+            ):
                 deployer = c['__meta__']['deployer']
                 if 'scm_ref' in deployer:
                     bMetaTag = deployer['scm_ref']
