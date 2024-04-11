@@ -187,7 +187,7 @@ instances:
   - key: "ostype"
     value: "linux"
   - key: "hostgroup"
-    value: rhel7_hosts
+    value: "rhel7_hosts"
   - key: "instance_filter"
     value: "{{ env_type }}-{{ email }}"
   rootfs_size: "{{ default_rootfs_size }}"
@@ -210,7 +210,7 @@ instances:
   - key: "ostype"
     value: "linux"
   - key: "hostgroup"
-    value: rhel7_hosts
+    value: "rhel7_hosts"
   - key: "instance_filter"
     value: "{{ env_type }}-{{ email }}"
   rootfs_size: "{{ default_rootfs_size }}"
@@ -233,7 +233,7 @@ instances:
   - key: "ostype"
     value: "linux"
   - key: "hostgroup"
-    value: rhel8_hosts
+    value: "rhel8_hosts"
   - key: "instance_filter"
     value: "{{ env_type }}-{{ email }}"
   rootfs_size: "{{ default_rootfs_size }}"
@@ -256,7 +256,7 @@ instances:
   - key: "ostype"
     value: "linux"
   - key: "hostgroup"
-    value: rhel8_hosts
+    value: "rhel8_hosts"
   - key: "instance_filter"
     value: "{{ env_type }}-{{ email }}"
   rootfs_size: "{{ default_rootfs_size }}"
@@ -290,8 +290,9 @@ ansible_bu_aws_access_policy_ec2_instances_tags:
   iamprofile: true
   tags:
     Index: 1
-    AnsibleGroup: nodes
-    hostgroup: rhel7_hosts
+    AnsibleGroup: "nodes"
+    hostgroup: "rhel7_hosts"
+    color: "#d48a00"
     Workshop_node1: "{{ workshop_type }}-node1"
     short_name: "{{ node1_instance_name | default('node1') }}"
     os_major_version: 7
@@ -301,8 +302,9 @@ ansible_bu_aws_access_policy_ec2_instances_tags:
   iamprofile: true
   tags:
     Index: 2
-    AnsibleGroup: nodes
-    hostgroup: rhel7_hosts
+    AnsibleGroup: "nodes"
+    hostgroup: "rhel7_hosts"
+    color: "#0039d4"
     Workshop_node2: "{{ workshop_type }}-node2"
     short_name: "{{ node2_instance_name | default('node2') }}"
     os_major_version: 7
@@ -312,8 +314,9 @@ ansible_bu_aws_access_policy_ec2_instances_tags:
   iamprofile: true
   tags:
     Index: 3
-    AnsibleGroup: nodes
-    hostgroup: rhel8_hosts
+    AnsibleGroup: "nodes"
+    hostgroup: "rhel8_hosts"
+    color: "#bf00d4"
     Workshop_node3: "{{ workshop_type }}-node3"
     short_name: "{{ node3_instance_name | default('node3') }}"
     os_major_version: 8
@@ -323,8 +326,9 @@ ansible_bu_aws_access_policy_ec2_instances_tags:
   iamprofile: true
   tags:
     Index: 4
-    AnsibleGroup: nodes
-    hostgroup: rhel8_hosts
+    AnsibleGroup: "nodes"
+    hostgroup: "rhel8_hosts"
+    color: "#67d300"
     Workshop_node4: "{{ workshop_type }}-node4"
     short_name: "{{ node4_instance_name | default('node4') }}"
     os_major_version: 8
@@ -334,6 +338,10 @@ ansible_bu_aws_access_policy_ec2_instances_tags:
 # -------------------------------------------------------------------
 # Config Pre/Software/Post Workloads
 # -------------------------------------------------------------------
+pre_infra_workloads:
+  localhost:
+  - pet_name_generator
+
 pre_software_workloads:
   localhost:
   - ansible_bu_aws_access_policy
@@ -355,6 +363,10 @@ software_workloads:
   - vscode-server
   - automation_platform_loader
   - ansible_bu_setup_workshop
+
+post_software_final_workloads:
+  localhost:
+  - ocp4_workload_showroom
 
 # -------------------------------------------------------------------
 # Role: set-repositories
@@ -617,6 +629,27 @@ showroom_lab_users:
 - "{{ student_name }}"
 
 bastion_prefix: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}"
+
+# -------------------------------------------------------------------
+# Babylon userdata
+# -------------------------------------------------------------------
+userdata: >-
+  {
+  {% for i in range(1,num_users + 1) %}
+  "user{{i}}": {
+    "bastion_ssh_command": "ssh {{ student_name }}@{{ bastion_public_hostname }}",
+    "bastion_public_hostname": "{{ bastion_prefix }}.{{ guid }}{{ subdomain_base_suffix }}",
+    "bastion_ssh_user_name": "{{ student_name }}",
+    "bastion_ssh_password": "{{ common_password }}"
+    },
+  {% endfor %}
+  }
+
+agnosticd_passthrough_user_data: |
+  {{ {}
+   | combine( {
+     "users": userdata })
+  }}
 
 # -------------------------------------------------------------------
 # Babylon meta variables
