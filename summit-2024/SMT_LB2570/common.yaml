@@ -95,6 +95,24 @@ security_groups:
     cidr: "0.0.0.0/0"
     rule_type: Ingress
 
+  - name: WebCockpitPorts
+    description: "Cockpit HTTP Public"
+    from_port: 9090
+    to_port: 9090
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+- name: PetAppSG
+  rules:
+  - name: PetAppPorts
+    description: "Pet App HTTP Public"
+    from_port: 8080
+    to_port: 8080
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
 - name: NodeSG
   rules:
   - name: FromNodeSGtcp
@@ -651,7 +669,7 @@ controller_configuration_dispatcher_roles:
 
 controller_settings:
 - name: AWX_COLLECTIONS_ENABLED
-  value: false
+  value: true
 
 # -------------------------------------------------------------------
 # controller_credential_types variable value is defined in the agnosticd
@@ -707,11 +725,11 @@ controller_credentials:
 
 controller_execution_environments:
 - name: "auto_satellite workshop execution environment"
-  image: "quay.io/s4v0/ee-automated-satellite-aap2:latest"
+  image: "quay.io/acme_corp/auto_satellite_ee:latest"
   pull: missing
   state: present
 - name: "auto_satellite controller iac execution environment"
-  image: "quay.io/s4v0/ee-automated-smart-mgmt-aap2-dev:latest"
+  image: "quay.io/acme_corp/auto_satellite_ee:latest"
   pull: missing
   state: present
 
@@ -721,7 +739,7 @@ controller_projects:
   organization: Default
   description: "prescriptive demos from Red Hat"
   scm_type: git
-  scm_branch: aap2-22
+  scm_branch: aap2-rhdp-dev
   default_environment: "auto_satellite workshop execution environment"
   state: present
 - name: "Fact Scan"
@@ -841,17 +859,18 @@ controller_groups:
   - "{{ groups['satellites'][0] }}"
 
 controller_templates:
-- name: "SETUP / Controller"
-  description: "Setup / controller"
-  job_type: run
-  inventory: "Workshop Inventory"
-  execution_environment: "auto_satellite controller iac execution environment"
-  project: "Automated Management"
-  playbook: setup_controller.yml
+- name: "Z / CaC / Controller"
+  project: Project Leapp
+  playbook: controller_cac.yml
+  inventory: Workshop Inventory
+  execution_environment: Default execution environment
   credentials:
-  - "Controller Credential"
-- name: "SETUP / Satellite"
-  description: "SETUP / Satellite"
+  - Controller Credential
+  extra_vars:
+    controller_configuration_projects_async_retries: 60
+    controller_configuration_projects_async_delay: 5
+- name: "Z / CaC / Satellite"
+  description: "Z / CaC / Satellite"
   job_type: run
   inventory: "Workshop Inventory"
   project: "Automated Management"
@@ -866,8 +885,10 @@ controller_templates:
   organization: Default
   state: absent
 
-controller_launch_jobs:
-- name: "SETUP / Satellite"
+# Comment out, launch jobs now handled via AgnosticD here:
+# https://github.com/redhat-cop/agnosticd/blob/7d1707ce1070a89f729eb89a616618a84660af1a/ansible/roles/ansible_bu_setup_workshop/tasks/auto_satellite.yml#L55-L120
+# controller_launch_jobs:
+# - name: "Z / CaC / Satellite"
 
 # -------------------------------------------------------------------
 # Role: aap_controller_cert_issue
