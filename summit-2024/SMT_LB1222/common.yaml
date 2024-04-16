@@ -46,6 +46,14 @@ update_specific_packages:
 - rhc
 - rhc-worker-playbook
 
+
+# -------------------------------------------------------------------
+# Config Pre/Software/Post Workloads
+# -------------------------------------------------------------------
+post_software_workloads:
+  localhost:
+  - agnosticv-userdata-import
+
 # -------------------------------------------------------------------
 # Instance Config
 # -------------------------------------------------------------------
@@ -115,21 +123,11 @@ repo_method: satellite
 # -------------------------------------------------------------------
 # Babylon userdata
 # -------------------------------------------------------------------
-userdata: >-
-  {
-  {% for i in range(1,num_users + 1) %}
-  "user{{i}}": {
-    "bastion_hostname: "{{ bastion_hostname }}",
-    "bastion_public_hostname": "{{ bastion_prefix }}.{{ guid }}{{ subdomain_base_suffix }}"
-    },
-  {% endfor %}
-  }
+bastion_prefix: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}"
 
-agnosticd_passthrough_user_data: |
-  {{ {}
-   | combine( {
-     "users": userdata })
-  }}
+agnosticv_importdata:
+  bastion_hostname: "{{ bastion_hostname }}"
+  bastion_public_hostname: "{{ bastion_prefix }}.{{ guid }}{{ subdomain_base_suffix }}"
 
 # -------------------------------------------------------------------
 # Role: showroom
@@ -146,10 +144,6 @@ showroom_lab_users:
 - "{{ student_name }}"
 showroom_tab_services:
 - single_terminal
-- web1
-
-showroom_tab_web1_url: "https://console.redhat.com/"
-showroom_tab_web1_name: "Hybrid Cloud Console"
 
 showroom_user_password: "{{ common_password }}"
 showroom_dnf_packages:
@@ -180,5 +174,5 @@ __meta__:
   secrets: []
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:temporary-pr-7735
+      image: quay.io/agnosticd/ee-multicloud:hotfix-eqx-2024-04-02
       pull: missing
