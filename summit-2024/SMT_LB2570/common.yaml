@@ -189,9 +189,9 @@ instances:
   dns_loadbalancer: true
   floating_ip: true
   image:
-    name: "rhel8.7-satellite-6.12-2023-09-26"
+    name: "rhel8.9-satellite-6.14-2024-04-15"
   flavor:
-    ec2: "r5a.xlarge"
+    ec2: "r5a.2xlarge"
   tags:
   - key: "AnsibleGroup"
     value: "satellites"
@@ -550,6 +550,7 @@ ansible_bu_aws_access_policy_ec2_instances_tags:
     Workshop_node8: "node8"
     short_name: "node8"
     username: "ec2-user"
+    <<: *common_tags
 - name: node9
   iamprofile: true
   tags:
@@ -557,7 +558,7 @@ ansible_bu_aws_access_policy_ec2_instances_tags:
     Workshop_node9: "node9"
     short_name: "node9"
     username: "ec2-user"
-
+    <<: *common_tags
 # -------------------------------------------------------------------
 # Config Pre/Software/Post Workloads
 # -------------------------------------------------------------------
@@ -580,6 +581,14 @@ software_workloads:
   - vscode-server
   - automation_platform_loader
   - ansible_bu_setup_workshop
+
+post_software_workloads:
+  localhost:
+  - agnosticv-userdata-import
+
+post_software_final_workloads:
+  localhost:
+  - ocp4_workload_showroom
 
 # -------------------------------------------------------------------
 # Role: set-repositories
@@ -930,23 +939,13 @@ ocp4_workload_showroom_wetty_ssh_bastion_login: true
 # -------------------------------------------------------------------
 # Babylon userdata
 # -------------------------------------------------------------------
-userdata: >-
-  {
-  {% for i in range(1,num_users + 1) %}
-  "user{{i}}": {
-    "bastion_ssh_command": "ssh {{ student_name }}@{{ bastion_public_hostname }}",
-    "bastion_public_hostname": "{{ bastion_prefix }}.{{ guid }}{{ subdomain_base_suffix }}",
-    "bastion_ssh_user_name": "{{ student_name }}",
-    "bastion_ssh_password": "{{ common_password }}"
-    },
-  {% endfor %}
-  }
 
-agnosticd_passthrough_user_data: |
-  {{ {}
-   | combine( {
-     "users": userdata })
-  }}
+agnosticv_importdata:
+  bastion_ssh_command: "ssh {{ student_name }}@{{ bastion_public_hostname }}"
+  bastion_public_hostname: "{{ bastion_prefix }}.{{ guid }}{{ subdomain_base_suffix }}"
+  bastion_ssh_user_name: "{{ student_name }}"
+  bastion_ssh_password: "{{ common_password }}"
+
 
 # -------------------------------------------------------------------
 # Babylon meta variables
