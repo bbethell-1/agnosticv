@@ -210,8 +210,29 @@ instances:
   - WebSG
   - ShowroomSG
 
+- name: "idm-gui"
+  count: 1
+  unique: true
+  public_dns: true
+  floating_ip: true
+  image: "{{ node_instance_image | default(default_instance_image) }}"
+  flavor:
+    ec2: "{{ node_instance_type | default(default_instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "idm_clients"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  rootfs_size: "{{ default_rootfs_size }}"
+  security_groups:
+  - DefaultSG
+  - HostSG
+  - WebSG
+
 - name: "node"
-  count: 3
+  count: 2
   public_dns: false
   image: "{{ node_instance_image | default(default_instance_image) }}"
   flavor:
@@ -308,6 +329,9 @@ showroom_dnf_packages:
 - systemd-container
 - unzip
 
+idm_client_url: "https://idm-gui.{{ guid }}{{ subdomain_base_suffix }}"
+bastion_prefix: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}"
+
 agnosticv_importdata:
   bastion_hostname: "{{ bastion_hostname }}"
   bastion_public_hostname: "{{ bastion_prefix }}.{{ guid }}{{ subdomain_base_suffix }}"
@@ -315,8 +339,17 @@ agnosticv_importdata:
   bastion_ip: "{{ hostvars[bastion].ip_addresses_list }}"
   node1_ip: "{{ hostvars[node1].ip_addresses_list }}"
   node2_ip: "{{ hostvars[node2].ip_addresses_list }}"
-  node3_ip: "{{ hostvars[node3].ip_addresses_list }}"
+  idm-gui_ip: "{{ hostvars[idm-gui].ip_addresses_list }}"
   windows_ip: "{{ hostvars[windows].ip_addresses_list }}"
+  page-links:
+  - url: "https://redhat.com"
+    text: "Red Hat"
+  - url: "https://www.redhat.com/en/summit"
+    text: "Summit"
+  - url: "https://github.com/freeipa/ansible-freeipa"
+    text: "ansible-freeipa Docs"
+  - url: "{{ idm_client_url }}"
+    text: "IDM GUI"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
