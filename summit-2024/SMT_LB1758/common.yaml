@@ -1,0 +1,221 @@
+---
+#include /includes/catalog-icon-service-mesh.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-3regions.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/aws-sandbox-meta.yaml
+# -------------------------------------------------------------------
+# --- Catalog Item: Heading to Production with Red Hat OSSM
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: ec2
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# VM configuration
+# -------------------------------------------------------------------
+master_instance_type: m6a.4xlarge
+master_instance_count: 1
+worker_instance_count: 0
+bastion_instance_type: t2.small
+bastion_instance_image: RHEL91GOLD-latest
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.14.17"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
+# instead of cluster-{{ guid }}.{{ guid }}.sandboxXXX.opentlc.com
+# -------------------------------------------------------------------
+ocp4_base_domain: "{{ sandbox_zone }}"
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: false
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_le_certificates
+- ocp4_workload_authentication
+- ocp4_workload_cert_manager_operator
+- ocp4_workload_openshift_gitops
+- ocp4_workload_gitea_operator
+- ocp4_workload_ossm
+- ocp4_workload_rhsso
+- ocp4_workload_showroom
+- ocp4_workload_gitops_bootstrap
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.14_2024_04_01
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: openshift
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_le_certificates
+# -------------------------------------------------------------------
+ocp4_workload_le_certificates_install_api: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_count: 1
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager_operator
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_operator_channel: stable-v1
+ocp4_workload_cert_manager_operator_channel_csv: cert-manager-operator.v1.13.0
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.11
+
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.5
+ocp4_workload_gitea_operator_starting_csv: gitea-operator.v2.0.5
+
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.21.3"
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel9/postgresql-13
+ocp4_workload_gitea_operator_postgresql_image_tag: 1-165
+
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: 1
+ocp4_workload_gitea_operator_generate_user_format: user1
+ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/redhat-gpte-devopsautomation/ossm-labs
+  name: ossm-labs
+  private: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ossm
+# -------------------------------------------------------------------
+ocp4_workload_ossm_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_ossm_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_ossm_es_channel: stable
+ocp4_workload_ossm_es_startingcsv: elasticsearch-operator.v5.8.5
+
+ocp4_workload_ossm_jaeger_channel: stable
+ocp4_workload_ossm_jaeger_startingcsv: jaeger-operator.v1.53.0-4
+
+ocp4_workload_ossm_kiali_channel: stable
+ocp4_workload_ossm_kiali_startingcsv: kiali-operator.v1.73.4
+
+ocp4_workload_ossm_servicemesh_channel: stable
+ocp4_workload_ossm_servicemesh_startingcsv: servicemeshoperator.v2.5.0
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhsso
+# -------------------------------------------------------------------
+ocp4_workload_rhsso_namespace: rhsso
+ocp4_workload_rhsso_target_namespaces: ["rhsso"]
+ocp4_workload_rhsso_channel: stable
+ocp4_workload_rhsso_starting_csv: rhsso-operator.7.6.7-opr-001
+ocp4_workload_rhsso_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_rhsso_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/redhat-gpte-devopsautomation/ossm-showroom
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_terminal_image: quay.io/oschneid/openshift-showroom-terminal:1.0
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  sandboxed: false
+  deploy_with: babylon
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: ed05a002-aab0-4fad-b282-d6109617ad35
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.1
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: LB1758 - Heading to Production with Red Hat Openshift Service Mesh
+    category: Labs
+    keywords:
+    - workshop
+    - openshift
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+  runtime:
+    default: 8h
+    maximum: 48h
+  secrets:
+  - namespace: gpte
+    name: satellite-rhel-8-and-9-latest-ha
+  - namespace: gpte
+    name: ocp4-token
+  - name: output-dir-s3
+    namespace: gpte
