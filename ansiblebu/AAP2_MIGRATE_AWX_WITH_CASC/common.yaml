@@ -1,64 +1,105 @@
 ---
 #include /includes/catalog-icon-aap.yaml
+#include /includes/lifetime-standard.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/parameters/aws-region.yaml
 #include /includes/terms-of-service.yaml
-#include /includes/runtime-unlimited.yaml
-#include /includes/aap2-workshop-common.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/satellite-rhel8-latest-ha.yaml
+#include /includes/parameters/automation-hub-enable.yaml
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
 
-platform: rhpds
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: controller_migration_casc
 
-# Workshop Type
-workshop_type: controller_migration_casc
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + '_1' }}"
 
-# ENV TYPE
-env_type: aap2-workshop-{{ workshop_type }}
+# -------------------------------------------------------------------
+# Instances vars
+# -------------------------------------------------------------------
+windows_password: "{{ common_password }}"
 
-# Force disable automation hub
-automation_hub: false
+# -------------------------------------------------------------------
+# Role: common
+# -------------------------------------------------------------------
+common_packages_el9:
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - at
+  - python3-pip
+  - gcc
+  - ansible
 
-ec2_xtra:
-  juniper:
-    size: c5.xlarge
-    ami: '{{ juniper_ami | default(omit) }}'
-    os: junos
-    username: ec2-user
-    #filter: "junos-vsrx3-x86-64-2.4R2-S1-byol*"
-    filter: junos-vsrx3-x86-64-22.3R2*byol*
-    volume:
-    - device_name: /dev/sda1
-      ebs:
-        volume_type: io1
-        iops: 1000
-        volume_size: 40
-        delete_on_termination: true
-  attendance_host:
-    owners: 309956199498
-    size:
-    - t3a.large
-    - t3.large
-    os_type: linux
-    disk_volume_type: gp3
-    disk_space: 10
-    disk_iops: 3000
-    disk_throughput: 125
-    architecture: x86_64
-    filter: RHEL-8*HVM-*Hourly*
-    username: ec2-user
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+repo_method: satellite
+# use_content_view: true
+# set_repositories_rhel8_lock_release: '8'
 
+# -------------------------------------------------------------------
+# Role: deploy_automationcontroller
+# -------------------------------------------------------------------
+deploy_automationcontroller_installer_url: "{{ controller_bundle_installer.url }}"
+deploy_automationcontroller_manifest_url: "{{ controller_manifest.url }}"
+
+# -------------------------------------------------------------------
+# Role: vscode-server
+# -------------------------------------------------------------------
+vscode_server_ansible_become: true
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  deploy_with: babylon
+  params_to_variables:
+    user: ignore_user
+    username: student_name
+    region: aws_region
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
 __meta__:
   asset_uuid: 23af08a4-7a70-4208-a589-7583f348267e
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "Migrate AWX/Tower to Ansible Controller using Configuration as Code"
+    display_name: Migration AWX/Tower to AAP using CaC
     category: Workshops
     keywords:
-    - AAP2
-    - config-as-code
-    - workshop
-    - ansible
+      - ansible
+      - workshop
+      - awx
+      - tower
+      - aap2
+      - migration
     labels:
       Product: Red_Hat_Ansible_Automation_Platform
       Product_Family: Red_Hat_Automation
-      Provider: Ansible_BU
+      Provider: RHDP
+    parameters: []
+  secrets:
+    - name: satellite-rhel-8-and-9-latest-ha
+      namespace: gpte
+    - name: ansible-tower-advanced-2
+      namespace: gpte
+    - name: output-dir-s3
+      namespace: gpte
