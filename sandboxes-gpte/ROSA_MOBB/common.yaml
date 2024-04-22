@@ -1,28 +1,56 @@
 ---
 #include /includes/aws-sandbox-meta.yaml
 #include /includes/catalog-icon-aws.yaml
-#include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/lifetime-standard.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/ee-multicloud-rosa.yaml
+
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/student-email.yaml
 #include /includes/parameters/requester_username.yaml
 #include /includes/parameters/open-environment-annotation-hidden.yaml
-#include /includes/secrets/bookbag-shared-410.yaml
+
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
-#include /includes/ee-multicloud-rosa.yaml
+#include /includes/secrets/rosa_token.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
 env_type: rosa-consolidated
-rosa_deploy: false
 
 # -------------------------------------------------------------------
 # Platform
 # -------------------------------------------------------------------
 platform: rhpds
+
+# ------------------------------------------------------
+# Catalog Item Parameters
+# ------------------------------------------------------
+
+# Here for documentation. The following vars are being set by CI parameters
+# rosa_deploy: false
+# rosa_deploy_hcp: false
+# rosa_setup_cluster_admin: false
+
+# ------------------------------------------------------
+# ROSA
+# ------------------------------------------------------
+rosa_installer_version: latest
+
+# ROSA Version can be "default", "latest", "latest-upgrade", or semantic version
+# Value controlled by catalog parameter below.
+rosa_version: latest-upgrade
+
+# Make sure to set the base to a version that actually has an upgrade available
+# Check with `rosa list versions -o json` and make sure there is one with available_upgrades set
+rosa_version_base: openshift-v4.15
+rosa_compute_machine_type: m6a.xlarge
+
+#billing account for HCP
+aws_billing_account_id: "017310218799"
 
 bastion_instance_type: "t3a.small"
 bastion_instance_image: RHEL93GOLD-latest
@@ -57,21 +85,22 @@ print_agnosticd_user_info: false
 # ------------------------------------------------------
 # Bookbag
 # ------------------------------------------------------
-deploy_bookbag: true
-bookbag_git_repo: https://github.com/rhpds/bookbag-rosa-mobb.git
-bookbag_git_version: 2024.03.07
+deploy_bookbag: false
 
-# -------------------------------------------------------------------
-# AgnosticV meta variables
-# -------------------------------------------------------------------
-agnosticv_meta:
-  deploy_with: babylon
-  params_to_variables:
-    infra_workloads: ''
-    student_workloads: ''
-    rosa_token: rosa_token
-  idle_after_deploy: 9999
-  idle_after_start: 9999
+# --------------------------------------------------------------------
+# Showroom
+# --------------------------------------------------------------------
+showroom_deploy: true
+showroom_git_repo: https://github.com/rhpds/showroom-rosa-workshop.git
+showroom_git_ref: main
+showroom_var_inject: true
+
+showroom_ssh_method: sshkey
+showroom_ssh_username: "{{ bastion_user_name }}"
+showroom_default_ssh_user: "{{ bastion_user_name }}"
+showroom_ssh_host: "bastion.{{ subdomain_base }}"
+showroom_lab_users:
+- "{{ bastion_user_name }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -88,7 +117,7 @@ __meta__:
         disable: true
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: MOBB ROSA Workshop
+    display_name: ROSA Workshop
     category: Workshops
     keywords: []
     labels:
@@ -103,6 +132,24 @@ __meta__:
       required: false
       openAPIV3Schema:
         type: string
+    - name: rosa_deploy
+      description: Deploy ROSA in the environment
+      formLabel: Deploy ROSA
+      openAPIV3Schema:
+        type: boolean
+        default: false
+    - name: rosa_deploy_hcp
+      description: Deploy ROSA using a Hosted Control Plane (only used if Deploy ROSA is checked)
+      formLabel: Deploy ROSA using a Hosted Control Plane
+      openAPIV3Schema:
+        type: boolean
+        default: false
+    - name: rosa_setup_cluster_admin
+      description: Set up cluster admin in ROSA (only used if Deploy ROSA is checked)
+      formLabel: Set up cluster admin in ROSA
+      openAPIV3Schema:
+        type: boolean
+        default: false
   lifespan:
     default: 2d
     maximum: 999d
@@ -110,6 +157,3 @@ __meta__:
   runtime:
     default: 9999h
     maximum: 9999h
-  secrets:
-  - namespace: gpte
-    name: rosa-token
