@@ -33,6 +33,7 @@ student_name: lab-user
 student_password: "{{ common_password }}"
 student_sudo: true
 ansible_service_account_user_name: "{{ student_name }}"
+ansible_service_account_user_password: "{{ common_password }}"
 
 use_content_view: true
 update_packages: true      # Do you want to run a full yum update
@@ -70,6 +71,71 @@ common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 inventory_groups:
 - bastions
 - nodes
+
+security_groups:
+- name: BastionSG
+  rules:
+  - name: BasSSHPublic
+    description: "SSH public"
+    from_port: 22
+    to_port: 22
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+- name: WebSG
+  rules:
+  - name: HTTPPorts
+    description: "HTTP Public"
+    from_port: 80
+    to_port: 80
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+  - name: HTTPSPorts
+    description: "HTTP Public"
+    from_port: 443
+    to_port: 443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+  - name: CockpitPorts
+    description: "HTTP Public"
+    from_port: 9090
+    to_port: 9090
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+- name: HostSG
+  rules:
+  - name: FromHostSG
+    description: "Allow everything from HostSG nodes"
+    from_port: 0
+    to_port: 65535
+    protocol: -1
+    from_group: HostSG
+    rule_type: Ingress
+
+- name: ShowroomSG
+  rules:
+  - name: ShowroomHTTPS
+    description: "Primary showroom endpoint - for reverse proxy"
+    from_port: 8443
+    to_port: 8443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+  - name: ShowroomExposed
+    description: "Showroom views or exposed services, up to 26 of them"
+    from_port: 8500
+    to_port: 8525
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
 
 instances:
 - name: "{{ bastion_hostname | default('bastion') }}"
@@ -117,6 +183,24 @@ instances:
 repo_method: satellite
 
 # -------------------------------------------------------------------
+# Config Pre/Software/Post Workloads
+# -------------------------------------------------------------------
+post_software_workloads:
+  localhost:
+  - agnosticv-userdata-import
+
+## agnosticv-userdata-import vars
+agnosticv_importdata:
+  cockpit_url: "https://bastion.{{ guid }}{{ subdomain_base_suffix }}:9090/"
+  page-links:
+  - url: "https://docs.ansible.com/ansible/latest/index.html"
+    text: "Ansible Docs"
+  - url: "{{ cockpit_url }}"
+    text: "Web Console"
+
+cockpit_url: "https://bastion.{{ guid }}{{ subdomain_base_suffix }}:9090/"
+
+# -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
 showroom_deploy: true
@@ -131,10 +215,6 @@ showroom_lab_users:
 - "{{ student_name }}"
 showroom_tab_services:
 - single_terminal
-- web1
-
-showroom_tab_web1_url: "https://{{ groups['bastions'][0] | regex_replace('\\..*$') }}.{{ guid }}{{ subdomain_base_suffix }}:9090"
-showroom_tab_web1_name: Web Console
 
 showroom_user_password: "{{ common_password }}"
 showroom_dnf_packages:
