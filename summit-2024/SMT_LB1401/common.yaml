@@ -59,6 +59,13 @@ infra_images_predefined:
     aws_filters:
       is-public: true
 
+  WIN2022-latest:
+    owner: "{{ windows_image_owner }}"
+    name: Windows_Server-2022-English-Core-Base-*
+    architecture: x86_64
+    aws_filters:
+      is-public: true
+
 bastion_instance_image: RHEL93GOLD-latest
 bastion_instance_type: t3a.medium
 node_instance_image: RHEL93GOLD-latest
@@ -72,13 +79,28 @@ ansible_service_account_user_password: "{{ common_password }}"
 base_infra_windows_enable: true             # Bool from base-infra config to enable windows configuration
 windows_password: "{{ common_password }}"
 windows_server_instance_type: m5.2xlarge
-windows_instance_image: WIN2019-latest      # Custom definition in infra_images_predefined:
+windows_instance_image: WIN2022-latest      # Custom definition in infra_images_predefined:
 agnosticd_images_windows: "{{ windows_ami }}"
-windows_image_owner: "801119661308"
+windows_image_owner: "801119661308"         # "809721187735" for "Windows_Server-2019-English-Core-Base-*" "WIN2019-latest"
 infra_images_redhat_owner_id: "309956199498"
 
 install_win_ssh: true
 install_student_user: true
+
+# infra_windows_connection_facts_type: ssh
+
+infra_windows_connection_facts_type: custom
+infra_windows_connection_facts_ansible_become: false
+infra_windows_connection_facts_ansible_connection: ssh
+infra_windows_connection_facts_ansible_password: "{{ common_password }}"
+infra_windows_connection_facts_ansible_host: "{{ public_dns_name }}"
+infra_windows_connection_facts_ansible_port: 22
+infra_windows_connection_facts_ansible_user: Administrator
+infra_windows_connection_facts_cert_validation: ignore
+infra_windows_connection_facts_aws_region_final: "{{ hostvars['localhost'].aws_region_final }}"
+infra_windows_connection_facts_ansible_shell_type: cmd
+infra_windows_connection_facts_ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+
 student_name: lab-user
 student_password: "{{ common_password }}"
 student_sudo: true
@@ -139,6 +161,7 @@ security_groups:
     protocol: tcp
     cidr: "0.0.0.0/0"
     rule_type: Ingress
+
   - name: HTTPSPorts
     description: "HTTP Public"
     from_port: 443
@@ -166,11 +189,20 @@ security_groups:
     protocol: tcp
     cidr: "0.0.0.0/0"
     rule_type: Ingress
+
   - name: WinSGUdp
     description: "All UDP"
     from_port: 1
     to_port: 65535
     protocol: udp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+  - name: WinSSHPublic
+    description: "SSH public"
+    from_port: 22
+    to_port: 22
+    protocol: tcp
     cidr: "0.0.0.0/0"
     rule_type: Ingress
 
@@ -255,12 +287,12 @@ instances:
   count: 1
   unique: true
   public_dns: true
-  image: "{{ windows_instance_image | default('WIN2019-latest') }}"
+  image: "{{ windows_instance_image | default('WIN2022-latest') }}"
   flavor:
     ec2: "{{ windows_server_instance_type | default('m5.xlarge') }}"
   networks:
   - default
-  servicePort: 5985 # WinRM port, ssh default is 22, http 5985, https 5986
+  servicePort: 22 # WinRM port, ssh default is 22, http 5985, https 5986
   owner: "{{ windows_image_owner }}"
   tags:
   - key: "AnsibleGroup"
@@ -280,10 +312,12 @@ instances:
                   - "$admin = [adsi]('WinNT://./administrator, user')\n"
                   - "$admin.PSBase.Invoke('SetPassword', '{{ windows_password }}')\n"
                   - "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12\n"
-                  - "$scriptPath=((New-Object System.Net.Webclient).DownloadString('https://gpte-public.s3.amazonaws.com/CI+Assets/Ansible+Windows+Workshop/ConfigureRemotingForAnsibleLatest.ps1'))\n"
-                  - "Invoke-Command -ScriptBlock ([scriptblock]::Create($scriptPath)) -ArgumentList '-EnableCredSSP'\n"
+                  - "$scriptPath=((New-Object System.Net.Webclient).DownloadString('https://gpte-public.s3.amazonaws.com/CI+Assets/Ansible+Windows+Workshop/ConfigureRemotingForAnsibleLatestSSH.ps1'))\n"
+                  - "Invoke-Command -ScriptBlock ([scriptblock]::Create($scriptPath)) \n"
                   - "</powershell>"
-
+# Script path for winrm connection https://gpte-public.s3.amazonaws.com/CI+Assets/Ansible+Windows+Workshop/ConfigureRemotingForAnsibleLatest.ps1
+# -ArgumentList '-GlobalHttpFirewallAccess'
+# Script path for ssh connection https://gpte-public.s3.amazonaws.com/CI+Assets/Ansible+Windows+Workshop/ConfigureRemotingForAnsibleLatestSSH.ps1
 # -------------------------------------------------------------------
 # Role: set-repositories
 # -------------------------------------------------------------------
