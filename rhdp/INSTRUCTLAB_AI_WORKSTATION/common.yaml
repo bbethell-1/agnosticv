@@ -1,0 +1,168 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-aap.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-region2.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# ---------------------------------------------------------------------
+# Mandatory Variables
+# ---------------------------------------------------------------------
+
+env_type: base-infra
+region: us-east-2
+cloud_provider: ec2
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# --------------------------------------------------------------------
+# Platform
+# --------------------------------------------------------------------
+
+platform: RHPDS
+
+admin_user: opentlc-mgr
+ansible_user: fedora
+remote_user: fedora
+student_name: fedora
+student_password: "{{ common_password }}"
+
+# TODO: This should not be forced by config base-infra
+agd_user_create_ansible_service_account: false
+
+# -------------------------------------------------------------------
+# package stuff
+# -------------------------------------------------------------------
+
+agd_bastion_packages:
+  - at
+  - bash-completion
+  - bind-utils
+  - git
+  - podman
+  - vim-enhanced
+  - wget
+
+update_packages: false
+
+post_software_workloads:
+  bastions:
+    - ai-setup-nvidia-cuda-vm
+    - ai-setup-instructlab
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+
+default_instance_type: g5.xlarge
+bastion_instance_type: "{{ default_instance_type }}"
+
+# TODO: Get better support for Fedora images
+#bastion_instance_image: "{{ default_instance_image }}"
+
+rootfs_size_rhel9: 100
+
+instances:
+
+  - name: bastion
+    image:
+      name: Fedora-Cloud-Base-39-1.5.x86_64-hvm-*
+      architecture: x86_64
+      owner: "125523088429"
+      aws_filters:
+        is-public: true
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    flavor:
+      ec2: "{{ bastion_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    security_groups:
+      - BastionSG
+      - ShowroomSG
+
+inventory_groups:
+  - bastions
+
+# -------------------------------------------------------------------
+# security_groups
+# -------------------------------------------------------------------
+
+security_groups:
+
+  - name: WebSG
+    rules:
+      - name: HTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: HTTPSPorts
+        description: "HTTP Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: HostSG
+    rules:
+      - name: FromHostSG
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: -1
+        from_group: HostSG
+        rule_type: Ingress
+
+  - name: ShowroomSG
+    rules:
+      - name: ShowroomHTTPS
+        description: "Primary showroom endpoint - for reverse proxy"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+cloud_tags:
+  env_type: "{{ env_type }}"
+  platform: "{{ platform | default('unknown') }}"
+
+__meta__:
+  asset_uuid: 6B1E6FF5-679F-4E3E-8F7B-D6106E177A38
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "InstructLab AI Developer VM (Nvidia)"
+    category: Labs
+    keywords:
+      - ai
+      - instructlab
+      - ilab
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHDP
+    multiuser: false
+    parameters: []
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
