@@ -48,6 +48,46 @@ agd_bastion_packages:
 
 update_packages: false
 
+# -------------------------------------------------------------------
+# asset_injector
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+
+  - description: Set fedora user password
+    type: user
+    name: fedora
+    state: present
+    password: "{{ common_password | password_hash('sha512') }}"
+
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
+
+# -------------------------------------------------------------------
+# post_software_workloads - InstructLab and Nvidia setup
+# -------------------------------------------------------------------
+
 post_software_workloads:
   bastions:
     - ai-setup-nvidia-cuda-vm
