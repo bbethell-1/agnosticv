@@ -329,6 +329,7 @@ pre_software_workloads:
   - common
   - bastion-lite
   - control-user
+  - asset_injector
   satellites:
   - ansible_bu_satellite
 
@@ -348,6 +349,20 @@ post_software_workloads:
 post_software_final_workloads:
   localhost:
   - ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Role: asset_injector
+# -------------------------------------------------------------------
+asset_injector_assets:
+- description: Add Python to student ~/.bashrc to stop terminal timeout
+  type: blockinfile
+  path: "/home/{{ student_name }}/.bashrc"
+  state: present
+  block: |
+    python3 -u <<EOF &
+    import time
+    while True: time.sleep(60); print('\x06', end='');
+    EOF
 
 # -------------------------------------------------------------------
 # Role: set-repositories
@@ -784,13 +799,11 @@ ocp4_workload_showroom_content_git_repo: >-
 ocp4_workload_showroom_content_git_ref: main
 ocp4_workload_showroom_content_only: false
 
-bastion_public_hostname: >-
-  "{{ groups['bastions'][0] | regex_replace('\\..*$') }}.{{ guid }}{{ subdomain_base_suffix }}"
-
 showroom_lab_users:
 - "{{ student_name }}"
 
 bastion_prefix: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}"
+bastion_public_hostname: "{{ bastion_prefix }}.{{ guid }}{{ subdomain_base_suffix }}"
 ocp4_workload_showroom_terminal_type: wetty
 ocp4_workload_showroom_wetty_image: docker.io/wettyoss/wetty:latest
 ocp4_workload_showroom_wetty_ssh_bastion_login: true
@@ -826,7 +839,6 @@ agnosticv_importdata:
     text: "GitHub: automated-satellite"
   - url: "https://github.com/redhat-cop/infra.lvm_snapshots"
     text: "GitHub: infra.lvm_snapshots"
-
 
 # -------------------------------------------------------------------
 # Babylon meta variables
