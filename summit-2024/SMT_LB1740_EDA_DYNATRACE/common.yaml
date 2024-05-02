@@ -19,6 +19,7 @@ platform: RHPDS
 # -------------------------------------------------------------------
 env_type: ocp4-cluster
 software_to_deploy: openshift4
+num_users: 1
 cloud_provider: ec2
 student_name: lab-user
 student_password: "{{ common_password }}"
@@ -55,6 +56,7 @@ security_groups:
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
+
 ocp4_installer_version: "4.12.12"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 master_instance_count: 1
@@ -64,23 +66,29 @@ bastion_instance_image: RHEL86GOLD-latest
 # -------------------------------------------------------------------
 # Generate Common Password
 # -------------------------------------------------------------------
+
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
 # -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
+
 repo_method: satellite
 update_packages: true
 
 # -------------------------------------------------------------------
 # Ansible Module, Collections, and Roles Requirements
 # -------------------------------------------------------------------
+
 requirements_content:
   roles:
+
     - name: ocp_application_validation
       src: https://github.com/redhat-gpte-devopsautomation/ocp_application_validation.git
       version: v3.0.4
+
   collections:
+
     - name: amazon.aws
       version: 2.2.0
     - name: ansible.posix
@@ -93,6 +101,8 @@ requirements_content:
       version: 4.6.1
     - name: infra.controller_configuration
       version: 2.2.5
+    - name: infra.eda_configuration
+      version: 1.1.0
     - name: kubernetes.core
       version: 2.3.1
 
@@ -111,29 +121,44 @@ infra_workloads:
   - ocp-workload-etherpad
   - automation_platform_loader
   - automation_platform_bastion
-  - eda_controller_config
+  - ocp4_workload_showroom
+  - ansible-eda-config
 
 # -------------------------------------------------------------------
 # OpenShift variable
 # -------------------------------------------------------------------
+
 student_workloads: []
 host_ocp4_installer_set_user_data_kubeadmin_password: true
 
 # -------------------------------------------------------------------
 # Legacy variables
 # -------------------------------------------------------------------
+
 etherpad_project: labs
+etherpad_text: Welcome to Event Driven Ansible and Dynatrace escape room!
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+
+ocp4_workload_showroom_content_git_repo: >-
+  https://github.com/ikke-t/showroom_rheda-dynatrace
+ocp4_workload_showroom_content_git_ref: summit2024
+ocp4_workload_showroom_content_only: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
+
 ocp4_workload_authentication_idm_type: htpasswd
 ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_count: 5
+ocp4_workload_authentication_htpasswd_user_count: 1
 ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
 ocp4_workload_authentication_admin_user: admin
 ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
 ocp4_workload_authentication_remove_kubeadmin: false
+ocp4_workload_authentication_enable_user_info_data: false
 
 # Use Let's Encrypt Prod certificates
 
@@ -270,65 +295,320 @@ eda_pods_on_bastion_ac_web_url: "https://{{ automation_controller_hostname }}"
 # -------------------------------------------------------------------
 # Workload: eda_controller_config
 # -------------------------------------------------------------------
-eda_controller_config_url: "{{ eda_controller_web_url }}"
-eda_controller_config_username: "admin"
-eda_controller_config_password: "{{ common_password }}"
 
-eda_controller_config_awx_tokens:
+# -------------------------------------------------------------------
+# Role: ansible-eda-config
+# -------------------------------------------------------------------
+
+eda_host: "https://eda-controller-aap.apps.cluster-{{ guid }}.{{ guid }}{{ subdomain_base_suffix}}"
+eda_username: admin
+eda_password: "{{ common_password }}"
+eda_validate_certs: false
+
+
+# -------------------------------------------------------------------
+# Role: ansible-eda-config # Dispatcher
+# -------------------------------------------------------------------
+
+eda_configuration_dispatcher_roles:
+
+  - role: user
+    var: eda_users
+    tags: user
+
+  - role: user_token
+    var: eda_user_tokens
+    tags: user_token
+
+  - role: project
+    var: eda_projects
+    tags: project
+
+  - role: project_sync
+    var: eda_projects
+    tags: project_sync
+
+  - role: decision_environment
+    var: eda_decision_environments
+    tags: decision_environment
+
+  - role: rulebook_activation
+    var: eda_rulebook_activations
+    tags: rulebook_activation
+
+# -------------------------------------------------------------------
+# Role: ansible-eda-config # eda_user_tokens
+# -------------------------------------------------------------------
+
+eda_user_tokens:
+
   - name: aap
+    description: AAP2 Controller Auth token
     token: "{{ r_aap2_token.ansible_facts.controller_token.token }}"
 
-eda_controller_config_decision_envs:
-  - name: "de-for-ocp"
-    description: "Decision Environment for OpenShift"
-    image_url: "quay.io/mitsharm/eda/de-for-ocp"
-  - name: de-for-dynatrace
-    description: Decision Environment for Dynatrace
-    image_url: quay.io/ikke/de-dynatrace:1.1.4620c3f
+# -------------------------------------------------------------------
+# Role: ansible-eda-config # eda_users
+# -------------------------------------------------------------------
 
-eda_controller_config_projects:
+eda_users:
+
+  - username: user1
+    first_name: Read
+    last_name: Only
+    email: jdoe@example.com
+    password: "{{ common_password }}"
+    update_secrets: false
+    roles:
+      - Auditor
+
+  - username: user2
+    first_name: Read
+    last_name: Only
+    email: jdoe@example.com
+    password: "{{ common_password }}"
+    update_secrets: false
+    roles:
+      - Auditor
+
+  - username: user3
+    first_name: Read
+    last_name: Only
+    email: jdoe@example.com
+    password: "{{ common_password }}"
+    update_secrets: false
+    roles:
+      - Auditor
+
+  - username: user4
+    first_name: Read
+    last_name: Only
+    email: jdoe@example.com
+    password: "{{ common_password }}"
+    update_secrets: false
+    roles:
+      - Auditor
+
+  - username: user5
+    first_name: Read
+    last_name: Only
+    email: jdoe@example.com
+    password: "{{ common_password }}"
+    update_secrets: false
+    roles:
+      - Auditor
+
+  - username: user6
+    first_name: Read
+    last_name: Only
+    email: jdoe@example.com
+    password: "{{ common_password }}"
+    update_secrets: false
+    roles:
+      - Auditor
+
+  - username: user7
+    first_name: Read
+    last_name: Only
+    email: jdoe@example.com
+    password: "{{ common_password }}"
+    update_secrets: false
+    roles:
+      - Auditor
+
+  - username: user8
+    first_name: Read
+    last_name: Only
+    email: jdoe@example.com
+    password: "{{ common_password }}"
+    update_secrets: false
+    roles:
+      - Auditor
+
+  - username: user9
+    first_name: Read
+    last_name: Only
+    email: jdoe@example.com
+    password: "{{ common_password }}"
+    update_secrets: false
+    roles:
+      - Auditor
+
+  - username: user10
+    first_name: Read
+    last_name: Only
+    email: jdoe@example.com
+    password: "{{ common_password }}"
+    update_secrets: false
+    roles:
+      - Auditor
+
+  - username: user11
+    first_name: Read
+    last_name: Only
+    email: jdoe@example.com
+    password: "{{ common_password }}"
+    update_secrets: false
+    roles:
+      - Auditor
+
+  - username: user12
+    first_name: Read
+    last_name: Only
+    email: jdoe@example.com
+    password: "{{ common_password }}"
+    update_secrets: false
+    roles:
+      - Auditor
+
+  - username: user13
+    first_name: Read
+    last_name: Only
+    email: jdoe@example.com
+    password: "{{ common_password }}"
+    update_secrets: false
+    roles:
+      - Auditor
+
+  - username: user14
+    first_name: Read
+    last_name: Only
+    email: jdoe@example.com
+    password: "{{ common_password }}"
+    update_secrets: false
+    roles:
+      - Auditor
+
+  - username: user15
+    first_name: Read
+    last_name: Only
+    email: jdoe@example.com
+    password: "{{ common_password }}"
+    update_secrets: false
+    roles:
+      - Auditor
+
+# -------------------------------------------------------------------
+# Role: ansible-eda-config # eda_projects
+# -------------------------------------------------------------------
+
+eda_projects:
 
   - name: "OpenShift Event Rulebooks"
     description: "Event-driven Ansible rulebooks"
-    repo_url: "https://github.com/ikke-t/eda-rulebooks.git"
+    url: "https://github.com/ikke-t/eda-rulebooks.git"
 
-eda_controller_config_rulebook_activations:
-  # TODO: Add the dynatrace token and url, and enable
+eda_configuration_project_async_retries: 100
+
+# -------------------------------------------------------------------
+# Role: ansible-eda-config # eda_decision_environments
+# -------------------------------------------------------------------
+
+eda_decision_environments:
+
+  - name: "de-for-ocp"
+    description: "Decision Environment for OpenShift"
+    image_url: "quay.io/mitsharm/eda/de-for-ocp"
+
+  - name: de-for-dynatrace
+    description: Decision Environment for Dynatrace
+    image_url: quay.io/ikke/de-dynatrace:1.1.4620c
+
+# -------------------------------------------------------------------
+# Role: ansible-eda-config # eda_rulebook_activations:
+# -------------------------------------------------------------------
+
+eda_rulebook_activations:
+
+  - name: Add route for EDA webhook service
+    description: Adds missing route for EDA webhook service
+    project: OpenShift Event Rulebooks
+    rulebook: publish_eda_webhook_route.yml
+    decision_environment: de-for-ocp
+    restart_policy: always
+    awx_token: aap
+    enabled: true
+    extra_vars:
+      cluster_apps_domain: "{{ openshift_cluster_ingress_domain }}"
+    eda_host: "{{ eda_controller_web_url }}"
+    eda_username: admin
+    eda_password: "{{ common_password }}"
+    eda_validate_certs: false
+
   - name: Listen to Dynatrace events
     description: Listen to Dynatrace events
     project: OpenShift Event Rulebooks
     rulebook: dynatrace_event.yml
-    decision_env: de-for-dynatrace
-    restart_policy: on-failure
-    enabled: false
-
-  - name: "Patch Route With Cert"
-    description: "Patch OpenShift Routes"
-    project: "OpenShift Event Rulebooks"
-    rulebook: "patch_route.yml"
-    decision_env: "de-for-ocp"
-    restart_policy: "on-failure"
+    decision_environment: de-for-dynatrace
+    restart_policy: always
+    awx_token: aap
     enabled: true
+    extra_vars:
+      dt_token: 'dt0c01.OCYBYYM7L56IFJ7APTWJHCQ3.4ADX4OWKQLU4BJIQQHQ3SFEGPMCPWDG7WDOHCLPFZ6AXKMPFLN46EAGAZUNIRTLC'
+      dt_url: https://bnk46244.live.dynatrace.com
+      et_url: http://4.180.122.137:8091/
+    eda_host: "{{ eda_controller_web_url }}"
+    eda_username: admin
+    eda_password: "{{ common_password }}"
+    eda_validate_certs: false
 
-  - name: "Set Resource Quota On Namespace"
-    description: "Set Resource Quota on OpenShift namespace"
-    project: "OpenShift Event Rulebooks"
-    rulebook: "resource_quota.yml"
-    decision_env: "de-for-ocp"
-    restart_policy: "on-failure"
+  - name: Listen to webhook for EasyTravel
+    description: Listen to webhook for EasyTravel actions
+    project: OpenShift Event Rulebooks
+    rulebook: webhook_easytravel.yml
+    decision_environment: de-for-dynatrace
+    restart_policy: always
+    awx_token: aap
     enabled: true
+    extra_vars:
+      et_url: http://4.180.122.137:8091/
+    eda_host: "{{ eda_controller_web_url }}"
+    eda_username: admin
+    eda_password: "{{ common_password }}"
+    eda_validate_certs: false
 
-  - name: "Create Volume Snapshot"
-    description: "Create PVC volume snapshot"
-    project: "OpenShift Event Rulebooks"
-    rulebook: "volume_snapshot.yml"
-    decision_env: "de-for-ocp"
-    restart_policy: "on-failure"
+  - name: Patch Route With Cert
+    description: Patch OpenShift Routes
+    project: OpenShift Event Rulebooks
+    rulebook: patch_route.yml
+    decision_environment: de-for-ocp
+    restart_policy: always
+    awx_token: aap
     enabled: true
+    eda_host: "{{ eda_controller_web_url }}"
+    eda_username: admin
+    eda_password: "{{ common_password }}"
+    eda_validate_certs: false
+
+  - name: Set Resource Quota On Namespace
+    description: Set Resource Quota on OpenShift namespace
+    project: OpenShift Event Rulebooks
+    rulebook: resource_quota.yml
+    decision_environment: de-for-ocp
+    restart_policy: always
+    awx_token: aap
+    enabled: true
+    eda_host: "{{ eda_controller_web_url }}"
+    eda_username: admin
+    eda_password: "{{ common_password }}"
+    eda_validate_certs: false
+
+  - name: Create Volume Snapshot
+    description: Create PVC volume snapshot
+    project: OpenShift Event Rulebooks
+    rulebook: volume_snapshot.yml
+    decision_environment: de-for-ocp
+    restart_policy: always
+    awx_token: aap
+    enabled: true
+    eda_host: "{{ eda_controller_web_url }}"
+    eda_username: admin
+    eda_password: "{{ common_password }}"
+    eda_validate_certs: false
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
+
 __meta__:
   asset_uuid: 72bf3068-89d4-4384-ad3f-a9b5fc8a07d4
   catalog:
@@ -353,7 +633,7 @@ __meta__:
         formLabel: Control Plane Instance Type
         openAPIV3Schema:
           type: string
-          default: m6a.2xlarge
+          default: m6a.4xlarge
           enum:
             - m6a.4xlarge
             - m6a.2xlarge
