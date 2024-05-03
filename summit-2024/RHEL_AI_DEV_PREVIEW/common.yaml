@@ -1,0 +1,267 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-region2.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# ---------------------------------------------------------------------
+# Mandatory Variables
+# ---------------------------------------------------------------------
+
+env_type: base-infra
+cloud_provider: ec2
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# --------------------------------------------------------------------
+# Platform
+# --------------------------------------------------------------------
+
+platform: RHPDS
+
+# --------------------------------------------------------------------
+# Post Software Workloads
+# --------------------------------------------------------------------
+
+post_software_workloads:
+  bastions:
+    - ai_setup_nvidia_cuda
+    - ai_setup_ilab
+
+# --------------------------------------------------------------------
+# Repos and packages
+# --------------------------------------------------------------------
+
+use_content_view: true
+update_packages: true      # Do you want to run a full yum update
+
+agd_bastion_packages:
+
+  - at
+  - bash-completion
+  - bind-utils
+  - git
+  - podman
+  - buildah
+  - tmux
+  - vim-enhanced
+  - wget
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+
+repo_method: satellite
+
+# -------------------------------------------------------------------
+# asset_injector_assets
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
+
+# -------------------------------------------------------------------
+# inventory_groups (optional but nice to have)
+# -------------------------------------------------------------------
+
+inventory_groups:
+  - bastions
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+
+# showroom_git_repo: "https://github.com/rhpds/showroom_rh1_aap2_containerized"
+# showroom_user: showroom
+# showroom_ui: rh1
+#
+# showroom_user_password: "{{ common_password }}"
+# showroom_ssh_method: sshkey
+#
+# showroom_tab_services:
+#   - double_tty
+#   - web1
+#
+# showroom_ttys_enable_tmux: false
+#
+# showroom_lab_users:
+#   - "{{ student_name }}"
+#
+# showroom_tab_double_tty_top_username: "{{ student_name }}"
+# showroom_tab_double_tty_bottom_username: "{{ student_name }}"
+#
+# showroom_tab_web1_url: https://github.com/instructlab
+# showroom_tab_web1_name: Instruct Lab
+
+# -------------------------------------------------------------------
+# Role: common
+# -------------------------------------------------------------------
+
+student_name: instruct
+student_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Role: ansible_service_account
+# -------------------------------------------------------------------
+
+ansible_service_account_user_name: "{{ student_name }}"
+ansible_service_account_user_password: "{{ common_password }}"
+ansible_service_account_user_preferred_python: "3.9"
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+
+rootfs_size_rhel9: 100
+rootfs_size_bastion: 1024
+
+cloud_tags:
+  env_type: "{{ env_type }}"
+  platform: "{{ platform | default('unknown') }}"
+
+bastion_instance_image: RHEL93GOLD-latest
+bastion_instance_type: g5.4xlarge
+
+instances:
+
+  - name: bastion
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ bastion_instance_image }}"
+    flavor:
+      ec2: "{{ bastion_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    security_groups:
+      - BastionSG
+      - ShowroomSG
+
+# -------------------------------------------------------------------
+# Security Group Config
+# -------------------------------------------------------------------
+
+security_groups:
+
+  - name: FrontendSG
+    rules:
+      - name: FrontHTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: WebSG
+    rules:
+      - name: HTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: HTTPSPorts
+        description: "HTTP Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: HostSG
+    rules:
+      - name: FromHostSG
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: -1
+        from_group: HostSG
+        rule_type: Ingress
+
+  - name: ShowroomSG
+    rules:
+      - name: ShowroomHTTPS
+        description: "Primary showroom endpoint - for reverse proxy"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: AISG
+    rules:
+
+      - name: AIPORTS
+        description: Selection of ports for llm, chatbots etc
+        from_port: 8000
+        to_port: 8010
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: F8283ECD-4F52-4B3C-AB6C-2A03CA17F00D
+  access_control:
+    allow_groups:
+      - rhpds-devs
+      - rhpds-devs-ai
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "RHEL AI Developer Preview"
+    category: Red_Hat_One
+    keywords:
+      - rhel
+      - ai
+      - summit
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHDP
+    multiuser: false
+    parameters: []
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
