@@ -1,0 +1,628 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/open-environment-annotation.yaml
+#include /includes/secrets/bookbag-shared-410.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/showroom-shared-410.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/lifetime-standard.yaml
+
+# Defend yourself with RHEL security technologies
+
+# Platform Set to RHPDS or OPENTLC
+platform: RHPDS
+
+# https://github.com/redhat-cop/agnosticd/tree/development/ansible/configs/rhel-security
+env_type: rhel-security
+cloud_provider: ec2
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+
+# Satellite is used for RHEL repos
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+#update_packages: true
+
+# admin user for infra workloads
+admin_user: admin
+user: ignore_user
+#student_name: ec2-user
+
+# Email is required for deployment... but really shouldn't be.
+email: devops@opentlc.com
+
+software_to_deploy: none
+
+bastion_instance_type: t3a.medium
+node_instance_type: t3a.medium
+
+# -------------------------------------------------------------------
+# Lab Variables
+# -------------------------------------------------------------------
+
+crypto_lab_setup: true
+rhel_security_validate: true
+
+# -------------------------------------------------------------------
+# Instance Variable
+# -------------------------------------------------------------------
+
+bastion_instance_image: RHEL93GOLD-latest
+node_instance_image: RHEL93GOLD-latest
+#node7_instance_image: RHEL77GOLD-latest
+nbde_instance_image: RHEL81NBDE
+cyrpto_instance_image: RHEL8GOLD-latest
+ipsec_instance_image: RHEL8GOLD-latest
+
+install_student_user: true
+student_name: lab-user
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+student_password: "{{ common_password }}"
+student_sudo: true
+
+use_content_view: true
+
+security_groups:
+- name: RemoteDesktopRDPSG
+  rules:
+  - name: RemoteDesktopXRDP
+    description: "RemoteDesktopXRDP"
+    from_port: 3389
+    to_port: 3389
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+- name: RemoteDesktopVNCSG
+  rules:
+  - name: RemoteDesktopTigerVNC
+    description: "RemoteDesktopTigerVNC"
+    from_port: 5901
+    to_port: 5901
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+- name: OpenIPSECports
+  rules:
+  - name: ike50udp
+    description: "Ike 50/UDP"
+    from_port: 50
+    to_port: 50
+    protocol: udp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: ike4500udp
+    description: "Ike 4500/UDP"
+    from_port: 4500
+    to_port: 4500
+    protocol: udp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: ike500udp
+    description: "500/UDP"
+    from_port: 500
+    to_port: 500
+    protocol: udp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: ike50
+    description: "Ike 50/TCP"
+    from_port: 50
+    to_port: 50
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: ike500
+    description: "500/TCP"
+    from_port: 500
+    to_port: 500
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: ike4500
+    description: "Ike 4500/TCP"
+    from_port: 4500
+    to_port: 4500
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+- name: OpenIdMports
+  rules:
+  - name: ldap
+    description: "Directory Server"
+    from_port: 389
+    to_port: 389
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: ldaps
+    description: "Directory Server"
+    from_port: 636
+    to_port: 636
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: kerberosUDP
+    description: "Kerberos Authentication"
+    from_port: 88
+    to_port: 88
+    protocol: udp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: kerberosUDP2
+    description: "Kerberos Authentication"
+    from_port: 464
+    to_port: 464
+    protocol: udp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: kerberos
+    description: "Kerberos Authentication"
+    from_port: 88
+    to_port: 88
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: kerberos2
+    description: "Kerberos Authentication"
+    from_port: 464
+    to_port: 464
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: kadmind
+    description: "Kerberos Authentication"
+    from_port: 749
+    to_port: 749
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: dns
+    description: "DNS"
+    from_port: 53
+    to_port: 53
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: dnsUDP
+    description: "DNS UDP"
+    from_port: 53
+    to_port: 53
+    protocol: udp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+- name: OpenEverythingSG
+  rules:
+  - name: AllowICMP
+    description: "Local network"
+    from_port: -1
+    to_port: -1
+    protocol: icmp
+    cidr: 0.0.0.0/0
+    rule_type: Ingress
+  - name: SSH
+    description: "SSH public"
+    from_port: 22
+    to_port: 22
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: HTTP
+    description: "HTTP public"
+    from_port: 80
+    to_port: 80
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: HTTP8080
+    description: "HTTP public 8080"
+    from_port: 8080
+    to_port: 8080
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: HTTPS
+    description: "HTTPS public"
+    from_port: 443
+    to_port: 443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: Cockpit
+    description: "Cockpit public"
+    from_port: 9090
+    to_port: 9090
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: BastionTcp
+    description: "ALL from bastion tcp"
+    from_port: 0
+    to_port: 65535
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    group: BastionSG
+    rule_type: Ingress
+  - name: BastionUdp
+    description: "ALL from bastion udp"
+    from_port: 0
+    to_port: 65535
+    protocol: udp
+    cidr: "0.0.0.0/0"
+    group: BastionSG
+    rule_type: Ingress
+  - name: Shellshock
+    description: "Allow tcp/3113 for shellshock attack"
+    from_port: 3113
+    to_port: 3113
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: SELinuxpart1
+    description: "Allow tcp/999 for shellshock attack"
+    from_port: 9999
+    to_port: 9999
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: AllInternaltcp
+    description: "All other nodes tcp"
+    from_port: 0
+    to_port: 65535
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    group: HostSG
+    rule_type: Ingress
+  - name: AllInternaludp
+    description: "All other nodes udp"
+    from_port: 0
+    to_port: 65535
+    protocol: udp
+    cidr: "0.0.0.0/0"
+    group: HostSG
+    rule_type: Ingress
+
+- name: OpenNBDESG
+  rules:
+  - name: AllowICMP
+    description: "Local network"
+    from_port: -1
+    to_port: -1
+    protocol: icmp
+    cidr: 0.0.0.0/0
+    rule_type: Ingress
+  - name: SSH
+    description: "SSH public"
+    from_port: 22
+    to_port: 22
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: HTTP
+    description: "HTTP public"
+    from_port: 80
+    to_port: 80
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: Cockpit
+    description: "Cockpit public"
+    from_port: 9090
+    to_port: 9090
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+- name: ShowroomSG
+  rules:
+  - name: ShowroomHTTPS
+    description: "Primary showroom endpoint - for reverse proxy"
+    from_port: 8443
+    to_port: 8443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+  - name: ShowroomExposed
+    description: "Showroom views or exposed services, up to 26 of them"
+    from_port: 8500
+    to_port: 8525
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+instances:
+- name: "bastion"
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: false
+  image: "{{ bastion_instance_image }}"
+  flavor:
+    ec2: "{{ bastion_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions,showroom"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  volumes:
+  - name: '/dev/sda1'
+    size: 20
+  security_groups:
+  - BastionSG
+  - OpenEverythingSG
+  - ShowroomSG
+
+- name: "openscap"
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: false
+  image: "{{ bastion_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "openscap"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  volumes:
+  - name: '/dev/sda1'
+    size: 20
+  security_groups:
+  - BastionSG
+  - OpenEverythingSG
+  - RemoteDesktopRDPSG
+  - RemoteDesktopVNCSG
+
+- name: "aide"
+  count: 1
+  unique: true
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ node_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "aide"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenEverythingSG
+
+- name: "gpg"
+  count: 1
+  unique: true
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ node_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "gpg"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenEverythingSG
+
+- name: "audit"
+  count: 1
+  unique: true
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ node_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "audit"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenEverythingSG
+
+- name: "firewalld"
+  count: 1
+  unique: true
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ node_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "firewalld"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenEverythingSG
+
+- name: "ipsec"
+  count: 2
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ ipsec_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "ipsec"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenIPSECports
+  - OpenEverythingSG
+
+- name: "cryptopolicies"
+  count: 1
+  unique: true
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ cyrpto_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "cryptopolicies"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenEverythingSG
+
+- name: "sessionrecording"
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: false
+  image: "{{ node_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "sessionrecording"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenEverythingSG
+
+- name: "selinux"
+  count: 2
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ node_instance_image }}"
+  flavor:
+    ec2: "{{ node_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "rhel9selinux"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+  security_groups:
+  - DefaultSG
+  - OpenEverythingSG
+
+- name: "nbde"
+  count: 3
+  # TODO: enable when we have a solution for number of maximum public IP address. Which is 5 currently in AWS
+  public_dns: false
+  dns_loadbalancer: false
+  image: "{{ nbde_instance_image }}"
+  flavor:
+    ec2: "t2.medium"
+    azure: Standard_A2_V2
+  security_groups:
+  - OpenNBDESG
+  tags:
+  - key: "AnsibleGroup"
+    value: "nbde"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ email }}"
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+showroom_deploy: true
+#showroom_git_repo: https://github.com/rhpds/Summit_2024_LB1389_Discovering_Critical_Security_Features.git
+showroom_git_ref: main
+showroom_var_inject: true
+showroom_ssh_method: sshkey
+showroom_ssh_username: "{{ student_name }}"
+showroom_default_ssh_user: "{{ student_name }}"
+showroom_ssh_host: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain_base }}"
+showroom_lab_users:
+- "{{ student_name }}"
+showroom_tab_services: []
+
+showroom_user_password: "{{ common_password }}"
+
+showroom_deploy_shared_cluster_enable: true
+
+ocp4_workload_showroom_content_git_repo: >-
+  https://github.com/rhpds/Summit_2024_LB1389_Discovering_Critical_Security_Features.git
+ocp4_workload_showroom_content_git_ref: main
+ocp4_workload_showroom_content_only: false
+bastion_public_hostname: >-
+  "{{ groups['bastions'][0] | regex_replace('\\..*$') }}.{{ guid }}{{ subdomain_base_suffix }}"
+
+# Select wetty as the terminal type
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_image: docker.io/wettyoss/wetty:latest
+
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: 5c89efeb-c889-4689-9b45-b83c19a1006b
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.1
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: LB1389 - Discovering Critical Security Features in Red Hat Enterprise Linux
+    category: Demos
+    keywords:
+    - Demos
+    - Defend Yourself
+    - RHEL
+    - Security
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: TME_And_Industries_BU
+    parameters: []
+  owners:
+  - email: lvrabec@redhat.com
+    name: Lukas Vrabec
+  - email: mhaicman@redhat.com
+    name: Marek Haicman
+  secrets:
+  - name: guidgrabber-api
+    namespace: gpte
+  - name: gpte-no-repos
+    namespace: gpte
