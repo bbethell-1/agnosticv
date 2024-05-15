@@ -1,17 +1,20 @@
 ---
 #include /includes/catalog-icon-aap.yaml
 #include /includes/lifetime-standard.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/terms-of-service.yaml
+
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
-#include /includes/aws-sandbox-meta.yaml
 #include /includes/parameters/aws-region.yaml
-#include /includes/terms-of-service.yaml
-#include /includes/secrets/demosat-rhel8-latest.yaml
-#include /includes/secrets/ansible-tower-advanced-2.yaml
-#include /includes/secrets/registry-redhat.yaml
 #include /includes/parameters/automation-hub-enable.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/demosat-rhel8-latest.yaml
+#include /includes/secrets/ansible-tower-advanced-24.yaml
+#include /includes/secrets/registry-redhat.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
 # -------------------------------------------------------------------
 # Platform
 # -------------------------------------------------------------------
@@ -23,15 +26,184 @@ platform: RHPDS
 env_type: ansible-bu-workshop
 
 # -------------------------------------------------------------------
-# Workloads
+# Instance Variables
 # -------------------------------------------------------------------
-software_workloads_for_bastion:
-  - ansible_bu_run_time_inventory
-  - deploy_automationcontroller
-  - automation_platform_loader
-  - aap_controller_cert_issue
-  - vscode-server
-  - ansible_bu_setup_workshop
+default_instance_image: "RHEL87GOLD-latest"
+default_rootfs_size: 50
+default_instance_type: "t3a.medium"
+
+security_groups:
+  - name: BastionSG
+    rules:
+      - name: BastionHTTPSPorts
+        description: "HTTPS Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: BastionHTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: BastionSSHPorts
+        description: "Bastion ssh"
+        from_port: 22
+        to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: NodeSG
+    rules:
+      - name: FromNodeSGtcp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: NodeSG
+        rule_type: Ingress
+
+      - name: FromNodeSGudp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: NodeSG
+        rule_type: Ingress
+
+      - name: FromBastionTCP
+        description: "Allow everything from Bastion"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: BastionSG
+        rule_type: Ingress
+
+      - name: FromBastionUDP
+        description: "Allow everything from Bastion"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: BastionSG
+        rule_type: Ingress
+
+instances:
+  - name: "{{ bastion_instance_name | default('ansible-1') }}"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ bastion_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{bastion_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ default_rootfs_size }}"
+    security_groups:
+      - BastionSG
+      - DefaultSG
+
+  - name: "node"
+    count: 3
+    public_dns: false
+    image: "{{ node_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{node_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "rhel"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ default_rootfs_size }}"
+    security_groups:
+      - DefaultSG
+      - NodeSG
+
+# -------------------------------------------------------------------
+# Role: ansible_bu_aws_access_policy
+# -------------------------------------------------------------------
+ec2_instance_common_tags: &common_tags
+  guid: "{{ guid }}"
+  ansible-workshops: "true"
+  Workshop: "{{ workshop_type }}"
+  Workshop_type: "{{ workshop_type }}"
+  Student: "ansible-1"
+  Students: 1
+  Info: "AWS_USERNAME that provisioned this"
+  Linklight: "This was provisioned through the linklight provisioner"
+  username: "ec2-user"
+  operating_system: rhel
+
+ansible_bu_aws_access_policy_ec2_instances_tags:
+  - name: ansible-1
+    iamprofile: false
+    tags:
+      Workshop_ansible: "ansible-1"
+      short_name: "ansible-1"
+      <<: *common_tags
+  - name: node1
+    iamprofile: true
+    tags:
+      Index: 1
+      color: "#d48a00"
+      Workshop_node1: "node1"
+      short_name: "node1"
+      os_major_version: 8
+      <<: *common_tags
+  - name: node2
+    iamprofile: true
+    tags:
+      Index: 2
+      color: "#0039d4"
+      Workshop_node2: "node2"
+      short_name: "node2"
+      os_major_version: 8
+      <<: *common_tags
+  - name: node3
+    iamprofile: true
+    tags:
+      Index: 3
+      color: "#bf00d4"
+      Workshop_node3: "node3"
+      short_name: "node3"
+      os_major_version: 8
+      <<: *common_tags
+
+# -------------------------------------------------------------------
+# Config Pre/Software/Post Workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  localhost:
+    - ansible_bu_aws_access_policy
+  all:
+    - set-repositories
+    - common
+  bastions:
+    - bastion-lite
+    - control-user
+
+software_workloads:
+  bastions:
+    - ansible_bu_run_time_inventory
+    - deploy_automationcontroller
+    - aap_controller_cert_issue
+    - vscode-server
+    - automation_platform_loader
+    - ansible_bu_setup_workshop
 
 # -------------------------------------------------------------------
 # Common Password
