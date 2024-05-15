@@ -1,0 +1,108 @@
+---
+#include /includes/catalog-icon-aap.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/automation-hub-enable.yaml
+
+#include /includes/secrets/demosat-rhel8-latest.yaml
+#include /includes/secrets/ansible-tower-advanced-24.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ansible-windows-workshop
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + '_1' }}"
+
+# -------------------------------------------------------------------
+# Instances vars
+# -------------------------------------------------------------------
+# windows_password: 'jVMijRwLbI02gFCo2xkjlZ9lxEA7bm7zgg=='
+windows_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Role: common
+# -------------------------------------------------------------------
+common_packages_el8:
+  - python3
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - httpd-tools
+  - python3-pip
+  - tree
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+repo_method: satellite
+# use_content_view: true
+# set_repositories_rhel8_lock_release: '8'
+
+# -------------------------------------------------------------------
+# Role: deploy_automationcontroller
+# -------------------------------------------------------------------
+deploy_automationcontroller_installer_url: "{{ controller_bundle_installer.url }}"
+deploy_automationcontroller_manifest_url: "{{ controller_manifest.url }}"
+
+# -------------------------------------------------------------------
+# Role: vscode-server
+# -------------------------------------------------------------------
+vscode_server_ansible_become: true
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  deploy_with: babylon
+  params_to_variables:
+    user: ignore_user
+    username: student_name
+    region: aws_region
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 90c33dfe-a5df-4a74-a3e8-dfb15399fe33
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-ansible-workshop:v0.0.1
+      pull: always
+  catalog:
+    multiuser: false
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Ansible Workshop - Ansible for Windows Automation
+    category: Workshops
+    keywords:
+      - windows
+      - ansible
+      - workshop
+      - aap2
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Automation
+      Provider: RHDP
+    parameters: []
