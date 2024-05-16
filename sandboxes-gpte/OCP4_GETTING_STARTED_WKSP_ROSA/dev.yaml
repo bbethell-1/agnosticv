@@ -5,14 +5,132 @@
 purpose: development
 
 # -------------------------------------------------------------------
+# Top level vars
+# -------------------------------------------------------------------
+env_type: rosa-consolidated
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+bastion_instance_type: t2.small
+bastion_instance_image: RHEL91GOLD-latest
+
+# -------------------------------------------------------------------
+# ROSA
+# -------------------------------------------------------------------
+# -------------------------------------------------------------------
+# ROSA
+# -------------------------------------------------------------------
+rosa_installer_version: "1.2.37"
+# rosa_installer_version: latest
+rosa_deploy: true
+rosa_deploy_hcp: true
+
+rosa_version: "4.15.8"
+# rosa_version: latest
+rosa_version_base: "openshift-v4.15"
+aws_billing_account_id: "017310218799"
+rosa_setup_cluster_admin: true
+rosa_setup_cluster_admin_login: true
+rosa_compute_machine_type: m6a.8xlarge
+rosa_compute_replicas: 4
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_authentication_rosa
+- ocp4_workload_opentlc_production
+- ocp4_workload_project_request_template
+- ocp4_workload_pipelines
+- ocp-workload-etherpad
+- ocp4_workload_nexus_operator
+- ocp-workload-gogs
+- ocp-workload-gogs-load-repository
+- ocp4-workload-homeroomlab-starter-guides
+- ocp4-workload-osevg-workshop-tracker
+
+
+# -------------------------------------------------------------------
+# ocp4_workload_authentication_rosa
+# -------------------------------------------------------------------
+ocp4_workload_authentication_rosa_user_count: "{{ (num_users | default('2')) | int }}"
+ocp4_workload_authentication_rosa_user_base: user
+ocp4_workload_authentication_rosa_user_password: openshift
+ocp4_workload_authentication_rosa_admin_password: openshift
+ocp4_workload_authentication_rosa_token: "{{ rosa_token }}"
+ocp4_workload_authentication_rosa_aws_access_key_id: "{{ lookup('env','AWS_ACCESS_KEY_ID') | default(aws_access_key_id, true) | mandatory }}"
+ocp4_workload_authentication_rosa_aws_secret_access_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') | default(aws_secret_access_key, true) | mandatory }}"
+ocp4_workload_authentication_rosa_aws_region: "{{ lookup('env','AWS_DEFAULT_REGION') | default(aws_region, true) | mandatory }}"
+
+# -------------------------------------------------------------------
+# OpenTLC Production
+# -------------------------------------------------------------------
+ocp4_workload_opentlc_production_remove_self_provisioner: false
+ocp4_workload_opentlc_production_expose_registry_route: false
+ocp4_workload_opentlc_production_set_build_defaults: true
+
+# -------------------------------------------------------------------
+# OpenShift Pipelines
+# -------------------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.14
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.15_2024_03_25
+
+# -------------------------------------------------------------------
+# Nexus Operator
+# -------------------------------------------------------------------
+ocp4_workload_nexus_operator_project: labs
+ocp4_workload_nexus_operator_name: nexus3
+ocp4_workload_nexus_operator_cpu_request: "4"
+ocp4_workload_nexus_operator_cpu_limit: "4"
+ocp4_workload_nexus_operator_nexus_image_tag: 3.32.0-ubi-1
+ocp4_workload_nexus_operator_new_admin_password: admin123
+ocp4_workload_nexus_operator_enable_anonymous: true
+
+ocp4_workload_nexus_operator_repos_maven_hosted_setup: true
+ocp4_workload_nexus_operator_repos_maven_hosted:
+- name: releases
+  blob_store: default
+  write_policy: allow_once # allow_once or allow
+  strict_content_validation: true
+  version_policy: release # release, snapshot or mixed
+  layout_policy: strict # strict or permissive
+- name: maven-snapshots
+  blob_store: default
+  write_policy: allow # allow_once or allow
+  strict_content_validation: true
+  version_policy: snapshot # release, snapshot or mixed
+  layout_policy: strict # strict or permissive
+
+# -------------------------------------------------------------------
+# Legacy Roles
+# -------------------------------------------------------------------
+gogs_project: labs
+etherpad_project: labs
+project_name: labs
+workshop_type: starter
+homeroom_template_path: "https://raw.githubusercontent.com/treddy08/workshop-homeroom/develop/templates/production.json"
+lab_branch: ocp-4.8
+lab_repo: "https://github.com/treddy08/starter-guides"
+repositories:
+- base: https://github.com/treddy08
+  name: nationalparks
+- base: https://github.com/openshift-roadshow
+  name: nationalparks-py
+- base: https://github.com/openshift-roadshow
+  name: nationalparks-dotnet
+- base: https://github.com/openshift-roadshow
+  name: nationalparks-js
+
+# -------------------------------------------------------------------
 # Student Workloads ([] means no student workloads)
 # -------------------------------------------------------------------
 studentvm_roles:
 # Set up the OpenShift 4 CLI tools (oc, odo, helm, tkn, kn, ...)
 - studentvm_ocp4
-
-# Override desired version of the OpenShift CLI
-studentvm_ocp4_oc_version: "4.12.12"
 
 student_workloads: []
 ocp_username: cluster-admin
@@ -26,7 +144,7 @@ agnosticv_meta:
 
 __meta__:
   deployer:
-    scm_ref: project-template-fix
+    scm_ref: development
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:v0.1.0-alpha
       pull: missing
