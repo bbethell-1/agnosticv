@@ -75,6 +75,70 @@ valid = []
 invalid = []
 asset_uuids = {}
 
+def validate_sandboxes_request(sandboxes_request):
+    """
+    Validate the sandboxes request __meta__.sandboxes
+
+    This function should be also used in agnosticV validation tests
+
+    returns: String
+        'OK' if the request is valid
+        The error message if the request is invalid
+    """
+
+    main_found = {}
+    target_vars = {}
+
+    if len(sandboxes_request) == 0:
+        return "ERROR: At least one sandbox is required in the sandboxes request"
+
+    for req in sandboxes_request:
+        if 'kind' not in req:
+            return "ERROR: Sandbox kind is required in the sandboxes request"
+
+        kind = req['kind']
+
+        if kind not in main_found:
+            main_found[kind] = False
+
+        var = req.get('var', False)
+        if var:
+            if var in target_vars:
+                return "ERROR: Variable '" + var + "' is duplicated"
+            target_vars[var] = True
+        else:
+            if main_found.get(kind, False):
+                return "ERROR: missing 'var' key for second sandbox of kind " + kind
+
+            main_found[kind] = True
+
+        # Ensure annotations is a dict of string
+        if 'annotations' in req:
+            if not isinstance(req['annotations'], dict):
+                return "ERROR: Annotations should be a dict for sandbox of kind " + kind
+
+            for key in req['annotations']:
+                if not isinstance(req['annotations'][key], str):
+                    return "ERROR: Annotations values should be strings for sandbox of kind " + kind
+
+        # Ensure cloud_selector is a dict of string
+        if 'cloud_selector' in req:
+            if not isinstance(req['cloud_selector'], dict):
+                return "ERROR: cloud_selector should be a dict for sandbox of kind " + kind
+
+            for key in req['cloud_selector']:
+                if not isinstance(req['cloud_selector'][key], str):
+                    return "ERROR: cloud_selector values should be strings for sandbox of kind " + kind
+
+    if len(main_found) == 0:
+        return "ERROR: At least one main sandbox is required in the sandboxes request"
+
+    for kind in main_found:
+        if not main_found[kind]:
+            return "ERROR: Main sandbox is missing for kind " + kind
+
+    return "OK"
+
 def check_duplicate_directories(c, ci):
     '''Check for duplicate directories'''
     path = os.path.join(os.environ['GITHUB_WORKSPACE'], c.get('directory', ''))  # get the directory path from the catalog item contents
@@ -326,6 +390,20 @@ def check_asset_uuid(c,ci):
 
     return True
 
+def check_valid_sandbox_request(c,ci):
+    '''Ensure catalog item has a valid sandbox request'''
+
+
+    sandboxes = c.get('__meta__', {}).get('sandboxes', "NOTFOUND")
+    if sandboxes == "NOTFOUND":
+        return True
+
+    result = validate_sandboxes_request(sandboxes)
+    if result != "OK":
+        raise ValueError(result)
+
+    return True
+
 for ci in catalog_items:
     ci = ci.strip()
     dirname = os.path.dirname(ci)
@@ -351,7 +429,8 @@ for ci in catalog_items:
             check_ee,
             check_duplicate_directories,
             check_asset_uuid,
-            check_sandbox_api]:
+            check_sandbox_api,
+            check_valid_sandbox_request]:
         try:
             if not f(ci_object,ci):
                 passed = False
