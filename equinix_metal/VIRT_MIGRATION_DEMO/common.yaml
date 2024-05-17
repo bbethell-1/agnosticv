@@ -1,0 +1,189 @@
+---
+#  Judd & Juliano - WiP - Simple Virt Ansible Demo 2024-05-15
+# -------------------------------------------------------------------
+# --- Catalog: equinix-metal
+# --- Catalog Item: OCP Virtualiation Demo
+#
+# --- This Catalog item uses IBM Cloud VMware instead of AWS VMware
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV Includes
+# -------------------------------------------------------------------
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service-equinix.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/equinix-region.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+# Converted from Secrets
+#include /includes/secrets/equinix-metal.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/vmware-ibm-access.yaml
+#include /includes/secrets/roadshowocpvirt-secret3.yaml
+
+# -------------------------------------------------------------------
+# Temporary until moved to include
+# -------------------------------------------------------------------
+vcenter_proxy_hostname: "notset"
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: equinix_metal
+env_type: experience-ocpvirt
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+hypervisor_type: m3.large.x86
+hypervisor_os: rhel_8
+hypervisor_count: 1
+build_lab: true
+
+aio_import_url: http://s3.us-east.cloud-object-storage.appdomain.cloud/roadshowocpvirt
+
+# to change how instances are named
+# (default is '%d')
+#infra_dns_num_format: '-%02d'
+#equinix_metal_instance_numerotation: '-%02d'
+
+# Don't configure repos - using CENTOS
+repo_method: none
+
+# Do install env key
+set_env_authorized_key: false
+install_student_user: true
+student_name: lab-user
+
+install_common: false
+
+install_bastion: false
+
+# -------------------------------------------------------------------
+# OCP AIO VARS
+# -------------------------------------------------------------------
+
+# Set whether you want to deploy a disconnected registry
+ocp4_aio_deploy_disconnected: false
+
+# Set whether you want to deploy guacamole for console
+ocp4_aio_deploy_guacamole: true
+
+# Set whether you want a compact deployment (3 node cluster)
+ocp4_aio_deploy_compact: false
+
+ocp4_aio_network_type: OVNKubernetes
+
+# Select granular deployment options
+# NOTE: OCP Plus will force acm, acs, ocp on.
+#       deploy_ocs will force 3 workers on non-compact
+ocp4_aio_deploy_ocp: true
+ocp4_aio_deploy_ocp_plus: false
+ocp4_aio_deploy_cnv: false
+ocp4_aio_deploy_ocs: true
+ocp4_aio_deploy_acm: false
+ocp4_aio_deploy_acs: false
+ocp4_aio_deploy_ods: false
+ocp4_aio_deploy_nfs: false
+ocp4_aio_deploy_sno: false
+ocp4_aio_deploy_ipi: true
+ocp4_aio_deploy_cnvlab: true
+ocp4_aio_use_ddns: true
+
+# Set bigger VMs for equinix hosts
+ocp4_aio_deploy_big_vms: true
+
+# Select OpenShift version for base cluster
+ocp4_aio_ocp_version: stable-4.15
+
+# Select number of workers for base cluster (1-3, for 0 use deploy_compact)
+ocp4_aio_ocp_workers: 3
+
+# Select deployment type (ipi or sno)
+ocp4_aio_deploy_type: ipi
+
+# Deploy extra SNO nodes for AI
+extra_sno_nodes: false
+
+ocp4_aio_rhcos_iso_url: https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/latest/rhcos-live.x86_64.iso
+
+pull_secret: "{{ ocp4_pull_secret }}"
+
+# Preinstall Operators (OCP-V, MTV, nmstate)
+preinstall_operators: true
+
+bastion_remove_insights_motd: true
+bastion_custom_motd: |-
+  ---------------------------------------------------------------------------
+              Welcome to the OpenShift Virtualization Demo!
+  ---------------------------------------------------------------------------
+
+  By continuing to use this service you agree to use this environment
+  solely for the purposes of completing the steps in the lab guide.
+
+  Any other use is a violation of this service and appropriate action
+  will be taken. If you disagree with these terms you must disconnect now.
+  ----------------------------------------------------------------------------
+
+# ------------------------------------------------------
+# Infra Workloads to deploy
+# ------------------------------------------------------
+#infra_workloads:
+  # - ocp4_workload_authentication
+  # - ocp4_workload_gitea_operator
+  # - ocp4_workload_ansible_automation_platform
+
+# -------------------------------------------------------------------
+# ocp4_workload_ansible_automation_platform
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.4"
+ocp4_workload_ansible_automation_platform_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+  inject: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 5bb582e0-e540-4ba6-8010-bdf20621c3f3
+  anarchy:
+    namespace: babylon-anarchy-equinix-metal
+  deployer:
+    actions:
+      start:
+        disable: true
+      stop:
+        disable: true
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:hotfix-eqx-2024-04-02.2
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OpenShift Virtualization Migration Demo
+    category: Demos
+    # Keywords are used to match search items.
+    # Strings in name and labels already match keyword searches.
+    # Searches are not case-sensitive.
+    keywords:
+      - demo
+      - migration
+      - openshift
+      - virtualization
+      - cnv
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Provider: RHDP
+      Product_Family: Red_Hat_Cloud
+  lifespan:
+    default: 24h
+    maximum: 10d
+    relativeMaximum: 10d
+  runtime:
+    default: 24h
+    maximum: 10d
