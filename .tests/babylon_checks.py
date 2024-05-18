@@ -73,6 +73,7 @@ if args.from_file != '':
 
 valid = []
 invalid = []
+exceptions = {}
 asset_uuids = {}
 
 def validate_sandboxes_request(sandboxes_request):
@@ -404,6 +405,46 @@ def check_valid_sandbox_request(c,ci):
 
     return True
 
+for ci in all_catalog_items:
+    ci = ci.strip()
+    dirname = os.path.dirname(ci)
+    process_ci = subprocess.run(
+        [str(args.agnosticv_cli), '--merge', ci],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+        check=True,
+    )
+
+    ci_object = yaml.safe_load(process_ci.stdout)
+    passed = True
+    for f in [
+            check_asset_uuid,
+            ]:
+        try:
+            if not f(ci_object,ci):
+                passed = False
+                if str(f) in exceptions:
+                    exceptions[str(f)].append("Did not pass test")
+                else:
+                    exceptions[str(f)] = ["Did not pass test"]
+
+        except Exception as exc:
+            passed = False
+            if str(f) in exceptions:
+                exceptions[str(f)].append(exc)
+            else:
+                exceptions[str(f)] = [exc]
+
+    if not passed:
+        invalid.append([ci, exceptions])
+        if args.debug:
+            print('F', end='', flush=True)
+    else:
+        valid.append(ci)
+        if args.debug:
+            print('.', end='', flush=True)
+
 for ci in catalog_items:
     ci = ci.strip()
     dirname = os.path.dirname(ci)
@@ -417,7 +458,6 @@ for ci in catalog_items:
 
     ci_object = yaml.safe_load(process_ci.stdout)
     passed = True
-    exceptions = {}
     for f in [
             check_double_booking,
             check_name,
