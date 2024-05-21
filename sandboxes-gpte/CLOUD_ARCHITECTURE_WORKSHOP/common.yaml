@@ -5,15 +5,17 @@
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/terms-of-service.yaml
-#include /includes/lifetime-standard.yaml
 #include /includes/parameters/aws-region2.yaml
 #include /includes/parameters/agnosticd_open_environment.yaml
 #include /includes/parameters/num-users-salesforce.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
+cloud_provider: ec2
 env_type: ocp4-cluster
 software_to_deploy: openshift4
 
@@ -38,22 +40,22 @@ update_packages: true
 # AWS Specific
 # -------------------------------------------------------------------
 master_instance_count: 3
-master_instance_type_family: m5
+master_instance_type_family: m5a
 master_instance_type_size: >-
-  {{ 'xlarge' if worker_instance_count|int <= 10
-  else '2xlarge' if worker_instance_count|int <= 20
+  {{ '2xlarge' if worker_instance_count|int <= 20
   else '4xlarge'
   }}
 master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size\
   \ }}"
-master_storage_type: >-
-  {{ 'io1' if worker_instance_count|int >= 10
-  else 'gp2' }}
-worker_instance_type: "m5.4xlarge"
-worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max\
+master_storage_type: io1
+master_storage_size: 250
+worker_instance_type: "m6a.4xlarge"
+worker_instance_count: "{{ [(num_users | int / 2.5) | round(0, 'ceil') | int, 3] | max\
   \ }}"
 worker_storage_type: "gp3"
-bastion_instance_image: RHEL84GOLD-latest
+worker_storage_size: 250
+
+bastion_instance_image: RHEL93GOLD-latest
 
 # -------------------------------------------------------------------
 # Student User on Bastion
@@ -72,6 +74,7 @@ infra_workloads:
 - ocp4_workload_opentlc_production
 - ocp4_workload_le_certificates
 - ocp4_workload_cloud_architecture_workshop_summit2023
+- ocp4_workload_showroom
 
 # --- Student Workloads (YAML List)
 student_workloads: []
@@ -102,13 +105,15 @@ ocp4_workload_le_certificates_install_api: true
 # -------------------------------------------------------------------
 ocp4_workload_opentlc_production_remove_self_provisioner: false
 
-
 # -------------------------------------------------------------------
-# AgnosticV meta variables
+# Workload: ocp4_workload_showroom
 # -------------------------------------------------------------------
-agnosticv_meta:
-  sandboxed: false
-  deploy_with: babylon
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_deployer_chart_version: 1.1.0
+ocp4_workload_showroom_content_git_repo: https://github.com/rh-cloud-architecture-workshop/showroom.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_only: true
+ocp4_workload_showroom_namespace: showroom
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -129,14 +134,16 @@ __meta__:
       Product_Family: Red_Hat_Cloud
       Provider: RHDP
     multiuser: true
-    parameters: []
-  secrets:
-  - namespace: gpte
-    name: ocp4-token
-  - namespace: gpte
-    name: satellite-rhel8-latest-ha
-  - name: output-dir-s3
-    namespace: gpte
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the environment.
+      formLabel: User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 50
   deployer:
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:v0.1.0
