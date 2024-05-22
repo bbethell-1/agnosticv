@@ -14,11 +14,17 @@
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-env_type: ocp4-on-rosa-with-rhods
-ocp4_installer_version: "4.13"
+env_type: rosa-consolidated
 
 # Machine type for ROSA worker nodes for RHODS
-rosa_machine_type: "m6a.4xlarge"
+rosa_version: "4.15.8"
+rosa_deploy: true
+rosa_deploy_hcp: true
+aws_billing_account_id: "017310218799"
+rosa_machine_type: "m6a.8xlarge"
+rosa_compute_machine_type: m6a.4xlarge
+rosa_compute_replicas: 3
+rosa_version_base: "openshift-v4.15"
 
 agnosticd_open_environment: True
 sandbox_user_info_messages_enable: False
@@ -29,16 +35,285 @@ sandbox_user_info_messages_enable: False
 platform: rhpds
 
 bastion_instance_type: "t2.small"
-bastion_instance_image: RHEL84GOLD-latest
+bastion_instance_image: RHEL91GOLD-latest
 
 # -------------------------------------------------------------------
-# Workloads
+# ROSA
 # -------------------------------------------------------------------
-# --- Infra Workloads (YAML List)
-infra_workloads: []
+rosa_setup_cluster_admin: true
+rosa_setup_cluster_admin_login: true
 
-# --- Student Workloads (YAML List)
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: openshift
+
+# -------------------------------------------------------------------
+# Student Workloads ([] means no student workloads)
+# -------------------------------------------------------------------
+studentvm_roles:
+# Set up the OpenShift 4 CLI tools (oc, odo, helm, tkn, kn, ...)
+- studentvm_ocp4
+
+# -------------------------------------------------------------------
+# Student Workloads ([] means no student workloads)
+# -------------------------------------------------------------------
 student_workloads: []
+ocp_username: cluster-admin
+
+# -------------------------------------------------------------------
+# Catalog
+# -------------------------------------------------------------------
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+#ocp4_workload_catalogsource_tag: v4.13_2023_11_20
+ocp4_workload_catalogsource_tag: v4.15_2024_03_25
+
+# -------------------------------------------------------------------
+# Infra Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_authentication_rosa
+- ocp4_workload_opentlc_production
+- ocp4_workload_project_request_template_rosa_aro
+- ocp4_workload_pipelines
+- ocp4_workload_openshift_gitops
+- ocp4_workload_serverless
+- ocp4_workload_openshift_ai
+- ocp4_workload_web_terminal
+- ocp4_workload_gitea_operator
+#- ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# ocp4_workload_authentication_rosa
+# -------------------------------------------------------------------
+ocp4_workload_authentication_rosa_user_count: "{{ (num_users | default('2')) | int }}"
+ocp4_workload_authentication_rosa_user_base: user
+ocp4_workload_authentication_rosa_user_password: openshift@1
+ocp4_workload_authentication_rosa_admin_user: admin
+ocp4_workload_authentication_rosa_admin_password: openshift@1
+ocp4_workload_authentication_rosa_token: "{{ rosa_token }}"
+ocp4_workload_authentication_rosa_aws_access_key_id: "{{ lookup('env','AWS_ACCESS_KEY_ID') | default(aws_access_key_id, true) | mandatory }}"
+ocp4_workload_authentication_rosa_aws_secret_access_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') | default(aws_secret_access_key, true) | mandatory }}"
+ocp4_workload_authentication_rosa_aws_region: "{{ lookup('env','AWS_DEFAULT_REGION') | default(aws_region, true) | mandatory }}"
+
+# -------------------------------------------------------------------
+# OpenTLC Production
+# -------------------------------------------------------------------
+ocp4_workload_opentlc_production_remove_self_provisioner: false
+ocp4_workload_opentlc_production_expose_registry_route: false
+ocp4_workload_opentlc_production_set_build_defaults: true
+
+# -------------------------------------------------------------------
+# OpenShift Pipelines
+# -------------------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.14
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.12
+
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ ocp4_workload_authentication_rosa_admin_user }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+ocp4_workload_openshift_gitops_ignore_differences: |
+  resourceIdentifiers:
+  - group: jaegertracing.io
+    kind: Jaeger
+    customization:
+      jsonPointers:
+      - /spec/strategy
+  - group: apps
+    kind: Deployment
+    customization:
+      jqPathExpressions:
+      - .spec.template.spec.containers[] | select(.name == "redis")
+
+# -------------------------------------------------------------------
+# Role: ocp4_workload_showroom
+# -------------------------------------------------------------------
+
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_content_git_repo: >-
+  https://github.com/rh-aiservices-bu/parasol-insurance.git
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_serverless
+# -------------------------------------------------------------------
+
+# ocp4_workload_serverless_channel: stable
+ocp4_workload_serverless_install_eventing: false
+ocp4_workload_serverless_install_serving: false
+# ocp4_workload_serverless_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# OCP4 certificates.
+# -------------------------------------------------------------------
+# For ocp4_workload_le_certificates
+# Install certificates for Ingress Controllers
+ocp4_workload_le_certificates_install_certificates: true
+
+# Install certificates for API Endpoint
+ocp4_workload_le_certificates_install_api: true
+
+# Option allow continue without certificates on failure
+ocp4_workload_le_certificates_failure_is_fatal: true
+
+# It takes about 4 minutes per API Server to
+# restart with certificates (due to AWS
+# Load Balancer). Therefore sleep
+# 12 minutes by default to give the kube-apiserver
+# cluster operator enough time to progress.
+# Wait time may be extended if it's needed
+ocp4_workload_le_certificates_wait_after_cert_setup: 12
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_ai
+# -------------------------------------------------------------------
+# Channel to use for the OpenShift AI subscription
+# stable for stable, fast for latest available
+ocp4_workload_openshift_ai_channel: stable
+
+# Set automatic InstallPlan approval. If set to false it is also suggested
+# to set the starting_csv to pin a specific version
+# This variable has no effect when using a catalog snapshot (always true)
+ocp4_workload_openshift_ai_automatic_install_plan_approval: true
+
+# Set a starting ClusterServiceVersion.
+# Recommended to leave empty to get latest in the channel when not using
+# a catalog snapshot.
+# Highly recommended to be set when using a catalog snapshot but can be
+# empty to get the latest available in the channel at the time when
+# the catalog snapshot got created.
+ocp4_workload_openshift_ai_starting_csv: "rhods-operator.2.8.2"
+
+# Deploy the Data Science Cluster?
+ocp4_workload_openshift_ai_deploy_dsc: true
+
+# Data Science Cluster Configuration
+ocp4_workload_openshift_ai_codeflare: Removed
+ocp4_workload_openshift_ai_dashboard: Managed
+ocp4_workload_openshift_ai_datasciencepipelines: Managed
+ocp4_workload_openshift_ai_kserve: Managed
+ocp4_workload_openshift_ai_modelmeshserving: Managed
+ocp4_workload_openshift_ai_ray: Removed
+ocp4_workload_openshift_ai_trustyai: Removed
+ocp4_workload_openshift_ai_workbenches: Managed
+
+# Use a catalog snapshot
+ocp4_workload_openshift_ai_use_catalog_snapshot: false
+
+# Catalog Source Name when using a catalog snapshot. This should be unique
+# in the cluster to avoid clashes
+ocp4_workload_openshift_ai_catalogsource_name: redhat-operators-snapshot-serverless
+
+# Catalog snapshot image
+ocp4_workload_openshift_ai_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+
+# Catalog snapshot image tag
+ocp4_workload_openshift_ai_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# ------------------------------------------------
+# Web Terminal Operator
+# ------------------------------------------------
+
+ocp4_workload_web_terminal_operator_channel: "fast"
+ocp4_workload_web_terminal_operator_automatic_install_plan_approval: true
+ocp4_workload_web_terminal_operator_starting_csv: ""
+ocp4_workload_web_terminal_operator_wait_for_deploy: true
+ocp4_workload_web_terminal_operator_name: web-terminal
+ocp4_workload_web_terminal_operator_csv_prefix: web-terminal
+ocp4_workload_web_terminal_operator_catalog_source: redhat-operators
+ocp4_workload_web_terminal_operator_deployment: web-terminal-controller
+ocp4_workload_web_terminal_operator_namespace: openshift-operators
+ocp4_workload_web_terminal_operator_use_catalog_snapshot: false
+ocp4_workload_web_terminal_operator_catalogsource_name: redhat-operators-snapshot-amq-streams
+ocp4_workload_web_terminal_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_web_terminal_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.1
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: 1.20.0
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_ssl_route: true
+ocp4_workload_gitea_operator_gitea_image_pull_policy: IfNotPresent
+ocp4_workload_gitea_operator_postgresql_image_pull_policy: IfNotPresent
+ocp4_workload_gitea_operator_webhook_allowed_hosts_list: 'external,private'
+ocp4_workload_gitea_operator_webhook_skip_tls_verify: false
+#install_operator_namespace: gitea-operator
+#install_operator_catalogsource_namespace: gitea-operator
+ocp4_workload_gitea_operator_disable_registration: false
+ocp4_workload_gitea_operator_enable_captcha: false
+ocp4_workload_gitea_operator_allow_create_organization: true
+ocp4_workload_gitea_operator_register_email_confirm: false
+ocp4_workload_gitea_operator_enable_notify_email: false
+ocp4_workload_gitea_operator_mailer_enabled: false
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: opentlc-mgr
+ocp4_workload_gitea_operator_admin_email: opentlc-mgr@opentlc.com
+ocp4_workload_gitea_operator_admin_password: "{{ common_password }}"
+
+# PVC size for Gitea, empty storage class uses default storage class
+ocp4_workload_gitea_operator_gitea_volume_size: 10Gi
+ocp4_workload_gitea_operator_gitea_volume_storage_class: ''
+
+# PVC size for PostgreSQL, empty storage class uses default storage class
+ocp4_workload_gitea_operator_postgresql_volume_size: 10Gi
+ocp4_workload_gitea_operator_postgresql_volume_storage_class: ''
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: 1
+ocp4_workload_gitea_operator_generate_user_format: lab-user
+ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/Enterprise-Neurosystem/edge-anomaly-detection.git
+  name: edge-anomaly-detection
+  private: false
+- repo: https://github.com/Enterprise-Neurosystem/edge-prediction-failure.git
+  name: edge-prediction-failure
+  private: false
+- repo: https://github.com/Enterprise-Neurosystem/cluster-bootstrap.git
+  name: edge-cluster-bootstrap
+  private: false
+- repo: https://github.com/Enterprise-Neurosystem/edge-synthetic-data-generator.git
+  name: edge-synthetic-data-generator
+  private: false
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
