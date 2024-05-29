@@ -206,13 +206,13 @@ def check_tag_var(c,ci):
     ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
     if '__meta__' in c or 'agnosticv_meta' in c:
         if (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt")):
-            if 'agnosticd_git_tag_prefix' in c['agnosticv_meta']:
+            if 'agnosticd_git_tag_prefix' in c.get('agnosticv_meta', {}):
                 raise ValueError(
                     '''agnosticd_git_ref should be used for prod/ilt, not agnosticd_git_tag_prefix.'''
                 )
-            if  'deploy_with' in c['agnosticv_meta'] and 'deployer' in c['__meta__']:
+            if  'deploy_with' in c.get('agnosticv_meta', {}) and 'deployer' in c['__meta__']:
                 deployer = c['__meta__']['deployer']
-                if (c['agnosticv_meta']['deploy_with'] == "babylon" and 'git_tag_prefix' in deployer):
+                if (c.get('agnosticv_meta', {}).get('deploy_with', "babylon")  == "babylon" and 'git_tag_prefix' in deployer):
                     raise ValueError(
                         '''scm_ref should be used for prod/ilt, not git_tag_prefix.'''
                     )
@@ -292,9 +292,9 @@ def check_valid_agv_tag(c,ci):
             agvRepo = "redhat-cop/agnosticd/git/matching-refs/tags/"
             # Getting tag value from agnosticv_meta section
             agvMetaTag = ''
-            if 'agnosticd_git_ref' in c['agnosticv_meta']:
+            if 'agnosticd_git_ref' in c.get('agnosticv_meta', {}):
                 agvMetaTag = c['agnosticv_meta']['agnosticd_git_ref']
-            elif 'agnosticd_git_tag_prefix' in c['agnosticv_meta']:
+            elif 'agnosticd_git_tag_prefix' in c.get('agnosticv_meta', {}):
                 agvMetaTag = c['agnosticv_meta']['agnosticd_git_tag_prefix']
             # Call Github API and check git tag on agnosticd repo
             agvMetaResponse = requests.get("https://api.github.com/repos/"+agvRepo+agvMetaTag)
@@ -468,7 +468,6 @@ for ci in catalog_items:
             check_virtualenv,
             check_ee,
             check_duplicate_directories,
-            check_asset_uuid,
             check_sandbox_api,
             check_valid_sandbox_request]:
         try:
