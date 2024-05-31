@@ -1,0 +1,116 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/access-restriction-devs-only.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: zero-touch-base-rhel
+cloud_provider: ec2
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: ZEROTOUCH
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+
+# Ports to be open for ingress / egress after server hardening from lock_bastion_security_group.yml in zero-touch-rhel config
+zero_touch_ports:
+  - 443
+
+use_content_view: true
+
+agd_bastion_packages:
+  - at
+  - bash-completion
+  - bind-utils
+  - git
+  - podman
+  - buildah
+  - tmux
+  - vim-enhanced
+  - wget
+
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+
+rhel9_instance_image: RHEL92GOLD-latest
+rhel9_instance_type: "t3a.medium"
+rootfs_size_rhel9: 40
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+
+repo_method: satellite
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+### Showroom broken Testing other repo https://github.com/rhpds/rhel_zero_poc_managing_user_basics.git
+showroom_git_repo: https://github.com/rhpds/rhel_zero_installing_software_yum.git
+showroom_ui: zero-touch
+
+showroom_tab_services:
+  - tty1
+
+showroom_tab_tty1_username: root
+
+showroom_ttys_enable_tmux: false
+
+showroom_showroom_default_ssh_user: root
+showroom_enable_root_ssh: true
+showroom_ssh_method: sshkey
+showroom_ssh_host: host.containers.internal
+showroom_lab_users:
+  - root
+
+showroom_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Role: zero_touch_rhel_user
+# -------------------------------------------------------------------
+
+student_name: rhel
+student_password: "{{ common_password }}"
+
+zero_touch_rhel_user_user_name: rhel
+zero_touch_rhel_user_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: e638db18-6b7f-49b3-82d0-459bb26cc66c
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Installing Software Using Package Managers [Admin 101]
+    category: Demos
+    keywords:
+      - rhel
+      - rhel9
+      - zero-touch
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHEL_BU
+    multiuser: false
+    parameters: []
+  secrets: []
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
