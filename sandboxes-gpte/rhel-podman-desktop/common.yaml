@@ -1,0 +1,146 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/secrets/showroom-shared-410.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/access-restriction-devs-only.yaml
+
+#push fix and merge . bot
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: ec2
+env_type: ansible-lightspeed
+software_to_deploy: none
+default_instance_image: RHEL91GOLD-latest
+default_instance_name: rhel9
+default_instance_type: "t3a.xlarge"
+student_name: student
+student_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+
+showroom_deploy_shared_cluster_enable: true
+
+ocp4_workload_showroom_content_git_repo: >-
+  https://github.com/redhat-scholars/podman-desktop-tutorial
+ocp4_workload_showroom_content_git_ref: showroom
+ocp4_workload_showroom_content_only: true
+
+# -------------------------------------------------------------------
+# Config: ansible-lightspeed
+# -------------------------------------------------------------------
+ansible_lightspeed_setup_demo_repo: false
+
+# -------------------------------------------------------------------
+# asset_injector_assets
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+
+  - description: Set root password so desktop users can install software
+    type: user
+    name: root
+    state: present
+    password: "{{ common_password | password_hash('sha512') }}"
+
+  - description: Force upgrade of podman by brutal centos stream rpm over-write
+    type: dnf
+    name: "https://gpte-public.s3.amazonaws.com/CI+Assets/random-rpms/podman-5.0.0-1.el9.x86_64.rpm"
+    state: present
+    disable_gpg_check: true
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+use_content_view: true
+update_all_packages: true
+
+# -------------------------------------------------------------------
+# Generate Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------
+# Role: common
+# -------------------------------------------------
+
+install_common: true
+
+common_packages_el9:
+  - bash-completion
+  - bind-utils
+  - firefox
+  - git
+  - httpd-tools
+  - nano
+  - python3
+  - tmux
+  - unzip
+  - vim-enhanced
+  - wget
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+software_workloads_for_bastion:
+  - novnc
+  - rhel-graphical
+  - ms_vscode_server
+  - podman_desktop
+
+# -------------------------------------------------------------------
+# Workloads: novnc
+# -------------------------------------------------------------------
+novnc_proxy_port: 443
+
+# -------------------------------------------------------------------
+# Workloads: rhel-graphical
+# -------------------------------------------------------------------
+install_rhel_graphical: true
+
+# -------------------------------------------------------------------
+# Workloads: ms_vscode_server
+# -------------------------------------------------------------------
+ms_vscode_server_enable_autostart: true
+
+# -------------------------------------------------------------------
+# Workloads: podman_desktop
+# -------------------------------------------------------------------
+podman_desktop_content_repository: https://github.com/redhat-gpte-devopsautomation/rhel9_podman_desktop.git
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 6dc49609-b0f3-4cc7-a4a1-88106a50f722
+  catalog:
+    multiuser: false
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: RHEL Podman Desktop
+    category: Workshops
+    keywords:
+      - podman
+      - desktop
+      - containers
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHDP
+    parameters: []
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.0.17
+      pull: missing
