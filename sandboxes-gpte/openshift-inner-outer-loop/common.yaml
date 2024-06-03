@@ -1,0 +1,320 @@
+---
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-3regions.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/aws-sandbox-meta.yaml
+
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/lifetime-standard.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: Summit LB2267 - Inner / Outer Loop Lab
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: ec2
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# VM configuration
+# -------------------------------------------------------------------
+master_instance_type: c6in.4xlarge
+master_instance_count: 3
+master_storage_type: io1
+master_storage_size: 250
+worker_instance_type: m6a.8xlarge
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+worker_storage_type: gp3
+worker_storage_size: 250
+bastion_instance_type: t3a.medium
+bastion_instance_image: RHEL93GOLD-latest
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.14"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
+# instead of cluster-{{ guid }}.{{ guid }}.sandboxXXX.opentlc.com
+# -------------------------------------------------------------------
+ocp4_base_domain: "{{ sandbox_zone }}"
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: false
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_machinesets
+- ocp4_workload_openshift_data_foundation
+- ocp4_workload_le_certificates
+- ocp4_workload_redhat_developer_hub_bootstrap
+- ocp4_workload_pipelines
+- ocp4_workload_gitops_gitlab
+- ocp4_workload_redhat_developer_hub
+- ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: openshift
+common_password: "{{ common_admin_password }}"
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_base: user
+ocp4_workload_user_count: "{{ num_users }}"
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.14_2024_03_25
+
+# -------------------------------------------------------------------
+# ocp4_workload_machinesets
+# -------------------------------------------------------------------
+# Add a MachineSet for Infra Nodes
+ocp4_workload_machinesets_machineset_groups:
+- name: infra
+  role: infra
+  instance_type: m6a.2xlarge
+  root_volume_size: 250
+  autoscale: false
+  total_replicas: 2
+  # Autoscaler settings - minimum and maximum number of Machines
+  total_replicas_min: 2
+  total_replicas_max: 2
+  machineConfigPool:
+    setup: false
+    maxPodsPerNode: 250
+  taints:
+  - key: infra
+    value: reserved
+    effect: NoSchedule
+  - key: infra
+    value: reserved
+    effect: NoExecute
+
+# -------------------------------------------------------------------
+# OpenShift Data Foundations Operator
+# -------------------------------------------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.14
+ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+ocp4_workload_openshift_data_foundation_tolerations:
+- key: infra
+  operator: Exists
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_pipelines
+# -------------------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.14
+ocp4_workload_pipelines_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# GitLab
+# -------------------------------------------------------------------
+ocp4_workload_gitops_gitlab_gitops_type: argocd
+ocp4_workload_gitops_gitlab_config_email_display_name: Janus Admin
+ocp4_workload_gitops_gitlab_config_email_reply_to: "noreply@redhat.com"
+ocp4_workload_gitops_gitlab_config_smtp_enabled: "false"
+ocp4_workload_gitops_gitlab_config_smtp_domain: "example.com"
+ocp4_workload_gitops_gitlab_config_smtp_port: "587"
+ocp4_workload_gitops_gitlab_config_smtp_user: "gitlab"
+ocp4_workload_gitops_gitlab_config_smtp_password: "gitlab"
+ocp4_workload_gitops_gitlab_config_ssh_port: "22"
+ocp4_workload_gitops_gitlab_config_rootPassword: "{{ common_password }}"
+ocp4_workload_gitops_gitlab_config_https: "true"
+ocp4_workload_gitops_gitlab_config_root_email: "root@opentlc.com"
+ocp4_workload_gitops_gitlab_config_keybase_db: "0123456789"
+ocp4_workload_gitops_gitlab_config_keybase_otp: "0123456789"
+ocp4_workload_gitops_gitlab_config_keybase_secret: "0123456789"
+
+ocp4_workload_gitops_gitlab_db_user_name: gitlab
+ocp4_workload_gitops_gitlab_db_password: passw0rd
+ocp4_workload_gitops_gitlab_db_name: gitlab_production
+
+ocp4_workload_gitops_gitlab_gitops_repo: https://github.com/redhat-gpte-devopsautomation/agnosticg.git
+
+ocp4_workload_gitops_gitlab_import_repos:
+- name: rhdh
+  repo:
+  - name: software-templates
+    url: https://github.com/redhat-gpte-devopsautomation/software-templates.git
+  - name: inner-outer-loop-templates
+    url: https://github.com/redhat-developer-demos/inner-outer-loop-templates
+- name: gitops
+  repo:
+  - name: janus-idp-gitops
+    url: https://github.com/redhat-gpte-devopsautomation/janus-idp-gitops.git
+- name: vote-app
+  repo:
+  - name: vote-app-gitops
+    url: https://github.com/blues-man/vote-app-gitops.git
+  - name: pipelines-vote-ui
+    url: https://github.com/blues-man/pipelines-vote-ui
+  - name: pipelines-vote-api
+    url: https://github.com/blues-man/pipelines-vote-api
+
+ocp4_workload_gitops_gitlab_users_count: "{{ num_users | default(1) }}"
+ocp4_workload_gitops_gitlab_users_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_redhat_developer_hub
+# -------------------------------------------------------------------
+ocp4_workload_redhat_developer_hub_gitlab_root_password: "{{ ocp4_workload_gitops_gitlab_config_rootPassword }}"
+ocp4_workload_redhat_developer_hub_janus_bootstrap_repo: https://github.com/redhat-gpte-devopsautomation/janus-idp-bootstrap.git
+ocp4_workload_redhat_developer_hub_janus_bootstrap_repo_target_revision: main
+ocp4_workload_redhat_developer_hub_backstage_gitlab_user_create: "{{ ocp4_workload_gitops_gitlab_user_create }}"
+ocp4_workload_redhat_developer_hub_backstage_gitlab_user_username: "{{ ocp4_workload_gitops_gitlab_user_username | default(omit) }}"
+ocp4_workload_redhat_developer_hub_backstage_gitlab_user_password: "{{ ocp4_workload_gitops_gitlab_user_password }}"
+ocp4_workload_redhat_developer_hub_admin_user: admin
+ocp4_workload_redhat_developer_hub_admin_password: "{{ common_password }}"
+ocp4_workload_redhat_developer_hub_gitlab_template_locations:
+- group: rhdh
+  project: software-templates
+  branch: main
+  file: org.yaml
+  rules:
+    allow: Group, User
+  templates: []
+- group: rhdh
+  project: inner-outer-loop-templates
+  branch: main
+  file: showcase-templates.yaml
+  rules:
+    allow: Template
+  templates:
+  - vote-ui-python/template.yaml
+  - vote-api-go/template.yaml
+
+ocp4_workload_redhat_developer_hub_users_count: "{{ num_users | default(1) }}"
+ocp4_workload_redhat_developer_hub_users_password: "{{ common_password }}"
+
+ocp4_workload_redhat_developer_hub_backstage_helm_chart_repo: https://redhat-developer.github.io/rhdh-chart
+ocp4_workload_redhat_developer_hub_backstage_helm_chart: backstage
+ocp4_workload_redhat_developer_hub_backstage_helm_chart_version: 2.15.0
+ocp4_workload_redhat_developer_hub_backstage_image_registry: quay.io
+ocp4_workload_redhat_developer_hub_backstage_image_repository: rhdh/rhdh-hub-rhel9
+ocp4_workload_redhat_developer_hub_backstage_image_tag: "1.1-97"
+
+redhat_gpte_devhub_pull_secret: !vault |
+  $ANSIBLE_VAULT;1.1;AES256;gpte_vault_0
+  34653935653266353038343830366435363532356432656235333136376639396439303236306364
+  6637366466333736643761613937643763663932316238310a383833653361323439363766373963
+  62396538333861666638326235313663343130373164633239323536356237393261663232336663
+  3733323261383839330a653865366235363038626266376366616233646564386638663535353738
+  39376332383964346237343632326332653833666236663039346333663761623133323831643336
+  66376533343031306133633564323539323263616263653563323564303733303531643534653731
+  61323762663566386139366165663531306635323365663635383033653833613662333463316334
+  35336631666333653938623866353338626332653735343438623832323665386464646435613063
+  63376339646334666639346337336235343931633530623465646639313930656236633039363830
+  33336331366131613763393534353932333735323562363239626463656665333032636339613763
+  38396639363164636163623165616137663133386361313738643333376361633830623039343831
+  36386131373066383562623861336161396336306666626433643936316562346364653536613932
+  31343935616131313134326536333565353266653538306133393637303939333434326131653637
+  34343163353433633664323463633235363130346132643230643330663662346163383732323832
+  303761656361333665383635666565373462
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_redhat_developer_hub_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_redhat_developer_hub_bootstrap_janus_bootstrap_repo: https://github.com/redhat-gpte-devopsautomation/janus-idp-bootstrap.git
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/redhat-scholars/inner-outer-loop-tutorial
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: 1.1.0
+
+ocp4_workload_showroom_content_only: true
+# ocp4_workload_showroom_terminal_type: showroom
+
+# -------------------------------------------------------------------
+# Babylon userdata
+# -------------------------------------------------------------------
+userdata: >-
+  {
+  {% for i in range(1,num_users + 1) %}
+  "user{{i}}": {
+    "rhdh_url": "https://backstage-backstage.apps.cluster-{{ guid }}{{ subdomain_base_suffix }}",
+    "rhdh_user": "user{{i}}",
+    "rhdh_user_password": "{{ common_password }}",
+    "gitlab_url": "https://gitlab-gitlab.apps.cluster-{{ guid }}{{ subdomain_base_suffix }}",
+    "gitlab_user": "user{{i}}",
+    "gitlab_user_password": "{{ common_password }}",
+    "usernum": "{{i}}",
+    "cluster_id": ".apps.cluster-{{guid}}{{ subdomain_base_suffix }}",
+    "console_url": "https://console-openshift-console.apps.cluster-{{ guid }}{{ subdomain_base_suffix }}",
+    "devspaces_url": "https://devspaces.apps.cluster-{{ guid }}{{ subdomain_base_suffix }}",
+    "devspaces_user": "user{{i}}",
+    "devspaces_user_password": "{{ common_password }}"
+    },
+  {% endfor %}
+  }
+
+agnosticd_passthrough_user_data: |
+  {{ {}
+   | combine( {
+     "users": userdata })
+  }}
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: p9522957-d0ed-452a-a70c-cc863e5c3318
+  catalog:
+    multiuser: true
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OpenShift Inner and Outer Loop Development Workshop
+    category: Workshops
+    keywords:
+    - workshop
+    - openshift
+    labels:
+      Provider: Hybrid_Cloud_Experience
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Featured_Score: '85'
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the environment.
+      formLabel: User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 65
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2-rc
+      pull: missing
