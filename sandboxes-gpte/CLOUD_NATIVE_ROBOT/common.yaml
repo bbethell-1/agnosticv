@@ -15,13 +15,6 @@
 ocp4_workload_authentication_enable_user_info_messages: true
 
 # -------------------------------------------------------------------
-# Bookbag
-# -------------------------------------------------------------------
-# Repository must have a build-template.yaml and deploy-template.yaml
-bookbag_git_repo: https://github.com/sa-mw-dach/microservice-introduction-content.git
-bookbag_git_version: "{{ (gitops_repo_tag | default('v1')) }}"
-
-# -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
 platform: RHPDS
@@ -45,37 +38,29 @@ ocp4_cluster_show_access_user_info: true
 # Infra Workloads
 # -------------------------------------------------------------------
 infra_workloads:
+- ocp4_workload_machinesets
+- ocp4_workload_openshift_data_foundation
 - ocp4_workload_authentication
-- ocp4_workload_servicemesh
 - ocp4_workload_pipelines
+- ocp4_workload_openshift_ai
 - ocp4_workload_openshift_gitops
 - ocp4_workload_gitea_operator
 - ocp4_workload_web_terminal
 - ocp4_workload_le_certificates
-- ocp4_workload_opentour_dach_2022
-- bookbag
+- ocp4_workload_showroom
 
-ocp4_installer_version: 4.13.9
-ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_workload_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_catalogsource_tag: v4.13_2023_11_20
 
+ocp4_installer_version: 4.15.14
+ocp4_installer_url: https://mirror.openshift.com/pub/openshift-v4/multi/clients/ocp/4.15.14/amd64/openshift-install-linux.tar.gz
+ocp4_client_url: https://mirror.openshift.com/pub/openshift-v4/multi/clients/ocp/4.15.14/amd64/openshift-client-linux.tar.gz
+ocp4_network_type: OVNKubernetes
 
 # -------------------------------------------------------------------
 # Student Workloads ([] means no student workloads)
 # -------------------------------------------------------------------
 student_workloads: []
-
-# ---------------------------------------------------------
-# OpenTourm DACH 2022
-# ---------------------------------------------------------
-ocp4_workload_opentour_dach_2022_user_prefix: '{{ ocp4_workload_authentication_htpasswd_user_base
-  }}'
-ocp4_workload_opentour_dach_2022_user_count: "{{ (num_users | default('1')) | int
-  }}"
-ocp4_workload_opentour_dach_2022_infra_repo_tag: "{{ (gitops_repo_tag | default('v1'))
-  }}"
-ocp4_workload_opentour_dach_2022_infra_repo: https://github.com/sa-mw-dach/microservice-introduction-gitops-infra.git
-# ocp4_workload_opentour_dach_2022_infra_repo_tag: "main"
-
 
 # ---------------------------------------------------------
 # Authentication
@@ -92,37 +77,68 @@ ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1'))
   int }}"
 ocp4_workload_authentication_remove_kubeadmin: true
 
-# ---------------------------------------------------------
-# Service Mesh Setup
-# ---------------------------------------------------------
-ocp4_workload_servicemesh_channel: stable
-ocp4_workload_servicemesh_starting_csv: servicemeshoperator.v2.4.0
-ocp4_workload_servicemesh_jaeger_channel: stable
-ocp4_workload_servicemesh_jaeger_starting_csv: jaeger-operator.v1.42.0-5-0.1687199951.p
-ocp4_workload_servicemesh_kiali_channel: stable
-ocp4_workload_servicemesh_kiali_starting_csv: kiali-operator.v1.65.6
-ocp4_workload_servicemesh_use_catalog_snapshot: true
-ocp4_workload_servicemesh_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_servicemesh_catalog_snapshot_image_tag: v4.13_2023_07_17
+# -----------------------------------
+# OpenShift Data Foundations Operator
+# -----------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.15
+ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
+ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_openshift_data_foundation_ceph_storage_class_name: gp3-csi
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 500Gi
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_ai
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_operator_group_name: "rhods-ods-operator"
+ocp4_workload_openshift_ai_operator_name: "rhods-operator"
+ocp4_workload_openshift_ai_namespace: "redhat-ods-operator"
+ocp4_workload_openshift_ai_channel: "stable"
+ocp4_workload_openshift_ai_catalogsource_setup: "False"
+ocp4_workload_openshift_ai_installPlanApproval: "Automatic"
+# Set automatic InstallPlan approval. If set to false it is also suggested
+# to set the starting_csv to pin a specific version
+install_openshift_ai_operator_automatic_install_plan_approval: "false"
+ocp4_workload_openshift_ai_source: "redhat-operators"
+ocp4_workload_openshift_ai_sourceNamespace: "openshift-marketplace"
+ocp4_workload_openshift_ai_csv_nameprefix: "rhods-operator"
+ocp4_workload_openshift_ai_startingCSV: "rhods-operator.2.8.2"
+ocp4_workload_openshift_ai_install_csv_ignore_error: "false"
+ocp4_workload_openshift_ai_namespace_list:
+- "{{ ocp4_workload_openshift_ai_namespace }}"
+ocp4_workload_openshift_ai_applications_namespace: "redhat-ods-applications"
+ocp4_workload_openshift_ai_is_workshop: "false"
+ocp4_workload_openshift_ai_workshop_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_openshift_ai_workshop_username_base: "user"
+ocp4_workload_openshift_ai_workshop_password: '{{ ocp4_workload_authentication_htpasswd_user_password }}'
+ocp4_workload_openshift_ai_codeflare: "Removed"
+ocp4_workload_openshift_ai_dashboard: "Managed"
+ocp4_workload_openshift_ai_datasciencepipelines: "Managed"
+ocp4_workload_openshift_ai_kserve: "Removed"
+ocp4_workload_openshift_ai_modelmeshserving: "Managed"
+ocp4_workload_openshift_ai_ray: "Removed"
+ocp4_workload_openshift_ai_trustyai: "Removed"
+ocp4_workload_openshift_ai_workbenches: "Managed"
 
 # -------------------------------------------------------------------
 # OpenShift Pipelines
 # -------------------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.11
+ocp4_workload_pipelines_channel: pipelines-1.14
 ocp4_workload_pipelines_use_catalog_snapshot: true
-ocp4_workload_pipelines_starting_csv: openshift-pipelines-operator-rh.v1.11.0
+ocp4_workload_pipelines_starting_csv: openshift-pipelines-operator-rh.v1.14.1
 ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
-ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.13_2023_07_17
+ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.9
+ocp4_workload_openshift_gitops_channel: gitops-1.12
 ocp4_workload_openshift_gitops_use_catalog_snapshot: true
-ocp4_workload_openshift_gitops_starting_csv: openshift-gitops-operator.v1.9.0
-ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.13_2023_07_17
+ocp4_workload_openshift_gitops_starting_csv: openshift-gitops-operator.v1.12.2
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_openshift_gitops_argo_cr_additional_values: |
   resourceTrackingMethod: annotation
 # -------------------------------------------------------------------
@@ -130,7 +146,7 @@ ocp4_workload_openshift_gitops_argo_cr_additional_values: |
 # -------------------------------------------------------------------
 ocp4_workload_gitea_operator_project: gitea
 ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: 1.20.0
+ocp4_workload_gitea_operator_gitea_image_tag: 1.22
 ocp4_workload_gitea_operator_deploy_gitea_instance: true
 ocp4_workload_gitea_operator_name: gitea
 ocp4_workload_gitea_operator_gitea_hostname: gitea
@@ -155,33 +171,78 @@ ocp4_workload_gitea_operator_admin_password: openshift
 #ocp4_workload_gitea_operator_user_password: openshift
 
 ocp4_workload_gitea_operator_create_users: true
-ocp4_workload_gitea_operator_user_number: '{{ ocp4_workload_authentication_htpasswd_user_count
-  | int }}'
-ocp4_workload_gitea_operator_generate_user_format: '{{ ocp4_workload_authentication_htpasswd_user_base
-  }}%d'
-ocp4_workload_gitea_operator_user_password: '{{ ocp4_workload_authentication_htpasswd_user_password
-  }}'
+ocp4_workload_gitea_operator_user_number: '{{ ocp4_workload_authentication_htpasswd_user_count | int }}'
+ocp4_workload_gitea_operator_generate_user_format: '{{ ocp4_workload_authentication_htpasswd_user_base }}%d'
+ocp4_workload_gitea_operator_user_password: '{{ ocp4_workload_authentication_htpasswd_user_password }}'
 ocp4_workload_gitea_operator_migrate_repositories: true
 ocp4_workload_gitea_operator_repositories_list:
-- repo: https://github.com/sa-mw-dach/microservice-introduction-app-a.git
-  name: app-a
+- repo: https://github.com/cloud-native-robotz-hackathon/starter-app-python.git
+  name: starter-app-python
   private: false
-- repo: https://github.com/sa-mw-dach/microservice-introduction-app-b.git
-  name: app-b
-  private: false
-- repo: https://github.com/sa-mw-dach/microservice-introduction-app-c.git
-  name: app-c
-  private: false
-- repo: https://github.com/sa-mw-dach/microservice-introduction-gitops.git
-  name: gitops
-  private: false
+
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_web_terminal
 # -------------------------------------------------------------------
 ocp4_workload_web_terminal_use_catalog_snapshot: true
-ocp4_workload_web_terminal_starting_csv: web-terminal.v1.8.0
-ocp4_workload_web_terminal_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_web_terminal_catalog_snapshot_image_tag: v4.13_2023_07_31
+ocp4_workload_web_terminal_starting_csv: web-terminal.v1.10.0
+ocp4_workload_web_terminal_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_web_terminal_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_content_git_repo: https://github.com/cloud-native-robotz-hackathon/lab-guide.git
+ocp4_workload_showroom_content_only: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_machinesets
+# -------------------------------------------------------------------
+
+ocp4_workload_machinesets_wait_for_nodes: false
+
+# Add a MachineSet for AWS Bare arm instances
+ocp4_workload_machinesets_machineset_groups:
+- name: arm
+  role: arm
+  instance_type: m7g.2xlarge
+  #  openshift-install coreos print-stream-json | jq  -r -c '.architectures | keys '
+  # ["aarch64","ppc64le","s390x","x86_64"]
+  instance_ami_architecure: aarch64
+  autoscale: false
+  total_replicas: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+  total_replicas_min: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+  total_replicas_max: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+  # machineConfigPool:
+  #   setup: true
+  #   maxPodsPerNode: 250
+  taints:
+  - key: "kubernetes.io/arch"
+    value: "arm"
+    effect: NoSchedule
+  # - name: worker-gpu
+  #   autoscale: true
+  #   total_replicas: 2
+  #   total_replicas_min: 2
+  #   total_replicas_max: 3
+  #   role: worker-gpu
+  #   taints:
+  #     - key: nvidia.com/gpu
+  #       value: true
+  #       effect: NoSchedule
+  #   instance_type: "g5.2xlarge"
+  # Enable workload as well: ocp4_workload_nvidia_gpu_setup
+      # nvidia_gpu_operator_namespace: nvidia-gpu-operator
+      # nvidia_gpu_operator_channel: v23.6
+      # nvidia_gpu_operator_automatic_install_plan_approval: true
+      # nvidia_gpu_operator_starting_csv: gpu-operator-certified.v23.6.0
+      # nvidia_gpu_operator_wait_for_deploy: true
+      # nvidia_gpu_operator_use_catalog_snapshot: false
+      # nvidia_gpu_operator_catalogsource_name: ""
+      # nvidia_gpu_operator_catalog_snapshot_image: ""
+      # nvidia_gpu_operator_catalog_snapshot_image_tag: ""
 
 # ---------------------------------------------------------
 # AWS Instance Sizes
@@ -206,6 +267,11 @@ worker_storage_type: gp2
 bastion_instance_type: t3.medium
 bastion_instance_image: RHEL84GOLD-latest
 
+ssh_authorized_keys:
+# Instructor Key
+- key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAOfl+764UFbDkkxpsQYjET7ZAWoVApSf4I64L1KImoc rbohne@redhat.com
+
+
 # ---------------------------------------------------------
 # AgnosticV Metadata
 # ---------------------------------------------------------
@@ -224,12 +290,10 @@ __meta__:
     display_name: Cloud Native Robot Hackathon
     category: Workshops
     keywords:
-    - workshop
-    - ocp410
-    - ocp
+    - ai
+    - robot
+    - multi-atch
     - openshift
-    - OpenTour
-    - DACH
     labels:
       #OpenShift_Version: "4.8"
       Product: Red_Hat_OpenShift_Container_Platform
