@@ -1,20 +1,31 @@
 ---
-#include /includes/catalog-icon-openshift.yaml
+#include /includes/catalog-icon-virtualization.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/terms-of-service-equinix.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
 #include /includes/parameters/equinix-region.yaml
 #include /includes/secrets/ocp4_token.yaml
-#include /includes/secrets/vmc-direct3.yaml
-#include /includes/secrets/gpte-ipa-vc.yaml
+#include /includes/secrets/vmware-ibm-access.yaml
 #include /includes/secrets/equinix-metal.yaml
 #include /includes/secrets/dynamic-aws-dns.yaml
 #include /includes/secrets/roadshowocpvirt-secret3.yaml
 #include /includes/access-restriction-bootcamp.yaml
+#include /includes/parameters/showroom-ocp-defaults.yaml
+
+# -------------------------------------------------------------------
+# Temporary until moved to include
+# -------------------------------------------------------------------
+vcenter_proxy_hostname: "notset"
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: equinix_metal
+env_type: experience-ocpvirt
+
 
 platform: RHPDS
-env_type: roadshow-ocpvirt
 hypervisor_type: m3.large.x86
 hypervisor_os: rhel_8
 hypervisor_count: 1
@@ -22,9 +33,9 @@ build_lab: true
 infra_generic_wait_for_linux_hosts_connect_timeout: 40
 
 aio_import_url: "http://s3.us-east.cloud-object-storage.appdomain.cloud/roadshowocpvirt"
-bookbag_git_repo: https://github.com/RedHatGov/roadshow_ocpvirt_instructions-bootcamp-edition
-bookbag_git_version: main
-bookbag_namespace: bookbag
+#bookbag_git_repo: https://github.com/RedHatGov/roadshow_ocpvirt_instructions-bootcamp-edition
+#bookbag_git_version: main
+#bookbag_namespace: bookbag
 
 # to change how instances are named
 # (default is '%d')
@@ -76,7 +87,7 @@ ocp4_aio_use_ddns: true
 ocp4_aio_deploy_big_vms: true
 
 # Select OpenShift version for base cluster
-ocp4_aio_ocp_version: 4.13.4
+ocp4_aio_ocp_version: stable-4.15
 
 # Select number of workers for base cluster (1-3, for 0 use deploy_compact)
 ocp4_aio_ocp_workers: 3
@@ -90,6 +101,37 @@ extra_sno_nodes: false
 ocp4_aio_rhcos_iso_url: https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/latest/rhcos-live.x86_64.iso
 
 pull_secret: "{{ ocp4_pull_secret }}"
+
+bastion_remove_insights_motd: true
+bastion_custom_motd: |-
+  ---------------------------------------------------------------------------
+          Welcome to the OpenShift Virtualization Training!
+  ---------------------------------------------------------------------------
+
+  By continuing to use this service you agree to use this environment
+  solely for the purposes of completing the steps in the lab guide.
+
+  Any other use is a violation of this service and appropriate action
+  will be taken. If you disagree with these terms you must disconnect now.
+  ----------------------------------------------------------------------------
+
+# ------------------------------------------------------
+# Infra Workloads to deploy
+# ------------------------------------------------------
+infra_workloads:
+- ocp4_workload_showroom
+
+# ------------------------------------------------------
+# Showroom
+# ------------------------------------------------------
+ocp4_workload_showroom_content_antora_playbook: default-site.yml
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_git_repo: https://github.com/RedHatGov/roadshow_ocpvirt_instructions-bootcamp-edition
+
+ocp4_workload_showroom_content_only: false
+#ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
 
 # Meta variables
 
@@ -112,11 +154,11 @@ __meta__:
     # Strings in name and labels already match keyword searches.
     # Searches are not case-sensitive.
     keywords:
-      - workshop
-      - openshift
-      - virtualization
-      - cnv
-      - roadshow
+    - workshop
+    - openshift
+    - virtualization
+    - cnv
+    - roadshow
     # Labels populate search filters.
     # Spaces need to be represented as underscores.
     # Label keys and values need to adhere to kubernetes standards:
@@ -130,12 +172,18 @@ __meta__:
       Provider: RHDP
       Product_Family: Red_Hat_Cloud
     parameters:
-      - name: preinstall_operators
-        description: Preinstall Operators (OCP-V, MTV, nmstate)
-        formLabel: Preinstall operators
-        openAPIV3Schema:
-          type: boolean
-          default: true
+    - name: preinstall_operators
+      description: Preinstall Operators (OCP-V, MTV, nmstate)
+      formLabel: Preinstall operators
+      openAPIV3Schema:
+        type: boolean
+        default: true
+    - name: ocp4_workload_showroom_content_git_repo_ref
+      description: Showroom git repo branch (main, eds-edits, etc.)
+      formLabel: Showroom git repo branch
+      openAPIV3Schema:
+        type: string
+        default: 'main'
   lifespan:
     default: 48h
     maximum: 10d
