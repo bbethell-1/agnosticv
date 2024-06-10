@@ -1,27 +1,24 @@
 ---
 #include /includes/aws-sandbox-meta.yaml
-#include /includes/parameters/enable-lets-encrypt.yaml
 #include /includes/catalog-icon-openshift.yaml
-#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/aws-region2.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/terms-of-service.yaml
-#include /includes/parameters/salesforce-id.yaml
-#include /includes/lifetime-standard.yaml
 #include /includes/parameters/open-environment-annotation.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
-#include /includes/access-restriction-devs-only.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/ocp4_token.yaml
-#include /includes/secrets/demosat-rhel81.yaml
+
 # -------------------------------------------------------------------
 # --- System: RHDP
-# --- Catalog: Demos
+# --- Catalog: Demo
 # --- Catalog Item: Modern App Dev Roadshow - Dev Track v2
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
+cloud_provider: ec2
 env_type: ocp4-cluster
 software_to_deploy: openshift4
 
@@ -38,16 +35,16 @@ master_instance_count: 3
 master_storage_type: io1
 master_storage_size: 250
 worker_instance_type: m6a.8xlarge
-worker_instance_count: "{{ [(num_users | int / 2.5) | round(0, 'ceil') | int, 3] | max }}"
+worker_instance_count: "{{ [(num_users | int / 3.0) | round(0, 'ceil') | int, 3] | max }}"
 worker_storage_type: gp3
 worker_storage_size: 250
 bastion_instance_type: t3a.medium
-bastion_instance_image: RHEL84GOLD-latest
+bastion_instance_image: RHEL93GOLD-latest
 
 # -------------------------------------------------------------------
 # OpenShift Installer Version
 # -------------------------------------------------------------------
-ocp4_installer_version: "4.14"
+ocp4_installer_version: "4.15"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 
 # -------------------------------------------------------------------
@@ -92,20 +89,6 @@ host_virtualenv_requirements_override:
 - ovirt-engine-sdk-python==4.5.0
 - passlib==1.7.4
 
-# Custom collections for this environment
-requirements_content:
-  collections:
-  - name: kubernetes.core
-    version: 2.4.0
-  - name: amazon.aws
-    version: 2.3.0
-  - name: community.general
-    version: 6.4.0
-  - name: ansible.posix
-    version: 1.5.1
-  - name: ovirt.ovirt
-    version: 3.1.1
-
 # -------------------------------------------------------------------
 # Other Variables
 # -------------------------------------------------------------------
@@ -116,6 +99,24 @@ ocp4_network_type: OVNKubernetes
 # CSRs to appear
 ocp4_approve_certificate_signing_requests_initial_delay: 240
 ocp4_approve_certificate_signing_requests_recheck_delay: 60
+
+redhat_gpte_devhub_pull_secret: !vault |
+  $ANSIBLE_VAULT;1.1;AES256;gpte_vault_0
+  34653935653266353038343830366435363532356432656235333136376639396439303236306364
+  6637366466333736643761613937643763663932316238310a383833653361323439363766373963
+  62396538333861666638326235313663343130373164633239323536356237393261663232336663
+  3733323261383839330a653865366235363038626266376366616233646564386638663535353738
+  39376332383964346237343632326332653833666236663039346333663761623133323831643336
+  66376533343031306133633564323539323263616263653563323564303733303531643534653731
+  61323762663566386139366165663531306635323365663635383033653833613662333463316334
+  35336631666333653938623866353338626332653735343438623832323665386464646435613063
+  63376339646334666639346337336235343931633530623465646639313930656236633039363830
+  33336331366131613763393534353932333735323562363239626463656665333032636339613763
+  38396639363164636163623165616137663133386361313738643333376361633830623039343831
+  36386131373066383562623861336161396336306666626433643936316562346364653536613932
+  31343935616131313134326536333565353266653538306133393637303939333434326131653637
+  34343163353433633664323463633235363130346132643230643330663662346163383732323832
+  303761656361333665383635666565373462
 
 # -------------------------------------------------------------------
 # Workloads
@@ -131,12 +132,12 @@ infra_workloads:
 - ocp4_workload_pipelines
 - ocp4_workload_openshift_gitops
 - ocp4_workload_rhsso_authentication
+- ocp4_workload_openshift_ai
 - ocp4_workload_mad_roadshow_v2
 - ocp4_workload_ama_demo_app_services_shared
-- ocp4_workload_codeserver
-# - ocp4_workload_mtv
-- ocp4_workload_mta6
+- ocp4_workload_mta7
 - ocp4_workload_openshift_gitops_fix_argocd
+- ocp4_workload_showroom
 
 # Do not run any student customization.
 # This will result in a default OpenShift 4 installation.
@@ -144,11 +145,21 @@ student_workloads: []
 
 # Remove Workloads when deleting the cluster
 remove_workloads_bastion:
-- ocp4_workload_mad_roadshow
+- ocp4_workload_mad_roadshow_v2
 
 # -------------------------------------------------------------------
 # Workload variables
 # -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_deployer_chart_version: 1.1.2
+ocp4_workload_showroom_content_git_repo: https://github.com/rh-mad-workshop/mad-dev-guides-v2.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_only: true
+ocp4_workload_showroom_namespace: showroom
 
 # -------------------------------------------------------------------
 # Common Admin Password
@@ -158,7 +169,7 @@ common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_data_foundations
 # -------------------------------------------------------------------
-ocp4_workload_openshift_data_foundation_channel: stable-4.14
+ocp4_workload_openshift_data_foundation_channel: stable-4.15
 ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
 ocp4_workload_openshift_data_foundation_update_default_storage_class: true
 ocp4_workload_openshift_data_foundation_old_default_storage_class_name: gp3-csi
@@ -169,7 +180,7 @@ ocp4_workload_openshift_data_foundation_tolerations:
 ocp4_workload_openshift_data_foundation_catalogsource_setup: true
 ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
 ocp4_workload_openshift_data_foundation_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_openshift_data_foundation_catalogsource_image_tag: v4.14_2023_11_27
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: v4.15_2024_04_22
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_machinesets
@@ -214,7 +225,7 @@ ocp4_workload_authentication_remove_kubeadmin: true
 # Workload: ocp4_workload_gitea_operator
 # -------------------------------------------------------------------
 ocp4_workload_gitea_operator_project: gitea
-ocp4_workload_gitea_operator_catalog_image_tag: v2.0.1
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.5
 ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
 
 ocp4_workload_gitea_operator_repositories_list:
@@ -225,7 +236,7 @@ ocp4_workload_gitea_operator_repositories_list:
 
 ocp4_workload_gitea_operator_deploy_gitea_instance: true
 ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: "1.20.4"
+ocp4_workload_gitea_operator_gitea_image_tag: "1.21.11"
 ocp4_workload_gitea_operator_name: gitea
 ocp4_workload_gitea_operator_gitea_hostname: gitea
 ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
@@ -257,22 +268,22 @@ ocp4_workload_gitea_operator_migrate_repositories: true
 # ---------------------------------------------------------
 # OpenShift Pipelines
 # ---------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.11
+ocp4_workload_pipelines_channel: pipelines-1.14
 
 ocp4_workload_pipelines_use_catalog_snapshot: true
 ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.14_2023_11_27
+ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.15_2024_04_22
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.10
+ocp4_workload_openshift_gitops_channel: gitops-1.11
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 
 ocp4_workload_openshift_gitops_use_catalog_snapshot: true
 ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
 ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.14_2023_11_27
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.15_2024_04_22
 
 ocp4_workload_openshift_gitops_update_resources: true
 ocp4_workload_openshift_gitops_controller_update: true
@@ -337,46 +348,35 @@ ocp4_workload_kubevirt_workload_tolerations:
 ocp4_workload_kubevirt_use_catalog_snapshot: true
 ocp4_workload_kubevirt_catalogsource_name: redhat-operators-snapshot-kubevirt
 ocp4_workload_kubevirt_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_kubevirt_catalog_snapshot_image_tag: v4.14_2023_11_27
+ocp4_workload_kubevirt_catalog_snapshot_image_tag: v4.15_2024_04_22
 
 # -------------------------------------------------------------------
-# ocp4_workload_mta6
+# ocp4_workload_mta7
 # -------------------------------------------------------------------
-ocp4_workload_mta6_channel: stable-v6.2
-ocp4_workload_mta6_catalogsource_setup: true
-ocp4_workload_mta6_catalogsource_name: redhat-operators-snapshot-mta6
-ocp4_workload_mta6_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_mta6_catalogsource_image_tag: v4.14_2023_11_27
+ocp4_workload_mta7_channel: stable-v7.0
+ocp4_workload_mta7_catalogsource_setup: true
+ocp4_workload_mta7_catalogsource_name: redhat-operators-snapshot-mta7
+ocp4_workload_mta7_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_mta7_catalogsource_image_tag: v4.15_2024_04_22
 
-ocp4_workload_mta6_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
-ocp4_workload_mta6_namespace_base: mta
-ocp4_workload_mta6_user: admin
+ocp4_workload_mta7_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_mta7_namespace_base: mta
+ocp4_workload_mta7_user: admin
 
 # Base for multi user setup
-ocp4_workload_mta6_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_mta7_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
 
 # Role to grant users for the mga namespace
-ocp4_workload_mta6_role: edit
+ocp4_workload_mta7_role: edit
 
 # Seed MTA with information
-ocp4_workload_mta6_seed: true
-ocp4_workload_mta6_seed_tag: release-0.3
-
-# -------------------------------------------------------------------
-# ocp4_workload_mtv
-# -------------------------------------------------------------------
-ocp4_workload_mtv_channel: release-v2.4
-ocp4_workload_mtv_wait_for_forkliftcontroller: false
-
-ocp4_workload_mtv_use_catalog_snapshot: true
-ocp4_workload_mtv_catalogsource_name: redhat-operators-snapshot-mtv
-ocp4_workload_mtv_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_mtv_catalog_snapshot_image_tag: v4.14_2023_11_27
+ocp4_workload_mta7_seed: true
+ocp4_workload_mta7_seed_tag: release-0.3-mta7
 
 # -------------------------------------------------------------------
 # ocp4_workload_rhods
 # -------------------------------------------------------------------
-ocp4_workload_mad_roadshow_rhods_catalogsource_image_tag: v4.14_2023_11_27
+ocp4_workload_mad_roadshow_rhods_catalogsource_image_tag: v4.15_2024_04_22
 ocp4_workload_mad_roadshow_rhods_install_operator_starting_csv: ""
 
 # -------------------------------------------------------------------
@@ -438,20 +438,26 @@ ocp4_workload_mad_roadshow_kubevirt_vm_tolerations:
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhdh
 # -------------------------------------------------------------------
-ocp4_workload_mad_roadshow_rhdh_on: "{{ module_enable_m7 }}"
 ocp4_workload_redhat_developer_hub_gitlab_root_user: root
 ocp4_workload_redhat_developer_hub_gitlab_root_password: openshift
-ocp4_workload_mad_roadshow_rhdh_namespace: rhdhub
-ocp4_workload_mad_roadshow_rhdh_namespace_prefix: rhdhub-
+ocp4_workload_mad_roadshow_rhdh_namespace: globex-devhub
+ocp4_workload_mad_roadshow_rhdh_namespace_prefix: globex-devhub-
 ocp4_workload_redhat_developer_hub_gitlab_namespace: gitlab
 ocp4_workload_rhdh: true
+ocp4_workload_mad_roadshow_rhdh_helm_chart_repo: https://redhat-developer.github.io/rhdh-chart
+ocp4_workload_mad_roadshow_rhdh_helm_chart: backstage
+ocp4_workload_mad_roadshow_rhdh_helm_chart_version: 2.10.3
+ocp4_workload_mad_roadshow_rhdh_image_registry: quay.io
+ocp4_workload_mad_roadshow_rhdh_image_repository: rhdh/rhdh-hub-rhel9
+ocp4_workload_mad_roadshow_rhdh_image_tag: '1.1-79'
+ocp4_workload_mad_roadshow_rhdh_helm_value_file: https://raw.githubusercontent.com/redhat-gpte-devopsautomation/agnosticd_workload_helm_charts/main/rhdh/deploy/backstage-values.yaml
 ocp4_workload_mad_roadshow_rhdh_repo: https://github.com/redhat-gpte-devopsautomation/agnosticd_workload_helm_charts.git
 ocp4_workload_mad_roadshow_rhdh_repo_tag: main
 ocp4_workload_mad_roadshow_rhdh_repo_path_config: rhdh/config
 ocp4_workload_mad_roadshow_rhdh_repo_path: rhdh/deploy
 ocp4_workload_mad_roadshow_rhdh_repo_path_plugins: rhdh/plugins
 ocp4_workload_mad_roadshow_rhdh_repo_path_sso: rhdh/sso
-ocp4_workload_mad_roadshow_rhdh_app_name: developer-hub
+ocp4_workload_mad_roadshow_rhdh_app_name: developer-hub-backstage
 ocp4_workload_mad_roadshow_rhdh_app_name_plugins: developer-hub-plugins
 ocp4_workload_mad_roadshow_rhdh_app_name_config: developer-hub-config
 ocp4_workload_redhat_developer_hub_postgresql_password: "postgres"
@@ -471,6 +477,7 @@ ocp4_workload_rhdh_user: admin
 ocp4_workload_rhdh_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
 # Role to grant users for the mga namespace
 ocp4_workload_rhdh_role: edit
+
 # -------------------------------------------------------------------
 # GitLab
 # -------------------------------------------------------------------
@@ -500,18 +507,21 @@ ocp4_workload_gitops_gitlab_user_username: dev-user
 ocp4_workload_gitops_gitlab_user_password: "openshift"
 ocp4_workload_gitops_gitlab_user_email: dev-user@opentlc.com
 ocp4_workload_gitops_gitlab_gitops_repo: https://github.com/redhat-gpte-devopsautomation/agnosticd_workload_helm_charts.git
+ocp4_workload_gitops_gitlab_gitops_repo_software_templates: https://github.com/rh-mad-workshop/coolstore-software-templates/blob/mad-v2/showcase-templates.yaml
+ocp4_workload_gitops_gitlab_gitops_repo_software_templates_org: https://github.com/rh-mad-workshop/coolstore-software-templates/blob/mad-v2/org.yaml
 ocp4_workload_gitops_gitlab_import_repos:
 - name: rhdhub
   repo:
   - name: software-templates
     url: https://github.com/rh-mad-workshop/coolstore-software-templates.git
-    target: main
+    target: mad-v2
 # --------------DEVSPACES----------------------------------
 ocp4_workload_mad_roadshow_devspaces_repo: https://github.com/redhat-gpte-devopsautomation/agnosticd_workload_helm_charts.git
 ocp4_workload_mad_roadshow_devspaces_repo_tag: main
 ocp4_workload_mad_roadshow_devspaces_repo_path: devspaces
 ocp4_workload_mad_roadshow_devspaces_app_name: devspaces
 ocp4_workload_mad_roadshow_devspaces_namespace: openshift-operators
+
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhsso
 # -------------------------------------------------------------------
@@ -534,102 +544,6 @@ ocp4_workload_rhsso_authentication_user_count: "{{ num_users | default(0) }}"
 ocp4_workload_rhsso_authentication_user_name_base: user
 ocp4_workload_rhsso_authentication_user_password: openshift
 
-# ----------------------------------------
-# Dev Track - Guides and User distribution
-# ----------------------------------------
-ocp4_workload_mad_roadshow_guides_deploy: true
-ocp4_workload_mad_roadshow_guides_user_selector_title: "Modern App Development - Dev Track"
-ocp4_workload_mad_roadshow_guides_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
-ocp4_workload_mad_roadshow_guides_user_selector_lab_user_prefix: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
-ocp4_workload_mad_roadshow_guides_user_selector_lab_user_password: openshift
-ocp4_workload_mad_roadshow_guides_user_selector_lab_admin_password: "{{ common_admin_password }}"
-ocp4_workload_mad_roadshow_guides_user_selector_lab_user_access_token: openshift
-ocp4_workload_mad_roadshow_guides_namespace: dev-guides
-ocp4_workload_mad_roadshow_guides_namespace_display: Dev Track Guides
-ocp4_workload_mad_roadshow_guides_repo: https://github.com/rh-mad-workshop
-ocp4_workload_mad_roadshow_guides_repo_name_prefix: mad-dev-guides
-
-ocp4_workload_mad_roadshow_guides_module_type: "{{ module_type }}"
-ocp4_workload_mad_roadshow_guides_module_titles:
-- name: m1
-  title: "Assessment and Analysis"
-  path: "/{{ ocp4_workload_mad_roadshow_guides_repo_name_prefix }}-m1/main/1-introduction.html"
-- name: m2
-  title: "Refactor and Deployment"
-  path: "/{{ ocp4_workload_mad_roadshow_guides_repo_name_prefix }}-m2/main/1-introduction.html"
-- name: m3
-  title: "Enable CI/CD Pipeline and GitOps"
-  path: "/{{ ocp4_workload_mad_roadshow_guides_repo_name_prefix }}-m3/main/1-introduction.html"
-- name: m4
-  title: "Manage and Secure APIs"
-  path: "/{{ ocp4_workload_mad_roadshow_guides_repo_name_prefix }}-m4/main/introduction.html"
-- name: m5
-  title: "Build Event-driven Architecture"
-  path: "/{{ ocp4_workload_mad_roadshow_guides_repo_name_prefix }}-m5/main/introduction.html"
-- name: m6
-  title: "Create an Intelligent Application"
-  path: "/{{ ocp4_workload_mad_roadshow_guides_repo_name_prefix }}-m6/main/1-introduction.html"
-- name: m7
-  title: "Accelerating Software Development with Red Hat Developer Hub"
-  path: "/{{ ocp4_workload_mad_roadshow_guides_repo_name_prefix }}-m7/main/1-introduction.html"
-
-module_type: >-
-  {{
-    ";".join(
-      (["m1"] if module_enable_m1 | default(false) | bool else []) +
-      (["m2"] if module_enable_m2 | default(false) | bool else []) +
-      (["m3"] if module_enable_m3 | default(false) | bool else []) +
-      (["m4"] if module_enable_m4 | default(false) | bool else []) +
-      (["m5"] if module_enable_m5 | default(false) | bool else []) +
-      (["m6"] if module_enable_m6 | default(false) | bool else []) +
-      (["m7"] if module_enable_m7 | default(false) | bool else [])
-    )
-  }}
-
-ocp4_workload_mad_roadshow_guides_user_selector_lab_duration: 1week
-ocp4_workload_mad_roadshow_guides_user_selector_redis_name: redis
-ocp4_workload_mad_roadshow_guides_user_selector_redis_namespace: "{{ ocp4_workload_mad_roadshow_guides_namespace }}"
-ocp4_workload_mad_roadshow_guides_user_selector_redis_image: image-registry.openshift-image-registry.svc:5000/openshift/redis
-ocp4_workload_mad_roadshow_guides_user_selector_redis_tag: 6-el8
-ocp4_workload_mad_roadshow_guides_user_selector_redis_pvc_size: 1Gi
-ocp4_workload_mad_roadshow_guides_user_selector_redis_password: "redis"
-ocp4_workload_mad_roadshow_guides_user_selector_redis_memory: 1Gi
-
-ocp4_workload_mad_roadshow_guides_user_selector_name: get-a-username
-ocp4_workload_mad_roadshow_guides_user_selector_image: quay.io/openshiftlabs/username-distribution
-ocp4_workload_mad_roadshow_guides_user_selector_tag: "1.4"
-
-# -------------------------------------------------------------------
-# ocp4_workload_codeserver
-# -------------------------------------------------------------------
-ocp4_workload_codeserver_name: codeserver
-ocp4_workload_codeserver_workspace_name: ModernAppDev
-
-ocp4_workload_codeserver_image_tag: v4.16.1-java11
-ocp4_workload_codeserver_init_image_tag: v4.16.1
-
-
-ocp4_workload_codeserver_password: openshift
-ocp4_workload_codeserver_storageclass: ocs-storagecluster-ceph-rbd
-ocp4_workload_codeserver_pvc_size: 5Gi
-ocp4_workload_codeserver_gitea_name: gitea
-ocp4_workload_codeserver_gitea_namespace: gitea
-ocp4_workload_codeserver_extensions:
-- filename: auchenberg.vscode-browser-preview-0.7.2.vsix
-  url: https://gpte-public.s3.amazonaws.com/vscode-plugins/auchenberg.vscode-browser-preview-0.7.2.vsix
-
-ocp4_workload_codeserver_multi_user_install: true
-ocp4_workload_codeserver_multi_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
-ocp4_workload_codeserver_multi_user_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
-ocp4_workload_codeserver_multi_user_namespace_base: codeserver
-
-# Repositories to set up in codeserver
-ocp4_workload_codeserver_repos_password: "{{ ocp4_workload_gitea_operator_user_password }}"
-ocp4_workload_codeserver_repos:
-- name: modern-app-dev
-  account: ""
-  branch: main
-
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_ama_demo_app_services_shared
 # -------------------------------------------------------------------
@@ -649,15 +563,6 @@ ocp4_workload_openshift_gitops_fix_argocd_create_namespace: false
 #ocp4_workload_openshift_gitops_fix_argocd_namespace: openshift-gitops
 
 # -------------------------------------------------------------------
-# AgnosticV meta variables
-# -------------------------------------------------------------------
-agnosticv_meta:
-  sandboxed: false
-  deploy_with: babylon
-  params_to_variables:
-    course_module_list: ocp4_workload_mad_roadshow_guides_module_type
-
-# -------------------------------------------------------------------
 # Babylon Meta Variables
 # -------------------------------------------------------------------
 __meta__:
@@ -669,55 +574,6 @@ __meta__:
     namespace: babylon-catalog-{{ stage | default('?') }}
     multiuser: true
     parameters:
-    - name: module_enable_m1
-      description: Enable module m1
-      formGroup: Modules
-      formLabel: Module 1 - Assessment and Analysis
-      openAPIV3Schema:
-        type: boolean
-        default: true
-    - name: module_enable_m2
-      description: Enable module m2
-      formGroup: Modules
-      formLabel: Module 2 - Refactor and Deployment
-      openAPIV3Schema:
-        type: boolean
-        default: true
-    - name: module_enable_m3
-      description: Enable module m3
-      formGroup: Modules
-      formLabel: Module 3 - Enable CI/CD Pipeline and GitOps
-      openAPIV3Schema:
-        type: boolean
-        default: true
-    - name: module_enable_m4
-      description: Enable module m4
-      formGroup: Modules
-      formLabel: Module 4 - Manage and Secure APIs
-      openAPIV3Schema:
-        type: boolean
-        default: true
-    - name: module_enable_m5
-      description: Enable module m5
-      formGroup: Modules
-      formLabel: Module 5 - Build Event-driven Architecture
-      openAPIV3Schema:
-        type: boolean
-        default: true
-    - name: module_enable_m6
-      description: Enable module m6
-      formGroup: Modules
-      formLabel: Module 6 - Create an Intelligent Application
-      openAPIV3Schema:
-        type: boolean
-        default: true
-    - name: module_enable_m7
-      description: Enable module m7
-      formGroup: Modules
-      formLabel: Module 7 - Accelerating Software Development with Red Hat Developer Hub
-      openAPIV3Schema:
-        type: boolean
-        default: true
     - name: num_users
       description: >-
         Number of users to provision within the cluster.
@@ -736,12 +592,12 @@ __meta__:
     keywords:
     - workshop
     - openshift
-    - ocp
+    - mad
     - development
     labels:
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: Red_Hat_Cloud
-      Provider: Hybrid_Platform_BU
+      Provider: App_Developer_BU
     display_name: "Modern App Dev Roadshow - Dev Track v2"
     category: Workshops
   runtime:
