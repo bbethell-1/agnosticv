@@ -1,0 +1,306 @@
+---
+#include /includes/catalog-icon-aap.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/demosat-rhel8-latest.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+# TODO: Move to new config zero-touch-base-rhel
+
+env_type: zero-touch-ansible-bu
+cloud_provider: ec2
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: ZEROTOUCH
+
+
+# -------------------------------------------------------------------
+# Instance Variables
+# -------------------------------------------------------------------
+default_instance_image: "RHEL87GOLD-latest"
+bastion_instance_image: "RHEL87GOLD-latest"
+default_rootfs_size: 50
+default_instance_type: "t3a.medium"
+
+security_groups:
+  - name: BastionSG
+    rules:
+      - name: BastionSSHPorts
+        description: "Bastion ssh"
+        from_port: 22
+        to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: BastionHTTPSPorts
+        description: "HTTPS Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: BastionHTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: BastionOHTTPSPorts
+        description: "Open HTTPS Public"
+        from_port: 8443
+        to_port: 8443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: NodeSG
+    rules:
+      - name: FromNodeSGtcp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: NodeSG
+        rule_type: Ingress
+
+      - name: FromNodeSGudp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: NodeSG
+        rule_type: Ingress
+
+      - name: FromBastionTCP
+        description: "Allow everything from Bastion"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: BastionSG
+        rule_type: Ingress
+
+      - name: FromBastionUDP
+        description: "Allow everything from Bastion"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: BastionSG
+        rule_type: Ingress
+
+instances:
+  - name: "{{ bastion_instance_name | default('control') }}"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    # image_id: ami-07cadee7aaad98c44
+      # name:
+    image: "{{ bastion_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{bastion_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ default_rootfs_size }}"
+    security_groups:
+      - BastionSG
+      - DefaultSG
+
+  - name: "node"
+    count: 3
+    public_dns: false
+    image: "{{ node_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{node_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "rhel"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ default_rootfs_size }}"
+    security_groups:
+      - DefaultSG
+      - NodeSG
+
+# -------------------------------------------------------------------
+# Config Pre/Software/Post Workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  all:
+    - set-repositories
+  bastions:
+    - common
+    - bastion-lite
+software_workloads:
+  all:
+    - control-user
+  bastions:
+    - vscode-server
+
+post_software_final_workloads:
+  bastions:
+    - showroom
+
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+repo_method: satellite
+use_content_view: true
+
+# -------------------------------------------------
+# Role: common
+# -------------------------------------------------
+install_common: true
+common_packages_el8:
+  - at
+  - bash-completion
+  - bind-utils
+  - buildah
+  - git
+  - httpd-tools
+  - nano
+  - podman
+  - python3
+  - python3-pip
+  - tmux
+  - tree
+  - unzip
+  - vim-enhanced
+  - wget
+  - ansible
+
+# -------------------------------------------------
+# Role: bastion-lite
+# -------------------------------------------------
+install_bastion_lite: true
+
+
+# -------------------------------------------------
+# Role: control-user
+# -------------------------------------------------
+env_authorized_key: "{{guid}}key"
+install_control_user: true
+student_name: rhel
+student_password: "{{ common_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ common_password }}"
+control_user_private_group: "{{ omit }}"
+control_user_ssh_config: ./files/rhel_ssh_config.j2
+
+
+# -------------------------------------------------------------------
+# Role: vscode-server
+# -------------------------------------------------------------------
+install_vscode_server: true
+vscode_server_install_nginx: true
+vscode_server_ansible_become: true
+vscode_server_nginx_https_port: 8443
+vscode_server_hostname: "{{ groups['bastions'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}"
+vscode_user_name: "{{ student_name }}"
+vscode_user_password: "{{ common_password }}"
+vscode_server_default_extensions: []
+vscode_server_extension_urls:
+  - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
+
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+showroom_git_repo: https://github.com/rhpds/rhel_zero_sandbox
+showroom_ui: zero-touch
+
+showroom_dnf_packages:
+  - git
+  - podman
+  - python3-devel
+  - systemd-container
+  - unzip
+
+showroom_tab_services:
+  - tty1
+showroom_tab_tty1_username: rhel
+showroom_showroom_default_ssh_user: rhel
+showroom_ttys_enable_tmux: false
+showroom_enable_root_ssh: true
+showroom_ssh_method: sshkey
+showroom_ssh_host: host.containers.internal
+showroom_lab_users:
+  - "{{ student_name }}"
+
+showroom_user_password: "{{ common_password }}"
+
+# # -------------------------------------------------------------------
+# # Role: showroom
+# # -------------------------------------------------------------------
+# showroom_deploy_shared_cluster_enable: true
+
+# ocp4_workload_showroom_content_git_repo: >-
+#   https://github.com/rhpds/Summit_2024_LB1247_Hands-on_automated_RHEL_upgrade.git
+# ocp4_workload_showroom_content_git_ref: main
+# ocp4_workload_showroom_content_only: false
+
+# bastion_prefix: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}"
+
+# ocp4_workload_showroom_terminal_type: wetty
+# ocp4_workload_showroom_wetty_image: docker.io/wettyoss/wetty:latest
+# ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  params_to_variables:
+    user: ignore_user
+    username: student_name
+
+__meta__:
+  asset_uuid: 88433BCA-1135-46B3-AD9D-7DC429D432F9
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Project Zero - Writing your first playbook
+    category: Workshops
+    keywords:
+      - ansible
+      - zero-touch
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Automation
+      Provider: RHPD
+    multiuser: false
+    parameters: []
+  secrets: []
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
