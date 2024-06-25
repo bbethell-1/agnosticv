@@ -49,10 +49,13 @@ infra_workloads:
 - ocp4_workload_openshift_gitops
 - ocp4_workload_gitea_operator
 - ocp4_workload_web_terminal
+- ocp4_workload_service_interconnect_operator_only
+- ocp4_workload_disable_self_provisioner
+- ocp4_workload_expose_registry
 - ocp4_workload_devspaces
 - ocp4_workload_le_certificates
 - ocp4_workload_showroom
-
+- ocp4_workload_cloud_native_robot
 
 ocp4_workload_catalogsource_image: "quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog"
 ocp4_workload_catalogsource_tag: v4.15_2024_06_03
@@ -75,7 +78,7 @@ ocp4_workload_authentication_htpasswd_add_default_users: false
 # Generate admin password
 ocp4_workload_authentication_htpasswd_admin_password: ''
 ocp4_workload_authentication_htpasswd_admin_password_length: 16
-ocp4_workload_authentication_htpasswd_user_base: team
+ocp4_workload_authentication_htpasswd_user_base: 'team-'
 # user password
 ocp4_workload_authentication_htpasswd_user_password: openshift
 ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) |
@@ -114,7 +117,7 @@ ocp4_workload_openshift_ai_namespace_list:
 ocp4_workload_openshift_ai_applications_namespace: "redhat-ods-applications"
 ocp4_workload_openshift_ai_is_workshop: "false"
 ocp4_workload_openshift_ai_workshop_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
-ocp4_workload_openshift_ai_workshop_username_base: "team"
+ocp4_workload_openshift_ai_workshop_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
 ocp4_workload_openshift_ai_workshop_password: '{{ ocp4_workload_authentication_htpasswd_user_password }}'
 ocp4_workload_openshift_ai_codeflare: "Removed"
 ocp4_workload_openshift_ai_dashboard: "Managed"
@@ -192,11 +195,19 @@ ocp4_workload_web_terminal_catalog_snapshot_image: "{{ ocp4_workload_catalogsour
 ocp4_workload_web_terminal_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_service_interconnect_operator_only
+# -------------------------------------------------------------------
+ocp4_workload_service_interconnect_operator_only_use_catalog_snapshot: true
+ocp4_workload_service_interconnect_operator_only_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_service_interconnect_operator_only_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
 # -------------------------------------------------------------------
 
 ocp4_workload_showroom_deployment_type: helm
 ocp4_workload_showroom_content_git_repo: https://github.com/cloud-native-robotz-hackathon/lab-guide.git
+ocp4_workload_showroom_content_git_repo_ref: "{{ gitops_repo_tag | default('main') }}"
 ocp4_workload_showroom_content_only: true
 
 # -------------------------------------------------------------------
@@ -205,7 +216,7 @@ ocp4_workload_showroom_content_only: true
 ocp4_workload_devspaces_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_devspaces_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_devspaces_devworkspace: false
-ocp4_workload_devspaces_user_base: "team"
+ocp4_workload_devspaces_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
 ocp4_workload_devspaces_user_count: "{{ (num_users | default('1')) | int }}"
 
 # -------------------------------------------------------------------
@@ -254,6 +265,12 @@ ocp4_workload_machinesets_machineset_groups:
       # nvidia_gpu_operator_catalogsource_name: ""
       # nvidia_gpu_operator_catalog_snapshot_image: ""
       # nvidia_gpu_operator_catalog_snapshot_image_tag: ""
+
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cloud_native_robot
+# -------------------------------------------------------------------
+ocp4_workload_cloud_native_robot_infra_repo_tag: "{{ gitops_repo_tag | default('main') }}"
 
 # ---------------------------------------------------------
 # AWS Instance Sizes
@@ -329,8 +346,10 @@ __meta__:
         Error('User count greater than three requires a valid SalesForceID.')
     - name: gitops_repo_tag
       description: >-
-        Tag for OpenTour GitOps Repo https://github.com/sa-mw-dach/opentour-2022-gitops-infra.git
-      formLabel: OpenTour GitOps Repo Tag
+        Decide which tag/version you want to use for the deployment. Affected repositories:
+           * https://github.com/cloud-native-robotz-hackathon/infrastructure
+           * https://github.com/cloud-native-robotz-hackathon/lab-guide
+      formLabel: Cloud Native Robot Hackathon Version/Tag
       required: true
       openAPIV3Schema:
         type: string
