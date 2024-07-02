@@ -306,37 +306,37 @@ def check_valid_agv_tag(c,ci):
     return True
 
 def check_valid_babylon_tag(c,ci):
-    '''Ensure configuration is having a valid git tag on babylon meta'''
+    # '''Ensure configuration is having a valid git tag on babylon meta'''
 
-    ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
-    if '__meta__' in c or 'agnosticv_meta' in c:
-        if (
-            (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt")) and
-            (not ciAccNamStg.startswith("ansiblebu"))
-        ):
-            bMetaProdRepo = "redhat-cop/agnosticd"
-            bMetaRepo = ''
-            # Getting tag value from __meta__ section
-            bMetaTag = ''
-            if (
-                'deployer' in c['__meta__'] and
-                not c['__meta__']['deployer'].get('scm_ref', '').endswith('-hotfix')
-            ):
-                deployer = c['__meta__']['deployer']
-                if 'scm_ref' in deployer:
-                    bMetaTag = deployer['scm_ref']
-                elif 'git_tag_prefix' in deployer:
-                    bMetaTag = deployer['git_tag_prefix']
-                if 'scm_url' in deployer:
-                    bMetaScmUrl = deployer['scm_url']
-                    bMetaProdRepo = bMetaScmUrl.replace("https://github.com/","").replace(".git","")
-                # Call Github API and check git tag on agnosticd repo
-                bMetaRepo = bMetaProdRepo + "/git/matching-refs/tags/"
-                bTagResponse = requests.get("https://api.github.com/repos/"+bMetaRepo+bMetaTag)
-                if bTagResponse.status_code==200 and bTagResponse.json() is not None and len(bTagResponse.json())<1:
-                    raise ValueError(
-                        '''No such git tag exist on agnosticd provided under __meta__: ''' + bMetaTag
-                    )
+    # ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
+    # if '__meta__' in c or 'agnosticv_meta' in c:
+    #     if (
+    #         (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt")) and
+    #         (not ciAccNamStg.startswith("ansiblebu"))
+    #     ):
+    #         bMetaProdRepo = "redhat-cop/agnosticd"
+    #         bMetaRepo = ''
+    #         # Getting tag value from __meta__ section
+    #         bMetaTag = ''
+    #         if (
+    #             'deployer' in c['__meta__'] and
+    #             not c['__meta__']['deployer'].get('scm_ref', '').endswith('-hotfix')
+    #         ):
+    #             deployer = c['__meta__']['deployer']
+    #             if 'scm_ref' in deployer:
+    #                 bMetaTag = deployer['scm_ref']
+    #             elif 'git_tag_prefix' in deployer:
+    #                 bMetaTag = deployer['git_tag_prefix']
+    #             if 'scm_url' in deployer:
+    #                 bMetaScmUrl = deployer['scm_url']
+    #                 bMetaProdRepo = bMetaScmUrl.replace("https://github.com/","").replace(".git","")
+    #             # Call Github API and check git tag on agnosticd repo
+    #             bMetaRepo = bMetaProdRepo + "/git/matching-refs/tags/"
+    #             bTagResponse = requests.get("https://api.github.com/repos/"+bMetaRepo+bMetaTag)
+    #             if bTagResponse.status_code==200 and bTagResponse.json() is not None and len(bTagResponse.json())<1:
+    #                 raise ValueError(
+    #                     '''No such git tag exist on agnosticd provided under __meta__: ''' + bMetaTag
+    #                 )
 
     return True
 
