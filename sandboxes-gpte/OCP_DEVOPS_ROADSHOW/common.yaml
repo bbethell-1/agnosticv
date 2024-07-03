@@ -1,61 +1,60 @@
 ---
-#include /includes/aws-sandbox-meta.yaml
 #include /includes/catalog-icon-openshift.yaml
-#include /includes/terms-of-service.yaml
-#include /includes/lifetime-standard.yaml
-#include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/aws-region.yaml
-#include /includes/parameters/num-users-salesforce.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/aws-sandbox-meta.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/secrets/dynamic-aws-dns.yaml
-#include /includes/parameters/enable-lets-encrypt.yaml
+# -------------------------------------------------------------------
+# --- Catalog Item: DevOps Roadshow
+# -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
+cloud_provider: ec2
 env_type: ocp4-cluster
 software_to_deploy: openshift4
-ocp4_installer_version: "4.15"
+platform: rhpds
 
 # -------------------------------------------------------------------
-# Platform
+# VM configuration
 # -------------------------------------------------------------------
-platform: RHPDS
+master_instance_type: >-
+  {{ 'c6in.2xlarge' if num_users | int < 10 else 'c6in.4xlarge' }}
+master_instance_count: 3
+master_storage_type: >-
+    {{ 'io1' if worker_instance_count|int >= 10 else 'gp2' }}
+master_storage_size: 250
+worker_instance_type: m6a.4xlarge
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+worker_storage_type: gp3
+worker_storage_size: 250
+bastion_instance_type: t2.small
+bastion_instance_image: RHEL93GOLD-latest
 
 # -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
 repo_method: satellite
-
-# Update RHEL to the latest packages (and reboot)
 update_packages: true
 
 # -------------------------------------------------------------------
-# AWS Specific
+# OpenShift Installer Version
 # -------------------------------------------------------------------
-master_instance_type_family: m5
-master_instance_type_size: >-
-  {{ 'xlarge' if worker_instance_count|int <= 10
-  else '2xlarge' if worker_instance_count|int <= 20
-  else '4xlarge'
-  }}
-master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size\
-  \ }}"
+ocp4_installer_version: "4.15.20"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 
-master_storage_type: >-
-  {{ 'io1' if worker_instance_count|int >= 10
-  else 'gp2' }}
-master_instance_count: 3
-worker_instance_type: "m5.4xlarge"
-worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max\
-  \ }}"
-
-worker_storage_type: "gp2"
-bastion_instance_image: RHEL9GOLD-latest
+# -------------------------------------------------------------------
+# OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
+# instead of cluster-{{ guid }}.{{ guid }}.sandboxXXX.opentlc.com
+# -------------------------------------------------------------------
+ocp4_base_domain: "{{ sandbox_zone }}"
 
 # -------------------------------------------------------------------
 # Student User on Bastion
@@ -71,11 +70,10 @@ student_sudo: true
 # -------------------------------------------------------------------
 # --- Infra Workloads (YAML List)
 infra_workloads:
+- ocp4_workload_le_certificates
 - ocp4_workload_authentication
 - ocp4_workload_project_request_template
 - ocp4_workload_opentlc_production
-# - ocp4_workload_cert_manager
-- ocp4_workload_le_certificates
 - ocp4_workload_devops_roadshow
 - ocp4_workload_showroom
 
@@ -83,53 +81,43 @@ infra_workloads:
 student_workloads: []
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_cert_manager
+# Common Admin Password
 # -------------------------------------------------------------------
-# Values from /includes/secrets/dynamic-aws-dns.yaml
-# cluster_dns_zone: dynamic.redhatworkshops.io
-# route53_aws_zone_id:
-# route53_aws_access_key_id:
-# route53_aws_secret_access_key:
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: openshift
 
-ocp4_workload_cert_manager_cloud_provider: ec2
-# ocp4_workload_cert_manager_ec2_region: "{{ aws_region }}"
-ocp4_workload_cert_manager_ec2_region: us-east-2
-ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
-ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
-ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
-ocp4_workload_cert_manager_channel: stable-v1
-ocp4_workload_cert_manager_use_catalog_snapshot: false
-ocp4_workload_cert_manager_install_ingress_certificates: true
-ocp4_workload_cert_manager_install_api_certificates: false
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_le_certificates
+# -------------------------------------------------------------------
+ocp4_workload_le_certificates_install_api: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
 ocp4_workload_authentication_idm_type: htpasswd
 ocp4_workload_authentication_admin_user: admin
-# When no password specified it is generated
-ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
 ocp4_workload_authentication_htpasswd_user_base: user
-# When no password specified it is generated
-ocp4_workload_authentication_htpasswd_user_password: openshift
-# Create 100 users
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
 ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
-# Remove the standard kubeadmin user
 ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_opentlc_production
 # -------------------------------------------------------------------
 ocp4_workload_opentlc_production_remove_self_provisioner: false
 
-# workshop-specific variables
-# ocp4_workload_namespace_generator_prefix: "user"
-# ocp4_workload_namespace_generator_suffix: ""
-# ocp4_workload_namespace_generator_list:
-# - argocd
-# - bgd
-# - bgdk
-# - todo
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/AdvancedDevSecOpsWorkshop/workshop.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_only: true
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: 1.2.1
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
@@ -144,23 +132,30 @@ __meta__:
   asset_uuid: c08db190-b9b2-498d-89a4-4roe7e5e7e4a5
   anarchy:
     namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: OpenShift DevOps Roadshow
     category: Workshops
+    multiuser: true
     keywords:
     - workshop
     - openshift
     - devops
     - devsecops
     labels:
-      ##OpenShift_Version: "4.10"
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: Red_Hat_Cloud
       Provider: RHDP
-    multiuser: true
-    parameters: []
-  deployer:
-    execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.0
-      pull: missing
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the environment.
+      formLabel: User Count
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 50
