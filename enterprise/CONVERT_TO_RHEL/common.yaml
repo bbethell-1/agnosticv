@@ -4,12 +4,12 @@
 #include /includes/parameters/purpose.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/lifetime-standard.yaml
-#include /includes/secrets/bookbag-shared-410.yaml
 #include /includes/secrets/satellite-rhel8-latest-ha.yaml
 #include /includes/enterprise-premium-sla.yaml
 #include /includes/aws-sandbox-meta.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/showroom-shared-cluster1.yaml
 
 # -------------------------------------------------------------------
 # Platform
@@ -33,22 +33,54 @@ repo_method: satellite
 update_packages: true
 
 # -------------------------------------------------------------------
-# Bookbag Variables
+# Role: showroom hosted
 # -------------------------------------------------------------------
-bookbag_deploy: true
-bookbag_git_repo: https://github.com/redhat-gpte-devopsautomation/convert-to-rhel-bookbag.git
-#ocp4_workload_bookbag_setup_git_version: main
-#ocp4_workload_bookbag_setup_project: "rhel-bookbag-{{ guid }}"
-#ocp4_workload_bookbag_user_image_namespace: "rhel-bookbag-{{ guid }}"
-#ocp4_workload_bookbag_user_project: "rhel-bookbag-{{ guid }}"
-#ocp4_workload_bookbag_user_userinfo_enable: true
+# showroom_git_repo: https://github.com/rhpds/containerize_your_app_showroom.git
 
-ocp4_workload_bookbag_setup_git_version: main
-ocp4_workload_bookbag_setup_project: "rhel-bookbag-{{ guid }}"
-ocp4_workload_bookbag_user_image_namespace: "rhel-bookbag-{{ guid }}"
-ocp4_workload_bookbag_user_project: "rhel-bookbag-{{ guid }}"
-ocp4_workload_bookbag_user_userinfo_enable: true
+# showroom_tab_services:
+# - tty1
 
+# showroom_tab_tty1_username: root
+
+# showroom_ttys_enable_tmux: false
+
+# showroom_showroom_default_ssh_user: root
+# showroom_enable_root_ssh: true
+# showroom_ssh_method: sshkey
+# showroom_ssh_host: host.containers.internal
+# showroom_lab_users:
+# - root
+
+# common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+# showroom_user_password: "{{ common_password }}"
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+showroom_deploy_shared_cluster_enable: true
+
+ocp4_workload_showroom_content_git_repo: >-
+  https://github.com/rhpds/convert_to_rhel_showroom.git
+ocp4_workload_showroom_content_git_ref: main
+ocp4_workload_showroom_content_only: false
+
+showroom_lab_users:
+- devops
+
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_image: docker.io/wettyoss/wetty:latest
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+bastion_prefix: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}"
+
+bastion_ssh_command: "ssh {{ remote_user }}@{{ bastion_public_hostname }}"
+bastion_ssh_user_name: "{{ remote_user }}"
+bastion_ssh_password: "{{ common_password }}"
+bastion_public_hostname: "{{ bastion_prefix }}.{{ guid }}{{ subdomain_base_suffix }}"
+
+# -------------------------------------------------------------------
+# Role: Specify image pull for account
+# -------------------------------------------------------------------
 bastion_instance_image: "CENTOS79"
 bastion_instance_type: t3.medium
 
@@ -84,15 +116,15 @@ __meta__:
       Sales_Play: Standardize_on_Linux
       Featured_Score: '80'
     keywords:
-      - Convert
-      - RHEL
-      - CENTOS
-      - salesplay
-      - SalesPlay
+    - Convert
+    - RHEL
+    - CENTOS
+    - salesplay
+    - SalesPlay
   deployer:
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:latest
       pull: missing
   secrets:
-    - name: gpte
-      namespace: gpte
+  - name: gpte
+    namespace: gpte
