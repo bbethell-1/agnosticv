@@ -1,0 +1,222 @@
+---
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/rosa_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: OCP4 Getting Started
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Top level vars
+# -------------------------------------------------------------------
+env_type: rosa-consolidated
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Billing account for ROSA HCP
+# -------------------------------------------------------------------
+aws_billing_account_id: "017310218799"
+
+# -------------------------------------------------------------------
+# ROSA
+# -------------------------------------------------------------------
+rosa_deploy: true
+rosa_deploy_hcp: true
+
+rosa_version: "4.15.19"
+rosa_installer_version: "1.2.41"
+
+rosa_compute_replicas: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 2] | max }}"
+rosa_compute_machine_type: m6a.4xlarge
+
+rosa_setup_cluster_admin: true
+rosa_setup_cluster_admin_login: true
+
+# -------------------------------------------------------------------
+# Bastion
+# -------------------------------------------------------------------
+bastion_instance_type: "t3a.small"
+bastion_instance_image: RHEL93GOLD-latest
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_authentication_rosa
+# - ocp4_workload_opentlc_production
+- ocp4_workload_pipelines
+# - ocp4-workload-osevg-workshop-tracker
+# - ocp4_workload_nexus_operator
+# - ocp4_workload_gitea_operator
+- ocp4_workload_getting_started
+- ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_base: user
+ocp4_workload_user_count: "{{ (num_users | default('2')) | int }}"
+ocp4_workload_user_password: openshift
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.15_2024_07_08
+
+# -------------------------------------------------------------------
+# ocp4_workload_authentication_rosa
+# -------------------------------------------------------------------
+ocp4_workload_authentication_rosa_token: "{{ rosa_token }}"
+
+ocp4_workload_authentication_rosa_user_count: "{{ ocp4_workload_user_count }}"
+ocp4_workload_authentication_rosa_user_base: "{{ ocp4_workload_user_base }}"
+ocp4_workload_authentication_rosa_user_password: "{{ ocp4_workload_user_password }}"
+
+ocp4_workload_authentication_rosa_aws_access_key_id: "{{ lookup('env','AWS_ACCESS_KEY_ID') | default(aws_access_key_id, true) | mandatory }}"
+ocp4_workload_authentication_rosa_aws_secret_access_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') | default(aws_secret_access_key, true) | mandatory }}"
+ocp4_workload_authentication_rosa_aws_region: "{{ lookup('env','AWS_DEFAULT_REGION') | default(aws_region, true) | mandatory }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_opentlc_production
+# -------------------------------------------------------------------
+ocp4_workload_opentlc_production_remove_self_provisioner: false
+ocp4_workload_opentlc_production_expose_registry_route: false
+ocp4_workload_opentlc_production_set_build_defaults: true
+
+# ---------------------------------------------------------
+# ocp4_workload_pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.15
+
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.7
+ocp4_workload_gitea_operator_starting_csv: gitea-operator.v2.0.7
+
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.21.11"
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel9/postgresql-13
+ocp4_workload_gitea_operator_postgresql_image_tag: 1-165
+
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_user_count }}"
+ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_user_base + '%d' }}"
+ocp4_workload_gitea_operator_user_password: "{{ ocp4_workload_user_password }}"
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/openshift-roadshow/nationalparks
+  name: nationalparks
+  private: false
+- repo: https://github.com/openshift-roadshow/nationalparks-py
+  name: nationalparks-py
+  private: false
+- repo: https://github.com/openshift-roadshow/nationalparks-dotnet
+  name: nationalparks-dotnet
+  private: false
+- repo: https://github.com/openshift-roadshow/nationalparks-js
+  name: nationalparks-js
+  private: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_nexus_operator
+# -------------------------------------------------------------------
+ocp4_workload_nexus_operator_project: labs
+ocp4_workload_nexus_operator_name: nexus3
+ocp4_workload_nexus_operator_cpu_request: "1"
+ocp4_workload_nexus_operator_cpu_limit: "1"
+ocp4_workload_nexus_operator_nexus_image_tag: 3.32.0-ubi-1
+ocp4_workload_nexus_operator_new_admin_password: admin123
+ocp4_workload_nexus_operator_enable_anonymous: true
+
+ocp4_workload_nexus_operator_repos_maven_hosted_setup: true
+ocp4_workload_nexus_operator_repos_maven_hosted:
+- name: releases
+  blob_store: default
+  write_policy: allow_once # allow_once or allow
+  strict_content_validation: true
+  version_policy: release # release, snapshot or mixed
+  layout_policy: strict # strict or permissive
+- name: maven-snapshots
+  blob_store: default
+  write_policy: allow # allow_once or allow
+  strict_content_validation: true
+  version_policy: snapshot # release, snapshot or mixed
+  layout_policy: strict # strict or permissive
+
+# -------------------------------------------------------------------
+# ocp4_workload_getting_started
+# -------------------------------------------------------------------
+ocp4_workload_getting_started_user_count: "{{ ocp4_workload_user_count }}"
+ocp4_workload_getting_started_user_prefix: "{{ ocp4_workload_user_base }}"
+ocp4_workload_getting_started_user_password: "{{ common_user_password }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/redhat-gpte-devopsautomation/openshift-starter-guides
+ocp4_workload_showroom_content_git_repo_ref: ocp-4.11
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: 1.2.1
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: d03db366-212f-48a3-ab5e-5f73e39d3e2e
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  deployer:
+    actions:
+      start:
+        disable: true
+      stop:
+        disable: true
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+  sandbox_api:
+    actions:
+      start:
+        enable: false
+      stop:
+        enable: false
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OCP4 Getting Started Workshop (NEW)
+    category: Workshops
+    multiuser: true
+    keywords: []
+    labels:
+      Provider: Application_Developer_BU
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Openshift
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 50
+  runtime:
+    default: 9999h
+    maximum: 9999h
