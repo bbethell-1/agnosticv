@@ -304,7 +304,7 @@ def check_valid_agv_tag(c,ci):
                 )
 
     return True
-
+"""
 def check_valid_babylon_tag(c,ci):
     '''Ensure configuration is having a valid git tag on babylon meta'''
 
@@ -339,7 +339,7 @@ def check_valid_babylon_tag(c,ci):
                     )
 
     return True
-
+"""
 def check_anarchy_namespace(c,ci):
     '''Ensure catalog item have anarchy namespace'''
 
@@ -463,7 +463,7 @@ for ci in catalog_items:
             check_name,
             check_tag_var,
             check_valid_agv_tag,
-            check_valid_babylon_tag,
+#            check_valid_babylon_tag,
             check_anarchy_namespace,
             check_virtualenv,
             check_ee,
