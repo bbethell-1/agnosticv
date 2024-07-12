@@ -1,0 +1,343 @@
+---
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/openshift-ocpv-configs.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+
+# Only show to admins at the moment until BU is ready to release
+#include /includes/access-restriction-admins-only.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.16"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.3
+bastion_cores: 2
+bastion_memory: 6G
+
+# Deploy a Single Node OpenShift
+ai_control_plane_cores: 16
+ai_control_plane_memory: 48Gi
+
+# -------------------------------------------------------------------
+# Number of VMs (Single Node OpenShift)
+# -------------------------------------------------------------------
+master_instance_count: 1
+worker_instance_count: 0
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_external_odf
+- ocp4-workload-nfs-provisioner
+- ocp4_workload_authentication
+- ocp4_workload_cert_manager
+- ocp4_workload_web_terminal
+- ocp4_workload_openshift_gitops
+- ocp4_workload_gitea_operator
+- ocp4_workload_codeserver
+- ocp4_workload_mta7
+- ocp4_workload_mta7_workshop
+- ocp4_workload_showroom
+
+# --- Workloads that have removal logic implemented that needs to be run (YAML List)
+remove_workloads: []
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# -------------------------------------------------------------------
+# Use the following formula for new OCP releases where ODF has not been updated yet. Otherwise just use the
+# stable channel matching the OpenShift version
+# odf_channel: "{{ 'stable-4.15' if ocp4_installer_version == '4.16' else 'stable-' + ocp4_installer_version }}"
+odf_channel: stable-4.15
+
+# -------------------------------------------------------------------
+# Workload: ocp4-workload-nfs-provisioner
+# -------------------------------------------------------------------
+nfs_provisioner_nfs_server_hostname: "{{ openshift_cnv_nfs_server }}"
+nfs_provisioner_server_directory: "{{ openshift_cnv_nfs_path }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_count: 1
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+# Values from /includes/secrets/dynamic-aws-dns.yaml
+# route53_aws_zone_id:
+# route53_aws_access_key_id:
+# route53_aws_secret_access_key:
+
+ocp4_workload_cert_manager_channel: stable-v1
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+
+ocp4_workload_cert_manager_cloud_provider: ec2
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_web_terminal
+# -------------------------------------------------------------------
+ocp4_workload_web_terminal_channel: fast
+ocp4_workload_web_terminal_catalogsource_setup: false
+ocp4_workload_web_terminal_configure: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.13
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+ocp4_workload_openshift_gitops_resource_customizations: |
+  operators.coreos.com/Subscription:
+    health.lua: |
+      health_status = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          numDegraded = 0
+          numPending = 0
+          msg = ""
+          for i, condition in pairs(obj.status.conditions) do
+            msg = msg .. i .. ": " .. condition.type .. " | " .. condition.status .. "\n"
+            if condition.type == "InstallPlanPending" and condition.status == "True" then
+              numPending = numPending + 1
+            elseif (condition.type == "InstallPlanMissing" and condition.reason ~= "ReferencedInstallPlanNotFound") then
+              numDegraded = numDegraded + 1
+            elseif (condition.type == "CatalogSourcesUnhealthy" or condition.type == "InstallPlanFailed") and condition.status == "True" then
+              numDegraded = numDegraded + 1
+            end
+          end
+          if numDegraded == 0 and numPending == 0 then
+            health_status.status = "Healthy"
+            health_status.message = msg
+            return health_status
+          elseif numPending > 0 and numDegraded == 0 then
+            health_status.status = "Progressing"
+            health_status.message = "An install plan for a subscription is pending installation"
+            return health_status
+          else
+            health_status.status = "Degraded"
+            health_status.message = msg
+            return health_status
+          end
+        end
+      end
+      health_status.status = "Progressing"
+      health_status.message = "An install plan for a subscription is pending installation"
+      return health_status
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.7
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: 1.22.1
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
+ocp4_workload_gitea_operator_gitea_volume_storage_class: ocs-external-storagecluster-ceph-rbd
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel9/postgresql-16
+ocp4_workload_gitea_operator_postgresql_image_tag: latest
+ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
+ocp4_workload_gitea_operator_postgresql_volume_storage_class: ocs-external-storagecluster-ceph-rbd
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: gitea-admin
+ocp4_workload_gitea_operator_admin_email: gitea-admin@demo.redhat.com
+ocp4_workload_gitea_operator_admin_password: ""
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: 1
+ocp4_workload_gitea_operator_generate_user_format: lab-user
+ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/rh-mad-workshop/modern-app-dev.git
+  name: modern-app-dev
+  branch: patch-postgres
+  private: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_codeserver
+# -------------------------------------------------------------------
+ocp4_workload_codeserver_name: codeserver
+ocp4_workload_codeserver_workspace_name: MigrationToolkit
+
+ocp4_workload_codeserver_image_tag: v4.91.0-java17
+ocp4_workload_codeserver_init_image_tag: v4.91.0
+
+ocp4_workload_codeserver_password: "{{ common_user_password }}"
+ocp4_workload_codeserver_storageclass: ocs-external-storagecluster-ceph-rbd
+ocp4_workload_codeserver_pvc_size: 5Gi
+ocp4_workload_codeserver_gitea_name: gitea
+ocp4_workload_codeserver_gitea_namespace: gitea
+ocp4_workload_codeserver_extensions:
+- filename: auchenberg.vscode-browser-preview-0.7.2.vsix
+  url: https://gpte-public.s3.amazonaws.com/vscode-plugins/auchenberg.vscode-browser-preview-0.7.2.vsix
+
+ocp4_workload_codeserver_multi_user_install: false
+ocp4_workload_codeserver_repos_user: "{{ ocp4_workload_gitea_operator_generate_user_format }}"
+ocp4_workload_codeserver_repos_password: "{{ common_user_password }}"
+
+# Repositories to set up in codeserver
+ocp4_workload_codeserver_repos:
+- name: modern-app-dev
+  account: "{{ ocp4_workload_gitea_operator_generate_user_format }}"
+  branch: patch-postgres
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_mta7
+# -------------------------------------------------------------------
+ocp4_workload_mta7_channel: stable-v7.0
+ocp4_workload_mta7_catalogsource_setup: false
+
+ocp4_workload_mta7_rwx_supported: false
+ocp4_workload_mta7_rwx_storage_class: ocs-external-storagecluster-ceph-rbd
+ocp4_workload_mta7_rwo_storage_class: ocs-external-storagecluster-ceph-rbd
+
+ocp4_workload_mta7_num_users: 1
+ocp4_workload_mta7_namespace_base: mta
+ocp4_workload_mta7_user: admin
+
+ocp4_workload_mta7_seed: true
+ocp4_workload_mta7_seed_image: quay.io/gpte-devops-automation/tackle2-setup
+ocp4_workload_mta7_seed_tag: release-0.4-mta7
+ocp4_workload_mta7_seed_pull_policy: IfNotPresent
+
+# ------------------------------------------------------
+# Showroom
+# ------------------------------------------------------
+ocp4_workload_showroom_name: showroom
+ocp4_workload_showroom_namespace: showroom
+
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/mta-workshop
+ocp4_workload_showroom_content_git_repo_ref: main
+
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_content_only: true
+
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: "1.2.1"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 127f623c-5a06-4edc-87fc-07850df119ed
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2024-06-27
+      pull: missing
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  catalog:
+    display_name: Migration Toolkit for Applications Workshop
+    category: Workshops
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    multiuser: false
+    keywords:
+    - workshop
+    - openshift
+    - ocp
+    - ocp415
+    - mta
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
