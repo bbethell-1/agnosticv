@@ -27,8 +27,8 @@ platform: ZEROTOUCH
 # -------------------------------------------------------------------
 # Instance Variables
 # -------------------------------------------------------------------
-default_instance_image: "RHEL87GOLD-latest"
-bastion_instance_image: "RHEL87GOLD-latest"
+bastion_instance_image: "zt-control-14-july-2024"
+node_instance_image: "zt-node-14-july-2024"
 default_rootfs_size: 50
 default_instance_type: "t3a.medium"
 
@@ -108,9 +108,8 @@ instances:
     public_dns: true
     dns_loadbalancer: true
     floating_ip: true
-    # image_id: ami-07cadee7aaad98c44
-      # name:
-    image: "{{ bastion_instance_image | default(default_instance_image) }}"
+    image:
+      name: "{{ bastion_instance_image }}"
     flavor:
       ec2: "{{bastion_instance_type | default(default_instance_type) }}"
     tags:
@@ -128,7 +127,8 @@ instances:
   - name: "node"
     count: 3
     public_dns: false
-    image: "{{ node_instance_image | default(default_instance_image) }}"
+    image:
+      name:  "{{ node_instance_image }}"
     flavor:
       ec2: "{{node_instance_type | default(default_instance_type) }}"
     tags:
@@ -149,19 +149,12 @@ instances:
 pre_software_workloads:
   all:
     - set-repositories
-  bastions:
-    - common
-    - bastion-lite
 software_workloads:
-  all:
-    - control-user
   bastions:
     - vscode-server
-
 post_software_final_workloads:
   bastions:
     - showroom
-
 
 # -------------------------------------------------------------------
 # Common Password
@@ -174,92 +167,22 @@ common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 repo_method: satellite
 use_content_view: true
 
-# -------------------------------------------------
-# Role: common
-# -------------------------------------------------
-install_common: true
-common_packages_el8:
-  - at
-  - bash-completion
-  - bind-utils
-  - buildah
-  - git
-  - httpd-tools
-  - nano
-  - podman
-  - python3
-  - python3-pip
-  - tmux
-  - tree
-  - unzip
-  - vim-enhanced
-  - wget
-  - ansible
-
-# -------------------------------------------------
-# Role: bastion-lite
-# -------------------------------------------------
-install_bastion_lite: true
-
-# -------------------------------------------------
-# Role: control-user
-# -------------------------------------------------
-env_authorized_key: "{{guid}}key"
-install_control_user: true
-student_name: rhel
-student_password: "{{ common_password }}"
-control_user_name: "{{ student_name }}"
-control_user_password: "{{ common_password }}"
-control_user_private_group: "{{ omit }}"
-control_user_ssh_config: ./files/rhel_ssh_config.j2
-
 # -------------------------------------------------------------------
 # Role: vscode-server
 # -------------------------------------------------------------------
-install_vscode_server: true
+vscode_server_install_vscode: false
 vscode_server_install_nginx: true
 vscode_server_ansible_become: true
-vscode_user_workspace_path: /home/rhel/workplace
 vscode_server_nginx_https_port: 8443
 vscode_server_hostname: "{{ groups['bastions'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}"
-vscode_auth_type: none
-vscode_user_name: "{{ student_name }}"
-vscode_server_default_extensions: []
-vscode_server_extension_urls:
-  - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
-  - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
-  - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
-
-vscode_server_additional_settings: |
-  "files.exclude": {
-    "**/.git": true,
-    "**/.bash*": true,
-    "**/.vim*": true,
-    "**/.ssh": true,
-    "**/.vscode": true,
-    "**/.local": true,
-    "**/.config": true,
-    "**/.ansible": true,
-    "**/.cache": true
-  },
-  "security.workspace.trust.enabled": false
 
 # -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
-# showroom_git_repo: https://github.com/rhpds/rhel_zero_sandbox
 showroom_git_repo: https://github.com/miteshget/zero-touch-poc.git
 showroom_ui: zero-touch
-
-# showroom_user_orchestration_dir: "{{ showroom_user_home_dir }}/.orchestration"
-# showroom_user_content_dir: "{{ showroom_user_home_dir }}/.content"
-# showroom_work_dirs:
-#   - "{{ showroom_user_home_dir }}/.content"
-#   - "{{ showroom_user_home_dir }}/.orchestration"
-# showroom_user: rhel
-# showroom_user_group: rhel
-# showroom_user_uid: 1001               # simplifies traefik mounting of podman socket
-# showroom_user_home_dir: /home/rhel # Base dir for all things showroom (orchestration, content)
+showroom_ansible_runner_image: quay.io/mitsharm/ansible-runner-api
+showroom_ansible_runner_image_tag: latest
 showroom_openssh_keypair: provisionkey
 showroom_dnf_packages:
   - git
@@ -273,7 +196,6 @@ showroom_pip_packages:
 
 showroom_tab_services:
   - tty1
-  # - codeserver
 
 showroom_tab_tty1_username: rhel
 showroom_showroom_default_ssh_user: rhel
@@ -284,7 +206,6 @@ showroom_ssh_host: host.containers.internal
 showroom_lab_users:
   - "{{ student_name }}"
 showroom_user_password: "{{ common_password }}"
-
 showroom_ansible_runner_api: true
 
 # -------------------------------------------------------------------
