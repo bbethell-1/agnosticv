@@ -3,6 +3,8 @@
 #include /includes/enterprise-premium-sla.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
+#inclcude /includes/secrets/demosat-ent-demo-automate-the-enterprise.yaml
+#include /includes/secrets/ent-demo-ate.yaml
 
 # -------------------------------------------------------------------
 # Platform
@@ -34,6 +36,156 @@ deploy_automationcontroller_admin_password: "{{ common_password }}"
 # Disable creating SSH key and bastion inventory (like skip-tags)
 create_ssh_config: true
 
+set_repositories_rhel8_lock_release: '8'
+
+deploy_automationcontroller_installer_url: https://gpte-public.s3.amazonaws.com/aap2/ansible-automation-platform-setup-bundle-2.4-7-x86_64.tar.gz
+deploy_automationcontroller_manifest_url: https://gpte-public.s3.amazonaws.com/aap2-subscription/manifest_31_10_2022.zip
+
+default_instance_image: RHEL8GOLD-latest
+bastion_instance_image: RHEL8GOLD-latest
+automation_controller_instance_image: RHEL8GOLD-latest
+automation_database_instance_image: RHEL8GOLD-latest
+automation_hub_instance_image: RHEL8GOLD-latest
+
+update_packages: false
+repo_method: satellite
+#
+# Instances to deploy
+#
+set_repositories_satellite_ha: true
+set_repositories_satellite_url: labsat-ha.opentlc.com
+set_repositories_satellite_org: Red_Hat_GPTE_Labs
+set_repositories_satellite_activationkey: ent-demo-automate-the-enterprise
+
+# -------------------------------------------------------------------
+# Instances
+# -------------------------------------------------------------------
+instances:
+
+  - name: bastion
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ bastion_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    security_groups:
+      - BastionSG
+      - BookbagSG
+
+  - name: aap-controller
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ automation_controller_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ automation_controller_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "automationcontroller"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion | default(50) }}"
+    security_groups:
+      - BastionSG
+      - WebSG
+      - HostSG
+
+  - name: aap-hub
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ automation_hub_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ automation_hub_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "automationhub"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    security_groups:
+      - BastionSG
+      - WebSG
+      - HostSG
+
+  - name: aap-database
+    count: 1
+    unique: true
+    public_dns: false
+    dns_loadbalancer: true
+    floating_ip: false
+    image: "{{ automation_database_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ automation_database_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "automationcontroller_database"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    security_groups:
+      - BastionSG
+      - HostSG
+
+# -------------------------------------------------------------------
+# Security Groups
+# -------------------------------------------------------------------
+security_groups:
+
+  - name: WebSG
+    rules:
+      - name: HTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: HTTPSPorts
+        description: "HTTP Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+
+  - name: BookbagSG
+    rules:
+
+      - name: BookbagMain
+        description: "Bookbag main port"
+        from_port: 8080
+        to_port: 8080
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: HostSG
+    rules:
+      - name: FromHostSG
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: -1
+        from_group: HostSG
+        rule_type: Ingress
+
+
 # -------------------------------------------------------------------
 # AgnosticV meta variables
 # -------------------------------------------------------------------
@@ -57,7 +209,7 @@ __meta__:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: ATE Base
     keywords:
-    - ent-demo-ate
+      - ent-demo-ate
     labels:
       Base_Component: 'False'
       Product: Red_Hat_Ansible_Automation_Platform
@@ -65,14 +217,6 @@ __meta__:
       Provider: RHDP
       Featured_Score: '90'
     parameters: []
-  secrets:
-  - name: ent-demo-ate-ee
-    namespace: gpte
   access_control:
     allow_groups:
-    - rhpds-admins
-repo_method: satellite
-set_repositories_satellite_ha: True
-set_repositories_satellite_url: labsat-ha.opentlc.com
-set_repositories_satellite_org: Red_Hat_GPTE_Labs
-set_repositories_satellite_activationkey: ent-demo-automate-the-enterprise
+      - rhpds-admins
