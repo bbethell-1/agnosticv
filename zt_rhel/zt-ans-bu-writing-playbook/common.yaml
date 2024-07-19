@@ -23,12 +23,18 @@ cloud_provider: ec2
 # -------------------------------------------------------------------
 platform: ZEROTOUCH
 
+# -------------------------------------------------------------------
+# Enable or disable DNS availablity on the VPC after the deployment
+# Enable lock_bastion_security_group
+# -------------------------------------------------------------------
+dns_support_state: true
+lock_env_security_groups: true
 
 # -------------------------------------------------------------------
 # Instance Variables
 # -------------------------------------------------------------------
-bastion_instance_image: "zt-control-14-july-2024"
-node_instance_image: "zt-node-14-july-2024"
+bastion_instance_image: "zt-control-19-july-2024"
+node_instance_image: "zt-node-19-july-2024"
 default_rootfs_size: 50
 default_instance_type: "t3a.medium"
 
@@ -85,22 +91,6 @@ security_groups:
         from_group: NodeSG
         rule_type: Ingress
 
-      - name: FromBastionTCP
-        description: "Allow everything from Bastion"
-        from_port: 0
-        to_port: 65535
-        protocol: tcp
-        from_group: BastionSG
-        rule_type: Ingress
-
-      - name: FromBastionUDP
-        description: "Allow everything from Bastion"
-        from_port: 0
-        to_port: 65535
-        protocol: udp
-        from_group: BastionSG
-        rule_type: Ingress
-
 instances:
   - name: "{{ bastion_instance_name | default('control') }}"
     count: 1
@@ -122,7 +112,7 @@ instances:
     rootfs_size: "{{ default_rootfs_size }}"
     security_groups:
       - BastionSG
-      - DefaultSG
+      - NodeSG
 
   - name: "node"
     count: 3
@@ -140,15 +130,14 @@ instances:
         value: "{{ env_type }}-{{ email }}"
     rootfs_size: "{{ default_rootfs_size }}"
     security_groups:
-      - DefaultSG
       - NodeSG
 
 # -------------------------------------------------------------------
 # Config Pre/Software/Post Workloads
 # -------------------------------------------------------------------
-pre_software_workloads:
-  all:
-    - set-repositories
+# pre_software_workloads:
+  # all:
+  #   - set-repositories
 software_workloads:
   bastions:
     - vscode-server
