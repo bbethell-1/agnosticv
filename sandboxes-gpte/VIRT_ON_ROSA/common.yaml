@@ -1,58 +1,55 @@
 ---
-#include /includes/catalog-icon-aws.yaml
-#include /includes/aws-sandbox-meta.yaml
-#include /includes/terms-of-service.yaml
+#include /includes/catalog-icon-automation-management.yaml
 #include /includes/lifetime-standard.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
-#include /includes/ee-multicloud-rosa.yaml
-
+#include /includes/terms-of-service.yaml
+#include /includes/aws-sandbox-meta.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/aws-region.yaml
 #include /includes/parameters/salesforce-id.yaml
-#include /includes/parameters/student-email.yaml
 #include /includes/parameters/requester_username.yaml
+#include /includes/parameters/student-email.yaml
 #include /includes/parameters/open-environment-annotation-hidden.yaml
-#include /includes/parameters/showroom-ocp-defaults.yaml
-
-#include /includes/secrets/openshift-sandbox-ocpvdev01-sa.yml
-#include /includes/secrets/openshift-ocpv-configs.yaml
-#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
 #include /includes/secrets/rosa_token.yaml
 #include /includes/secrets/vmware-ibm-rs00-access.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 
 # -------------------------------------------------------------------
-# Mandatory Variables
+# --- Catalog Item: OpenShift Virtualization on ROSA Demo
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Top level vars
 # -------------------------------------------------------------------
 env_type: rosa-consolidated
-
-# -------------------------------------------------------------------
-# Platform
-# -------------------------------------------------------------------
 platform: rhpds
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
-# ------------------------------------------------------
-# ROSA
-# ------------------------------------------------------
-rosa_installer_version: latest
-
-# ROSA Version can be "default", "latest", "latest-upgrade", or semantic version
-# Value controlled by catalog parameter below.
-rosa_version: latest-upgrade
-
-# Make sure to set the base to a version that actually has an upgrade available
-# Check with `rosa list versions -o json` and make sure there is one with available_upgrades set
-rosa_version_base: openshift-v4.15
-rosa_compute_machine_type: m6a.2xlarge
-rosa_compute_replicas: 3
-rosa_setup_cluster_admin: true
-rosa_setup_cluster_admin_login: true
-# #billing account for HCP
-# rosa_deploy_hcp: true
+# -------------------------------------------------------------------
+# Billing account for ROSA HCP
+# -------------------------------------------------------------------
 aws_billing_account_id: "017310218799"
 
-bastion_instance_type: "t3a.small"
-master_instance_count: 2
+# -------------------------------------------------------------------
+# ROSA
+# -------------------------------------------------------------------
+rosa_deploy: true
+# rosa_deploy_hcp: true
+
+rosa_version: "4.15.19"
+# rosa_version: latest
+# rosa_version_base: openshift-v4.15
+rosa_installer_version: "1.2.41"
+
+rosa_compute_replicas: 3
+rosa_compute_machine_type: m6a.2xlarge
+
+rosa_setup_cluster_admin: true
+rosa_setup_cluster_admin_login: true
+
+# -------------------------------------------------------------------
+# Bastion
+# -------------------------------------------------------------------
+bastion_instance_type: t3a.small
 bastion_instance_image: RHEL93GOLD-latest
 bastion_remove_insights_motd: true
 bastion_custom_motd: |-
@@ -68,48 +65,8 @@ bastion_custom_motd: |-
   ----------------------------------------------------------------------------
 
 # -------------------------------------------------------------------
-# Customizations to packages and virtualenvs to enable ovirt.ovirt
+# Workloads
 # -------------------------------------------------------------------
-# Add prereqs for ovirt-engine-sdk-python Python package
-host_virtualenv_package_prereqs:
-- gcc
-- python3
-- python3-devel
-- python3-libselinux
-- python3-pip
-- libcurl-devel
-- openssl-devel
-- libxml2-devel
-
-# Add required Python packages to virtualenv for ovirt.ovirt collection
-host_virtualenv_requirements_override:
-- ovirt-engine-sdk-python==4.5.0
-- passlib==1.7.4
-
-# Custom collections for this environment
-requirements_content:
-  roles:
-  - name: ftl-injector
-    src: https://github.com/redhat-gpte-devopsautomation/ftl-injector
-    version: v0.20.0
-  collections:
-  - name: kubernetes.core
-    version: 2.4.0
-  - name: amazon.aws
-    version: 2.3.0
-  - name: community.general
-    version: 6.4.0
-  - name: ansible.posix
-    version: 1.5.1
-  - name: ovirt.ovirt
-    version: 3.1.1
-
-# Extra packages to install
-common_extra_packages:
-- java-17-openjdk-devel
-- tzdata-java
-- maven
-
 infra_workloads:
 - ocp4_workload_rosa_machinepool
 - ocp4_workload_authentication_rosa
@@ -118,7 +75,6 @@ infra_workloads:
 - ocp4_workload_rhacm
 - ocp4_workload_acm_multicluster_observability
 - ocp4_workload_kubevirt
-- ocp4_workload_web_terminal
 - ocp4_workload_mtv
 - ocp4_workload_nmstate
 - ocp4_workload_metallb
@@ -132,45 +88,63 @@ infra_workloads:
 remove_workloads:
 - ocp4_workload_virt_roadshow_vmware
 
-# FTL pre-requisites
-install_ftl: true
-student_name: "{{ bastion_user_name }}"
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_base: user
+ocp4_workload_user_count: 1
+ocp4_workload_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+# ocp4_workload_catalogsource_tag: v4.15_2024_07_08
+
+# -------------------------------------------------------------------
+# ocp4_workload_rosa_machinepool
+# -------------------------------------------------------------------
+op4_workload_rosa_machinepool_replicas: 1
+ocp4_workload_rosa_machinepool_instance_type: m5zn.metal
 
 # -------------------------------------------------------------------
 # ocp4_workload_authentication_rosa
 # -------------------------------------------------------------------
-num_users: 1
-ocp4_workload_authentication_rosa_user_count: "{{ (num_users | default('2')) | int }}"
-ocp4_workload_authentication_rosa_user_base: user
-ocp4_workload_authentication_rosa_user_password: "{{ common_password }}"
-ocp4_workload_authentication_rosa_admin_password: "{{ common_password }}"
 ocp4_workload_authentication_rosa_token: "{{ rosa_token }}"
+
+ocp4_workload_authentication_rosa_user_count: "{{ ocp4_workload_user_count }}"
+ocp4_workload_authentication_rosa_user_base: "{{ ocp4_workload_user_base }}"
+ocp4_workload_authentication_rosa_user_password: "{{ ocp4_workload_user_password }}"
+
 ocp4_workload_authentication_rosa_aws_access_key_id: "{{ lookup('env','AWS_ACCESS_KEY_ID') | default(aws_access_key_id, true) | mandatory }}"
 ocp4_workload_authentication_rosa_aws_secret_access_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') | default(aws_secret_access_key, true) | mandatory }}"
 ocp4_workload_authentication_rosa_aws_region: "{{ lookup('env','AWS_DEFAULT_REGION') | default(aws_region, true) | mandatory }}"
 
-# -----------------------------------
-# OpenShift Data Foundations Operator
-# -----------------------------------
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_data_foundation
+# -------------------------------------------------------------------
 ocp4_workload_openshift_data_foundation_channel: stable-4.15
 ocp4_workload_openshift_data_foundation_catalogsource_setup: false
 ocp4_workload_openshift_data_foundation_update_default_storage_class: true
 ocp4_workload_openshift_data_foundation_new_default_storage_class_name: ocs-storagecluster-ceph-rbd
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_rosa_machinepool
+# ocp4_workload_ansible_automation_platform
 # -------------------------------------------------------------------
-op4_workload_rosa_machinepool_replicas: 1
-ocp4_workload_rosa_machinepool_instance_type: m5zn.metal
+ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.4"
+ocp4_workload_ansible_automation_platform_admin_password: "{{ ocp4_workload_user_password }}"
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+  inject: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_rhacm
+# ocp4_workload_rhacm
 # -------------------------------------------------------------------
 ocp4_workload_rhacm_acm_channel: release-2.11
 ocp4_workload_rhacm_use_catalog_snapshot: false
 #ocp4_workload_rhacm_catalogsource_name: catalogsource-rhacm
-#ocp4_workload_rhacm_catalog_source_image: "quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog"
-#ocp4_workload_rhacm_catalog_source_tag: "v4.15_2024_04_08"
+#ocp4_workload_rhacm_catalog_source_image: "{{ ocp4_workload_catalogsource_image }}"
+#ocp4_workload_rhacm_catalog_source_tag: "{{ ocp4_workload_catalogsource_tag}}"
+
+# workaround
+master_instance_count: 2
 
 # -------------------------------------------------------------------
 # ocp4_workload_kubevirt
@@ -184,27 +158,19 @@ agnosticd_open_environment: true
 sandbox_user_info_messages_enable: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_web_terminal
-# -------------------------------------------------------------------
-ocp4_workload_web_terminal_channel: fast
-ocp4_workload_web_terminal_catalogsource_setup: false
-ocp4_workload_web_terminal_configure: false
-
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_mtv
+# ocp4_workload_mtv
 # -------------------------------------------------------------------
 ocp4_workload_mtv_channel: release-v2.6
 ocp4_workload_mtv_max_vm_inflight: 2
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_nmstate
+# ocp4_workload_nmstate
 # -------------------------------------------------------------------
 ocp4_workload_nmstate_channel: stable
 ocp4_workload_nmstate_use_catalog_snapshot: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_metallb
+# ocp4_workload_metallb
 # -------------------------------------------------------------------
 ocp4_workload_metallb_channel: stable
 ocp4_workload_metallb_use_catalog_snapshot: false
@@ -230,7 +196,6 @@ ocp4_workload_minio_bucket_multi_user: false
 ocp4_workload_oadp_channel: stable-1.3
 ocp4_workload_oadp_use_catalog_snapshot: false
 
-# Single User
 ocp4_workload_oadp_multi_user: false
 ocp4_workload_oadp_configure_dpa: true
 ocp4_workload_oadp_storage: minio
@@ -244,29 +209,19 @@ ocp4_workload_oadp_storage_minio_bucket_name: ocs-storage
 # ocp4_workload_virt_roadshow_vms
 # -------------------------------------------------------------------
 ocp4_workload_virt_roadshow_vms_start_vms: true
-ocp4_workload_virt_roadshow_vms_num_users: 1
+ocp4_workload_virt_roadshow_vms_num_users: "{{ ocp4_workload_user_count }}"
 ocp4_workload_virt_roadshow_vms_namespace: vmimported
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_virt_roadshow_vmware
+# ocp4_workload_virt_roadshow_vmware
 # -------------------------------------------------------------------
-ocp4_workload_virt_roadshow_vmware_num_users: 1
+ocp4_workload_virt_roadshow_vmware_num_users: "{{ ocp4_workload_user_count }}"
 ocp4_workload_virt_roadshow_vmware_vcenter_folder: "ocpvirt-{{ guid }}"
 ocp4_workload_virt_roadshow_vmware_enable_mtv: true
 ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
 
-
 # -------------------------------------------------------------------
-# ocp4_workload_ansible_automation_platform
-# -------------------------------------------------------------------
-ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.4"
-ocp4_workload_ansible_automation_platform_admin_password: "{{ common_password }}"
-ocp4_workload_ansible_automation_platform_manifest:
-  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
-  inject: true
-
-# -------------------------------------------------------------------
-# Role: automation_platform_loader
+# automation_platform_loader
 # -------------------------------------------------------------------
 vmware_host: "{{ hostvars['localhost']['vcenter_hostname'] }}"
 vmware_username: "{{ lookup('agnosticd_user_data', 'vcenter_full_user') }}"
@@ -274,94 +229,11 @@ vmware_password: "{{ lookup('agnosticd_user_data', 'vcenter_password') }}"
 kubeconfig: "{{ ocp4_workload_ansible_automation_platform_kubeconfig | b64decode }}"
 project_name: OpenShift Virtualization Project
 organization: Default
-scm_branch: virt-migration-demo-2.0.0
 scm_type: git
 scm_url: https://github.com/rhpds/ocp-virt.git
-windows_vm_username: "Administrator"
-windows_vm_password: "Ansible123!"
-linux_vm_password: "redhat"
-linux_vm_username: "cloud-user"
-linux_vm_ssh_key: |
-  -----BEGIN OPENSSH PRIVATE KEY-----
-  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
-  -----END OPENSSH PRIVATE KEY-----
+scm_branch: virt-migration-demo-2.0.0
 awx_ee_image: quay.io/ansible/awx-ee:24.3.0
-linux_vm_playbook: lamp_stack.yml
-windows_vm_playbook: playbook_winvms.yml
-linux_configure_vm_playbook: playbook_linuxvm.yml
-win_configure_vm_playbook: playbook_winvms.yml
 migration_playbook: playbook.yml
-repo_playbook: add_repo.yml
-winvm_namespace: namespace_winvm
-linux_provision_vm_playbook: provision_vms.yml
-ssh_public_key: >-
-  "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCyd1L68mDK85r8OSyJ+Np6mhiP7WmTDRNYF7ZO6KBesD5FU3izSwtlIXILiXVdqZFz/6J1lcFsYEronB7bYuV4epLlWA857VdVFIZDRN0AL4OJf+mHJgAcD26iLvcFS1K6qHlG+sonDWkMNdetq2UO9yrJSfl5aihFSVOACFNr38a986O16kP7iFVtFXRAnZ5qnAv4K2PZBgK67KV08UVJOww8OdQdNHbaDJn2fNnRHDwT9sbIidY8MWZkxSjAIy2sqD/mswbGkE+lrBGf+pePKQn0sqY2gdJsdH/AiFw9znhKcvzQastz/oLhWugnHybCYKAeYreEwWEYqwinrtbLmbNbowUPMbsP5jwViTH9kNUNCFgR1/7ipI5RRnPHCtSJQWzSW3c85cmcMfG9LbIhcooc+zDqbo+YwL06tUSurXlS5mdhzUeNeN7fBxwTIyFXWdUPxS98IqM27Y4OUgAt7QxiukrWncJU7xGXVLZG3Z8WjnH/rXKc/xCxL0mM0Dc= lab-user@hypervisor"
-aap_job_template_repo_survey: >-
-  {
-    "name": "Repo Survey",
-    "description": "Repo Survey",
-    "spec": [
-      {
-        "question_description": "Org ID",
-        "min": 0,
-        "default": "",
-        "max": 128,
-        "required": true,
-        "choices": "",
-        "new_question": true,
-        "variable": "org_id",
-        "question_name": "What is your organization id?",
-        "type": "text"
-      },
-      {
-        "question_description": "Activation Key",
-        "min": 0,
-        "default": "",
-        "max": 128,
-        "required": true,
-        "choices": "",
-        "new_question": true,
-        "variable": "key",
-        "question_name": "What is your activation key?",
-        "type": "text"
-      }
-    ]
-  }
 aap_job_template_basic_survey: >-
   {
     "name": "Basic Survey",
@@ -430,7 +302,6 @@ aap_job_template_basic_survey: >-
     ]
   }
 
-
 configure_automationcontroller: true
 controller_configuration_job_templates_secure_logging: false
 controller_configuration_credentials_secure_logging: false
@@ -438,7 +309,7 @@ controller_configuration_credentials_secure_logging: false
 aap_auth:
   controller_host: "aap-aap.apps.cluster-{{ guid }}.{{ cluster_dns_zone }}"
   controller_username: admin
-  controller_password: "{{ common_password }}"
+  controller_password: "{{ ocp4_workload_user_password }}"
   controller_verify_ssl: false
 
 controller_configuration_dispatcher_roles:
@@ -474,21 +345,12 @@ controller_projects:
   scm_update_on_launch: 'true'
   scm_url: "{{ scm_url }}"
 
-
 controller_credentials:
-- name: "Linux VMs SSH Access"
-  credential_type: Machine
-  organization: Default
-  inputs:
-    username: "{{ linux_vm_username }}"
-    ssh_key_data: "{{ linux_vm_ssh_key }}"
-
 - name: "kubeconfig"
   credential_type: "kubeconfig"
   organization: "Default"
   inputs:
     kube_config: "{{ kubeconfig }}"
-
 - name: "VMware Credentials"
   credential_type: "VMware vCenter"
   organization: Default
@@ -521,40 +383,6 @@ controller_inventory_sources:
   wait: true
 
 controller_templates:
-- name: 04 Configure Lamp Stack Linux VMs
-  job_type: run
-  organization: "{{ organization }}"
-  inventory: OpenShift Virtualization Inventory
-  project: "{{ project_name }}"
-  playbook: "{{ linux_vm_playbook }}"
-  limit: namespace_linuxvm
-  credentials: "Linux VMs SSH Access"
-  survey: {}
-  extra_vars: {}
-
-- name: 02 Provision Linux VMs
-  job_type: run
-  organization: "{{ organization }}"
-  inventory: OpenShift Virtualization Inventory
-  project: "{{ project_name }}"
-  playbook: "{{ linux_provision_vm_playbook }}"
-  credentials: "kubeconfig"
-  survey: {}
-  extra_vars:
-    ssh_public_key: "{{ ssh_public_key }}"
-    vm_password: "{{ linux_vm_password }}"
-
-- name: 05 Configure DevOps Users on Linux VMs
-  job_type: run
-  organization: "{{ organization }}"
-  inventory: OpenShift Virtualization Inventory
-  project: "{{ project_name }}"
-  playbook: "{{ linux_configure_vm_playbook }}"
-  limit: namespace_linuxvm
-  credentials: "Linux VMs SSH Access"
-  survey: {}
-  extra_vars: {}
-
 - name: 01 Migrate VMware VMs to OpenShift Virtualization
   job_type: run
   organization: "{{ organization }}"
@@ -569,18 +397,6 @@ controller_templates:
   extra_vars:
     vmware_host: "{{ vmware_host }}"
 
-- name: 03 Add Repositories to RHEL VMs
-  job_type: run
-  organization: "{{ organization }}"
-  inventory: OpenShift Virtualization Inventory
-  project: "{{ project_name }}"
-  playbook: "{{ repo_playbook }}"
-  credentials: "Linux VMs SSH Access"
-  limit: namespace_linuxvm
-  survey_enabled: true
-  survey: "{{ aap_job_template_repo_survey }}"
-  extra_vars: {}
-
 # ------------------------------------------------------
 # ocp4_workload_showroom
 # ------------------------------------------------------
@@ -592,11 +408,6 @@ ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
 ocp4_workload_showroom_deployer_chart_version: 1.2.1
 ocp4_workload_showroom_content_only: true
 
-# ------------------------------------------------------
-# agnosticd_user_info Messages
-# ------------------------------------------------------
-print_agnosticd_user_info: false
-
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
@@ -605,29 +416,29 @@ __meta__:
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
     actions:
       start:
         disable: true
       stop:
         disable: true
+  sandbox_api:
+    actions:
+      start:
+        enable: false
+      stop:
+        enable: false
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: OpenShift Virtualization on ROSA Demo
+    display_name: OpenShift Virtualisation Migration Factory Demo
     category: Demos
-    keywords:
-    - rosa
-    - virtualization
-    - openshift-virtualization
+    keywords: []
     labels:
-      Product: Red_Hat_OpenShift_Service_on_AWS
       Provider: RHDP
+      Product: Red_Hat_OpenShift_Service_on_AWS
       Product_Family: Red_Hat_Cloud
-      Featured_Score: '68'
     parameters: []
-  lifespan:
-    default: 2d
-    maximum: 999d
-    relativeMaximum: 10d
   runtime:
     default: 9999h
     maximum: 9999h
