@@ -1,0 +1,302 @@
+---
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+
+#include /includes/access-restriction-virt-roadshow.yaml
+
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/sandbox-api.yaml
+#
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+
+# Old IBM vCenter
+# include /includes/secrets/vmware-ibm-access.yaml
+# New IBM vCenter
+#include /includes/secrets/vmware-ibm-rs00-access.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.15"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.3
+bastion_cores: 2
+bastion_memory: 4Gi
+
+master_instance_count: 3
+worker_instance_count: 0
+
+# ai_control_plane_cores: 8
+# Minimum control plane memory is 16Gi, anything below fails
+# ai_control_plane_memory: 16Gi
+# Try a compact cluster with just 3 bigger control plane
+ai_control_plane_cores: 16
+ai_control_plane_memory: 32Gi
+
+# ai_workers_cores: 8
+# Lab needs 3x32Gi memory
+# ai_workers_memory: 32Gi
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_external_odf
+- ocp4-workload-nfs-provisioner
+- ocp4_workload_authentication
+- ocp4_workload_cert_manager
+- ocp4_workload_web_terminal
+- ocp4_workload_kubevirt
+- ocp4_workload_mtv
+- ocp4_workload_nmstate
+- ocp4_workload_metallb
+- ocp4_workload_minio
+- ocp4_workload_oadp
+- ocp4_workload_virt_roadshow_vms
+- ocp4_workload_virt_roadshow_vmware
+- ocp4_workload_showroom
+# Open questions:
+# - Network.
+#   E.g. https://github.com/redhat-cop/agnosticd/blob/move_virt_to_ibm/ansible/configs/experience-ocpvirt/files/configure_nodenetworkconfigurationpolicy.sh
+# - AAP install and configuration (https://issues.redhat.com/browse/GPTEINFRA-9388)
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# --- Workloads that have removal logic implemented that needs to be run (YAML List)
+remove_workloads:
+- ocp4_workload_virt_roadshow_vmware
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# -------------------------------------------------------------------
+odf_channel: "stable-4.15"
+# Use the following formula for new OCP releases where ODF has not been updated yet
+# odf_channel: "{{ 'stable-4.14' if ocp4_installer_version == '4.15' else 'stable-' + ocp4_installer_version }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4-workload-nfs-provisioner
+# -------------------------------------------------------------------
+nfs_provisioner_nfs_server_hostname: "{{ openshift_cnv_nfs_server }}"
+nfs_provisioner_server_directory: "{{ openshift_cnv_nfs_path }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('1') | int }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+# Values from /includes/secrets/dynamic-aws-dns.yaml
+# route53_aws_zone_id:
+# route53_aws_access_key_id:
+# route53_aws_secret_access_key:
+
+ocp4_workload_cert_manager_channel: stable-v1
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+
+ocp4_workload_cert_manager_cloud_provider: ec2
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_web_terminal
+# -------------------------------------------------------------------
+ocp4_workload_web_terminal_channel: fast
+ocp4_workload_web_terminal_catalogsource_setup: false
+ocp4_workload_web_terminal_configure: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_mtv
+# -------------------------------------------------------------------
+ocp4_workload_mtv_channel: release-v2.6
+ocp4_workload_mtv_max_vm_inflight: 2
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_nmstate
+# -------------------------------------------------------------------
+ocp4_workload_nmstate_channel: stable
+ocp4_workload_nmstate_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_metallb
+# -------------------------------------------------------------------
+ocp4_workload_metallb_channel: stable
+ocp4_workload_metallb_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_minio
+# -------------------------------------------------------------------
+ocp4_workload_minio_project: minio
+ocp4_workload_minio_storage_size: 256Gi
+ocp4_workload_minio_modern_deployment: true
+ocp4_workload_minio_expose_route: false
+ocp4_workload_minio_root_user: minio-admin
+ocp4_workload_minio_root_password: minio-password
+ocp4_workload_minio_image: quay.io/minio/minio
+ocp4_workload_minio_image_tag: RELEASE.2024-06-11T03-13-30Z
+ocp4_workload_minio_bucket_setup: true
+ocp4_workload_minio_bucket_name: ocs-storage
+ocp4_workload_minio_bucket_multi_user: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_oadp
+# -------------------------------------------------------------------
+ocp4_workload_oadp_channel: stable-1.3
+ocp4_workload_oadp_use_catalog_snapshot: false
+
+# Single User
+ocp4_workload_oadp_multi_user: false
+ocp4_workload_oadp_configure_dpa: true
+ocp4_workload_oadp_storage: minio
+ocp4_workload_oadp_storage_minio_user: minio-admin
+ocp4_workload_oadp_storage_minio_password: minio-password
+ocp4_workload_oadp_storage_minio_name: minio
+ocp4_workload_oadp_storage_minio_namespace: minio
+ocp4_workload_oadp_storage_minio_bucket_name: ocs-storage
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_roadshow_vms
+# -------------------------------------------------------------------
+ocp4_workload_virt_roadshow_vms_start_vms: false
+ocp4_workload_virt_roadshow_vms_num_users: 1
+ocp4_workload_virt_roadshow_vms_namespace: vmimported
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_virt_roadshow_vmware
+# -------------------------------------------------------------------
+ocp4_workload_virt_roadshow_vmware_num_users: 1
+ocp4_workload_virt_roadshow_vmware_vcenter_folder: "ocpvirt-{{ guid }}"
+ocp4_workload_virt_roadshow_vmware_enable_mtv: true
+ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
+
+# ------------------------------------------------------
+# Showroom
+# ------------------------------------------------------
+ocp4_workload_showroom_name: showroom
+ocp4_workload_showroom_namespace: showroom
+
+
+#### IF YOU UPDATE THE CONTENT_GIT_REPO, PLEASE NOTIFY kodonnel@redhat.com and andharri@redhat.com
+#### FROM SERVICES SO THEY CAN MIGRATE TO ANOTHER REPO WITH US
+#### THEY ARE DOWNSTREAM
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-virt-roadshow-cnv
+#### the following is the Equinix based roadshow repo:
+# ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-virt-roadshow.git
+####
+ocp4_workload_showroom_content_git_repo_ref: main
+
+ocp4_workload_showroom_deployment_type: helm
+
+ocp4_workload_showroom_content_only: true
+
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: "1.2.1"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: b18d7a42-2faa-454c-903b-c8cf850ccacd
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2024-06-27
+      pull: missing
+ # sandbox_api:
+ #   actions:
+ #     destroy:
+ #       catch_all: false
+ # sandboxes:
+ # - kind: OcpSandbox
+ #   namespace_suffix: ocp4-cluster
+ #   cloud_selector:
+ #     cloud: cnv
+ #     purpose: prod
+ #     virt: "yes"
+  catalog:
+    display_name: TSHOOT Experience OpenShift Virtualization Roadshow (CNV)
+    category: Workshops
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    multiuser: false
+    keywords:
+    - workshop
+    - openshift
+    - ocp
+    - ocp415
+    - cnv
+    - cnvocp
+    - ocpcnv
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
