@@ -35,9 +35,9 @@ aws_billing_account_id: "017310218799"
 rosa_deploy: true
 # rosa_deploy_hcp: true
 
-rosa_version: "4.15.22"
+rosa_version: "4.16.2"
 # rosa_version: latest
-# rosa_version_base: openshift-v4.15
+# rosa_version_base: openshift-v4.16
 rosa_installer_version: "1.2.41"
 
 rosa_compute_replicas: 3
@@ -71,13 +71,13 @@ infra_workloads:
 - ocp4_workload_rosa_machinepool
 - ocp4_workload_authentication_rosa
 - ocp4_workload_openshift_data_foundation
-- ocp4_workload_ansible_automation_platform
-- ocp4_workload_rhacm
-- ocp4_workload_acm_multicluster_observability
 - ocp4_workload_kubevirt
 - ocp4_workload_mtv
-- ocp4_workload_virt_roadshow_vms
+- ocp4_workload_rhacm
+- ocp4_workload_acm_multicluster_observability
 - ocp4_workload_virt_roadshow_vmware
+- ocp4_workload_virt_roadshow_vms
+- ocp4_workload_ansible_automation_platform
 - automation_platform_loader
 - ocp4_workload_showroom
 
@@ -87,12 +87,12 @@ remove_workloads:
 # -------------------------------------------------------------------
 # Workload variables
 # -------------------------------------------------------------------
-ocp4_workload_user_base: user
 ocp4_workload_user_count: 1
+ocp4_workload_user_name: user
 ocp4_workload_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
-# ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-# ocp4_workload_catalogsource_tag: v4.15_2024_07_08
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.16_2024_07_22
 
 # -------------------------------------------------------------------
 # ocp4_workload_rosa_machinepool
@@ -106,7 +106,7 @@ ocp4_workload_rosa_machinepool_instance_type: m5zn.metal
 ocp4_workload_authentication_rosa_token: "{{ rosa_token }}"
 
 ocp4_workload_authentication_rosa_user_count: "{{ ocp4_workload_user_count }}"
-ocp4_workload_authentication_rosa_user_base: "{{ ocp4_workload_user_base }}"
+ocp4_workload_authentication_rosa_user_name: "{{ ocp4_workload_user_name }}"
 ocp4_workload_authentication_rosa_user_password: "{{ ocp4_workload_user_password }}"
 
 ocp4_workload_authentication_rosa_aws_access_key_id: "{{ lookup('env','AWS_ACCESS_KEY_ID') | default(aws_access_key_id, true) | mandatory }}"
@@ -117,9 +117,56 @@ ocp4_workload_authentication_rosa_aws_region: "{{ lookup('env','AWS_DEFAULT_REGI
 # ocp4_workload_openshift_data_foundation
 # -------------------------------------------------------------------
 ocp4_workload_openshift_data_foundation_channel: stable-4.15
-ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+# ocp4_workload_openshift_data_foundation_catalogsource_setup: true
+# ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+# ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_openshift_data_foundation_update_default_storage_class: true
-ocp4_workload_openshift_data_foundation_new_default_storage_class_name: ocs-storagecluster-ceph-rbd
+
+# -------------------------------------------------------------------
+# ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+# ocp4_workload_kubevirt_use_catalog_snapshot: true
+# ocp4_workload_kubevirt_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+# ocp4_workload_kubevirt_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_kubevirt_workload_tolerations:
+- key: metal
+  operator: Exists
+
+# -------------------------------------------------------------------
+# ocp4_workload_mtv
+# -------------------------------------------------------------------
+ocp4_workload_mtv_channel: release-v2.6
+# ocp4_workload_mtv_use_catalog_snapshot: true
+# ocp4_workload_mtv_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+# ocp4_workload_mtv_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_rhacm
+# -------------------------------------------------------------------
+ocp4_workload_rhacm_acm_channel: release-2.11
+# ocp4_workload_rhacm_use_catalog_snapshot: true
+# ocp4_workload_rhacm_catalog_source_image: "{{ ocp4_workload_catalogsource_image }}"
+# ocp4_workload_rhacm_catalog_source_tag: "{{ ocp4_workload_catalogsource_tag}}"
+
+# workaround because this var is expected by the role here:
+# https://github.com/redhat-cop/agnosticd/blob/08a0964bf999a4aa42087fb8785cd29240851d27/ansible/roles_ocp_workloads/ocp4_workload_rhacm/templates/multiclusterhub.yaml.j2#L6
+master_instance_count: 2
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_roadshow_vmware
+# -------------------------------------------------------------------
+ocp4_workload_virt_roadshow_vmware_num_users: "{{ ocp4_workload_user_count }}"
+ocp4_workload_virt_roadshow_vmware_vcenter_folder: "ocpvirt-{{ guid }}"
+ocp4_workload_virt_roadshow_vmware_enable_mtv: true
+ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_roadshow_vms
+# -------------------------------------------------------------------
+ocp4_workload_virt_roadshow_vms_num_users: "{{ ocp4_workload_user_count }}"
+ocp4_workload_virt_roadshow_vms_namespace: vmimported
+ocp4_workload_virt_roadshow_vms_start_vms: true
 
 # -------------------------------------------------------------------
 # ocp4_workload_ansible_automation_platform
@@ -129,50 +176,6 @@ ocp4_workload_ansible_automation_platform_admin_password: "{{ ocp4_workload_user
 ocp4_workload_ansible_automation_platform_manifest:
   url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
   inject: true
-
-# -------------------------------------------------------------------
-# ocp4_workload_rhacm
-# -------------------------------------------------------------------
-ocp4_workload_rhacm_acm_channel: release-2.11
-ocp4_workload_rhacm_use_catalog_snapshot: false
-#ocp4_workload_rhacm_catalogsource_name: catalogsource-rhacm
-#ocp4_workload_rhacm_catalog_source_image: "{{ ocp4_workload_catalogsource_image }}"
-#ocp4_workload_rhacm_catalog_source_tag: "{{ ocp4_workload_catalogsource_tag}}"
-
-# workaround
-master_instance_count: 2
-
-# -------------------------------------------------------------------
-# ocp4_workload_kubevirt
-# -------------------------------------------------------------------
-ocp4_workload_kubevirt_channel: stable
-ocp4_workload_kubevirt_workload_tolerations:
-- key: metal
-  operator: Exists
-ocp4_workload_kubevirt_use_catalog_snapshot: false
-agnosticd_open_environment: true
-sandbox_user_info_messages_enable: false
-
-# -------------------------------------------------------------------
-# ocp4_workload_mtv
-# -------------------------------------------------------------------
-ocp4_workload_mtv_channel: release-v2.6
-ocp4_workload_mtv_max_vm_inflight: 2
-
-# -------------------------------------------------------------------
-# ocp4_workload_virt_roadshow_vms
-# -------------------------------------------------------------------
-ocp4_workload_virt_roadshow_vms_start_vms: true
-ocp4_workload_virt_roadshow_vms_num_users: "{{ ocp4_workload_user_count }}"
-ocp4_workload_virt_roadshow_vms_namespace: vmimported
-
-# -------------------------------------------------------------------
-# ocp4_workload_virt_roadshow_vmware
-# -------------------------------------------------------------------
-ocp4_workload_virt_roadshow_vmware_num_users: "{{ ocp4_workload_user_count }}"
-ocp4_workload_virt_roadshow_vmware_vcenter_folder: "ocpvirt-{{ guid }}"
-ocp4_workload_virt_roadshow_vmware_enable_mtv: true
-ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
 
 # -------------------------------------------------------------------
 # automation_platform_loader
