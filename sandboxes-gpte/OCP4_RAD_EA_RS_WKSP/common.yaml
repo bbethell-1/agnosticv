@@ -31,6 +31,10 @@ cloud_provider: ec2
 # -------------------------------------------------------------------
 platform: rhpds
 
+# TODO: Requested change - setting a common but memorable password for prod
+common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_password: "{{ common_user_password }}" #Required for dev hub bootstrap role
+
 # -------------------------------------------------------------------
 # VM configuration
 # -------------------------------------------------------------------
@@ -82,7 +86,7 @@ update_packages: true
 # Student User on Bastion
 # -------------------------------------------------------------------
 install_student_user: true
-student_name: lab-user
+student_name: "{{ common_user_password }}"
 # --- student_password not set -> generate random password
 # student_password: ""
 # --- Student is allowed to sudo and switch to root
@@ -137,20 +141,20 @@ ocp4_approve_certificate_signing_requests_recheck_delay: 60
 # added secrets to access models from S3 bucket
 models_aws_s3_access_key: !vault |
           $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
-          65306437383963343433313063663035656464656633336432336432623534633263646438633333
-          3039313361396264376534646465383863656330626634610a636333613332386338306538393466
-          64373335386138633131653437396265396438366563356232336465366535623736356634613730
-          6439636135363966310a633965353437626461616632666564313564376665653730656437346130
-          63653539343961363837623465366366613639323964366339653338333938313433
+          37393362653231343836356262616562363137653333373533373966636664333137316132623138
+          6262346238313531656531643030323935393034653961380a323865343931333431646433613637
+          38633263306539346137626639303664336566633339323432386534376239313266386637373939
+          3466363061613963360a656464633563346637313937366431316164636662323865353665633366
+          63303534353532303537343632646566336230353662646664363865373136663461
 
 models_aws_s3_secret_key: !vault |
           $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
-          66633063616161386164663637353832666632376564336561663335306534343237363439623934
-          3836663838316237653338613563653135303633393839360a363436373736383937626131643434
-          65343234393630366334373132336238356230636431646162663165656664663538356432326638
-          6365376331383132370a353737323630343835613935646635666262313032323939646264653666
-          64653334383663393338396237353363333566356263373933376164616436326462356365393263
-          3838396162376335333033623739636134643465623563663139
+          39363536383835326665623462623737396632383134353562613533366366613035353265306466
+          3633323635626130373961373664623363386431636662640a373164616238363632633161326538
+          61366462396231646333626262313064626239356663323736363936656263306266666535623362
+          3162356434396364300a613565313032626462303636306664333738663562333138346630306463
+          39336538353164396163343530353936346234353338363035393662323363373534306231313238
+          3631663265346531653836306564366336376139333663663865
 
 redhat_gpte_devhub_pull_secret: !vault |
   $ANSIBLE_VAULT;1.1;AES256;gpte_vault_0
@@ -182,6 +186,8 @@ infra_workloads:
   - ocp4_workload_nvidia_gpu_setup
   #- ocp4_workload_gitea_operator
   #- ocp4_workload_rhacm
+  - ocp4_workload_minio
+  - ocp4_workload_s3_model_copy_to_minio
   - ocp4_workload_redhat_developer_hub_bootstrap
   - ocp4_workload_pipelines
   - ocp4_workload_gitops_gitlab
@@ -285,6 +291,58 @@ nvidia_gpu_operator_catalog_snapshot_image: ""
 nvidia_gpu_operator_catalog_snapshot_image_tag: ""
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_minio
+# -------------------------------------------------------------------
+# Latest release is : RELEASE.2023-06-19T19-52-50Z
+# Image from : quay.io/minio/minio
+ocp4_workload_minio_project: ic-shared-minio
+# Port for the LoadBalancer Service
+ocp4_workload_minio_port: 9000
+ocp4_workload_minio_storage_size: "150Gi"
+ocp4_workload_minio_access_key: minio
+ocp4_workload_minio_secret_key: minio123
+# Use current (2024) Minio image:
+#   Setting up Minio is only supported for the new image
+ocp4_workload_minio_modern_deployment: true
+ocp4_workload_minio_image: quay.io/minio/minio
+ocp4_workload_minio_image_tag: RELEASE.2024-05-28T17-19-04Z
+# Access Credentials for new Minio image
+# Should be overwritten via Global Variables !!!
+ocp4_workload_minio_root_user: minio
+ocp4_workload_minio_root_password: minio123
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_s3_model_copy_to_minio
+# -------------------------------------------------------------------
+ocp4_workload_s3_model_copy_to_minio_project: "{{ ocp4_workload_minio_project }}"
+
+# Port for the LoadBalancer Service
+ocp4_workload_s3_model_copy_to_minio_port: "{{ ocp4_workload_minio_port }}"
+
+# Access credentials. Not necessary when doing a modern image (set root vars below instead)
+# Should be overwritten via Global Variables !!!
+ocp4_workload_s3_model_copy_to_minio_access_key: "{{ ocp4_workload_minio_access_key }}"
+ocp4_workload_s3_model_copy_to_minio_secret_key: "{{ ocp4_workload_minio_secret_key }}"
+ocp4_workload_s3_model_copy_to_minio_bucket: ""
+ocp4_workload_s3_model_copy_to_minio_endpoint: "http://minio.{{ ocp4_workload_minio_project }}.svc.cluster.local:9000/"
+
+ocp4_workload_s3_model_copy_to_minio_modern_deployment: "{{ ocp4_workload_minio_modern_deployment }}"
+ocp4_workload_s3_model_copy_to_minio_root_user: "{{ ocp4_workload_minio_root_user }}"
+ocp4_workload_s3_model_copy_to_minio_root_password: "{{ ocp4_workload_minio_root_password }}"
+
+#s3 access parameters
+ocp4_workload_s3_model_copy_to_minio_s3_access_key: "{{ models_aws_s3_access_key }}"
+ocp4_workload_s3_model_copy_to_minio_s3_secret_key: "{{ models_aws_s3_secret_key }}"
+ocp4_workload_s3_model_copy_to_minio_s3_region: "us-east-1"
+ocp4_workload_s3_model_copy_to_minio_s3_endpoint: ""
+ocp4_workload_s3_model_copy_to_minio_s3_bucket: "model-serve"
+ocp4_workload_s3_model_copy_to_minio_s3_folders:
+  - parasol-instruct
+  - granite-7b-lab
+  - merlinite-7b-lab
+  - parasol-chat
+  - parasol-embedding
+# -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm
 # -------------------------------------------------------------------
 # release-2.10 multiclusterhub fails on OCP 4.16
@@ -304,7 +362,7 @@ ocp4_workload_quay_operator_use_catalog_snapshot: true
 ocp4_workload_quay_operator_catalogsource_name: redhat-operators-snapshot-quay
 ocp4_workload_quay_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_quay_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-ocp4_workload_quay_operator_registry_admin_password: "{{ common_password }}"
+ocp4_workload_quay_operator_registry_admin_password: "{{ common_user_password }}"
 
 # ---------------------------------------------------------
 # Workload: OpenShift Pipelines
@@ -328,7 +386,7 @@ ocp4_workload_gitops_gitlab_config_smtp_port: "587"
 ocp4_workload_gitops_gitlab_config_smtp_user: "gitlab"
 ocp4_workload_gitops_gitlab_config_smtp_password: "gitlab"
 ocp4_workload_gitops_gitlab_config_ssh_port: "22"
-ocp4_workload_gitops_gitlab_config_rootPassword: "{{ common_password }}"
+ocp4_workload_gitops_gitlab_config_rootPassword: "{{ common_admin_password }}"
 ocp4_workload_gitops_gitlab_config_https: "true"
 ocp4_workload_gitops_gitlab_config_root_email: "root@opentlc.com"
 ocp4_workload_gitops_gitlab_config_keybase_db: "0123456789"
@@ -360,7 +418,7 @@ ocp4_workload_gitops_gitlab_import_repos:
         url: https://github.com/rh-rad-ai-roadshow/parasol-insurance.git
 
 ocp4_workload_gitops_gitlab_users_count: "{{ num_users | default(1) }}"
-ocp4_workload_gitops_gitlab_users_password: "{{ common_password }}"
+ocp4_workload_gitops_gitlab_users_password: "{{ common_user_password }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_redhat_developer_hub
@@ -373,7 +431,7 @@ ocp4_workload_redhat_developer_hub_backstage_gitlab_user_create: "{{ ocp4_worklo
 ocp4_workload_redhat_developer_hub_backstage_gitlab_user_username: "{{ ocp4_workload_gitops_gitlab_user_username | default(omit) }}"
 ocp4_workload_redhat_developer_hub_backstage_gitlab_user_password: "{{ ocp4_workload_gitops_gitlab_user_password }}"
 ocp4_workload_redhat_developer_hub_admin_user: admin
-ocp4_workload_redhat_developer_hub_admin_password: "{{ common_password }}"
+ocp4_workload_redhat_developer_hub_admin_password: "{{ common_admin_password }}"
 ocp4_workload_redhat_developer_hub_gitlab_template_locations:
   - group: rhdh
     project: software-templates
@@ -402,7 +460,7 @@ ocp4_workload_redhat_developer_hub_gitlab_template_locations:
       - scaffolder-templates/poi-backend/template.yaml
 
 ocp4_workload_redhat_developer_hub_users_count: "{{ num_users | default(1) }}"
-ocp4_workload_redhat_developer_hub_users_password: "{{ common_password }}"
+ocp4_workload_redhat_developer_hub_users_password: "{{ common_user_password }}"
 
 ocp4_workload_redhat_developer_hub_backstage_helm_chart_repo: https://charts.openshift.io
 ocp4_workload_redhat_developer_hub_backstage_helm_chart: redhat-developer-hub
@@ -578,8 +636,6 @@ ocp4_workload_ossm_servicemesh_startingcsv: ""
 # -------------------------------------------------------------------
 ocp4_workload_rhsso_namespace: rhsso
 # ---------------------------------------------------------
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-
 ocp4_workload_rhsso_authentication_namespace: rhsso
 ocp4_workload_rhsso_authentication_target_namespaces: ["rhsso"]
 ocp4_workload_rhsso_authentication_channel: stable
@@ -589,11 +645,11 @@ ocp4_workload_rhsso_authentication_catalogsource_tag: "{{ ocp4_workload_catalogs
 
 ocp4_workload_rhsso_authentication_admin_create: true
 ocp4_workload_rhsso_authentication_admin_username: admin
-ocp4_workload_rhsso_authentication_admin_password: "{{ common_password }}"
+ocp4_workload_rhsso_authentication_admin_password: "{{ common_admin_password }}"
 
 ocp4_workload_rhsso_authentication_user_count: "{{ num_users | default(0) }}"
 ocp4_workload_rhsso_authentication_user_name_base: user
-ocp4_workload_rhsso_authentication_user_password: openshift
+ocp4_workload_rhsso_authentication_user_password: "{{ common_user_password }}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops_fix_argocd
@@ -607,7 +663,7 @@ ocp4_workload_openshift_gitops_fix_argocd_create_namespace: false
 # ocp4_workload_argocd_bootstrap variables
 # -------------------------------------------------------------------
 ocp4_workload_argocd_bootstrap_repo_list:
-  - repo: https://github.com/redhat-gpte-devopsautomation/rad-model-deployment.git
+  - repo: https://github.com/redhat-gpte-devopsautomation/only-rad-models-deployment.git
     branch: dev
     bootstrap_path: bootstrap/applicationset/applicationset-bootstrap.yaml
 
