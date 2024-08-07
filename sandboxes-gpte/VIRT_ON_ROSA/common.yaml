@@ -179,95 +179,13 @@ ocp4_workload_ansible_automation_platform_manifest:
 # -------------------------------------------------------------------
 # automation_platform_loader
 # -------------------------------------------------------------------
+
+# Common variables
 vmware_host: "{{ hostvars['localhost']['vcenter_hostname'] }}"
-vmware_username: "{{ lookup('agnosticd_user_data', 'vcenter_full_user') }}"
-vmware_password: "{{ lookup('agnosticd_user_data', 'vcenter_password') }}"
-kubeconfig: "{{ ocp4_workload_ansible_automation_platform_kubeconfig | b64decode }}"
 project_name: OpenShift Virtualization Project
 organization: Default
-scm_type: git
-scm_url: https://github.com/rhpds/ocp-virt.git
-scm_branch: virt-migration-demo-2.0.0
-awx_ee_image: quay.io/ansible/awx-ee:24.3.0
-migration_playbook: playbook.yml
-aap_job_template_basic_survey: >-
-  {
-    "name": "Basic Survey",
-    "description": "Basic Survey",
-    "spec": [
-      {
-        "question_description": "VMware Provider Name",
-        "min": 0,
-        "default": "vmware",
-        "max": 128,
-        "required": true,
-        "choices": "",
-        "new_question": true,
-        "variable": "provider_name",
-        "question_name": "Name of your provider?",
-        "type": "text"
-      },
-      {
-        "question_description": "Migration Plan",
-        "min": 0,
-        "default": "migration-plan",
-        "max": 128,
-        "required": true,
-        "choices": "",
-        "new_question": true,
-        "variable": "plan_name",
-        "question_name": "Name of your migration plan?",
-        "type": "text"
-      },
-      {
-        "question_description": "Storage Mapping",
-        "min": 0,
-        "default": "storagemap",
-        "max": 128,
-        "required": true,
-        "choices": "",
-        "new_question": true,
-        "variable": "storagemap_name",
-        "question_name": "Name of your storage mapping?",
-        "type": "text"
-      },
-      {
-        "question_description": "Network Mapping",
-        "min": 0,
-        "default": "networkmap",
-        "max": 128,
-        "required": true,
-        "choices": "",
-        "new_question": true,
-        "variable": "networkmap_name",
-        "question_name": "Name of your network mapping?",
-        "type": "text"
-      },
-      {
-        "question_description": "VM Names",
-        "min": 0,
-        "default": "",
-        "max": 128,
-        "required": true,
-        "choices": "",
-        "new_question": true,
-        "variable": "user_selected_vm_names",
-        "question_name": "What are the names of the VMs to migrate?",
-        "type": "textarea"
-      }
-    ]
-  }
 
-configure_automationcontroller: true
-controller_configuration_job_templates_secure_logging: false
-controller_configuration_credentials_secure_logging: false
-
-aap_auth:
-  controller_host: "aap-aap.apps.cluster-{{ guid }}.{{ cluster_dns_zone }}"
-  controller_username: admin
-  controller_password: "{{ ocp4_workload_user_password }}"
-  controller_verify_ssl: false
-
+# Roles and variables from here: https://github.dev/redhat-cop/controller_configuration
 controller_configuration_dispatcher_roles:
 - role: credential_types
   var: controller_credential_types
@@ -291,34 +209,34 @@ controller_configuration_dispatcher_roles:
   var: controller_templates
   tags: templates
 
-controller_projects:
-- name: "{{ project_name }}"
-  organization: "{{ organization }}"
-  scm_branch: "{{ scm_branch }}"
-  scm_clean: 'false'
-  scm_delete_on_update: 'false'
-  scm_type: "{{ scm_type }}"
-  scm_update_on_launch: 'true'
-  scm_url: "{{ scm_url }}"
-
 controller_credentials:
 - name: "kubeconfig"
   credential_type: "kubeconfig"
   organization: "Default"
   inputs:
-    kube_config: "{{ kubeconfig }}"
+    kube_config: "{{ ocp4_workload_ansible_automation_platform_kubeconfig | b64decode }}"
 - name: "VMware Credentials"
   credential_type: "VMware vCenter"
   organization: Default
   inputs:
     host: "{{ vmware_host }}"
-    username: "{{ vmware_username }}"
-    password: "{{ vmware_password }}"
+    username: "{{ lookup('agnosticd_user_data', 'vcenter_full_user') }}"
+    password: "{{ lookup('agnosticd_user_data', 'vcenter_password') }}"
 
 controller_execution_environments:
 - name: "AWX EE"
-  image: "{{ awx_ee_image }}"
+  image: quay.io/ansible/awx-ee:24.3.0
   pull: missing
+
+controller_projects:
+- name: "{{ project_name }}"
+  organization: "{{ organization }}"
+  scm_branch: virt-migration-demo-2.0.0
+  scm_clean: 'false'
+  scm_delete_on_update: 'false'
+  scm_type: git
+  scm_update_on_launch: 'true'
+  scm_url: https://github.com/rhpds/ocp-virt.git
 
 controller_inventories:
 - name: "OpenShift Virtualization Inventory"
@@ -344,12 +262,78 @@ controller_templates:
   organization: "{{ organization }}"
   inventory: Demo Inventory
   project: "{{ project_name }}"
-  playbook: "{{ migration_playbook }}"
+  playbook: playbook.yml
   credentials:
   - "kubeconfig"
   - "VMware Credentials"
   survey_enabled: true
-  survey: "{{ aap_job_template_basic_survey }}"
+  survey: >-
+    {
+      "name": "Basic Survey",
+      "description": "Basic Survey",
+      "spec": [
+        {
+          "question_description": "VMware Provider Name",
+          "min": 0,
+          "default": "vmware",
+          "max": 128,
+          "required": true,
+          "choices": "",
+          "new_question": true,
+          "variable": "provider_name",
+          "question_name": "Name of your provider?",
+          "type": "text"
+        },
+        {
+          "question_description": "Migration Plan",
+          "min": 0,
+          "default": "migration-plan",
+          "max": 128,
+          "required": true,
+          "choices": "",
+          "new_question": true,
+          "variable": "plan_name",
+          "question_name": "Name of your migration plan?",
+          "type": "text"
+        },
+        {
+          "question_description": "Storage Mapping",
+          "min": 0,
+          "default": "storagemap",
+          "max": 128,
+          "required": true,
+          "choices": "",
+          "new_question": true,
+          "variable": "storagemap_name",
+          "question_name": "Name of your storage mapping?",
+          "type": "text"
+        },
+        {
+          "question_description": "Network Mapping",
+          "min": 0,
+          "default": "networkmap",
+          "max": 128,
+          "required": true,
+          "choices": "",
+          "new_question": true,
+          "variable": "networkmap_name",
+          "question_name": "Name of your network mapping?",
+          "type": "text"
+        },
+        {
+          "question_description": "VM Names",
+          "min": 0,
+          "default": "",
+          "max": 128,
+          "required": true,
+          "choices": "",
+          "new_question": true,
+          "variable": "user_selected_vm_names",
+          "question_name": "What are the names of the VMs to migrate?",
+          "type": "textarea"
+        }
+      ]
+    }
   extra_vars:
     vmware_host: "{{ vmware_host }}"
 
