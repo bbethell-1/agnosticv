@@ -81,18 +81,33 @@ common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 # -------------------------------------------------------------------
 # OpenShift Installer Version
 # -------------------------------------------------------------------
-ocp4_installer_version: "4.14.20"
+ocp4_installer_version: "4.16"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 master_instance_count: 3
 master_instance_type: m5.4xlarge
+master_storage_type: io1
+master_storage_size: 250
 worker_instance_count: 3
-worker_instance_type: m5.8xlarge
+worker_instance_type: m6a.8xlarge
+worker_storage_type: gp3
+worker_storage_size: 250
+
+openshift_machineset_aws_zones:
+  - "{{ instance_zone_a }}"
+  - "{{ instance_zone_b }}"
+  - "{{ instance_zone_c }}"
+
+instance_zone_a: us-east-2a
+instance_zone_b: us-east-2b
+instance_zone_c: us-east-2c
+
+gpu_instance_type: g5.2xlarge
 
 # -------------------------------------------------------------------
 # Workload variables
 # -------------------------------------------------------------------
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.14_2024_05_20
+ocp4_workload_catalogsource_tag: v4.16_2024_07_15
 
 # -------------------------------------------------------------------
 # OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
@@ -112,13 +127,30 @@ update_packages: true
 # Student User on Bastion
 # -------------------------------------------------------------------
 install_student_user: true
-# --- student_name not set -> Requestor User ID is used as student_name
 student_name: lab-user
 # --- student_password not set -> generate random password
-student_password: "{{ common_password }}"
+# student_password: ""
 # --- Student is allowed to sudo and switch to root
 student_sudo: true
 
+# -------------------------------------------------------------------
+# Customizations to packages and virtualenvs to enable ovirt.ovirt
+# -------------------------------------------------------------------
+# Add prereqs for ovirt-engine-sdk-python Python package
+host_virtualenv_package_prereqs:
+  - gcc
+  - python3
+  - python3-devel
+  - python3-libselinux
+  - python3-pip
+  - libcurl-devel
+  - openssl-devel
+  - libxml2-devel
+
+# Add required Python packages to virtualenv for ovirt.ovirt collection
+host_virtualenv_requirements_override:
+  - ovirt-engine-sdk-python==4.5.0
+  - passlib==1.7.4
 # -------------------------------------------------------------------
 # Other Variables
 # -------------------------------------------------------------------
@@ -130,35 +162,97 @@ install_ftl: false
 # -------------------------------------------------------------------
 requirements_content:
   collections:
-  - name: kubernetes.core
-    version: 2.3.1
-  - name: openstack.cloud
-    version: 1.7.2
-  - name: amazon.aws
-    version: 2.2.0
-  - name: community.general
-    version: 4.6.1
-  - name: ansible.posix
-    version: 1.3.0
-  - name: awx.awx
-    version: 21.1.0
-  - name: ansible.utils
-    version: 2.7.0
+    - name: kubernetes.core
+      version: 2.4.0
+    - name: amazon.aws
+      version: 2.3.0
+    - name: community.general
+      version: 6.4.0
+    - name: ansible.posix
+      version: 1.5.1
+    - name: ovirt.ovirt
+      version: 3.1.1
+    - name: awx.awx
+      version: 21.1.0
+
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
+
+ocp4_network_type: OVNKubernetes
+
+# Because this environment includes Bare Metal instances wait longer for
+# CSRs to appear
+ocp4_approve_certificate_signing_requests_initial_delay: 240
+ocp4_approve_certificate_signing_requests_recheck_delay: 60
+
+# added secrets to access models from S3 bucket
+models_aws_s3_access_key: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          37393362653231343836356262616562363137653333373533373966636664333137316132623138
+          6262346238313531656531643030323935393034653961380a323865343931333431646433613637
+          38633263306539346137626639303664336566633339323432386534376239313266386637373939
+          3466363061613963360a656464633563346637313937366431316164636662323865353665633366
+          63303534353532303537343632646566336230353662646664363865373136663461
+
+models_aws_s3_secret_key: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          39363536383835326665623462623737396632383134353562613533366366613035353265306466
+          3633323635626130373961373664623363386431636662640a373164616238363632633161326538
+          61366462396231646333626262313064626239356663323736363936656263306266666535623362
+          3162356434396364300a613565313032626462303636306664333738663562333138346630306463
+          39336538353164396163343530353936346234353338363035393662323363373534306231313238
+          3631663265346531653836306564366336376139333663663865
 
 infra_workloads:
-- ocp4_workload_le_certificates
-- ocp4_workload_openshift_data_foundation
-- ocp4_workload_rhacm
-- ocp4_workload_amq_streams
-- ocp4_workload_redhat_developer_hub_bootstrap
-- ocp4_workload_trusted_artifact_signer
-- ocp4_workload_pipelines
-- ocp4_workload_gitops_gitlab
-- ocp4_workload_sonarqube
-- ocp4_workload_rhacs
-- ocp4_workload_trusted_profile_analyzer
-- ocp4_workload_trusted_application_pipeline
-- ocp4_workload_showroom
+  - ocp4_workload_le_certificates
+  - ocp4_workload_openshift_data_foundation
+  - ocp4_workload_rhacm
+{% if gpu_enabled == 'yes' %}
+  - ocp4_workload_machinesets
+  - ocp4_workload_nvidia_gpu_setup
+  - ocp4_workload_minio
+  - ocp4_workload_s3_model_copy_to_minio
+{% endif %}
+  - ocp4_workload_redhat_developer_hub_bootstrap
+  - ocp4_workload_trusted_artifact_signer
+  - ocp4_workload_pipelines
+  - ocp4_workload_gitops_gitlab
+  - ocp4_workload_sonarqube
+  - ocp4_workload_rhacs
+  - ocp4_workload_trusted_profile_analyzer
+  - ocp4_workload_trusted_application_pipeline
+{% if gpu_enabled == 'yes' %}
+  - ocp4_workload_serverless
+  - ocp4_workload_ossm
+  - ocp4_workload_openshift_ai
+{% endif %}
+
+# -------------------------------------------------------------------
+# ocp4_workload_s3_model_copy_to_minio
+# -------------------------------------------------------------------
+ocp4_workload_s3_model_copy_to_minio_project: ic-shared-minio
+ocp4_workload_s3_model_copy_to_minio_root_user: minio
+ocp4_workload_s3_model_copy_to_minio_root_password: "{{ common_password }}"
+ocp4_workload_s3_model_copy_to_minio_bucket: models
+ocp4_workload_s3_model_copy_to_minio_s3_folders:
+  - parasol-instruct
+ocp4_workload_s3_model_copy_to_minio_modern_deployment: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_minio
+# -------------------------------------------------------------------
+ocp4_workload_minio_project: ic-shared-minio
+ocp4_workload_minio_storage_size: 256Gi
+ocp4_workload_minio_modern_deployment: true
+ocp4_workload_minio_expose_route: true
+ocp4_workload_minio_root_user: minio
+ocp4_workload_minio_root_password: "{{ common_password }}"
+ocp4_workload_minio_image: quay.io/minio/minio
+ocp4_workload_minio_image_tag: RELEASE.2024-05-28T17-19-04Z
+ocp4_workload_minio_bucket_setup: true
+ocp4_workload_minio_bucket_name: models
+ocp4_workload_minio_bucket_multi_user: false
 
 #---------------------------------------------------------------------
 # Workload: ocp4_workload_amq_streams
@@ -177,7 +271,7 @@ ocp4_workload_trusted_artifact_signer_rhsso_install: true
 ocp4_workload_trusted_artifact_signer_rhsso_namespace: keycloak-system
 ocp4_workload_trusted_artifact_signer_rhsso_target_namespaces: ["keycloak-system"]
 ocp4_workload_trusted_artifact_signer_rhsso_channel: stable
-ocp4_workload_trusted_artifact_signer_rhsso_starting_csv: rhsso-operator.7.6.8-opr-001
+ocp4_workload_trusted_artifact_signer_rhsso_starting_csv: rhsso-operator.7.6.9-opr-001
 ocp4_workload_trusted_artifact_signer_rhsso_use_catalog_source: true
 ocp4_workload_trusted_artifact_signer_rhsso_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_trusted_artifact_signer_rhsso_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
@@ -186,7 +280,7 @@ ocp4_workload_trusted_artifact_signer_rhsso_automatic_install_plan_approval: tru
 ocp4_workload_trusted_artifact_signer_rhtas_namespace: openshift-operators
 ocp4_workload_trusted_artifact_signer_rhtas_target_namespaces: openshift-operators
 ocp4_workload_trusted_artifact_signer_rhtas_channel: stable
-ocp4_workload_trusted_artifact_signer_rhtas_starting_csv: rhtas-operator.v1.0.0
+ocp4_workload_trusted_artifact_signer_rhtas_starting_csv: rhtas-operator.v1.0.2
 ocp4_workload_trusted_artifact_signer_rhtas_use_catalog_source: true
 ocp4_workload_trusted_artifact_signer_rhtas_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_trusted_artifact_signer_rhtas_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
@@ -201,8 +295,8 @@ ocp4_workload_trusted_artifact_signer_rhtas_config:
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacs
 # -------------------------------------------------------------------
-ocp4_workload_rhacs_install_operator_channel: "rhacs-4.2"
-ocp4_workload_rhacs_install_operator_starting_csv: "rhacs-operator.v4.2.0"
+ocp4_workload_rhacs_install_operator_channel: "rhacs-4.5"
+ocp4_workload_rhacs_install_operator_starting_csv: "rhacs-operator.v4.5.0"
 ocp4_workload_rhacs_install_operator_use_catalog_snapshot: false
 ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
 
@@ -210,7 +304,7 @@ ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
 # Workload: ocp4_workload_rhacm
 # -------------------------------------------------------------------
 
-ocp4_workload_rhacm_acm_channel: "release-2.8"
+ocp4_workload_rhacm_acm_channel: "release-2.11"
 ocp4_workload_rhacm_use_catalog_snapshot: false
 
 # -----------------------------------
@@ -229,8 +323,15 @@ ocp4_workload_quay_operator_registry_admin_password: "{{ common_password }}"
 # -------------------------------------------------------------------
 # OpenShift Data Foundations Operator
 # -------------------------------------------------------------------
-ocp4_workload_openshift_data_foundation_channel: stable-4.14
-ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+ocp4_workload_openshift_data_foundation_channel: stable-4.15
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_old_default_storage_class_name: gp3-csi
+
+ocp4_workload_openshift_data_foundation_catalogsource_setup: true
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
+ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # ---------------------------------------------------------
 # Workload: OpenShift Pipelines
@@ -274,6 +375,10 @@ ocp4_workload_gitops_gitlab_import_repos:
     url: https://github.com/redhat-gpe/trusted-application-pipeline-templates.git
   - name: wind-turbine-templates
     url: https://github.com/redhat-gpe/wind-turbine-templates.git
+{% if gpu_enabled == 'yes' %}
+  - name: rhoai-on-rhdh-templates
+    url: https://github.com/redhat-gpte-devopsautomation/rhoai-on-rhdh-templates.git
+{% endif %}
 - name: summit-lab
   repo:
   - name: backstage-workshop
@@ -306,6 +411,16 @@ ocp4_workload_trusted_application_pipeline_gitlab_template_locations:
     allow: Template
   templates:
   - scaffolder-templates/quarkus-stssc-template/template.yaml
+{% if gpu_enabled == 'yes' %}
+- group: rhdh
+  project: rhoai-on-rhdh-templates
+  branch: main
+  file: showcase-templates.yaml
+  rules:
+    allow: Template
+  templates:
+    - scaffolder-templates/chatbot-llm-template/template.yaml
+{% endif %}
 - group: rhdh
   project: trusted-application-pipeline-templates
   branch: main
@@ -399,21 +514,93 @@ ocp4_workload_trusted_profile_analyzer_helm_chart_repo: https://charts.openshift
 ocp4_workload_trusted_profile_analyzer_helm_chart_name: openshift-helm-charts/redhat-trusted-profile-analyzer
 ocp4_workload_trusted_profile_analyzer_helm_chart_version: "0.0.4"
 
-# # -------------------------------------------------------------------
-# # Workload: showroom
-# # -------------------------------------------------------------------
-# showroom_deploy: true
-# showroom_git_repo: https://github.com/burrsutter/rhtap-demo.git
-# showroom_git_ref: main
-# showroom_var_inject: true
-# showroom_tab_services: []
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_machinesets
+# -------------------------------------------------------------------
+ocp4_workload_machinesets_disable_default_machinesets: false
+ocp4_workload_machinesets_wait_for_nodes: true
 
-# showroom_ssh_method: sshkey
-# showroom_ssh_username: lab-user
-# showroom_default_ssh_user: lab-user
-# showroom_ssh_host: "bastion.{{ subdomain_base }}"
-# showroom_lab_users:
-# - lab-user
+# Add a MachineSet for AWS Bare Metal instances
+# To add another group of worker nodes - with autoscaling enabled add
+# the following:
+#
+ocp4_workload_machinesets_machineset_groups:
+  - name: worker-gpu
+    autoscale: true
+    total_replicas: 5
+    total_replicas_min: 5
+    total_replicas_max: 5
+    role: worker-gpu
+    taints:
+      - key: nvidia.com/gpu
+        value: true
+        effect: NoSchedule
+    instance_type: "{{ gpu_instance_type }}"
+
+#------------------------------------------------
+# ocp4_workload_nvidia_gpu_setup variables
+# ------------------------------------------------
+ocp4_workload_nvidia_gpu_setup_create_dashboard: true
+
+# ------------------------------------------------
+# Node Feature Discovery Operator
+# ------------------------------------------------
+nfd_operator_namespace: openshift-nfd
+nfd_operator_channel: "stable"
+nfd_operator_automatic_install_plan_approval: true
+nfd_operator_starting_csv: "nfd.4.15.0-202406211306"
+nfd_operator_wait_for_deploy: true
+nfd_operator_use_catalog_snapshot: false
+nfd_operator_catalogsource_name: ""
+nfd_operator_catalog_snapshot_image: ""
+nfd_operator_catalog_snapshot_image_tag: ""
+# ------------------------------------------------
+# NVIDIA GPU Operator
+# ------------------------------------------------
+nvidia_gpu_operator_namespace: nvidia-gpu-operator
+nvidia_gpu_operator_channel: v24.3
+nvidia_gpu_operator_automatic_install_plan_approval: true
+nvidia_gpu_operator_starting_csv: gpu-operator-certified.v24.3.0
+nvidia_gpu_operator_wait_for_deploy: true
+nvidia_gpu_operator_use_catalog_snapshot: false
+nvidia_gpu_operator_catalogsource_name: ""
+nvidia_gpu_operator_catalog_snapshot_image: ""
+nvidia_gpu_operator_catalog_snapshot_image_tag: ""
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_ai
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_automatic_install_plan_approval: false
+ocp4_workload_openshift_ai_starting_csv: "rhods-operator.2.10.0"
+ocp4_workload_openshift_ai_kserve: Managed
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_serverless
+# -------------------------------------------------------------------
+ocp4_workload_serverless_install_serving: false
+ocp4_workload_serverless_install_eventing: false
+
+# -------------------------------------------------------------------
+# Workload ocp4_workload_ossm - Service Mesh
+# -------------------------------------------------------------------
+ocp4_workload_ossm_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_ossm_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# Elasticsearch
+ocp4_workload_ossm_es_channel: stable
+ocp4_workload_ossm_es_startingcsv: ""
+
+# Jaeger
+ocp4_workload_ossm_jaeger_channel: stable
+ocp4_workload_ossm_jaeger_startingcsv: ""
+
+# Kiali
+ocp4_workload_ossm_kiali_channel: stable
+ocp4_workload_ossm_kiali_startingcsv: ""
+
+# Service Mesh
+ocp4_workload_ossm_servicemesh_channel: stable
+ocp4_workload_ossm_servicemesh_startingcsv: ""
 
 # -------------------------------------------------------------------
 # ocp4_workload_showroom
@@ -474,6 +661,19 @@ __meta__:
         - latest
       annotation: demo.redhat.com/rhdh-version
       variable: rhdh_version
+    - name: gpu_enabled
+      description: Enable GPU
+      formGroup: Features
+      formLabel: NVidia GPU Enabled
+      required: false
+      openAPIV3Schema:
+        type: string
+        default: 'no'
+        enum:
+        - 'yes'
+        - 'no'
+      annotation: demo.redhat.com/gpu_enabled
+      variable: gpu_enabled
     labels:
       Base_Component: 'False'
       Product: Red_Hat_OpenShift_Container_Platform
