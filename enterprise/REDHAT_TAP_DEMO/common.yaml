@@ -204,8 +204,7 @@ models_aws_s3_secret_key: !vault |
           39336538353164396163343530353936346234353338363035393662323363373534306231313238
           3631663265346531653836306564366336376139333663663865
 
-{{ if gpu_enabled | eq 'yes' }}
-infra_workloads:
+tap_ai_workloads:
 - ocp4_workload_le_certificates
 - ocp4_workload_openshift_data_foundation
 - ocp4_workload_rhacm
@@ -224,8 +223,8 @@ infra_workloads:
 - ocp4_workload_serverless
 - ocp4_workload_ossm
 - ocp4_workload_openshift_ai
-{{ else }}
-infra_workloads:
+
+tap_workloads:
 - ocp4_workload_le_certificates
 - ocp4_workload_openshift_data_foundation
 - ocp4_workload_rhacm
@@ -237,7 +236,8 @@ infra_workloads:
 - ocp4_workload_rhacs
 - ocp4_workload_trusted_profile_analyzer
 - ocp4_workload_trusted_application_pipeline
-{{ end }}
+
+infra_workloads: "{{ tap_ai_workloads if gpu_enabled == 'yes' else tap_workloads }}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_s3_model_copy_to_minio
@@ -386,10 +386,8 @@ ocp4_workload_gitops_gitlab_import_repos:
     url: https://github.com/redhat-gpe/trusted-application-pipeline-templates.git
   - name: wind-turbine-templates
     url: https://github.com/redhat-gpe/wind-turbine-templates.git
-{% if gpu_enabled == 'yes' %}
   - name: rhoai-on-rhdh-templates
     url: https://github.com/redhat-gpte-devopsautomation/rhoai-on-rhdh-templates.git
-{% endif %}
 - name: summit-lab
   repo:
   - name: backstage-workshop
@@ -413,7 +411,8 @@ ocp4_workload_trusted_application_pipeline_backstage_gitlab_user_username: "{{ o
 ocp4_workload_trusted_application_pipeline_backstage_gitlab_user_password: "{{ ocp4_workload_gitops_gitlab_user_password }}"
 ocp4_workload_trusted_application_pipeline_admin_user: admin
 ocp4_workload_trusted_application_pipeline_admin_password: "{{ common_password }}"
-ocp4_workload_trusted_application_pipeline_gitlab_template_locations:
+
+tap_ai_locations:
 - group: rhdh
   project: trusted-application-pipeline-templates
   branch: main
@@ -422,7 +421,6 @@ ocp4_workload_trusted_application_pipeline_gitlab_template_locations:
     allow: Template
   templates:
   - scaffolder-templates/quarkus-stssc-template/template.yaml
-{% if gpu_enabled == 'yes' %}
 - group: rhdh
   project: rhoai-on-rhdh-templates
   branch: main
@@ -431,7 +429,6 @@ ocp4_workload_trusted_application_pipeline_gitlab_template_locations:
     allow: Template
   templates:
     - scaffolder-templates/chatbot-llm-template/template.yaml
-{% endif %}
 - group: rhdh
   project: trusted-application-pipeline-templates
   branch: main
@@ -464,6 +461,50 @@ ocp4_workload_trusted_application_pipeline_gitlab_template_locations:
   - scaffolder-templates/poi-map/template.yaml
   - scaffolder-templates/poi-gateway/template.yaml
   - scaffolder-templates/poi-backend/template.yaml
+
+tap_locations:
+- group: rhdh
+  project: trusted-application-pipeline-templates
+  branch: main
+  file: showcase-templates.yaml
+  rules:
+    allow: Template
+  templates:
+  - scaffolder-templates/quarkus-stssc-template/template.yaml
+- group: rhdh
+  project: trusted-application-pipeline-templates
+  branch: main
+  file: org.yaml
+  rules:
+    allow: Group, User
+  templates: []
+- group: rhdh
+  project: trusted-application-pipeline-templates
+  branch: main
+  file: catalogs.yaml
+  rules:
+    allow: Component, System, API, Resource, Location, Template
+  templates: []
+- group: rhdh
+  project: wind-turbine-templates
+  branch: master
+  file: showcase-templates.yaml
+  rules:
+    allow: Template
+  templates:
+  - scaffolder-templates/gitlab/quinoa-wind-turbine/template.yaml
+- group: summit-lab
+  project: backstage-workshop
+  branch: master
+  file: showcase-templates.yaml
+  rules:
+    allow: Template
+  templates:
+  - scaffolder-templates/poi-map/template.yaml
+  - scaffolder-templates/poi-gateway/template.yaml
+  - scaffolder-templates/poi-backend/template.yaml
+
+ocp4_workload_trusted_application_pipeline_gitlab_template_locations: "{{ tap_ai_locations if gpu_enabled == 'yes' else tap_locations }}"
 
 ocp4_workload_trusted_application_pipeline_backstage_image: quay.io/rhdh/rhdh-hub-rhel9:1.0
 
