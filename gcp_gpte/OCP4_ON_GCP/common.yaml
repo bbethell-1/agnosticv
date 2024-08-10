@@ -1,37 +1,44 @@
 ---
-#include /includes/parameters/enable-lets-encrypt.yaml
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+
 #include /includes/catalog-icon-gcp.yaml
-#include /includes/parameters/salesforce-id.yaml
-#include /includes/parameters/purpose.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/lifetime-standard.yaml
+
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
 #include /includes/parameters/num-users-salesforce.yaml
 #include /includes/parameters/gcp-region.yaml
-#include /includes/parameters/open-environment-annotation.yaml
 #include /includes/parameters/ocp4-fips-enable.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/parameters/open-environment-annotation.yaml
 #include /includes/parameters/agnosticd_open_environment.yaml
 #include /includes/parameters/student-email.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
 #include /includes/secrets/ocp4_token.yaml
-#include /includes/secrets/demosat-rhel8-latest.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
 env_type: ocp4-cluster
-
 software_to_deploy: openshift4
+cloud_provider: gcp
 
 # -------------------------------------------------------------------
 # Platform
 # -------------------------------------------------------------------
 platform: RHPDS
 
-#---------------------------------------------------
 # -------------------------------------------------------------------
 # OpenShift Version
 # -------------------------------------------------------------------
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-ocp4_installer_version: "4.15"
-ocp4_installer_use_dev_preview: false
+ocp4_installer_version: "4.16"
 
 # -------------------------------------------------------------------
 # Repos
@@ -54,6 +61,13 @@ student_sudo: true
 # -------------------------------------------------------------------
 # GCP Specific
 # -------------------------------------------------------------------
+# Google Cloud Platform specific vars
+cluster_dns_zone: "{{ guid }}.gcp.redhatworkshops.io"
+ocp4_base_domain: "{{ cluster_dns_zone }}"
+
+# Bastion Image
+gcp_rhel_image_family: rhel-9
+
 master_instance_type_family: n2-standard
 master_instance_type_size: >-
   {{ '8' if worker_instance_count|int <= 10
@@ -72,12 +86,7 @@ worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] |
 # --- Infra Workloads (YAML List)
 infra_workloads:
 - ocp4_workload_authentication
-- ocp4_workload_project_request_template
-- ocp4_workload_opentlc_production
-- ocp4_workload_le_certificates
-
-# --- Student Workloads (YAML List)
-student_workloads: []
+- ocp4_workload_cert_manager
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -96,28 +105,23 @@ ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1'))
 ocp4_workload_authentication_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_opentlc_production
+# Workload: ocp4_workload_cert_manager
 # -------------------------------------------------------------------
-ocp4_workload_opentlc_production_remove_self_provisioner: false
+ocp4_workload_cert_manager_cloud_provider: "{{ cloud_provider}}"
 
-# Google Cloud Platform specific vars
-# account, auth_type, credentials, and project id are all passed by a secret
-# output_dir also needs to be passed in by RHPDS or destroy has a bug
-cloud_provider: gcp
-remote_user: gcpuser
-ansible_user: gcpuser
-# OpenShift 4 (ocp4-cluster) specific vars
-cluster_dns_zone: "{{ guid }}.gcp.redhatworkshops.io"
-ocp4_base_domain: "{{ cluster_dns_zone }}"
+ocp4_workload_cert_manager_gcp_project_id: "{{ gcp_project_id }}"
+ocp4_workload_cert_manager_gcp_credentials: "{{ gcp_credentials }}"
+
+ocp4_workload_cert_manager_channel: stable-v1.14
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+
+ocp4_workload_cert_manager_ignore_errors: true
 
 # -------------------------------------------------------------------
-# AgnosticV meta variables
+# Babylon meta variables
 # -------------------------------------------------------------------
-agnosticv_meta:
-  deploy_with: babylon
-  params_to_variables:
-    username: student_name
-
 __meta__:
   asset_uuid: 69aafe50-509f-480a-b4e7-ccb46fd6fc1d
   anarchy:
@@ -142,5 +146,5 @@ __meta__:
     name: gcp
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.1
+      image: quay.io/agnosticd/ee-multicloud:2024-08-08
       pull: missing
