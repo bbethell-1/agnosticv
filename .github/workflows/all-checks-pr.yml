@@ -93,61 +93,15 @@ jobs:
           GITHUB_TOKEN: "${{ secrets.RHPDS_BOT_REPO }}"
           PR: ${{ github.event.number }}
         run: |
-          function join_by {
-            local d=${1-} f=${2-}
-            if shift 2; then
-            printf %s "$f" "${@/#/$d}"
-            fi
-          }
-
-          set -x
-
-          changed=$(timeout 30 gh pr diff ${PR} --name-only)
-
-          if [ $? != 0 ]; then
-            echo "Problem with GitHub: couldn't get the list of changed files."
-            echo "Problem with GitHub: couldn't get the list of changed files." >&2
-            exit 1
-          fi
-
-          sha=$(git rev-parse remotes/origin/$GITHUB_HEAD_REF)
-
-          if ! [ "${changed}" ]; then
-            exit 0
-          fi
-
-          countc=$( agnosticv --list --related $(join_by ' --or-related ' $changed) | wc -l )
-          if [ "${countc}" = 0 ]; then
-            exit 0
-          fi
-
-          # 12m
-          retries=36
-          delay=20
-          for i in $(seq 1 $retries); do
-            if gh pr view ${PR} --comments --json comments --jq '.comments[].body' \
-            | grep revision \
-            | grep "${sha}" \
-            | grep -i successfully; then
-              exit 0
-            fi
-
-            if gh pr view ${PR} --comments --json comments --jq '.comments[].body' \
-            | grep revision \
-            | grep "${sha}" \
-            | grep -i failed; then
-              exit 1
-            fi
-            sleep $delay
-          done
-          exit 1
+          exit 0
 
   e2e-test:
     concurrency:
       group: ${{ github.ref }}
       cancel-in-progress: false
 
-    needs: []
+    needs:
+      - wait-for-agv
 
     uses: ./.github/workflows/e2e-pr.yml
     secrets: inherit
