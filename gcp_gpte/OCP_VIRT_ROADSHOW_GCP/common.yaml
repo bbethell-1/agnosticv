@@ -1,7 +1,7 @@
 ---
 # -------------------------------------------------------------------
 # --- Catalog: Red Workshops
-# --- Catalog Item: Experience OpenShift Virtualization Roadshow on GCP
+# --- Catalog Item: OpenShift Virtualization Roadshow on GCP Demo
 # -------------------------------------------------------------------
 # AgnosticV Includes
 # -------------------------------------------------------------------
@@ -20,14 +20,19 @@
 #include /includes/parameters/student-email.yaml
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/demosat-rhel8-latest.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/parameters/showroom-ocp-defaults.yaml
 # Old IBM Vmware
 # include /includes/secrets/vmware-ibm-access.yaml
 # New IBM Vmware
 #include /includes/secrets/vmware-ibm-rs00-access.yaml
 # –––––––––––––––––––––––––––––––––––––––––––––––––––
 env_type: ocp4-cluster
-software_to_deploy: openshift4_assisted
+software_to_deploy: openshift4
+cloud_provider: gcp
+remote_user: gcpuser
+ansible_user: gcpuser
 
 # -------------------------------------------------------------------
 # Platform
@@ -40,7 +45,6 @@ platform: RHPDS
 # -------------------------------------------------------------------
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 ocp4_installer_version: "4.16"
-ocp4_installer_use_dev_preview: false
 
 # -------------------------------------------------------------------
 # Repos
@@ -63,9 +67,9 @@ student_sudo: true
 # -------------------------------------------------------------------
 # GCP Specific
 # -------------------------------------------------------------------
-bastion_instance_image: rhel-9.3
-bastion_cores: 2
-bastion_memory: 6Gi
+# Google Cloud Platform specific vars
+cluster_dns_zone: "{{ guid }}.gcp.redhatworkshops.io"
+ocp4_base_domain: "{{ cluster_dns_zone }}"
 
 master_instance_type_family: n2-standard
 master_instance_type_size: >-
@@ -75,9 +79,8 @@ master_instance_type_size: >-
   }}
 master_instance_type: "{{ master_instance_type_family }}-{{ master_instance_type_size }}"
 
-worker_instance_type: n2-standard-4
-worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max\
-  \ }}"
+worker_instance_type: n2-standard-32
+worker_instance_count: 3
 
 # -------------------------------------------------------------------
 # Workloads
@@ -85,22 +88,18 @@ worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] |
 # --- Infra Workloads (YAML List)
 infra_workloads:
 - ocp4_workload_authentication
-- ocp4_workload_project_request_template
-- ocp4_workload_opentlc_production
-- ocp4_workload_le_certificates
-- ocp4_workload_external_odf
-- ocp4-workload-nfs-provisioner
-- ocp4_workload_authentication
 - ocp4_workload_cert_manager
-- ocp4_workload_web_terminal
+- ocp4_workload_openshift_data_foundation
 - ocp4_workload_kubevirt
 - ocp4_workload_mtv
-- ocp4_workload_minio
-- ocp4_workload_oadp
-- ocp4_workload_virt_roadshow_vms
+- ocp4_workload_rhacm
+- ocp4_workload_acm_multicluster_observability
 - ocp4_workload_virt_roadshow_vmware
-- ocp4_workload_virt_roadshow_multi_user
+- ocp4_workload_virt_roadshow_vms
+- ocp4_workload_ansible_automation_platform
+- automation_platform_loader
 - ocp4_workload_showroom
+
 
 # --- Student Workloads (YAML List)
 student_workloads: []
@@ -127,35 +126,268 @@ ocp4_workload_authentication_remove_kubeadmin: true
 # -------------------------------------------------------------------
 ocp4_workload_opentlc_production_remove_self_provisioner: false
 
-# Google Cloud Platform specific vars
-# account, auth_type, credentials, and project id are all passed by a secret
-# output_dir also needs to be passed in by RHPDS or destroy has a bug
-cloud_provider: gcp
-remote_user: gcpuser
-ansible_user: gcpuser
-# OpenShift 4 (ocp4-cluster) specific vars
-cluster_dns_zone: "{{ guid }}.gcp.redhatworkshops.io"
-ocp4_base_domain: "{{ cluster_dns_zone }}"
-
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager
 # -------------------------------------------------------------------
-# Values from /includes/secrets/dynamic-aws-dns.yaml
-# route53_aws_zone_id:
-# route53_aws_access_key_id:
-# route53_aws_secret_access_key:
+ocp4_workload_cert_manager_cloud_provider: "{{ cloud_provider}}"
+
+ocp4_workload_cert_manager_gcp_project_id: "{{ gcp_project_id }}"
+ocp4_workload_cert_manager_gcp_credentials: "{{ gcp_credentials }}"
 
 ocp4_workload_cert_manager_channel: stable-v1.14
 ocp4_workload_cert_manager_use_catalog_snapshot: false
-
-ocp4_workload_cert_manager_cloud_provider: ec2
-ocp4_workload_cert_manager_ec2_region: us-east-2
-ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
-ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
-ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
-
 ocp4_workload_cert_manager_install_ingress_certificates: true
 ocp4_workload_cert_manager_install_api_certificates: false
+
+ocp4_workload_cert_manager_ignore_errors: true
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_count: 1
+ocp4_workload_user_name: user
+ocp4_workload_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.16_2024_07_29
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_data_foundation
+# -------------------------------------------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.16
+ocp4_workload_openshift_data_foundation_ceph_storage_class_name: standard-csi
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_new_default_storage_class_name: ocs-storagecluster-ceph-rbd
+ocp4_workload_openshift_data_foundation_catalogsource_setup: true
+ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1200
+
+# -------------------------------------------------------------------
+# ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+ocp4_workload_kubevirt_use_catalog_snapshot: true
+ocp4_workload_kubevirt_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_kubevirt_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_kubevirt_workload_tolerations:
+- key: metal
+  operator: Exists
+
+# -------------------------------------------------------------------
+# ocp4_workload_mtv
+# -------------------------------------------------------------------
+ocp4_workload_mtv_channel: release-v2.6
+ocp4_workload_mtv_use_catalog_snapshot: true
+ocp4_workload_mtv_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_mtv_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_rhacm
+# -------------------------------------------------------------------
+ocp4_workload_rhacm_acm_channel: release-2.11
+ocp4_workload_rhacm_use_catalog_snapshot: true
+ocp4_workload_rhacm_catalog_source_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_rhacm_catalog_source_tag: "{{ ocp4_workload_catalogsource_tag}}"
+
+# workaround because this var is expected by the role here:
+# https://github.com/redhat-cop/agnosticd/blob/08a0964bf999a4aa42087fb8785cd29240851d27/ansible/roles_ocp_workloads/ocp4_workload_rhacm/templates/multiclusterhub.yaml.j2#L6
+master_instance_count: 3
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_roadshow_vmware
+# -------------------------------------------------------------------
+ocp4_workload_virt_roadshow_vmware_num_users: "{{ ocp4_workload_user_count }}"
+ocp4_workload_virt_roadshow_vmware_vcenter_folder: "ocpvirt-{{ guid }}"
+ocp4_workload_virt_roadshow_vmware_enable_mtv: true
+ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_roadshow_vms
+# -------------------------------------------------------------------
+ocp4_workload_virt_roadshow_vms_num_users: "{{ ocp4_workload_user_count }}"
+ocp4_workload_virt_roadshow_vms_namespace: vmimported
+ocp4_workload_virt_roadshow_vms_start_vms: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_ansible_automation_platform
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.4"
+ocp4_workload_ansible_automation_platform_admin_password: "{{ ocp4_workload_user_password }}"
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+  inject: true
+
+# -------------------------------------------------------------------
+# automation_platform_loader
+# -------------------------------------------------------------------
+
+# Common variables
+vmware_host: "{{ hostvars['localhost']['vcenter_hostname'] }}"
+#project_name: OpenShift Virtualization Project
+#organization: Default
+
+# Roles and variables from here: https://github.dev/redhat-cop/controller_configuration
+controller_configuration_dispatcher_roles:
+- role: credential_types
+  var: controller_credential_types
+  tags: credential_types
+- role: credentials
+  var: controller_credentials
+  tags: credentials
+- role: execution_environments
+  var: controller_execution_environments
+  tags: execution_environments
+- role: projects
+  var: controller_projects
+  tags: projects
+- role: inventories
+  var: controller_inventories
+  tags: inventories
+- role: inventory_sources
+  var: controller_inventory_sources
+  tags: inventory_sources
+- role: job_templates
+  var: controller_templates
+  tags: templates
+
+controller_credentials:
+- name: "kubeconfig"
+  credential_type: "kubeconfig"
+  organization: "Default"
+  inputs:
+    kube_config: "{{ ocp4_workload_ansible_automation_platform_kubeconfig | b64decode }}"
+- name: "VMware Credentials"
+  credential_type: "VMware vCenter"
+  organization: Default
+  inputs:
+    host: "{{ vmware_host }}"
+    username: "{{ lookup('agnosticd_user_data', 'vcenter_full_user') }}"
+    password: "{{ lookup('agnosticd_user_data', 'vcenter_password') }}"
+
+controller_execution_environments:
+- name: "AWX EE"
+  image: quay.io/ansible/awx-ee:24.3.0
+  pull: missing
+
+controller_projects:
+- name: "{{ project_name }}"
+  organization: "{{ organization }}"
+  scm_branch: virt-migration-demo-2.0.0
+  scm_clean: 'false'
+  scm_delete_on_update: 'false'
+  scm_type: git
+  scm_update_on_launch: 'true'
+  scm_url: https://github.com/rhpds/ocp-virt.git
+
+controller_inventories:
+- name: "OpenShift Virtualization Inventory"
+  organization: "{{ organization }}"
+
+controller_inventory_sources:
+- name: OpenShift Virtualization Source
+  source: scm
+  source_project: "{{ project_name }}"
+  source_path: inventory.kubevirt.yml
+  inventory: OpenShift Virtualization Inventory
+  credential: "kubeconfig"
+  execution_environment: "AWX EE"
+  organization: "{{ organization }}"
+  overwrite: true
+  update_on_launch: true
+  update_cache_timeout: 0
+  wait: true
+
+controller_templates:
+- name: 01 Migrate VMware VMs to OpenShift Virtualization
+  job_type: run
+  organization: "{{ organization }}"
+  inventory: Demo Inventory
+  project: "{{ project_name }}"
+  playbook: playbook.yml
+  credentials:
+  - "kubeconfig"
+  - "VMware Credentials"
+  survey_enabled: true
+  survey: >-
+    {
+      "name": "Basic Survey",
+      "description": "Basic Survey",
+      "spec": [
+        {
+          "question_description": "VMware Provider Name",
+          "min": 0,
+          "default": "vmware",
+          "max": 128,
+          "required": true,
+          "choices": "",
+          "new_question": true,
+          "variable": "provider_name",
+          "question_name": "Name of your provider?",
+          "type": "text"
+        },
+        {
+          "question_description": "Migration Plan",
+          "min": 0,
+          "default": "migration-plan",
+          "max": 128,
+          "required": true,
+          "choices": "",
+          "new_question": true,
+          "variable": "plan_name",
+          "question_name": "Name of your migration plan?",
+          "type": "text"
+        },
+        {
+          "question_description": "Storage Mapping",
+          "min": 0,
+          "default": "storagemap",
+          "max": 128,
+          "required": true,
+          "choices": "",
+          "new_question": true,
+          "variable": "storagemap_name",
+          "question_name": "Name of your storage mapping?",
+          "type": "text"
+        },
+        {
+          "question_description": "Network Mapping",
+          "min": 0,
+          "default": "networkmap",
+          "max": 128,
+          "required": true,
+          "choices": "",
+          "new_question": true,
+          "variable": "networkmap_name",
+          "question_name": "Name of your network mapping?",
+          "type": "text"
+        },
+        {
+          "question_description": "VM Names",
+          "min": 0,
+          "default": "",
+          "max": 128,
+          "required": true,
+          "choices": "",
+          "new_question": true,
+          "variable": "user_selected_vm_names",
+          "question_name": "What are the names of the VMs to migrate?",
+          "type": "textarea"
+        }
+      ]
+    }
+  extra_vars:
+    vmware_host: "{{ vmware_host }}"
+
+# ------------------------------------------------------
+# ocp4_workload_showroom
+# ------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/virt-migration-day2-demo
+ocp4_workload_showroom_content_git_repo_ref: v1.0.0
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: 1.2.1
+ocp4_workload_showroom_content_only: true
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
@@ -171,10 +403,12 @@ __meta__:
     namespace: babylon-anarchy-gcp-gpte
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: Experience OpenShift Virtualization Roadshow on GCP
-    category: Workshops
+    display_name: OpenShift Virtualization Roadshow on GCP Demo
+    category: Demos
     keywords:
-    - workshop
+    - demo
+    - virtualization
+    - migration
     - openshift
     - google
     - gcp
@@ -189,41 +423,5 @@ __meta__:
     name: gcp
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.1
+      image: quay.io/agnosticd/ee-multicloud:2024-08-08
       pull: missing
-      # -------------------------------------------------------------------
-# Workload: ocp4_workload_web_terminal
-# -------------------------------------------------------------------
-ocp4_workload_web_terminal_channel: fast
-ocp4_workload_web_terminal_catalogsource_setup: false
-ocp4_workload_web_terminal_configure: false
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_kubevirt
-# -------------------------------------------------------------------
-ocp4_workload_kubevirt_channel: stable
-# Use PVCs for KubeVirt boot images
-ocp4_workload_kubevirt_boot_sources_shapshot: false
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_mtv
-# -------------------------------------------------------------------
-ocp4_workload_mtv_channel: release-v2.6
-ocp4_workload_mtv_max_vm_inflight: 2
-
-# -------------------------------------------------------------------
-# ocp4_workload_minio
-# -------------------------------------------------------------------
-ocp4_workload_minio_project: minio
-ocp4_workload_minio_storage_size: 256Gi
-ocp4_workload_minio_modern_deployment: true
-ocp4_workload_minio_expose_route: false
-ocp4_workload_minio_root_user: minio-admin
-ocp4_workload_minio_root_password: minio-password
-ocp4_workload_minio_image: quay.io/minio/minio
-ocp4_workload_minio_image_tag: RELEASE.2024-07-16T23-46-41Z
-ocp4_workload_minio_bucket_setup: true
-ocp4_workload_minio_bucket_multi_user: true
-ocp4_workload_minio_bucket_base: s3-
-ocp4_workload_minio_bucket_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
-ocp4_workload_minio_bucket_userbase: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
