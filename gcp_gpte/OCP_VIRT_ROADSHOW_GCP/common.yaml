@@ -1,38 +1,40 @@
 ---
 # -------------------------------------------------------------------
 # --- Catalog: Red Workshops
-# --- Catalog Item: OpenShift Virtualization Roadshow on GCP Demo
+# --- Catalog Item: OpenShift Virtualization Roadshow on GCP
+
 # -------------------------------------------------------------------
 # AgnosticV Includes
 # -------------------------------------------------------------------
-#include /includes/parameters/enable-lets-encrypt.yaml
+
+# Restrict for now until ready for broad consumption
+#include /includes/access-restriction-virt-roadshow.yaml
+
 #include /includes/catalog-icon-gcp.yaml
-#include /includes/parameters/salesforce-id.yaml
-#include /includes/parameters/purpose.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/lifetime-standard.yaml
+
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
 #include /includes/parameters/num-users-salesforce.yaml
 #include /includes/parameters/gcp-region.yaml
-#include /includes/parameters/open-environment-annotation.yaml
 #include /includes/parameters/ocp4-fips-enable.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/parameters/open-environment-annotation.yaml
 #include /includes/parameters/agnosticd_open_environment.yaml
 #include /includes/parameters/student-email.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
 #include /includes/secrets/ocp4_token.yaml
-#include /includes/secrets/demosat-rhel8-latest.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/parameters/showroom-ocp-defaults.yaml
-# Old IBM Vmware
-# include /includes/secrets/vmware-ibm-access.yaml
-# New IBM Vmware
-#include /includes/secrets/vmware-ibm-rs00-access.yaml
-# –––––––––––––––––––––––––––––––––––––––––––––––––––
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
 env_type: ocp4-cluster
 software_to_deploy: openshift4
 cloud_provider: gcp
-remote_user: gcpuser
-ansible_user: gcpuser
 
 # -------------------------------------------------------------------
 # Platform
@@ -71,6 +73,9 @@ student_sudo: true
 cluster_dns_zone: "{{ guid }}.gcp.redhatworkshops.io"
 ocp4_base_domain: "{{ cluster_dns_zone }}"
 
+# Bastion Image
+gcp_rhel_image_family: rhel-9
+
 master_instance_type_family: n2-standard
 master_instance_type_size: >-
   {{ '8' if worker_instance_count|int <= 10
@@ -92,19 +97,13 @@ infra_workloads:
 - ocp4_workload_openshift_data_foundation
 - ocp4_workload_kubevirt
 - ocp4_workload_mtv
-- ocp4_workload_rhacm
-- ocp4_workload_acm_multicluster_observability
 - ocp4_workload_virt_roadshow_vmware
 - ocp4_workload_virt_roadshow_vms
-- ocp4_workload_ansible_automation_platform
-- automation_platform_loader
 - ocp4_workload_showroom
 
-
-# --- Student Workloads (YAML List)
-student_workloads: []
 remove_workloads:
 - ocp4_workload_virt_roadshow_vmware
+
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
@@ -122,11 +121,6 @@ ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1'))
 ocp4_workload_authentication_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_opentlc_production
-# -------------------------------------------------------------------
-ocp4_workload_opentlc_production_remove_self_provisioner: false
-
-# -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager
 # -------------------------------------------------------------------
 ocp4_workload_cert_manager_cloud_provider: "{{ cloud_provider}}"
@@ -140,15 +134,6 @@ ocp4_workload_cert_manager_install_ingress_certificates: true
 ocp4_workload_cert_manager_install_api_certificates: false
 
 ocp4_workload_cert_manager_ignore_errors: true
-# -------------------------------------------------------------------
-# Workload variables
-# -------------------------------------------------------------------
-ocp4_workload_user_count: 1
-ocp4_workload_user_name: user
-ocp4_workload_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-
-ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.16_2024_07_29
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_data_foundation
@@ -157,41 +142,19 @@ ocp4_workload_openshift_data_foundation_channel: stable-4.16
 ocp4_workload_openshift_data_foundation_ceph_storage_class_name: standard-csi
 ocp4_workload_openshift_data_foundation_update_default_storage_class: true
 ocp4_workload_openshift_data_foundation_new_default_storage_class_name: ocs-storagecluster-ceph-rbd
-ocp4_workload_openshift_data_foundation_catalogsource_setup: true
-ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1200
+ocp4_workload_openshift_data_foundation_catalogsource_setup: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_kubevirt
 # -------------------------------------------------------------------
 ocp4_workload_kubevirt_channel: stable
-ocp4_workload_kubevirt_use_catalog_snapshot: true
-ocp4_workload_kubevirt_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_kubevirt_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-ocp4_workload_kubevirt_workload_tolerations:
-- key: metal
-  operator: Exists
+ocp4_workload_kubevirt_use_catalog_snapshot: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_mtv
 # -------------------------------------------------------------------
 ocp4_workload_mtv_channel: release-v2.6
-ocp4_workload_mtv_use_catalog_snapshot: true
-ocp4_workload_mtv_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_mtv_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-# -------------------------------------------------------------------
-# ocp4_workload_rhacm
-# -------------------------------------------------------------------
-ocp4_workload_rhacm_acm_channel: release-2.11
-ocp4_workload_rhacm_use_catalog_snapshot: true
-ocp4_workload_rhacm_catalog_source_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_rhacm_catalog_source_tag: "{{ ocp4_workload_catalogsource_tag}}"
-
-# workaround because this var is expected by the role here:
-# https://github.com/redhat-cop/agnosticd/blob/08a0964bf999a4aa42087fb8785cd29240851d27/ansible/roles_ocp_workloads/ocp4_workload_rhacm/templates/multiclusterhub.yaml.j2#L6
-master_instance_count: 3
+ocp4_workload_mtv_use_catalog_snapshot: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_virt_roadshow_vmware
@@ -208,209 +171,32 @@ ocp4_workload_virt_roadshow_vms_num_users: "{{ ocp4_workload_user_count }}"
 ocp4_workload_virt_roadshow_vms_namespace: vmimported
 ocp4_workload_virt_roadshow_vms_start_vms: true
 
-# -------------------------------------------------------------------
-# ocp4_workload_ansible_automation_platform
-# -------------------------------------------------------------------
-ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.4"
-ocp4_workload_ansible_automation_platform_admin_password: "{{ ocp4_workload_user_password }}"
-ocp4_workload_ansible_automation_platform_manifest:
-  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
-  inject: true
-
-# -------------------------------------------------------------------
-# automation_platform_loader
-# -------------------------------------------------------------------
-
-# Common variables
-vmware_host: "{{ hostvars['localhost']['vcenter_hostname'] }}"
-#project_name: OpenShift Virtualization Project
-#organization: Default
-
-# Roles and variables from here: https://github.dev/redhat-cop/controller_configuration
-controller_configuration_dispatcher_roles:
-- role: credential_types
-  var: controller_credential_types
-  tags: credential_types
-- role: credentials
-  var: controller_credentials
-  tags: credentials
-- role: execution_environments
-  var: controller_execution_environments
-  tags: execution_environments
-- role: projects
-  var: controller_projects
-  tags: projects
-- role: inventories
-  var: controller_inventories
-  tags: inventories
-- role: inventory_sources
-  var: controller_inventory_sources
-  tags: inventory_sources
-- role: job_templates
-  var: controller_templates
-  tags: templates
-
-controller_credentials:
-- name: "kubeconfig"
-  credential_type: "kubeconfig"
-  organization: "Default"
-  inputs:
-    kube_config: "{{ ocp4_workload_ansible_automation_platform_kubeconfig | b64decode }}"
-- name: "VMware Credentials"
-  credential_type: "VMware vCenter"
-  organization: Default
-  inputs:
-    host: "{{ vmware_host }}"
-    username: "{{ lookup('agnosticd_user_data', 'vcenter_full_user') }}"
-    password: "{{ lookup('agnosticd_user_data', 'vcenter_password') }}"
-
-controller_execution_environments:
-- name: "AWX EE"
-  image: quay.io/ansible/awx-ee:24.3.0
-  pull: missing
-
-controller_projects:
-- name: "{{ project_name }}"
-  organization: "{{ organization }}"
-  scm_branch: virt-migration-demo-2.0.0
-  scm_clean: 'false'
-  scm_delete_on_update: 'false'
-  scm_type: git
-  scm_update_on_launch: 'true'
-  scm_url: https://github.com/rhpds/ocp-virt.git
-
-controller_inventories:
-- name: "OpenShift Virtualization Inventory"
-  organization: "{{ organization }}"
-
-controller_inventory_sources:
-- name: OpenShift Virtualization Source
-  source: scm
-  source_project: "{{ project_name }}"
-  source_path: inventory.kubevirt.yml
-  inventory: OpenShift Virtualization Inventory
-  credential: "kubeconfig"
-  execution_environment: "AWX EE"
-  organization: "{{ organization }}"
-  overwrite: true
-  update_on_launch: true
-  update_cache_timeout: 0
-  wait: true
-
-controller_templates:
-- name: 01 Migrate VMware VMs to OpenShift Virtualization
-  job_type: run
-  organization: "{{ organization }}"
-  inventory: Demo Inventory
-  project: "{{ project_name }}"
-  playbook: playbook.yml
-  credentials:
-  - "kubeconfig"
-  - "VMware Credentials"
-  survey_enabled: true
-  survey: >-
-    {
-      "name": "Basic Survey",
-      "description": "Basic Survey",
-      "spec": [
-        {
-          "question_description": "VMware Provider Name",
-          "min": 0,
-          "default": "vmware",
-          "max": 128,
-          "required": true,
-          "choices": "",
-          "new_question": true,
-          "variable": "provider_name",
-          "question_name": "Name of your provider?",
-          "type": "text"
-        },
-        {
-          "question_description": "Migration Plan",
-          "min": 0,
-          "default": "migration-plan",
-          "max": 128,
-          "required": true,
-          "choices": "",
-          "new_question": true,
-          "variable": "plan_name",
-          "question_name": "Name of your migration plan?",
-          "type": "text"
-        },
-        {
-          "question_description": "Storage Mapping",
-          "min": 0,
-          "default": "storagemap",
-          "max": 128,
-          "required": true,
-          "choices": "",
-          "new_question": true,
-          "variable": "storagemap_name",
-          "question_name": "Name of your storage mapping?",
-          "type": "text"
-        },
-        {
-          "question_description": "Network Mapping",
-          "min": 0,
-          "default": "networkmap",
-          "max": 128,
-          "required": true,
-          "choices": "",
-          "new_question": true,
-          "variable": "networkmap_name",
-          "question_name": "Name of your network mapping?",
-          "type": "text"
-        },
-        {
-          "question_description": "VM Names",
-          "min": 0,
-          "default": "",
-          "max": 128,
-          "required": true,
-          "choices": "",
-          "new_question": true,
-          "variable": "user_selected_vm_names",
-          "question_name": "What are the names of the VMs to migrate?",
-          "type": "textarea"
-        }
-      ]
-    }
-  extra_vars:
-    vmware_host: "{{ vmware_host }}"
-
 # ------------------------------------------------------
 # ocp4_workload_showroom
 # ------------------------------------------------------
-ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/virt-migration-day2-demo
-ocp4_workload_showroom_content_git_repo_ref: v1.0.0
-ocp4_workload_showroom_deployment_type: helm
-ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
-ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
-ocp4_workload_showroom_deployer_chart_version: 1.2.1
+ocp4_workload_showroom_name: showroom
+ocp4_workload_showroom_namespace: showroom
 ocp4_workload_showroom_content_only: true
 
-# -------------------------------------------------------------------
-# AgnosticV meta variables
-# -------------------------------------------------------------------
-agnosticv_meta:
-  deploy_with: babylon
-  params_to_variables:
-    username: student_name
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-virt-roadshow-cnv
+ocp4_workload_showroom_content_git_repo_ref: main
 
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
 __meta__:
   asset_uuid: 8d03b424-b3d9-432a-8d66-a3fb7988ea95
   anarchy:
     namespace: babylon-anarchy-gcp-gpte
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: OpenShift Virtualization Roadshow on GCP Demo
-    category: Demos
+    display_name: Experience OpenShift Virtualization Roadshow (GCP)
+    category: Workshops
     keywords:
-    - demo
-    - virtualization
-    - migration
+    - workshop
     - openshift
-    - google
+    - ocp
+    - ocp416
     - gcp
     labels:
       Product: Red_Hat_OpenShift_Container_Platform
