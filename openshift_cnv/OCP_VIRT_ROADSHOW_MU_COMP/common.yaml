@@ -1,0 +1,217 @@
+---
+# -------------------------------------------------------------------
+# CNV Component for Virt Roadshow Binder - Multi-User
+# -------------------------------------------------------------------
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+
+# Restrict for now until ready for broad consumption
+#include /includes/access-restriction-virt-roadshow.yaml
+
+#include /includes/lifetime-standard.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/secrets/openshift-ocpv-configs.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.16"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.4
+bastion_cores: 2
+bastion_memory: 6Gi
+
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+
+ai_control_plane_cores: >-
+  {{ 8 if worker_instance_count|int <= 10
+  else 16 if worker_instance_count|int <= 20
+  else 32
+  }}
+ai_control_plane_memory: >-
+  {{ '16Gi' if worker_instance_count|int <= 10
+  else '32Gi' if worker_instance_count|int <= 20
+  else '64Gi'
+  }}
+
+ai_workers_cores: 16
+ai_workers_memory: "32Gi" # Maybe calculate later
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+  - ocp4_workload_external_odf
+  - ocp4-workload-nfs-provisioner
+  - ocp4_workload_authentication
+  - ocp4_workload_cert_manager
+  - ocp4_workload_web_terminal
+  - ocp4_workload_kubevirt
+# Open questions:
+# - Network.
+#   E.g. https://github.com/redhat-cop/agnosticd/blob/move_virt_to_ibm/ansible/configs/experience-ocpvirt/files/configure_nodenetworkconfigurationpolicy.sh
+# - AAP install and configuration (https://issues.redhat.com/browse/GPTEINFRA-9388)
+
+# --- Workloads that have removal logic implemented that needs to be run (YAML List)
+# remove_workloads:
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# -------------------------------------------------------------------
+odf_channel: stable-4.16
+# Use the following formula for new OCP releases where ODF has not been updated yet
+# odf_channel: "{{ 'stable-4.14' if ocp4_installer_version == '4.15' else 'stable-' + ocp4_installer_version }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4-workload-nfs-provisioner
+# -------------------------------------------------------------------
+nfs_provisioner_nfs_server_hostname: "{{ openshift_cnv_nfs_server }}"
+nfs_provisioner_server_directory: "{{ openshift_cnv_nfs_path }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('1') | int }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+# Values from /includes/secrets/dynamic-aws-dns.yaml
+# route53_aws_zone_id:
+# route53_aws_access_key_id:
+# route53_aws_secret_access_key:
+
+ocp4_workload_cert_manager_channel: stable-v1.14
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+
+ocp4_workload_cert_manager_cloud_provider: ec2
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_web_terminal
+# -------------------------------------------------------------------
+ocp4_workload_web_terminal_channel: fast
+ocp4_workload_web_terminal_catalogsource_setup: false
+ocp4_workload_web_terminal_configure: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+# Use PVCs for KubeVirt boot images
+ocp4_workload_kubevirt_boot_sources_shapshot: false
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 162fc8b1-0880-452f-84db-25e60b6ba5ac
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2024-06-27
+      pull: missing
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+  catalog:
+    display_name: Experience Virt Roadshow - Component (CNV/Multi-User)
+    category: Workshops
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    multiuser: true
+    keywords:
+      - workshop
+      - openshift
+      - ocp
+      - ocp416
+      - cnv
+      - cnvocp
+      - ocpcnv
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    parameters:
+      - name: num_users
+        description: >-
+          Number of users to provision VMware VMs for
+        formLabel: Workshop User Count
+        openAPIV3Schema:
+          type: integer
+          default: 2
+          minimum: 1
+          maximum: 40
+        validation: >-
+          num_users <= 2 ||
+          user_is_admin ||
+          user_groups.includes('rhpds-devs') ||
+          check_salesforce_id(salesforce_id) ||
+          Error('User count greater than TWO requires a valid SalesForceID')

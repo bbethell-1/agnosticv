@@ -1,0 +1,194 @@
+---
+#include /enterprise/includes/terms-of-service.yaml
+#include /enterprise/includes/lifetime-standard.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+# -------------------------------------------------------------------
+# --- Catalog Item: Virt Roadshow - VMware Binder Example
+# -------------------------------------------------------------------
+
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: none
+env_type: virt-roadshow-binder
+
+project_tag: "{{ env_type }}-{{ guid }}"
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+infra_workloads:
+  - ocp4_workload_mtv
+  - ocp4_workload_minio
+  - ocp4_workload_oadp
+  - ocp4_workload_virt_roadshow_vms
+  - ocp4_workload_virt_roadshow_vmware
+  - ocp4_workload_virt_roadshow_multi_user
+  - ocp4_workload_showroom
+
+# --- Workloads that have removal logic implemented that needs to be run (YAML List)
+remove_workloads:
+  - ocp4_workload_virt_roadshow_vmware
+
+ocp4_workload_user_base: user
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_mtv
+# -------------------------------------------------------------------
+ocp4_workload_mtv_channel: release-v2.6
+# necessary for multi-user:
+ocp4_workload_mtv_max_vm_inflight: 20
+ocp4_workload_mtv_forklift_controller_container_limits_cpu: "2000m"
+ocp4_workload_mtv_forklift_controller_container_limits_memory: "8000Mi"
+
+# -------------------------------------------------------------------
+# ocp4_workload_minio
+# -------------------------------------------------------------------
+ocp4_workload_minio_project: minio
+ocp4_workload_minio_storage_size: 256Gi
+ocp4_workload_minio_modern_deployment: true
+ocp4_workload_minio_expose_route: false
+ocp4_workload_minio_root_user: minio-admin
+ocp4_workload_minio_root_password: minio-password
+ocp4_workload_minio_image: quay.io/minio/minio
+ocp4_workload_minio_image_tag: RELEASE.2024-07-16T23-46-41Z
+ocp4_workload_minio_bucket_setup: true
+ocp4_workload_minio_bucket_multi_user: true
+ocp4_workload_minio_bucket_base: s3-
+ocp4_workload_minio_bucket_num_users: "{{ num_users | int }}"
+ocp4_workload_minio_bucket_userbase: "{{ ocp4_workload_user_base }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_oadp
+# -------------------------------------------------------------------
+ocp4_workload_oadp_channel: stable-1.4
+ocp4_workload_oadp_use_catalog_snapshot: false
+
+# Multi User
+ocp4_workload_oadp_multi_user: true
+ocp4_workload_oadp_num_users: "{{ num_users | int }}"
+ocp4_workload_oadp_userbase: "{{ ocp4_workload_user_base }}"
+ocp4_workload_oadp_configure_dpa: true
+ocp4_workload_oadp_storage: minio
+ocp4_workload_oadp_storage_minio_user: minio-admin
+ocp4_workload_oadp_storage_minio_password: minio-password
+ocp4_workload_oadp_storage_minio_name: minio
+ocp4_workload_oadp_storage_minio_namespace: minio
+ocp4_workload_oadp_storage_minio_bucket_name_base: s3-
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_roadshow_vms
+# -------------------------------------------------------------------
+ocp4_workload_virt_roadshow_vms_num_users: "{{ num_users | int }}"
+ocp4_workload_virt_roadshow_vms_base_namespace: vmimported-
+ocp4_workload_virt_roadshow_vms_userbase: "{{ ocp4_workload_user_base }}"
+ocp4_workload_virt_roadshow_vms_start_vms: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_virt_roadshow_vmware
+# -------------------------------------------------------------------
+ocp4_workload_virt_roadshow_vmware_num_users: "{{ num_users }}"
+ocp4_workload_virt_roadshow_vmware_enable_mtv: true
+ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
+
+# For multiple users
+ocp4_workload_virt_roadshow_vmware_vcenter_user_base: "ocpvirt-{{ vmware_prov_data.guid }}-{{ ocp4_workload_user_base }}"
+
+# User base for OCP Authentication (to assign vCenter users to OCP users in agnosticd_user_info)
+ocp4_workload_virt_roadshow_auth_user_base: "{{ ocp4_workload_user_base }}"
+
+# MTV Namespace base to use for multi user.
+# For single user the namespace is always `openshift-mtv`
+ocp4_workload_virt_roadshow_vmware_mtv_namespace_base: "mtv-{{ ocp4_workload_user_base }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_roadshow_multi_user
+# -------------------------------------------------------------------
+# In the future once bug https://issues.redhat.com/browse/CNV-38284 is in the product
+# the namespace will need to change to openshift-cnv
+ocp4_workload_virt_roadshow_multi_user_configmap_namespace: default
+
+# ------------------------------------------------------
+# Showroom
+# ------------------------------------------------------
+ocp4_workload_showroom_name: showroom
+ocp4_workload_showroom_namespace: showroom
+ocp4_workload_showroom_content_only: true
+
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-virt-roadshow-cnv-multi-user
+ocp4_workload_showroom_content_git_repo_ref: main
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 64ab9ff4-b785-4057-ab0b-23aba40c8052
+  anarchy:
+    namespace: babylon-anarchy-enterprise
+  catalog:
+    workshopUiDisabled: true
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Experience Virt Roadshow - VMware Binder Example
+    category: Workshops
+    keywords:
+      - openshift
+    parameters:
+      - name: num_users
+        description: >-
+          Number of users to provision within the cluster.
+        formLabel: OpenShift User Count
+        resourceIndexes:
+          - 0
+          - 1
+          - 2
+        openAPIV3Schema:
+          type: integer
+          default: 2
+          minimum: 1
+          maximum: 40
+        validation: >-
+          num_users <= 2 ||
+          user_is_admin ||
+          user_groups.includes('rhpds-devs') ||
+          check_salesforce_id(salesforce_id) ||
+          Error('User count greater than TWO requires a valid SalesForceID')
+    labels:
+      Base_Component: 'False'
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+  # Components to include in template and catalog item
+  components:
+
+    - name: virt-roadshow-vmware
+      display_name: Virt Roadshow - VMware Component
+      item: vmware-ibm/ROADSHOW_VMWARE
+      propagate_provision_data:
+        - var: vmware_prov_data
+
+    - name: virt-roadshow-cnv
+      display_name: Virt Roadshow - CNV Component
+      item: openshift-cnv/OCP_VIRT_ROADSHOW_MU_COMP
+      propagate_provision_data:
+        - var: cnv_prov_data
+
+# Disable actions on chained config that are handled by base.
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:latest
+      pull: missing
+    actions:
+      destroy:
+        disable: true
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
