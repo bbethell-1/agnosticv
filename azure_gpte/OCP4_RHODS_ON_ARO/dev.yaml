@@ -1,27 +1,19 @@
 ---
+#include /includes/secrets/showroom-shared-cluster1.yaml
 #include /includes/ee-multicloud-dev.yaml
 
 purpose: development
 
-env_type: open-environment-azure-subscription
-
-open_env_azure_install_aro_worker_vm_size: "Standard_D16s_v3"
-open_env_azure_install_aro_worker_count: 3
-open_env_azure_install_aro_master_vm_size: "Standard_D8s_v3"
-
-
-agnosticd_open_environment: true
-
-cloud_provider: azure
-
-# Azure pool to use
-az_pool_id: "01"
-
-# Enable ARO installation functions
+# ------------------------------------------------------
+# Azure Properties
+# ------------------------------------------------------
 azure_deploy_bastion: true
-install_aro: true
-az_aro_version: 4.12.25
+# Get latest versions using
+#   az aro get-versions --location eastus -o table
+az_aro_version: 4.14.16
 aro_install_helm: true
+
+rhel_sku: "9_3"
 
 # Extra packages to install
 common_extra_packages:
@@ -44,27 +36,44 @@ bastion_custom_motd: |-
   will be taken. If you disagree with these terms you must disconnect now.
   ----------------------------------------------------------------------------
 
+# ------------------------------------------------------
+# Bookbag
+# ------------------------------------------------------
+deploy_bookbag: false
+
 # --------------------------------------------------------------------
 # Showroom
 # --------------------------------------------------------------------
-showroom_deploy: true
 showroom_deploy_shared_cluster_enable: false
-showroom_git_repo: https://github.com/rhpds/bookbag-aro-mobb.git
-showroom_git_ref: showroom
-
-include_arc_content: false
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/bookbag-aro-mobb.git
+ocp4_workload_showroom_content_git_repo_ref: showroom-dev
 
 agnosticd_passthrough_user_data: |
   {{ {}
    | combine({
-      "include_arc_content": include_arc_content
+      "include_arc_content": true
    } if include_arc_content else {})
   }}
 
 # --------------------------------------------------------------------
 # Babylon meta variables
 # --------------------------------------------------------------------
-
 __meta__:
   deployer:
-    scm_ref: open-env-azure-install-aro-patch-1
+    scm_ref: development
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.1
+      pull: missing
+  access_control:
+    allow_groups:
+    - rhpds-devs
+    - rhpds-content-mobb
+  catalog:
+    parameters:
+    - description: Include Arc Content
+      formGroup: Features
+      formLabel: Include Arc Content
+      name: include_arc_content
+      openAPIV3Schema:
+        default: true
+        type: boolean
