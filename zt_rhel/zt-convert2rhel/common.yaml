@@ -52,27 +52,45 @@ zero_touch_egress_rules:
   cidr_ip: "0.0.0.0/0"
 
 lock_bastion_security_group: true
-# -------------------------------------------------------------------
-# Role: showroom hosted
-# -------------------------------------------------------------------
-# showroom_git_repo: https://github.com/rhpds/containerize_your_app_showroom.git
 
-# showroom_tab_services:
-# - tty1
+instances:
+- name: bastion
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: true
+  floating_ip: true
+  image: "{{ bastion_instance_image | default(default_instance_image) }}"
+  flavor:
+    ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions"
+  - key: "ostype"
+    value: "linux"
+  rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+  security_groups:
+  - ZeroRHELSG
 
-# showroom_tab_tty1_username: root
+security_groups:
+- name: ZeroRHELSG
+  rules:
+  - name: ShowroomHTTPS
+    description: "Primary showroom endpoint - for reverse proxy"
+    from_port: 443
+    to_port: 443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
 
-# showroom_ttys_enable_tmux: false
+  - name: SSH
+    description: "Ansible and SSH"
+    from_port: 22
+    to_port: 22
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
 
-# showroom_showroom_default_ssh_user: root
-# showroom_enable_root_ssh: true
-# showroom_ssh_method: sshkey
-# showroom_ssh_host: host.containers.internal
-# showroom_lab_users:
-# - root
-
-# common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-# showroom_user_password: "{{ common_password }}"
 # -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
