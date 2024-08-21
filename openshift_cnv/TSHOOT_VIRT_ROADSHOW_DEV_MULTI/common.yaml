@@ -1,5 +1,11 @@
 ---
 # -------------------------------------------------------------------
+# --- Catalog: Red Workshops
+# --- Catalog Item: TSHOOT Experience OpenShift
+#                   Virtualization Roadshow (CNV/Multi)
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
 # AgnosticV includes
 # -------------------------------------------------------------------
 
@@ -21,10 +27,6 @@
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/dynamic-aws-dns.yaml
 #include /includes/secrets/openshift_assisted_installer.yaml
-
-# Old IBM vCenter
-# include /includes/secrets/vmware-ibm-access.yaml
-# New IBM vCenter
 #include /includes/secrets/vmware-ibm-rs01-access.yaml
 
 # -------------------------------------------------------------------
@@ -81,8 +83,9 @@ ai_control_plane_memory: >-
   else '128Gi'
   }}
 worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+
 ai_workers_cores: 16
-ai_workers_memory: '32Gi' # Maybe calculate later
+ai_workers_memory: "32Gi"
 
 # -------------------------------------------------------------------
 # Workloads
@@ -97,16 +100,11 @@ infra_workloads:
 - ocp4_workload_web_terminal
 - ocp4_workload_kubevirt
 - ocp4_workload_mtv
-- ocp4_workload_minio
 - ocp4_workload_oadp_gitops
 - ocp4_workload_virt_roadshow_vms
 - ocp4_workload_virt_roadshow_vmware
 - ocp4_workload_virt_roadshow_multi_user
 - ocp4_workload_showroom
-# Open questions:
-# - Network.
-#   E.g. https://github.com/redhat-cop/agnosticd/blob/move_virt_to_ibm/ansible/configs/experience-ocpvirt/files/configure_nodenetworkconfigurationpolicy.sh
-# - AAP install and configuration (https://issues.redhat.com/browse/GPTEINFRA-9388)
 
 # --- Workloads that have removal logic implemented that needs to be run (YAML List)
 remove_workloads:
@@ -120,8 +118,6 @@ remove_workloads:
 # Workload: ocp4_workload_external_odf
 # -------------------------------------------------------------------
 odf_channel: "stable-4.16"
-# Use the following formula for new OCP releases where ODF has not been updated yet
-# odf_channel: "{{ 'stable-4.14' if ocp4_installer_version == '4.15' else 'stable-' + ocp4_installer_version }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4-workload-nfs-provisioner
@@ -159,20 +155,6 @@ ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
 
 ocp4_workload_cert_manager_install_ingress_certificates: true
 ocp4_workload_cert_manager_install_api_certificates: false
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_web_terminal
-# -------------------------------------------------------------------
-ocp4_workload_web_terminal_channel: fast
-ocp4_workload_web_terminal_catalogsource_setup: false
-ocp4_workload_web_terminal_configure: false
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_kubevirt
-# -------------------------------------------------------------------
-ocp4_workload_kubevirt_channel: stable
-# Use PVCs for KubeVirt boot images
-ocp4_workload_kubevirt_boot_sources_shapshot: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
@@ -235,33 +217,27 @@ ocp4_workload_openshift_gitops_resource_customizations: |
       return health_status
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_web_terminal
+# -------------------------------------------------------------------
+ocp4_workload_web_terminal_channel: fast
+ocp4_workload_web_terminal_catalogsource_setup: false
+ocp4_workload_web_terminal_configure: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+# Use PVCs for KubeVirt boot images
+ocp4_workload_kubevirt_boot_sources_shapshot: false
+
+
+# -------------------------------------------------------------------
 # Workload: ocp4_workload_mtv
 # -------------------------------------------------------------------
 ocp4_workload_mtv_channel: release-v2.6
 ocp4_workload_mtv_max_vm_inflight: "{{ [(num_users | int * 3) | int, 40] | min }}"
 ocp4_workload_mtv_forklift_controller_container_limits_cpu: "{{ [(num_users | int * 100) | int, 1000] | max }}m"
 ocp4_workload_mtv_forklift_controller_container_limits_memory: "{{ [(num_users | int * 400) | int, 2000] | max }}Mi"
-
-# -------------------------------------------------------------------
-# ocp4_workload_minio
-# -------------------------------------------------------------------
-ocp4_workload_minio_project: minio
-
-ocp4_workload_minio_storage_size: 1024Gi
-ocp4_workload_minio_requests_memory: 2Gi
-ocp4_workload_minio_requests_cpu: 2
-
-ocp4_workload_minio_modern_deployment: true
-ocp4_workload_minio_expose_route: false
-ocp4_workload_minio_root_user: minio-admin
-ocp4_workload_minio_root_password: minio-password
-ocp4_workload_minio_image: quay.io/minio/minio
-ocp4_workload_minio_image_tag: RELEASE.2024-07-16T23-46-41Z
-ocp4_workload_minio_bucket_setup: true
-ocp4_workload_minio_bucket_multi_user: true
-ocp4_workload_minio_bucket_base: s3-
-ocp4_workload_minio_bucket_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
-ocp4_workload_minio_bucket_userbase: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_oadp_gitops
@@ -275,12 +251,7 @@ ocp4_workload_oadp_gitops_num_users: "{{ ocp4_workload_authentication_htpasswd_u
 ocp4_workload_oadp_gitops_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
 ocp4_workload_oadp_gitops_namespace_base: oadp
 ocp4_workload_oadp_gitops_configure_dpa: true
-ocp4_workload_oadp_gitops_storage: minio
-ocp4_workload_oadp_gitops_storage_minio_user: minio-admin
-ocp4_workload_oadp_gitops_storage_minio_password: minio-password
-ocp4_workload_oadp_gitops_storage_minio_name: minio
-ocp4_workload_oadp_gitops_storage_minio_namespace: minio
-ocp4_workload_oadp_gitops_storage_minio_bucket_name_base: s3-
+ocp4_workload_oadp_gitops_storage: odf
 
 # -------------------------------------------------------------------
 # ocp4_workload_virt_roadshow_vms

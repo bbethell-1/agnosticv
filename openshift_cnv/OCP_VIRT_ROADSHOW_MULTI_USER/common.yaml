@@ -72,21 +72,20 @@ bastion_instance_image: rhel-9.3
 bastion_cores: 2
 bastion_memory: 6Gi
 
-worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
-
 ai_control_plane_cores: >-
-  {{ 8 if worker_instance_count|int <= 10
-  else 16 if worker_instance_count|int <= 20
-  else 32
+  {{ 16 if worker_instance_count|int <= 10
+  else 32 if worker_instance_count|int <= 20
+  else 64
   }}
 ai_control_plane_memory: >-
-  {{ '16Gi' if worker_instance_count|int <= 10
-  else '32Gi' if worker_instance_count|int <= 20
-  else '64Gi'
+  {{ '32Gi' if worker_instance_count|int <= 10
+  else '64Gi' if worker_instance_count|int <= 20
+  else '128Gi'
   }}
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
 
 ai_workers_cores: 16
-ai_workers_memory: "32Gi" # Maybe calculate later
+ai_workers_memory: "32Gi"
 
 # -------------------------------------------------------------------
 # Workloads
@@ -235,11 +234,9 @@ ocp4_workload_kubevirt_boot_sources_shapshot: false
 # Workload: ocp4_workload_mtv
 # -------------------------------------------------------------------
 ocp4_workload_mtv_channel: release-v2.6
-
-# necessary for multi-user:
-ocp4_workload_mtv_max_vm_inflight: 20
-ocp4_workload_mtv_forklift_controller_container_limits_cpu: "2000m"
-ocp4_workload_mtv_forklift_controller_container_limits_memory: "8000Mi"
+ocp4_workload_mtv_max_vm_inflight: "{{ [(num_users | int * 3) | int, 40] | min }}"
+ocp4_workload_mtv_forklift_controller_container_limits_cpu: "{{ [(num_users | int * 100) | int, 1000] | max }}m"
+ocp4_workload_mtv_forklift_controller_container_limits_memory: "{{ [(num_users | int * 400) | int, 2000] | max }}Mi"
 
 # -------------------------------------------------------------------
 # ocp4_workload_oadp_gitops
