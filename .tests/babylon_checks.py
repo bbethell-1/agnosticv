@@ -4,10 +4,19 @@ import os
 import sys
 import subprocess
 import argparse
+import re
 import requests
 import time
-
 import yaml
+
+github_token = os.environ.get('GITHUB_TOKEN')
+
+def github_api_request(path, headers={}):
+    headers = {**headers}
+    url = f"https://api.github.com{path}"
+    if github_token:
+        headers['Authorization'] = f"Bearer {github_token}"
+    return requests.get(url, headers=headers)
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -18,63 +27,6 @@ def str2bool(v):
         return False
 
     raise argparse.ArgumentTypeError('Boolean value expected.')
-
-
-parser = argparse.ArgumentParser(
-    description='Validate all catalog items against an OpenAPI schema.'
-)
-
-parser.add_argument('--agnosticv_cli',
-                    type=str,
-                    dest='agnosticv_cli',
-                    help='Path of AgnosticV CLI',
-                    default='agnosticv',
-                    required=False,
-                    )
-
-parser.add_argument('--from_file',
-                    type=str,
-                    dest='from_file',
-                    help='List of catalog items to check',
-                    default='',
-                    required=False,
-                    )
-
-parser.add_argument('--debug',
-                    type=str2bool,
-                    dest='debug',
-                    nargs='?',
-                    const=True,
-                    default=False,
-                    help="Activate debug mode.")
-
-args = parser.parse_args()
-
-process_all = subprocess.run(
-    [str(args.agnosticv_cli), '--list'],
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
-    universal_newlines=True,
-    check=True,
-)
-
-all_catalog_items = process_all.stdout.split()
-
-if len(all_catalog_items) == 0:
-    print("No catalog item found")
-    sys.exit(2)
-
-catalog_items = all_catalog_items
-
-# Override if it's passed as a file
-if args.from_file != '':
-    with open(args.from_file) as x:
-        catalog_items = x.readlines()
-
-valid = []
-invalid = []
-exceptions = {}
-asset_uuids = {}
 
 def validate_sandboxes_request(sandboxes_request):
     """
@@ -140,378 +92,454 @@ def validate_sandboxes_request(sandboxes_request):
 
     return "OK"
 
-def check_duplicate_directories(c, ci):
-    '''Check for duplicate directories'''
-    path = os.path.join(os.environ['GITHUB_WORKSPACE'], c.get('directory', ''))  # get the directory path from the catalog item contents
-    if not path:
-        raise ValueError('Missing "directory" field in catalog item')
+class AgnosticVSafeLoader(yaml.SafeLoader):
+    def ignore_vault(self, node):
+        return None
+AgnosticVSafeLoader.add_constructor(u'!vault', AgnosticVSafeLoader.ignore_vault)
 
-    seen_dirs = {}
-    duplicate_dirs = {}
-    for root, dirs, files in os.walk(path):
-        # Exclude directories containing .git, includes, and parameters in the path
-        dirs[:] = [d for d in dirs if '.git' not in os.path.join(root, d) and 'includes' not in os.path.join(root, d) and 'parameters' not in os.path.join(root, d)]
-        for dir in dirs:
-            dir_path = os.path.join(root, dir)
-            if os.path.isdir(dir_path):
-                if dir in seen_dirs:
-                    seen_dir_path = seen_dirs[dir]
-                    if dir in duplicate_dirs:
-                        duplicate_dirs[dir].append(dir_path)
-                    else:
-                        duplicate_dirs[dir] = [seen_dir_path, dir_path]
-                else:
-                    seen_dirs[dir] = dir_path
-
-    if duplicate_dirs:
-        error_message = f"Found {len(duplicate_dirs)} duplicate directories in catalog item {ci}:\n"
-        for dir, paths in duplicate_dirs.items():
-            dir_paths = '\n                 '.join(paths)
-            error_message += f"- {dir}:\n                 {dir_paths}\n"
-        raise ValueError(error_message)
-    return True
-
-
-def check_double_booking(c,ci):
-    '''Ensure catalog item doesn't double-book
-    AWS sandboxes with both Babylon and admin host scripts'''
-
-    if '__meta__' in c and 'agnosticv_meta' in c:
-        if 'aws_sandboxed' in c['__meta__'] and 'sandboxed' in c['agnosticv_meta']:
-            if (c['__meta__']['aws_sandboxed']
-                and c['agnosticv_meta']['sandboxed']):
-                raise ValueError(
-                    '''__meta__.aws_sandboxed and agnosticv_meta.sandboxed can't be both true'''
-                )
-
-    return True
-
-def check_name(c,ci):
-    '''Ensure account and catalog item name
-    should not greater than 52 character'''
-    if len(ci) <= 52:
-        return True
-
-    ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
-    if len(ciAccNamStg)>52:
-        print("AgV Length is %d and AgV is %s" %(len(ciAccNamStg), ciAccNamStg))
-        raise ValueError(
-            '''Ensure catalog item name should not greater than 52 character'''
+class BabylonComponent:
+    def __init__(self, definition, path):
+        self.definition = definition
+        self.errors = []
+        self.name = re.sub(
+            r'\.(yaml|yml|json)$', '', path.lower().replace("/", ".").replace('_', '-')
         )
-    return True
+        self.path = path
+        (self.account, self.short_name, self.stage) = self.name.split('.')
 
-def check_tag_var(c,ci):
-    '''Ensure configuration is having no prefix for prod tagging'''
+    def __str__(self):
+        return self.path
 
-    ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
-    if '__meta__' in c or 'agnosticv_meta' in c:
-        if (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt")):
-            if 'agnosticd_git_tag_prefix' in c.get('agnosticv_meta', {}):
-                raise ValueError(
-                    '''agnosticd_git_ref should be used for prod/ilt, not agnosticd_git_tag_prefix.'''
-                )
-            if  'deploy_with' in c.get('agnosticv_meta', {}) and 'deployer' in c['__meta__']:
-                deployer = c['__meta__']['deployer']
-                if (c.get('agnosticv_meta', {}).get('deploy_with', "babylon")  == "babylon" and 'git_tag_prefix' in deployer):
-                    raise ValueError(
-                        '''scm_ref should be used for prod/ilt, not git_tag_prefix.'''
-                    )
-    return True
-
-def check_sandbox_api(c, ci):
-    '''Ensure catalog item is using the sandbox API'''
-
-    if c.get('__meta__', {}).get('aws_sandboxed', False):
-        secrets = c.get('__meta__', {}).get('secrets', [])
-
-        for secret in secrets:
-            if secret.get('name', '') == 'sandbox-api':
-                return True
-
-        raise ValueError(
-            '''catalog item has aws_sandboxed set to true
-            but doesn't have the sandbox API secret.
-    
-            Please add the following to the catalog item:
-            #include /includes/aws-sandbox-meta.yaml
-            ''')
-    return True
-
-virtualenv_check_result = {}
-exeenv_check_result = {}
-def check_virtualenv(c, ci):
-    """
-    Check that __meta__.deployer.virtualenv exists in GitHub upstream repo
-    """
-    virtualenv = c.get("__meta__", {}).get("deployer", {}).get("virtualenv") or c.get("agnosticv_meta", {}).get("virtualenv")
-    if virtualenv:
-        if virtualenv == "babylon":
-            return True
-        url = f"https://raw.githubusercontent.com/redhat-cop/agnosticd/development/tools/virtualenvs/{virtualenv}.txt"
-        cached_result = virtualenv_check_result.get(url)
-        if cached_result:
-            if cached_result != 200:
-                raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {cached_result} (cached)")
-        else:
-            headers = {"User-Agent": "Mozilla/5.0"}
-            r = requests.get(url, headers=headers)
-            result = r.status_code
-            virtualenv_check_result[url] = r.status_code
-            if r.status_code != 200:
-                raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {r.status_code}")
-    return True
-
-def check_ee(c, ci):
-    exe_env = c.get("__meta__", {}).get("deployer", {}).get("execution_environment")
-    if exe_env:
-        exe_env_image = exe_env.get("image")
-        if exe_env_image:
-            url = f"http://{exe_env_image}"
-            cached_result = exeenv_check_result.get(url)
-            if cached_result:
-                if cached_result != 200:
-                    raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {cached_result} (cached)")
-            else:
-                headers = {"User-Agent": "Mozilla/5.0"}
-                r = requests.get(url, headers=headers)
-                result = r.status_code
-                exeenv_check_result[url] = r.status_code
-                if r.status_code != 200:
-                    raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {r.status_code}")
-        else:
-            return True
-
-    return True
-
-def check_valid_agv_tag(c,ci):
-    '''Ensure configuration is having a valid git tag agnosticv meta'''
-
-    ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
-    if '__meta__' in c or 'agnosticv_meta' in c:
-        if (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt")):
-            agvRepo = "redhat-cop/agnosticd/git/matching-refs/tags/"
-            # Getting tag value from agnosticv_meta section
-            agvMetaTag = ''
-            if 'agnosticd_git_ref' in c.get('agnosticv_meta', {}):
-                agvMetaTag = c['agnosticv_meta']['agnosticd_git_ref']
-            elif 'agnosticd_git_tag_prefix' in c.get('agnosticv_meta', {}):
-                agvMetaTag = c['agnosticv_meta']['agnosticd_git_tag_prefix']
-            # Call Github API and check git tag on agnosticd repo
-            agvMetaResponse = requests.get("https://api.github.com/repos/"+agvRepo+agvMetaTag)
-            if agvMetaResponse.status_code==200 and agvMetaResponse.json() is not None and len(agvMetaResponse.json())<1:
-                raise ValueError(
-                    '''No such git tag exist on agnosticd provided under agnosticv_meta: ''' + agvMetaTag
-                )
-
-    return True
-"""
-def check_valid_babylon_tag(c,ci):
-    '''Ensure configuration is having a valid git tag on babylon meta'''
-
-    ciAccNamStg=ci[0:ci.rfind(".")].replace("/", ".")
-    if '__meta__' in c or 'agnosticv_meta' in c:
-        if (
-            (ciAccNamStg.endswith(".prod") or ciAccNamStg.endswith(".ilt")) and
-            (not ciAccNamStg.startswith("ansiblebu"))
+    @property
+    def deploy_with_babylon(self):
+        if(
+            'agnosticv_meta' in self.definition and
+            'babylon' != self.definition['agnosticv_meta'].get('deploy_with')
         ):
-            bMetaProdRepo = "redhat-cop/agnosticd"
-            bMetaRepo = ''
-            # Getting tag value from __meta__ section
-            bMetaTag = ''
-            if (
-                'deployer' in c['__meta__'] and
-                not c['__meta__']['deployer'].get('scm_ref', '').endswith('-hotfix')
-            ):
-                deployer = c['__meta__']['deployer']
-                if 'scm_ref' in deployer:
-                    bMetaTag = deployer['scm_ref']
-                elif 'git_tag_prefix' in deployer:
-                    bMetaTag = deployer['git_tag_prefix']
-                if 'scm_url' in deployer:
-                    bMetaScmUrl = deployer['scm_url']
-                    bMetaProdRepo = bMetaScmUrl.replace("https://github.com/","").replace(".git","")
-                # Call Github API and check git tag on agnosticd repo
-                bMetaRepo = bMetaProdRepo + "/git/matching-refs/tags/"
-                bTagResponse = requests.get("https://api.github.com/repos/"+bMetaRepo+bMetaTag)
-                if bTagResponse.status_code==200 and bTagResponse.json() is not None and len(bTagResponse.json())<1:
-                    raise ValueError(
-                        '''No such git tag exist on agnosticd provided under __meta__: ''' + bMetaTag
-                    )
+            return False
 
-    return True
-"""
-def check_anarchy_namespace(c,ci):
-    '''Ensure catalog item have anarchy namespace'''
+        if self.definition.get('__meta__', {}).get('deployer', {}).get('type'):
+            return True
 
-    if '__meta__' in c and 'agnosticv_meta' in c:
-        if 'deploy_with' in c['agnosticv_meta'] and c['agnosticv_meta']['deploy_with'] == "babylon":
-            if ('anarchy' in c['__meta__']):
-                anarchyObj = c['__meta__']['anarchy']
-                if ('namespace' in anarchyObj):
-                    anarchynamespace = anarchyObj['namespace']
-                    if not anarchynamespace:
+        return False
+
+    @property
+    def is_prod(self):
+        return self.stage in ('prod', 'ilt')
+
+
+class BabylonChecker:
+
+    def __init__(self, agnosticv_cli, debug, from_file, paths):
+        self.agnosticv_cli = agnosticv_cli
+        self.debug = debug
+        self.failed_components = []
+        self.from_file = from_file
+        self.components = []
+        self.component_paths = paths
+        self.scm_check_cache = {}
+        self.virtualenv_check_cache = {}
+
+    def check(self):
+        self.load_components()
+        self.check_global()
+        self.check_components()
+
+    def check_global(self):
+        '''Global checks which always run against component all paths'''
+        for check in (
+            'asset_uuids',
+            'short_names',
+        ):
+            if self.debug:
+                print(f"Checking {check}: ", end='', flush=True)
+            try:
+                getattr(self, f"check_global_{check}")()
+            except Exception as exception:
+                print(f"Failed global check {check}: {exception}")
+                sys.exit(2)
+            if self.debug:
+                print(' PASSED')
+
+    def check_global_asset_uuids(self):
+        '''Check for duplicate asset uuids'''
+        common_yamls = set()
+        for component_path in self.all_component_paths:
+            common_yamls.add(
+                re.sub(
+                    r'/[^/]+\.(yaml|yml|json)$', '/common.yaml', component_path
+                )
+            )
+        uuid_to_path = {}
+        for common_yaml in common_yamls:
+            with open(common_yaml) as fh:
+                common = yaml.load(fh, Loader=AgnosticVSafeLoader)
+                uuid = common.get('__meta__', {}).get('asset_uuid')
+                if uuid:
+                    duplicate = uuid_to_path.get(uuid)
+                    if duplicate:
                         raise ValueError(
-                            '''__meta__.anarchy and __meta__.anarchy.namespace can't be blank'''
+                            f"{uuid} duplicated in {duplicate} and {common_yaml}"
                         )
-                else:
-                    raise ValueError(
-                        '''__meta__.anarchy and __meta__.anarchy.namespace can't be blank'''
-                    )
-            else:
+                    uuid_to_path[uuid] = common_yaml
+                    if self.debug:
+                        print('.', end='', flush=True)
+
+    def check_global_short_names(self):
+        '''Check for duplicate short names.'''
+        component_dirs = set()
+        for component_path in self.all_component_paths:
+            component_dirs.add(os.path.dirname(component_path))
+
+        short_name_to_dir = {}
+        for component_dir in component_dirs:
+            short_name = os.path.split(component_dir)[1].lower().replace('_', '-')
+            duplicate = short_name_to_dir.get(short_name)
+            if duplicate:
                 raise ValueError(
-                    '''__meta__.anarchy can't be blank, plaese add __meta__.anarchy.namespace'''
+                    f"{short_name} duplicated in {duplicate} and {component_dir}"
                 )
-            # Checking for parameters
-            if ('catalog' in c['__meta__']):
-                catalogObj = c['__meta__']['catalog']
-                if ('parameters' not in catalogObj):
-                    raise ValueError(
-                        '''__meta__.catalog and __meta__.catalog.parameters can't be blank'''
-                    )
+            short_name_to_dir[short_name] = component_dir
+            if self.debug:
+                print('.', end='', flush=True)
+
+    def check_component(self, component):
+        '''Check AgnosticV component'''
+        for check in (
+            'anarchy',
+            'aws_sandbox',
+            'catalog',
+            'deployer_scm',
+            'deployer_virtualenv',
+            'execution_environment',
+            'name',
+            'sandboxes',
+        ):
+            try:
+                getattr(self, f"check_component_{check}")(component)
+            except Exception as exception:
+                component.errors.append(str(exception))
+                self.failed_components.append(component)
+
+        if self.debug:
+            if component.errors:
+                print('F', end='', flush=True)
             else:
+                print('.', end='', flush=True)
+
+    def check_component_anarchy(self, component):
+        if not component.definition.get('__meta__', {}).get('anarchy', {}).get('namespace'):
+            raise ValueError("__meta__.anarchy.namespace must be set")
+
+    def check_component_aws_sandbox(self, component):
+        meta = component.definition['__meta__']
+        sandbox_request = meta.get('sandbox')
+        if not sandbox_request:
+            return
+        for secret in meta.get('secrets', []):
+            if secret.get('name') == 'sandbox-api':
+                break
+        else:
+            raise ValueError(
+                "__meta__.aws_sandboxed requires sandbox-api secret\n"
+                "Please add the following to the component:\n"
+                "#include /includes/aws-sandbox-meta.yaml"
+            )
+
+    def check_component_catalog(self, component):
+        if 'parameters' not in component.definition.get('__meta__', {}).get('catalog'):
+            raise ValueError("__meta__.catalog.parameters must be provided")
+
+    def check_component_name(self, component):
+        '''Ensure account and catalog item name
+        should not greater than 52 character'''
+    
+        name_len = len(component.name)
+        if name_len > 52:
+            raise ValueError(
+                f"Component name length must not be greater than 52 characters, "
+                f"name length is {name_len}"
+            )
+
+    def check_component_deployer_scm(self, component):
+        '''Ensure configuration is having no prefix for prod tagging'''
+        deployer_meta = component.definition.get('__meta__', {}).get('deployer')
+        if not deployer_meta or not deployer_meta.get('type'):
+            return
+
+        if 'git_tag_prefix' in deployer_meta:
+            if component.is_prod:
                 raise ValueError(
-                    '''__meta__.catalog can't be blank, plaese add __meta__.catalog.parameters'''
+                    "Stage prod/ilt must use __meta__.deployer.scm_ref "
+                    "rather than __meta__.deployer.git_tag_prefix"
                 )
+            self.check_component_git_tag_prefix(component)
+        else:
+            self.check_component_scm_ref(component)
 
-    return True
+    def check_component_deployer_virtualenv(self, component):
+        virtualenv = component.definition.get('__meta__', {}).get('deployer', {}).get('virtualenv')
+        if not virtualenv:
+            return
 
-def check_asset_uuid(c,ci):
-    '''Ensure catalog item has a valid billing UUID'''
+        url = f"https://raw.githubusercontent.com/redhat-cop/agnosticd/development/tools/virtualenvs/{virtualenv}.txt"
+        if virtualenv in self.virtualenv_check_cache:
+            status_code = self.virtualenv_check_cache[virtualenv]
+        else:
+            response = requests.head(url, timeout=2)
+            status_code = response.status_code
+            self.virtualenv_check_cache[virtualenv] = status_code
 
-    if ('__meta__' in c):
-        if dirname not in asset_uuids:
-            asset_uuids[dirname] = {}
+        if status_code != 200:
+            raise ValueError(f"Error accessing {url} or virtualenv doesn't exist. Status code: {status_code}")
 
-        asset_uuids[dirname] = c['__meta__']['asset_uuid']
-        for k, asset_uuid in asset_uuids.items():
-            if k == dirname:
-                continue
-            if c['__meta__']['asset_uuid'] == asset_uuid:
-                raise ValueError(f"__meta__.asset_uuid must be unique. UUID ({asset_uuid}) also found in ci {k}")
+    def check_component_execution_environment(self, component):
+        ee_image = component.definition.get('__meta__', {}).get('deployer', {}).get('execution_environment', {}).get('image')
+        if not ee_image:
+            return
+        # FIXME - use skopeo to check that image exists. Old check did not work.
+        # Need to have skopeo available to check.
 
-    return True
+    def check_component_git_tag_prefix(self, component):
+        deployer_meta = component.definition['__meta__']['deployer']
+        prefix = deployer_meta['git_tag_prefix']
+        scm_url = deployer_meta['scm_url']
 
-def check_valid_sandbox_request(c,ci):
-    '''Ensure catalog item has a valid sandbox request'''
+        match = re.match(r'(?:https://|git@)github\.com/([^/]+)/([^/]+?)(?:\.git)?$', scm_url)
+        if match:
+            self.check_github_tag_prefix(
+                org=match.group(1),
+                repo=match.group(2),
+                prefix=prefix,
+            )
 
+    def check_component_sandboxes(self, component):
+        sandboxes = component.definition.get('__meta__', {}).get('sandboxes')
+        if not sandboxes:
+            return
+        result = validate_sandboxes_request(sandboxes)
+        if "OK" != result:
+            raise ValueError(result)
 
-    sandboxes = c.get('__meta__', {}).get('sandboxes', "NOTFOUND")
-    if sandboxes == "NOTFOUND":
-        return True
+    def check_component_scm_ref(self, component):
+        deployer_meta = component.definition['__meta__']['deployer']
+        scm_ref = deployer_meta['scm_ref']
+        scm_url = deployer_meta['scm_url']
 
-    result = validate_sandboxes_request(sandboxes)
-    if result != "OK":
-        raise ValueError(result)
+        match = re.match(r'(?:https://|git@)github\.com/([^/]+)/([^/]+?)(?:\.git)?$', scm_url)
+        if match:
+            self.check_github_ref(
+                allow_branch=(not component.is_prod or 'hotfix' in scm_ref.lower()),
+                org=match.group(1),
+                repo=match.group(2),
+                ref=scm_ref,
+            )
 
-    return True
+    def check_components(self):
+        if self.debug:
+            print("Checking components: ", end='', flush=True)
+        for component in self.components:
+            if component.deploy_with_babylon:
+                self.check_component(component)
+        if not self.failed_components:
+            if self.debug:
+                print(" PASSED")
+            return
 
-for ci in all_catalog_items:
-    ci = ci.strip()
-    dirname = os.path.dirname(ci)
-    process_ci = subprocess.run(
-        [str(args.agnosticv_cli), '--merge', ci],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=True,
-        check=True,
+        if self.debug:
+            print(" FAILED\n\n")
+        for component in self.failed_components:
+            print(f"Failed babylon checks: {component}")
+            for error in component.errors:
+                print(f"- {error}")
+
+        sys.exit(2)
+
+    def check_github_cache(self, org, repo, ref=None, regex=None):
+        refs = self.scm_check_cache.get((org, repo))
+        if not refs:
+            return False
+        if ref:
+            return ref in refs
+        if regex:
+            for ref in refs:
+                if regex.match(ref):
+                    return True
+        return False
+
+    def check_github_ref(self, allow_branch, org, repo, ref):
+        """
+        Check if ref is a valid tag or branch name.
+        """
+        tag_ref = f"refs/tags/{ref}"
+        branch_ref = f"refs/heads/{ref}"
+
+        if self.check_github_cache(org, repo, tag_ref):
+            return
+        if allow_branch and self.check_github_cache(org, repo, ref=branch_ref):
+            return
+
+        self.fetch_github_tag(org=org, repo=repo, value=ref)
+        if self.check_github_cache(org, repo, ref=tag_ref):
+            return
+
+        if not allow_branch:
+            raise ValueError(
+                f"Tag {ref} not found for https://github.com/{org}/{repo}"
+            )
+
+        self.fetch_github_branch(org=org, repo=repo, value=ref)
+        if not self.check_github_cache(org, repo, ref=branch_ref):
+            raise ValueError(
+                f"Reference {ref} did not match a tag or branch for https://github.com/{org}/{repo}"
+            )
+
+    def check_github_tag_prefix(self, org, repo, prefix):
+        """
+        Check if tag prefix matches a tag in target repository.
+        """
+        tag_regex = re.compile(r'refs/tags/{}-?[0-9.]+$'.format(re.escape(prefix)))
+
+        if self.check_github_cache(org, repo, regex=tag_regex):
+            return
+        self.fetch_github_tag(org=org, repo=repo, value=prefix)
+        if not self.check_github_cache(org, repo, regex=tag_regex):
+            raise ValueError(
+                f"Tag prefix {prefix} did not match a tag for https://github.com/{org}/{repo}"
+            )
+
+    def fetch_github_branch(self, org, repo, value):
+        response = github_api_request(f"/repos/{org}/{repo}/git/refs/heads/{value}")
+        if response.status_code == 200:
+            data = response.json()
+            if not isinstance(data, list):
+                data = [data]
+            for item in data:
+                self.scm_check_cache.setdefault((org, repo), set()).add(item['ref'])
+
+    def fetch_github_tag(self, org, repo, value):
+        for attempt in range(10):
+            response = github_api_request(f"/repos/{org}/{repo}/git/matching-refs/tags/{value}")
+            response.raise_for_status
+            data = response.json()
+            if not isinstance(data, list):
+                if 'message' in data:
+                    if data['message'].startswith('API rate limit exceeded'):
+                        if self.debug:
+                            print(f"Retrying after rate limit exceeded")
+                        time.sleep(60)
+                        continue
+                    elif data['message'] == 'Not Found':
+                        return
+                data = [data]
+            break
+        else:
+            raise Exception(f"Error communicating with GitHub api")
+        for item in data:
+            if 'ref' not in item:
+                print(f"{url} {item}")
+            self.scm_check_cache.setdefault((org, repo), set()).add(item['ref'])
+
+    def get_all_component_paths(self):
+        agnosticv_list = subprocess.run(
+            [str(self.agnosticv_cli), '--list'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            check=True,
+        )
+        return agnosticv_list.stdout.split()
+
+    def get_component_definition(self, component_path):
+        agnosticv_merge = subprocess.run(
+            [str(self.agnosticv_cli), '--merge', component_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            check=True,
+        )
+        return yaml.safe_load(agnosticv_merge.stdout)
+
+    def load_components(self):
+        """
+        Load components paths either from file or list all.
+        """
+        if self.debug:
+            print("Loading components: ", end='', flush=True)
+        self.all_component_paths = self.get_all_component_paths()
+        if not self.component_paths:
+            if self.from_file != '':
+                with open(self.from_file) as fh:
+                    self.component_paths = fh.readlines()
+            else:
+                self.component_paths = self.all_component_paths
+
+        if len(self.component_paths) == 0:
+            print("No components found")
+            sys.exit(2)
+
+        for component_path in self.all_component_paths:
+            if component_path in self.component_paths:
+                self.components.append(
+                    BabylonComponent(
+                        definition = self.get_component_definition(component_path),
+                        path = component_path,
+                    )
+                )
+                if self.debug:
+                    print('.', end='', flush=True)
+        if self.debug:
+            print()
+
+def main():
+    argparser = argparse.ArgumentParser(
+        description='Validate babylon properties of all components.'
     )
 
-    ci_object = yaml.safe_load(process_ci.stdout)
-    passed = True
-    for f in [
-            check_asset_uuid,
-            ]:
-        try:
-            if not f(ci_object,ci):
-                passed = False
-                if str(f) in exceptions:
-                    exceptions[str(f)].append("Did not pass test")
-                else:
-                    exceptions[str(f)] = ["Did not pass test"]
-
-        except Exception as exc:
-            passed = False
-            if str(f) in exceptions:
-                exceptions[str(f)].append(exc)
-            else:
-                exceptions[str(f)] = [exc]
-
-    if not passed:
-        invalid.append([ci, exceptions])
-        if args.debug:
-            print('F', end='', flush=True)
-    else:
-        valid.append(ci)
-        if args.debug:
-            print('.', end='', flush=True)
-
-for ci in catalog_items:
-    ci = ci.strip()
-    dirname = os.path.dirname(ci)
-    process_ci = subprocess.run(
-        [str(args.agnosticv_cli), '--merge', ci],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=True,
-        check=True,
+    argparser.add_argument('--agnosticv_cli',
+        type=str,
+        dest='agnosticv_cli',
+        help='Path of AgnosticV CLI',
+        default='agnosticv',
+        required=False,
     )
 
-    ci_object = yaml.safe_load(process_ci.stdout)
-    passed = True
-    for f in [
-            check_double_booking,
-            check_name,
-            check_tag_var,
-            check_valid_agv_tag,
-#            check_valid_babylon_tag,
-            check_anarchy_namespace,
-            check_virtualenv,
-            check_ee,
-            check_duplicate_directories,
-            check_sandbox_api,
-            check_valid_sandbox_request]:
-        try:
-            if not f(ci_object,ci):
-                passed = False
-                if str(f) in exceptions:
-                    exceptions[str(f)].append("Did not pass test")
-                else:
-                    exceptions[str(f)] = ["Did not pass test"]
+    argparser.add_argument('--from_file',
+        type=str,
+        dest='from_file',
+        help='List of components to check',
+        default='',
+        required=False,
+    )
 
-        except Exception as exc:
-            passed = False
-            if str(f) in exceptions:
-                exceptions[str(f)].append(exc)
-            else:
-                exceptions[str(f)] = [exc]
+    argparser.add_argument('--debug',
+        type=str2bool,
+        dest='debug',
+        nargs='?',
+        const=True,
+        default=False,
+        help="Activate debug mode."
+    )
 
-    if not passed:
-        invalid.append([ci, exceptions])
-        if args.debug:
-            print('F', end='', flush=True)
-    else:
-        valid.append(ci)
-        if args.debug:
-            print('.', end='', flush=True)
+    argparser.add_argument('paths',
+        metavar='PATH', 
+        type=str,
+        nargs='*',
+        help="Restrict validation to listed component paths"
+    )
 
-print()
-print("Valid: %d" %(len(valid)))
-print("Invalid: %d" %(len(invalid)))
+    args = argparser.parse_args()
 
+    if args.paths and args.from_file:
+        raise argparse.ArgumentError("Cannot specify paths with --from_file")
 
-for ci in invalid:
-    print()
-    print('#'*80)
-    print()
-    print(ci[0])
-    for f_str in ci[1].keys():
-        print()
-        print('Failed passing babylon tests %s:' %(f_str))
-        print()
-        for exception in ci[1][f_str]:
-            print(exception)
+    checker = BabylonChecker(
+        agnosticv_cli = args.agnosticv_cli,
+        debug = args.debug,
+        from_file = args.from_file,
+        paths = args.paths,
+    )
+    checker.check()
 
-if len(invalid) > 0:
-    sys.exit(2)
-
-sys.exit(0)
+if __name__ == '__main__':
+    main()
