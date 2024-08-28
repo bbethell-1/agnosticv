@@ -467,16 +467,17 @@ class BabylonChecker:
         if self.debug:
             print("Loading components: ", end='', flush=True)
         self.all_component_paths = self.get_all_component_paths()
+
+        if len(self.all_component_paths) == 0:
+            print("No components found")
+            sys.exit(2)
+
         if not self.component_paths:
             if self.from_file != '':
                 with open(self.from_file) as fh:
                     self.component_paths = fh.readlines()
             else:
                 self.component_paths = self.all_component_paths
-
-        if len(self.component_paths) == 0:
-            print("No components found")
-            sys.exit(2)
 
         for component_path in self.all_component_paths:
             if component_path in self.component_paths:
