@@ -20,12 +20,24 @@ platform: RHPDS
 #  Mandatory Variables
 # -------------------------------------------------------------------
 cloud_provider: ec2
-env_type: convert-to-rhel
+env_type: zero-touch-base-rhel
 software_to_deploy: none
 install_student_user: true
 
 ansible_user: ec2-user
 remote_user: ec2-user
+
+# Use Mike Savage's Provided Centos7 image
+# Preconfigured with archived centos repos and the `centos` init-user modified to `ec2-user`
+infra_images_redhat_owner_id: "809721187735"
+infra_images_predefined:
+  CENTOS79:
+    owner: "{{ infra_images_redhat_owner_id }}"
+    name: savage-minimal-centos-7.9-hvm-std01.x86_64-gp2
+    architecture: x86_64
+    aws_filters:
+      is-public: false
+
 # -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
@@ -53,6 +65,12 @@ zero_touch_egress_rules:
 
 lock_bastion_security_group: true
 
+bastion_instance_image: RHEL94GOLD-latest
+bastion_instance_type: t3a.small
+
+centos_instance_image: CENTOS79
+centos_instance_type: t3.medium
+
 instances:
 - name: bastion
   count: 1
@@ -66,6 +84,24 @@ instances:
   tags:
   - key: "AnsibleGroup"
     value: "bastions"
+  - key: "ostype"
+    value: "linux"
+  rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+  security_groups:
+  - ZeroRHELSG
+
+- name: centos
+  count: 1
+  unique: true
+  public_dns: true
+  dns_loadbalancer: false
+  floating_ip: false
+  image: "{{ centos_instance_image | default(default_instance_image) }}"
+  flavor:
+    ec2: "{{ centos_instance_type | default(default_instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "centos"
   - key: "ostype"
     value: "linux"
   rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
@@ -111,46 +147,55 @@ asset_injector_assets:
     {{ ansible_service_account_user_password | d(generated_password) | default(common_password) | password_hash('sha512') }}
 
 # -------------------------------------------------------------------
-# Role: showroom
+# Role: OCP4 showroom testing
 # -------------------------------------------------------------------
-showroom_deploy_shared_cluster_enable: true
+showroom_deploy_shared_cluster_enable: False
 
 ocp4_workload_showroom_content_git_repo: >-
   https://github.com/rhpds/rhel_zero_convert2rhel.git
+
 ocp4_workload_showroom_content_git_ref: main
 ocp4_workload_showroom_content_only: false
 ocp4_workload_showroom_content_antora_playbook: zero-touch-site.yml
-showroom_lab_users:
-- root
 
 ocp4_workload_showroom_terminal_type: wetty
 ocp4_workload_showroom_wetty_image: docker.io/wettyoss/wetty:latest
 ocp4_workload_showroom_wetty_ssh_bastion_login: true
 
 bastion_prefix: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}"
+centos_prefix: "{{ groups['centos'][0] | regex_replace('\\..*$') }}"
 
 bastion_ssh_command: "ssh {{ ansible_service_account_user_name }}@{{ bastion_public_hostname }}"
 bastion_ssh_user_name: "{{ ansible_service_account_user_name }}"
 bastion_ssh_password: "{{ ansible_service_account_user_password }}"
 bastion_public_hostname: "{{ bastion_prefix }}.{{ guid }}{{ subdomain_base_suffix }}"
 
-
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
 ansible_service_account_user_name: root
-# -------------------------------------------------------------------
-# Role: Specify image pull for account
-# -------------------------------------------------------------------
-bastion_instance_image: "CENTOS79"
-bastion_instance_type: t3.medium
 
-infra_images_redhat_owner_id: "809721187735"
+showroom_git_repo: >-
+  https://github.com/rhpds/rhel_zero_convert2rhel.git
 
-infra_images_predefined:
-  CENTOS79:
-    owner: "{{ infra_images_redhat_owner_id }}"
-    name: savage-minimal-centos-7.9-hvm-std01.x86_64-gp2
-    architecture: x86_64
-    aws_filters:
-      is-public: false
+showroom_ui: zero-touch
+
+showroom_tab_services:
+- tty1
+
+showroom_tab_tty1_username: root
+
+showroom_ttys_enable_tmux: false
+
+showroom_showroom_default_ssh_user: root
+showroom_enable_root_ssh: true
+showroom_ssh_method: sshkey
+showroom_ssh_host: "{{ centos_prefix }}.{{ guid }}{{ subdomain_base_suffix }}"
+showroom_host: host.containers.internal
+showroom_lab_users:
+- root
+
+showroom_user_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
