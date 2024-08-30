@@ -23,12 +23,24 @@ platform: ZEROTOUCH
 # -------------------------------------------------------------------
 # Instance Config
 # -------------------------------------------------------------------
-
+dns_support_state: True
+zero_touch_cockpit_installed: False
 # Ports to be open for ingress / egress after server hardening from lock_bastion_security_group.yml in zero-touch-rhel config
 zero_touch_ports:
   - 443
+  - 80
+  - 8080
+  - 8443
 
-use_content_view: true
+zero_touch_egress_rules:
+  - ports:
+      - 8443
+      - 8080
+      - 443
+    proto: tcp
+    cidr_ip: "0.0.0.0/0"
+
+use_content_view: True
 
 agd_bastion_packages:
   - at
@@ -49,6 +61,19 @@ rhel9_instance_type: "t3a.medium"
 rootfs_size_rhel9: 40
 
 # -------------------------------------------------------------------
+# Role: asset_injector
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+  - description: Download podman image
+    type: command
+    cmd: podman pull ubi9/httpd-24:latest
+
+  - description: Download podman image
+    type: command
+    cmd: podman tag registry.access.redhat.com/ubi9/ubi rhel9-httpd:latest
+
+# -------------------------------------------------------------------
 # Role: set-repositories
 # -------------------------------------------------------------------
 
@@ -63,9 +88,10 @@ showroom_ui: zero-touch
 
 showroom_tab_services:
   - tty1
+  - tty2
 
 showroom_tab_tty1_username: root
-
+showroom_tab_tty2_username: root
 showroom_ttys_enable_tmux: false
 
 showroom_showroom_default_ssh_user: root
