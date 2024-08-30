@@ -1,16 +1,27 @@
 ---
+# -------------------------------------------------------------------
+# --- Catalog: Red Workshops
+# --- Catalog Item: OpenShift 4 Portworx Demo
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+
 #include /includes/aws-sandbox-meta.yaml
-#include /includes/parameters/enable-lets-encrypt.yaml
 #include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
-#include /includes/terms-of-service.yaml
 #include /includes/parameters/aws-region.yaml
-#include /includes/parameters/ocp4-fips-enable.yaml
+#include /includes/parameters/enable-lets-encrypt.yaml
 #include /includes/parameters/open-environment-annotation.yaml
-#include /includes/lifetime-standard.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
-#include /includes/secrets/demosat-rhel8-latest.yaml
+
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/secrets/ocp4_token.yaml
 
@@ -19,9 +30,6 @@
 # -------------------------------------------------------------------
 env_type: ocp4-cluster
 software_to_deploy: openshift4
-ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-ocp4_installer_version: "4.12.12"
-ocp4_installer_use_dev_preview: false
 
 # -------------------------------------------------------------------
 # Platform
@@ -29,17 +37,29 @@ ocp4_installer_use_dev_preview: false
 platform: RHPDS
 
 # -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_root_url: https://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.16"
+
+# -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
 repo_method: satellite
-
-# Update RHEL to the latest packages (and reboot)
 update_packages: true
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
 
 # -------------------------------------------------------------------
 # AWS Specific
 # -------------------------------------------------------------------
-#master_instance_count: 3
+bastion_instance_type: t3.medium
+bastion_instance_image: RHEL94GOLD-latest
+
+master_instance_count: 3
 worker_instance_count: 3
 
 # -------------------------------------------------------------------
@@ -57,13 +77,8 @@ student_sudo: true
 # --- Infra Workloads (YAML List)
 infra_workloads:
 - ocp4_workload_authentication
-- ocp4_workload_project_request_template
-- ocp4_workload_opentlc_production
-- ocp4_workload_le_certificates
+- ocp4_workload_cert_manager
 - ocp4_workload_portworx
-
-# --- Student Workloads (YAML List)
-student_workloads: []
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -84,17 +99,18 @@ ocp4_workload_authentication_htpasswd_user_password_length: 16
 ocp4_workload_authentication_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_opentlc_production
+# Workload: ocp4_workload_cert_manager
 # -------------------------------------------------------------------
-ocp4_workload_opentlc_production_remove_self_provisioner: false
+ocp4_workload_cert_manager_channel: stable-v1.14
+ocp4_workload_cert_manager_use_catalog_snapshot: false
 
-# -------------------------------------------------------------------
-# AgnosticV meta variables
-# -------------------------------------------------------------------
-agnosticv_meta:
-  deploy_with: babylon
-  params_to_variables:
-    username: student_name
+ocp4_workload_cert_manager_ec2_region: "{{ aws_region }}"
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
+
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+ocp4_workload_cert_manager_ignore_errors: true
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -105,7 +121,7 @@ __meta__:
     namespace: babylon-anarchy-ocp-wksp
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.1
+      image: quay.io/agnosticd/ee-multicloud:2024-08-08
       pull: missing
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
@@ -120,19 +136,3 @@ __meta__:
       Product_Family: Red_Hat_Cloud
       Provider: RHDP
     multiuser: false
-    parameters:
-    - name: num_users
-      description: >-
-        Number of users to provision within the environment.
-      formLabel: User Count
-      openAPIV3Schema:
-        type: integer
-        default: 1
-        minimum: 1
-        maximum: 1
-      validation: >-
-        num_users == 1 ||
-        user_is_admin ||
-        user_groups.includes('rhpds-devs') ||
-        check_salesforce_id(salesforce_id) ||
-        Error('User count greater than one requires a valid SalesForceID.')
