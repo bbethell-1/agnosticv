@@ -23,44 +23,54 @@ common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 platform: RHPDS
 
 # --------------------------------------------------------------------
+# Vars needed for RHEL AI Eng AMI (TODO: Remove this need with custom AMI)
+# --------------------------------------------------------------------
+
+ansible_user: cloud-user
+remote_user: cloud-user
+
+# --------------------------------------------------------------------
+# Software Workloads
+# --------------------------------------------------------------------
+
+software_workloads: []
+
+# --------------------------------------------------------------------
 # Post Software Workloads
 # --------------------------------------------------------------------
 
-post_software_workloads:
-  bastions:
-    - ai_setup_nvidia_cuda
-    - ai_setup_ilab
+post_software_workloads: []
 
 # --------------------------------------------------------------------
 # Repos and packages
 # --------------------------------------------------------------------
 
-use_content_view: true
-update_packages: true      # Do you want to run a full yum update
-
-agd_bastion_packages:
-
-  - at
-  - bash-completion
-  - bind-utils
-  - git
-  - podman
-  - buildah
-  - tmux
-  - vim-enhanced
-  - wget
+use_content_view: false
+update_packages: false  # Do you want to run a full yum update
+bastion_install_basic_packages: false
+agd_install_common: false # Immutable OS
 
 # -------------------------------------------------------------------
 # Role: set-repositories
 # -------------------------------------------------------------------
 
-repo_method: satellite
+repo_method: "{{ undefined() }}"
 
 # -------------------------------------------------------------------
 # asset_injector_assets
 # -------------------------------------------------------------------
 
 asset_injector_assets:
+
+  - name: Ensure files directory exists for assets
+    type: file
+    path: /etc/ilab
+    state: directory
+
+  - name: Ensure files directory exists for assets
+    type: file
+    path: /etc/ilab/insights-opt-out
+    state: touch
 
   - description: Remove 50-cloud-init.conf, ssh issue
     type: remove
@@ -74,14 +84,14 @@ asset_injector_assets:
     type: blockinfile
     path: /etc/ssh/sshd_config
     state: present
-    marker: "# {mark} Our custom SSH settings via Ansible"
     block: |
       # Our custom SSH settings via Ansible
       ChallengeResponseAuthentication no
       PasswordAuthentication yes
       UsePAM yes
+    marker: "# {mark} Our custom SSH settings via Ansible"
 
-  - description: Restart sshd to pick up new password support configuration
+  - description: Restart sshd to pick up new configuration
     type: service
     name: sshd
     state: restarted
@@ -90,34 +100,10 @@ asset_injector_assets:
 # inventory_groups (optional but nice to have)
 # -------------------------------------------------------------------
 
+# TODO: Need AI user role
+
 inventory_groups:
   - bastions
-
-# -------------------------------------------------------------------
-# Role: showroom
-# -------------------------------------------------------------------
-
-showroom_git_repo: "https://github.com/rhpds/showroom_rh1_aap2_containerized"
-showroom_user: showroom
-showroom_ui: rh1
-
-showroom_user_password: "{{ common_password }}"
-showroom_ssh_method: sshkey
-
-showroom_tab_services:
-  - double_tty
-  - web1
-
-showroom_ttys_enable_tmux: false
-
-showroom_lab_users:
-  - "{{ student_name }}"
-
-showroom_tab_double_tty_top_username: "{{ student_name }}"
-showroom_tab_double_tty_bottom_username: "{{ student_name }}"
-
-showroom_tab_web1_url: https://github.com/instructlab
-showroom_tab_web1_name: Instruct Lab
 
 # -------------------------------------------------------------------
 # Role: common
@@ -132,21 +118,29 @@ student_password: "{{ common_password }}"
 
 ansible_service_account_user_name: "{{ student_name }}"
 ansible_service_account_user_password: "{{ common_password }}"
-ansible_service_account_user_preferred_python: "3.9"
+agd_user_create_ansible_service_account: true
+config_user_preferred_python: false
 
 # -------------------------------------------------------------------
 # Instance Config
 # -------------------------------------------------------------------
 
-rootfs_size_rhel9: 100
-rootfs_size_bastion: 1024
-
 cloud_tags:
   env_type: "{{ env_type }}"
   platform: "{{ platform | default('unknown') }}"
 
-bastion_instance_image: RHEL93GOLD-latest
-bastion_instance_type: g5.4xlarge
+bastion_instance_type: g6.xlarge
+bastion_rootfs_size: 1024
+
+# -------------------------------------------------------------------
+# AMI Config - tmp for RHEL AI Eng CI
+# -------------------------------------------------------------------
+
+aws_ami_region_mapping:
+  us-east-2:
+    RHELAIRC2: ami-0be2f5c0ca770a10f
+
+bastion_instance_image: RHELAIRC2
 
 instances:
 
@@ -156,54 +150,27 @@ instances:
     public_dns: true
     dns_loadbalancer: true
     floating_ip: true
-    image: "{{ bastion_instance_image }}"
+    image: RHELAIRC2
     flavor:
       ec2: "{{ bastion_instance_type }}"
     tags:
       - key: "AnsibleGroup"
-        value: "bastions,showroom"
+        value: "bastions"
       - key: "ostype"
         value: "linux"
       - key: "instance_filter"
         value: "{{ env_type }}-{{ email }}"
-    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    rootfs_size: "{{ bastion_rootfs_size | default(1024)  }}"
     security_groups:
       - BastionSG
-      - ShowroomSG
+      - ParasolSG
+      - InstructLabSG
 
 # -------------------------------------------------------------------
 # Security Group Config
 # -------------------------------------------------------------------
 
 security_groups:
-
-  - name: FrontendSG
-    rules:
-      - name: FrontHTTPPorts
-        description: "HTTP Public"
-        from_port: 80
-        to_port: 80
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-
-  - name: WebSG
-    rules:
-      - name: HTTPPorts
-        description: "HTTP Public"
-        from_port: 80
-        to_port: 80
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-
-      - name: HTTPSPorts
-        description: "HTTP Public"
-        from_port: 443
-        to_port: 443
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
 
   - name: HostSG
     rules:
@@ -215,23 +182,24 @@ security_groups:
         from_group: HostSG
         rule_type: Ingress
 
-  - name: ShowroomSG
+  - name: ParasolSG
     rules:
-      - name: ShowroomHTTPS
-        description: "Primary showroom endpoint - for reverse proxy"
-        from_port: 443
-        to_port: 443
+
+      - name: ParasolHTTP
+        description: "Parasol HTTP Port"
+        from_port: 8005
+        to_port: 8005
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
-  - name: AISG
+  - name: InstructLabSG
     rules:
 
-      - name: AIPORTS
-        description: Selection of ports for llm, chatbots etc
+      - name: InstructLabAPI
+        description: "InstructLab API Port"
         from_port: 8000
-        to_port: 8010
+        to_port: 8010 # lets open up a few ports for now
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
@@ -242,20 +210,21 @@ security_groups:
 
 __meta__:
   asset_uuid: 1C09AB06-6582-476B-BB49-0DB55FEFA3AE
-  access_control:
-    allow_groups:
-      - rhpds-devs
-      - rhpds-devs-ai
+  # access_control: TODO: Leave for now, but disable
+  #   allow_groups:
+  #     - rhpds-devs
+  #     - rhpds-devs-ai
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "RHEL AI VM"
+    display_name: "RHEL AI (GA) VM"
     category: Red_Hat_One
     keywords:
       - rhel
       - ai
-      - summit
+      - instructlab
+      - nvidia
     labels:
       Product: Red_Hat_Enterprise_Linux
       Product_Family: Red_Hat_Enterprise_Linux
