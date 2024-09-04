@@ -42,7 +42,6 @@ infra_workloads:
 - ocp4_workload_web_terminal
 - ocp4_workload_kubevirt
 - ocp4_workload_mtv
-- ocp4_workload_minio
 - ocp4_workload_oadp_gitops
 - ocp4_workload_virt_roadshow_vms
 - ocp4_workload_virt_roadshow_vmware
@@ -86,6 +85,7 @@ ocp4_workload_authentication_htpasswd_user_base: user
 ocp4_workload_authentication_htpasswd_user_password: ""
 ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('1') | int }}"
 ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager
@@ -106,25 +106,6 @@ ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
 
 ocp4_workload_cert_manager_install_ingress_certificates: true
 ocp4_workload_cert_manager_install_api_certificates: false
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_web_terminal
-# -------------------------------------------------------------------
-ocp4_workload_web_terminal_channel: fast
-ocp4_workload_web_terminal_catalogsource_setup: false
-ocp4_workload_web_terminal_configure: false
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_kubevirt
-# -------------------------------------------------------------------
-ocp4_workload_kubevirt_channel: stable
-# Use PVCs for KubeVirt boot images
-ocp4_workload_kubevirt_boot_sources_shapshot: false
-
-# Pin 4.16.0 of kubevirt
-ocp4_workload_kubevirt_automatic_install_plan_approval: false
-ocp4_workload_kubevirt_use_catalog_snapshot: true
-ocp4_workload_kubevirt_catalog_snapshot_image_tag: "v4.16_2024_08_05"
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
@@ -185,35 +166,35 @@ ocp4_workload_openshift_gitops_resource_customizations: |
       health_status.status = "Progressing"
       health_status.message = "An install plan for a subscription is pending installation"
       return health_status
+#
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_web_terminal
+# -------------------------------------------------------------------
+ocp4_workload_web_terminal_channel: fast
+ocp4_workload_web_terminal_catalogsource_setup: false
+ocp4_workload_web_terminal_configure: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+# Use PVCs for KubeVirt boot images
+ocp4_workload_kubevirt_boot_sources_shapshot: false
+# Pin 4.16.0 of kubevirt
+ocp4_workload_kubevirt_automatic_install_plan_approval: false
+ocp4_workload_kubevirt_use_catalog_snapshot: true
+ocp4_workload_kubevirt_catalog_snapshot_image_tag: "v4.16_2024_08_05"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_mtv
 # -------------------------------------------------------------------
 ocp4_workload_mtv_channel: release-v2.6
-# necessary for multi-user:
-ocp4_workload_mtv_max_vm_inflight: 20
-ocp4_workload_mtv_forklift_controller_container_limits_cpu: "2000m"
-ocp4_workload_mtv_forklift_controller_container_limits_memory: "8000Mi"
+ocp4_workload_mtv_max_vm_inflight: "{{ [(num_users | int * 3) | int, 40] | min }}"
+ocp4_workload_mtv_forklift_controller_container_limits_cpu: "{{ [(num_users | int * 100) | int, 1000] | max }}m"
+ocp4_workload_mtv_forklift_controller_container_limits_memory: "{{ [(num_users | int * 400) | int, 2000] | max }}Mi"
 
 # to use engineering's build for us
 ocp4_workload_mtv_use_patched_forkliftcontroller_image: true
-
-# -------------------------------------------------------------------
-# ocp4_workload_minio
-# -------------------------------------------------------------------
-ocp4_workload_minio_project: minio
-ocp4_workload_minio_storage_size: 256Gi
-ocp4_workload_minio_modern_deployment: true
-ocp4_workload_minio_expose_route: false
-ocp4_workload_minio_root_user: minio-admin
-ocp4_workload_minio_root_password: minio-password
-ocp4_workload_minio_image: quay.io/minio/minio
-ocp4_workload_minio_image_tag: RELEASE.2024-07-16T23-46-41Z
-ocp4_workload_minio_bucket_setup: true
-ocp4_workload_minio_bucket_multi_user: true
-ocp4_workload_minio_bucket_base: s3-
-ocp4_workload_minio_bucket_num_users: "{{ num_users | int }}"
-ocp4_workload_minio_bucket_userbase: "{{ ocp4_workload_user_base }}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_oadp_gitops
@@ -227,12 +208,7 @@ ocp4_workload_oadp_gitops_num_users: "{{ num_users | int }}"
 ocp4_workload_oadp_gitops_user_base: "{{ ocp4_workload_user_base }}"
 ocp4_workload_oadp_gitops_namespace_base: oadp
 ocp4_workload_oadp_gitops_configure_dpa: true
-ocp4_workload_oadp_gitops_storage: minio
-ocp4_workload_oadp_gitops_storage_minio_user: minio-admin
-ocp4_workload_oadp_gitops_storage_minio_password: minio-password
-ocp4_workload_oadp_gitops_storage_minio_name: minio
-ocp4_workload_oadp_gitops_storage_minio_namespace: minio
-ocp4_workload_oadp_gitops_storage_minio_bucket_name_base: s3-
+ocp4_workload_oadp_gitops_storage: odf
 
 # -------------------------------------------------------------------
 # ocp4_workload_virt_roadshow_vms
