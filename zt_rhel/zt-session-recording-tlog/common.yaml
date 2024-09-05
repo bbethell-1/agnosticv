@@ -27,6 +27,19 @@ platform: ZEROTOUCH
 # Ports to be open for ingress / egress after server hardening from lock_bastion_security_group.yml in zero-touch-rhel config
 zero_touch_ports:
   - 443
+  - 80
+  - 8443
+  - 9090
+
+zero_touch_egress_rules:
+  - ports:
+      - 8443
+      - 443
+      - 9090
+    proto: tcp
+    cidr_ip: "0.0.0.0/0"
+
+zero_touch_cockpit_installed: true
 
 use_content_view: true
 
@@ -40,13 +53,26 @@ agd_bastion_packages:
   - tmux
   - vim-enhanced
   - wget
+  - stress-ng
+  - cockpit-pcp
 
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-
 
 rhel9_instance_image: RHEL94GOLD-latest
 rhel9_instance_type: "t3a.medium"
 rootfs_size_rhel9: 40
+
+# -------------------------------------------------------------------
+# Role: asset-injector
+# -------------------------------------------------------------------
+asset_injector_assets:
+  - description: Add rhel user to passwordless sudo
+    type: lineinfile
+    path: /etc/sudoers
+    create: true
+    state: present
+    line: |-
+      "{{ zero_touch_rhel_user_user_name }}" ALL=(ALL) NOPASSWD: ALL
 
 # -------------------------------------------------------------------
 # Role: set-repositories
@@ -57,8 +83,7 @@ repo_method: satellite
 # -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
-### Showroom broken Testing other repo https://github.com/rhpds/rhel_zero_poc_managing_user_basics.git
-showroom_git_repo: https://github.com/rhpds/rhel_zero_session_recording_tlog
+showroom_git_repo: https://github.com/rhpds/rhel_zero_session_recording_tlog.git
 showroom_ui: zero-touch
 
 showroom_tab_services:
