@@ -129,9 +129,65 @@ security_groups:
     rule_type: Ingress
 
 # -------------------------------------------------------------------
+# Role: asset_injector
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+- description: Root SSH enabled
+  type: lineinfile
+  path: /etc/ssh/sshd_config
+  regexp: '^PermitRootLogin'
+  line: 'PermitRootLogin yes'
+  backrefs: true
+
+- description: Define Root Password for showroom SSH access
+  type: user
+  name: root
+  state: present
+  password: |-
+    {{ ansible_service_account_user_password | d(generated_password) | default(common_password) | password_hash('sha512') }}
+
+- description: Copy Showroom-tmux file from bastion to showroom_ssh_host
+  type: blockinfile
+  path: /usr/local/bin/showroom-tmux
+  mode: "755"
+  marker: ""
+  create: True
+  owner: root
+  state: present
+  block: |-
+    #!/usr/bin/bash
+
+    # Added by showroom
+    # Enables tty ssh sessions, eg wetty, to automatically run in a tmux session
+
+    if command -v tmux >/dev/null 2>&1 && [ -z "$TMUX" ]; then
+        # Check if the session exists, disregarding any error messages
+        tmux has-session -t $1 2>/dev/null
+
+        if [ $? != 0 ]; then
+            # Create a new session if it doesn't exist
+            tmux new-session -s $1 -n $1 -d
+        fi
+
+        # Attach to the session
+        tmux attach-session -t $1
+    else
+        if [ -z "$TMUX" ]; then
+            echo "tmux is not installed. Please install tmux to use this feature."
+        fi
+    fi
+
+# -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
-### Showroom broken Testing other repo https://github.com/rhpds/rhel_zero_poc_managing_user_basics.git
+showroom_dnf_packages:
+- git
+- podman
+- python36-devel
+- systemd-container
+- unzip
+
 showroom_git_repo: https://github.com/rhpds/rhel_zero_in_place_upgrades.git
 showroom_ui: zero-touch
 
@@ -140,7 +196,7 @@ showroom_tab_services:
 
 showroom_tab_tty1_username: root
 
-showroom_ttys_enable_tmux: False
+showroom_ttys_enable_tmux: True
 
 showroom_showroom_default_ssh_user: root
 showroom_enable_root_ssh: True
