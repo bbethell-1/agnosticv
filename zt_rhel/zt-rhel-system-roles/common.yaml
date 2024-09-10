@@ -12,7 +12,7 @@
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-env_type: zero-touch-base-rhel
+env_type: zero-touch-ansible-bu
 cloud_provider: ec2
 
 # -------------------------------------------------------------------
@@ -66,25 +66,43 @@ bastion_instance_type: "t3a.medium"
 rootfs_size_rhel9: 40
 
 instances:
-
-  - name: "{{ bastion_hostname | default('bastion') }}"
-    count: 2
+  - name: "{{ bastion_instance_name | default('rhel') }}"
+    count: 1
     unique: true
     public_dns: true
     dns_loadbalancer: true
     floating_ip: true
     image: "{{ bastion_instance_image | default(default_instance_image) }}"
     flavor:
-      ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
+      ec2: "{{bastion_instance_type | default(default_instance_type) }}"
     tags:
       - key: "AnsibleGroup"
-        value: "bastions,showroom"
+        value: "bastions"
       - key: "ostype"
         value: "linux"
-    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ default_rootfs_size }}"
     security_groups:
-      - ZeroRHELSG
+      - BastionSG
+      - NodeSG
 
+  - name: "client1"
+    count: 1
+    public_dns: false
+    image: "{{ node_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{node_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "rhel"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ default_rootfs_size }}"
+    security_groups:
+      - NodeSG
 # -------------------------------------------------------------------
 # Role: asset_injector
 # -------------------------------------------------------------------
