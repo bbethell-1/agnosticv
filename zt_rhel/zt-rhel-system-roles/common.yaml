@@ -65,6 +65,84 @@ bastion_instance_image: RHEL94GOLD-latest
 bastion_instance_type: "t3a.medium"
 rootfs_size_rhel9: 40
 
+instances:
+
+  - name: rhel
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ bastion_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    security_groups:
+      - ZeroRHELSG
+
+  - name: client1
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ bastion_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    security_groups:
+      - ZeroRHELSG
+
+# -------------------------------------------------------------------
+# Role: asset_injector
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+  - description: Create soe file
+    type: blockinfile
+    path: /root/my-networked-pod.kube
+    create: true
+    marker: ""
+    state: present
+    block: |-
+      ---
+      - hosts: localhost
+        vars:
+          kernel_settings_sysctl:
+            - name: vm.swappiness
+              value: 20
+            - name: vm.dirty_ratio
+              value: 40
+            - name: vm.dirty_expire_centisecs
+              value: 500
+            - name: vm.dirty_writeback_centisecs
+              value: 100
+            - name: kernel.sem
+              value: "250 32000 100 128"
+          tlog_scope_sssd: all
+        roles:
+          - role: rhel-system-roles.kernel_settings
+          - role: rhel-system-roles.tlog
+
+  - description: Add rhel user to passwordless sudo
+    type: lineinfile
+    path: /etc/sudoers
+    create: true
+    state: present
+    line: |-
+      "{{ zero_touch_rhel_user_user_name }}" ALL=(ALL) NOPASSWD: ALL
+
+
 # -------------------------------------------------------------------
 # Role: set-repositories
 # -------------------------------------------------------------------
