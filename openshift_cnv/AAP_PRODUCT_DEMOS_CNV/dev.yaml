@@ -1,9 +1,12 @@
 ---
 #include /includes/ee-multicloud-dev.yaml
+
 # ------------------------------------------------------------------
 # Purpose - Cost tag. One of development, ilt, production, event
 # ------------------------------------------------------------------
 purpose: development
+
+common_password: "{{ lookup('community.general.random_string', special=false, in_lower=1, min_upper=1, min_numeric=1) }}"
 
 ocp4_installer_version: "4.15"
 
@@ -11,28 +14,48 @@ ocp4_workload_ansible_automation_platform_manifest.username: admin
 ocp4_workload_ansible_automation_platform_manifest.password: "{{ common_password }}"
 ocp4_workload_ansible_automation_platform_manifest.url: "{{ controller_manifest }}"
 
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
 __meta__:
   sandbox_api:
     actions:
       destroy:
         catch_all: false
   sandboxes:
-  - kind: OcpSandbox
-    namespace_suffix: ocp4-cluster
-    cloud_selector:
-      cloud: cnv
-      purpose: dev
-      virt: "yes"
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: dev
+        virt: "yes"
   deployer:
     scm_ref: development
-  components:
-  - name: aws_sandbox
-    display_name: AWS Credentials
-    item: sandboxes-gpte/SANDBOX_OPEN
-    propagate_provision_data:
-    - var: aws_credentials
-  - name: vmw_sandbox
-    display_name: VMWare Credentials
-    item: vmware-ibm/SANDBOX_VMWARE
-    propagate_provision_data:
-    - var: vmw_credentials
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Ansible Product Demos
+    category: Demos
+    multiuser: false
+    keywords:
+      - ansible
+      - openshift
+      - ocp
+      - cnv
+      - aap
+      - demo
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Provider: RHDP
+      Product_Family: Red_Hat_Automation
+      Featured_Score: '80'
+    parameters:
+      - name: ocp4_workload_ansible_automation_platform_subscription_channel
+        description: AAP operator subscription channel
+        formLabel: AAP operator subscription channel
+        openAPIV3Schema:
+          type: string
+          default: stable-2.4
+          enum:
+            - stable-2.4
+
+...
