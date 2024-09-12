@@ -1,0 +1,141 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog: Red Workshops
+# --- Catalog Item: CNV03 Experience OpenShift Virtualization Roadshow (CNV)
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+
+# Restrict for now until ready for broad consumption
+#include /includes/access-restriction-virt-roadshow.yaml
+
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/sandbox-api.yaml
+#
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/showroom-ocp-defaults.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/secrets/openshift-ocpv-configs.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+ai_storage_class: ocs-storagecluster-ceph-rbd
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.16"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.4
+bastion_cores: 2
+bastion_memory: 6Gi
+
+ai_control_plane_cores: >-
+  {{ 16 if worker_instance_count|int <= 10
+  else 32 if worker_instance_count|int <= 20
+  else 64
+  }}
+ai_control_plane_memory: >-
+  {{ '32Gi' if worker_instance_count|int <= 10
+  else '64Gi' if worker_instance_count|int <= 20
+  else '128Gi'
+  }}
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+
+ai_workers_cores: 16
+ai_workers_memory: "32Gi"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 83dde3cf-5233-4eeb-9e52-5d8b184dfc8c
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2024-08-08
+      pull: missing
+ # sandbox_api:
+ #   actions:
+ #     destroy:
+ #       catch_all: false
+ # sandboxes:
+ # - kind: OcpSandbox
+ #   namespace_suffix: ocp4-cluster
+ #   cloud_selector:
+ #     cloud: cnv
+ #     purpose: prod
+ #     virt: "yes"
+  catalog:
+    display_name: OCPV03 Component
+    category: Workshops
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    multiuser: true
+    workshopLabUiRedirect: true
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 1
+        maximum: 100
+    keywords:
+    - workshop
+    - openshift
+    - ocp
+    - ocp416
+    - cnv
+    - cnvocp
+    - ocpcnv
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+      Featured_Score: '94'
+  tower:
+    timeout: 21600
