@@ -195,6 +195,59 @@ asset_injector_assets:
         fi
     fi
 
+- description: Create tmux.conf for scrolling
+  type: blockinfile
+  path: /root/.tmux.conf
+  mode: u=rw,g-rwx,o-rwx
+  marker: ""
+  create: True
+  owner: root
+  state: present
+  block: |-
+    # Enable vi mode
+    setw -g mode-keys vi
+
+    # Enable mouse support
+    set -g mouse on
+
+    # Start selection with 'v' and copy with 'y'
+    bind-key -T copy-mode-vi v send-keys -X begin-selection
+    bind-key -T copy-mode-vi y send-keys -X copy-selection-and-cancel
+
+    # Copy to system clipboard
+    if-shell "uname | grep -q Darwin" {
+        # macOS
+        bind-key -T copy-mode-vi 'y' send -X copy-pipe-and-cancel 'pbcopy'
+        bind-key -T copy-mode-vi Enter send -X copy-pipe-and-cancel 'pbcopy'
+        bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel 'pbcopy'
+    } {
+        if-shell "uname | grep -q Linux" {
+            # Linux with xclip
+            bind-key -T copy-mode-vi 'y' send -X copy-pipe-and-cancel 'xclip -in -selection clipboard'
+            bind-key -T copy-mode-vi Enter send -X copy-pipe-and-cancel 'xclip -in -selection clipboard'
+            bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel 'xclip -in -selection clipboard'
+        } {
+            # Windows (assuming WSL with clip.exe)
+            bind-key -T copy-mode-vi 'y' send -X copy-pipe-and-cancel 'clip.exe'
+            bind-key -T copy-mode-vi Enter send -X copy-pipe-and-cancel 'clip.exe'
+            bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel 'clip.exe'
+        }
+    }
+    # Paste from system clipboard
+    if-shell "uname | grep -q Darwin" {
+        # macOS
+        bind ] run "pbpaste | tmux load-buffer - && tmux paste-buffer"
+    } {
+        if-shell "uname | grep -q Linux" {
+            # Linux with xclip
+            bind ] run "xclip -out -selection clipboard | tmux load-buffer - && tmux paste-buffer"
+        } {
+            # Windows (assuming WSL)
+            bind ] run "powershell.exe -command 'Get-Clipboard' | tmux load-buffer - && tmux paste-buffer"
+        }
+    }
+    unbind-key -T root MouseDown3Pane
+
 # -------------------------------------------------------------------
 # Role: OCP4 showroom testing
 # -------------------------------------------------------------------
@@ -235,6 +288,7 @@ showroom_tab_services:
 showroom_tab_tty1_username: root
 
 showroom_ttys_enable_tmux: True
+showroom_ttys_tumx_scrolling: False
 
 showroom_showroom_default_ssh_user: root
 showroom_enable_root_ssh: true
@@ -277,7 +331,7 @@ __meta__:
     - CENTOS
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+      image: quay.io/agnosticd/ee-multicloud:latest
       pull: missing
   secrets:
   - name: gpte
