@@ -1,22 +1,21 @@
 ---
 #include /includes/aws-sandbox-meta.yaml
 #include /includes/parameters/enable-lets-encrypt.yaml
-#include /includes/catalog-icon-nvidia.yaml
-#include /includes/catalog-icon-openshift-data-science.yaml
+#include /includes/catalog-icon-openshift.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/lifetime-standard.yaml
 #include /includes/parameters/aws-region.yaml
 #include /includes/parameters/agnosticd_open_environment.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/secrets/demosat-rhel81.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/demosat-rhel-9-lab.yaml
 #include /includes/secrets/ocp4_token.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog: Development
-# --- Catalog Item: DEMO : RHODS on OCP on AWS with NVIDIA GPUs
+# --- Catalog Item: Workshop with RHODS on OCP on AWS
 # -------------------------------------------------------------------
 # Workshop with RHODS on OCP on AWS
 
@@ -42,7 +41,7 @@ platform: rhpds
 # VM configuration
 # -------------------------------------------------------------------
 bastion_instance_type: t3.medium
-bastion_instance_image: RHEL84GOLD-latest
+bastion_instance_image: RHEL92GOLD-latest
 
 # -------------------------------------------------------------------
 # Security group
@@ -75,12 +74,12 @@ security_groups:
 # -------------------------------------------------------------------
 # OpenShift Installer Version
 # -------------------------------------------------------------------
-ocp4_installer_version: "4.12.12"
+ocp4_installer_version: "4.16"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 master_instance_count: 3
 master_instance_type: m5.2xlarge
 worker_instance_count: 2
-worker_instance_type: p3.2xlarge
+worker_instance_type: g6.2xlarge
 
 # -------------------------------------------------------------------
 # OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
@@ -109,13 +108,9 @@ student_sudo: true
 
 # -------------------------------------------------------------------
 # Other Variables
-# -------------------------------------------------------------------
-
-# ocp4_network_type: OVNKubernetes
-
+# ------------------------------------------------------------------
 # Show kubeadmin password
 ocp4_cluster_show_access_user_info: true
-
 install_ftl: false
 
 # -------------------------------------------------------------------
@@ -138,6 +133,16 @@ requirements_content:
   - name: community.okd
     version: 2.3.0
 
+# Workload variables #
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.16_2024_07_15
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: openshift
+
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
@@ -145,14 +150,24 @@ infra_workloads:
 - ocp4_workload_authentication             # all segments
 - ocp4_workload_nvidia_gpu_setup
 - ocp4_workload_pipelines
+- ocp4_workload_openshift_gitops
+- ocp4_workload_serverless
+- ocp4_workload_ossm
 - ocp4_workload_gitea_operator
-- ocp4_workload_rhods_self_managed
+- ocp4_workload_openshift_ai
 - ocp4_workload_le_certificates            # all segments
 - ocp4_workload_web_terminal
 
-# Workload variables #
-ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.12_2023_07_03
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ user_count | default(num_users) | default('5') | int }}"
+ocp4_workload_authentication_remove_kubeadmin: true
 
 # ------------------------------------------------
 # Node Feature Discovery Operator
@@ -160,7 +175,7 @@ ocp4_workload_catalogsource_tag: v4.12_2023_07_03
 nfd_operator_namespace: openshift-nfd
 nfd_operator_channel: "stable"
 nfd_operator_automatic_install_plan_approval: true
-nfd_operator_starting_csv: "nfd.4.12.0-202307182142"
+nfd_operator_starting_csv: "nfd.4.16.0-202409032335"
 nfd_operator_wait_for_deploy: true
 nfd_operator_use_catalog_snapshot: false
 nfd_operator_catalogsource_name: ""
@@ -171,88 +186,197 @@ nfd_operator_catalog_snapshot_image_tag: ""
 # NVIDIA GPU Operator
 # ------------------------------------------------
 nvidia_gpu_operator_namespace: nvidia-gpu-operator
-nvidia_gpu_operator_channel: v23.6
+nvidia_gpu_operator_channel: v24.6
 nvidia_gpu_operator_automatic_install_plan_approval: true
-nvidia_gpu_operator_starting_csv: gpu-operator-certified.v23.6.0
+nvidia_gpu_operator_starting_csv: gpu-operator-certified.v24.6.1
 nvidia_gpu_operator_wait_for_deploy: true
 nvidia_gpu_operator_use_catalog_snapshot: false
 nvidia_gpu_operator_catalogsource_name: ""
 nvidia_gpu_operator_catalog_snapshot_image: ""
 nvidia_gpu_operator_catalog_snapshot_image_tag: ""
 
+# ---------------------------------------------------------
+# Workload: OpenShift Pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.15
+ocp4_workload_pipelines_tkn_version: 0.41.0
+ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_rhods_self_managed
+# ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_rhods_self_managed_operator_group_name: "rhods-ods-operator"
-ocp4_workload_rhods_self_managed_operator_name: "rhods-operator"
-ocp4_workload_rhods_self_managed_namespace: "redhat-ods-operator"
-ocp4_workload_rhods_self_managed_channel: "stable"
-ocp4_workload_rhods_self_managed_catalogsource_setup: false
-ocp4_workload_rhods_self_managed_installPlanApproval: "Automatic"
-ocp4_workload_rhods_self_managed_source: "redhat-operators"
-ocp4_workload_rhods_self_managed_sourceNamespace: "openshift-marketplace"
-ocp4_workload_rhods_self_managed_csv_nameprefix: "rhods-operator"
-ocp4_workload_rhods_self_managed_startingCSV: "rhods-operator.1.26.0"
-ocp4_workload_rhods_self_managed_namespace_list:
-- "{{ ocp4_workload_rhods_self_managed_namespace }}"
-ocp4_workload_rhods_self_managed_applications_namespace: "redhat-ods-applications"
-ocp4_workload_rhods_self_managed_is_workshop: false
-ocp4_workload_rhods_self_managed_workshop_num_users: 25
-ocp4_workload_rhods_self_managed_workshop_username_base: "user"
-ocp4_workload_rhods_self_managed_workshop_password: "{{ student_password }}"
+ocp4_workload_openshift_gitops_channel: gitops-1.13
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
 
-# Variable for ocp4_workload_object_detection_ai_ml_setup
-rhods_username: "admin"
-ocp4_workload_aiml_namespace: "{{ rhods_username }}-rhods-project"
-ocp4_workload_gitea_aiml_user: lab-user
-retail_rhods_project_gitea_password: b3BlbnNoaWZ0
-retail_rhods_project_gitea_username: bGFiLXVzZXI=
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
-# For ocp4_workload_aiml_edge_workshop
-# Repo to clone for running the edge workload
-ocp4_workload_aiml_edge_workshop_cluster_bootstrap_repo: "https://github.com/Enterprise-Neurosystem/cluster-bootstrap.git"
-ocp4_workload_aiml_edge_workshop_cluster_bootstrap_repo_branch: main
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
 
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+ocp4_workload_openshift_gitops_update_route_tls: true
+ocp4_workload_openshift_gitops_resource_customizations: |
+  operators.coreos.com/Subscription:
+    health.lua: |
+      health_status = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          numDegraded = 0
+          numPending = 0
+          msg = ""
+          for i, condition in pairs(obj.status.conditions) do
+            msg = msg .. i .. ": " .. condition.type .. " | " .. condition.status .. "\n"
+            if condition.type == "InstallPlanPending" and condition.status == "True" then
+              numPending = numPending + 1
+            elseif (condition.type == "InstallPlanMissing" and condition.reason ~= "ReferencedInstallPlanNotFound") then
+              numDegraded = numDegraded + 1
+            elseif (condition.type == "CatalogSourcesUnhealthy" or condition.type == "InstallPlanFailed") and condition.status == "True" then
+              numDegraded = numDegraded + 1
+            end
+          end
+          if numDegraded == 0 and numPending == 0 then
+            health_status.status = "Healthy"
+            health_status.message = msg
+            return health_status
+          elseif numPending > 0 and numDegraded == 0 then
+            health_status.status = "Progressing"
+            health_status.message = "An install plan for a subscription is pending installation"
+            return health_status
+          else
+            health_status.status = "Degraded"
+            health_status.message = msg
+            return health_status
+          end
+        end
+      end
+      health_status.status = "Progressing"
+      health_status.message = "An install plan for a subscription is pending installation"
+      return health_status
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_serverless
+# -------------------------------------------------------------------
+# ocp4_workload_serverless_channel: stable
+# ocp4_workload_serverless_use_catalog_snapshot: false
+ocp4_workload_serverless_install_serving: false
+ocp4_workload_serverless_install_eventing: false
+
+# -------------------------------------------------------------------
+# Workload ocp4_workload_ossm - Service Mesh
+# -------------------------------------------------------------------
+ocp4_workload_ossm_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_ossm_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# Elasticsearch
+ocp4_workload_ossm_es_channel: stable
+ocp4_workload_ossm_es_startingcsv: ""
+
+# Jaeger
+ocp4_workload_ossm_jaeger_channel: stable
+ocp4_workload_ossm_jaeger_startingcsv: ""
+
+# Kiali
+ocp4_workload_ossm_kiali_channel: stable
+ocp4_workload_ossm_kiali_startingcsv: ""
+
+# Service Mesh
+ocp4_workload_ossm_servicemesh_channel: stable
+ocp4_workload_ossm_servicemesh_startingcsv: ""
+
+ocp4_workload_rhsso_starting_csv: rhsso-operator.7.6.10-opr-001
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.7
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: 1.21.11
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel9/postgresql-13
+ocp4_workload_gitea_operator_postgresql_image_tag: 1-165
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 2Gi
+ocp4_workload_gitea_operator_postgresql_volume_size: 2Gi
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_disable_registration: false
+ocp4_workload_gitea_operator_enable_captcha: false
+ocp4_workload_gitea_operator_allow_create_organization: true
+ocp4_workload_gitea_operator_register_email_confirm: false
+ocp4_workload_gitea_operator_enable_notify_email: false
+ocp4_workload_gitea_operator_mailer_enabled: false
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: opentlc-mgr
+ocp4_workload_gitea_operator_admin_email: opentlc-mgr@opentlc.com
+ocp4_workload_gitea_operator_admin_password: openshift
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: 1
+ocp4_workload_gitea_operator_generate_user_format: lab-user
+ocp4_workload_gitea_operator_user_password: openshift
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/Enterprise-Neurosystem/edge-anomaly-detection.git
+  name: edge-anomaly-detection
+  private: false
+- repo: https://github.com/Enterprise-Neurosystem/edge-prediction-failure.git
+  name: edge-prediction-failure
+  private: false
+- repo: https://github.com/Enterprise-Neurosystem/cluster-bootstrap.git
+  name: edge-cluster-bootstrap
+  private: false
+- repo: https://github.com/Enterprise-Neurosystem/edge-synthetic-data-generator.git
+  name: edge-synthetic-data-generator
+  private: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_ai
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_channel: "stable-2.10"
+ocp4_workload_openshift_ai_automatic_install_plan_approval: false
+ocp4_workload_openshift_ai_starting_csv: "rhods-operator.2.10.0"
+ocp4_workload_openshift_ai_kserve: Managed
+
+# -------------------------------------------------------------------
 # For ocp4_workload_le_certificates
+# -------------------------------------------------------------------
 # Install certificates for Ingress Controllers
 ocp4_workload_le_certificates_install_certificates: true
-
 # Install certificates for API Endpoint
 ocp4_workload_le_certificates_install_api: true
-
 # Option allow continue without certificates on failure
 ocp4_workload_le_certificates_failure_is_fatal: true
-
 # It takes about 4 minutes per API Server to
 # restart with certificates (due to AWS
 # Load Balancer). Therefore sleep
 # 12 minutes by default to give the kube-apiserver
 # cluster operator enough time to progress.
 # Wait time may be extended if it's needed
-ocp4_workload_le_certificates_wait_after_cert_setup: 12
-
-# ---------------------------------------------------------
-# Workload: ocp4_workload_pipelines
-# ---------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.10
-
-ocp4_workload_pipelines_use_catalog_snapshot: true
-ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_le_certificates_wait_after_cert_setup: 15
 
 # --- Student Workloads (YAML List)
 student_workloads: []
-
-# -------------------------------------------------------------------
-# AgnosticV meta variables
-# -------------------------------------------------------------------
-agnosticv_meta:
-  sandboxed: false
-  deploy_with: babylon
-  params_to_variables:
-    infra_workloads: infra_workloads
-    student_workloads: student_workloads
-    nodecount: ''
 
 # -------------------------------------------------------------------
 # Babylon meta variables
