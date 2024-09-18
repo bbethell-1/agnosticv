@@ -1,0 +1,88 @@
+---
+#include /includes/ee-multicloud-dev.yaml
+# -------------------------------------------------------------------
+# Purpose - Cost tag. One of development, ilt, production, event
+# -------------------------------------------------------------------
+purpose: development
+
+infra_workloads:
+- ocp4_workload_le_certificates
+- ocp4_workload_authentication
+- ocp4_workload_pipelines
+- ocp4_workload_openshift_gitops
+- ocp4_workload_gitea_operator
+- ocp4_workload_devspaces
+- ocp4_workload_voteapp
+- ocp4_workload_gitops_bootstrap
+- ocp4_workload_openshift_gitops_fix_argocd
+
+# -------------------------------------------------------------------
+# ocp4_workload_devspaces
+# -------------------------------------------------------------------
+ocp4_workload_devspaces_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_devspaces_catalogsource_tag: v4.14_2024_02_12
+ocp4_workload_devspaces_startingcsv: devspacesoperator.v3.11.0
+
+ocp4_workload_devspaces_devworkspace: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/blues-man/vote-app-gitops
+ocp4_workload_gitops_bootstrap_repo_revision: development
+ocp4_workload_gitops_bootstrap_repo_path: helm/bootstrap
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  user:
+    count: "{{ ocp4_workload_user_count }}"
+    prefix: "{{ ocp4_workload_user_base }}"
+  argocd:
+    git:
+      url: http://gitea.gitea.svc:3000
+      revision: development
+    values:
+      repos:
+      - type: git
+        name: vote-app-gitops
+        password: "{{ common_user_password }}"
+  tekton:
+    git:
+      url: http://gitea.gitea.svc:3000
+      revision: development
+    values:
+      app:
+        repo:
+          api:
+            password: "{{ common_user_password }}"
+          ui:
+            password: "{{ common_user_password }}"
+          gitops:
+            password: "{{ common_user_password }}"
+  devspaces:
+    git:
+      url: http://gitea.gitea.svc:3000
+      revision: development
+    values:
+      app:
+        repo:
+          ui:
+            password: "{{ common_user_password }}"
+  usertool:
+    labAdminPassword: "{{ common_admin_password }}"
+    labUserPassword: "{{ common_user_password }}"
+    labAccessToken: "{{ common_user_password }}"
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  idle_after_deploy: 4
+  idle_after_start: 4
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  deployer:
+    scm_url: https://github.com/blues-man/agnosticd.git
+    scm_ref: development
