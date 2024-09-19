@@ -1,0 +1,406 @@
+---
+#include /includes/catalog-icon-automation-management.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/vmware-ibm-rs00-access.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/secrets/openshift-ocpv-configs.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: OpenShift Virtualisation Migration Factory Demo
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Top level vars
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+platform: rhpds
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.3
+bastion_cores: 2
+bastion_memory: 4Gi
+
+master_instance_count: 3
+worker_instance_count: 0
+
+ai_control_plane_cores: 16
+ai_control_plane_memory: 32Gi
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.16.10"
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: false
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_external_odf
+- ocp4-workload-nfs-provisioner
+- ocp4_workload_authentication
+- ocp4_workload_cert_manager
+- ocp4_workload_kubevirt
+- ocp4_workload_mtv
+- ocp4_workload_rhacm
+- ocp4_workload_acm_multicluster_observability
+- ocp4_workload_virt_roadshow_vmware
+- ocp4_workload_virt_roadshow_vms
+- ocp4_workload_ansible_automation_platform
+- automation_platform_loader
+- ocp4_workload_showroom
+
+remove_workloads:
+- ocp4_workload_virt_roadshow_vmware
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_count: 1
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.16_2024_07_29
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# -------------------------------------------------------------------
+odf_channel: stable-4.16
+
+# -------------------------------------------------------------------
+# Workload: ocp4-workload-nfs-provisioner
+# -------------------------------------------------------------------
+nfs_provisioner_nfs_server_hostname: "{{ openshift_cnv_nfs_server }}"
+nfs_provisioner_server_directory: "{{ openshift_cnv_nfs_path }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_count: "{{ ocp4_workload_user_count }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+# Values from /includes/secrets/dynamic-aws-dns.yaml
+# route53_aws_zone_id:
+# route53_aws_access_key_id:
+# route53_aws_secret_access_key:
+
+ocp4_workload_cert_manager_channel: stable-v1.14
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+
+ocp4_workload_cert_manager_cloud_provider: ec2
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+ocp4_workload_kubevirt_use_catalog_snapshot: true
+ocp4_workload_kubevirt_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_kubevirt_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_kubevirt_workload_tolerations:
+- key: metal
+  operator: Exists
+
+# -------------------------------------------------------------------
+# ocp4_workload_mtv
+# -------------------------------------------------------------------
+ocp4_workload_mtv_channel: release-v2.6
+ocp4_workload_mtv_use_catalog_snapshot: true
+ocp4_workload_mtv_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_mtv_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_rhacm
+# -------------------------------------------------------------------
+ocp4_workload_rhacm_acm_channel: release-2.11
+ocp4_workload_rhacm_use_catalog_snapshot: true
+ocp4_workload_rhacm_catalog_source_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_rhacm_catalog_source_tag: "{{ ocp4_workload_catalogsource_tag}}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_roadshow_vmware
+# -------------------------------------------------------------------
+ocp4_workload_virt_roadshow_vmware_num_users: "{{ ocp4_workload_user_count }}"
+ocp4_workload_virt_roadshow_vmware_vcenter_folder: "ocpvirt-{{ guid }}"
+ocp4_workload_virt_roadshow_vmware_enable_mtv: true
+ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_roadshow_vms
+# -------------------------------------------------------------------
+ocp4_workload_virt_roadshow_vms_num_users: "{{ ocp4_workload_user_count }}"
+ocp4_workload_virt_roadshow_vms_namespace: vmimported
+ocp4_workload_virt_roadshow_vms_start_vms: true
+# Roadshow Setup
+# When set to true (default) then the application made up from the VMs will not
+# work until instructions are followed.
+# When false the application will work out of the box without changes
+ocp4_workload_virt_roadshow_vms_roadshow_setup: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_ansible_automation_platform
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.4"
+ocp4_workload_ansible_automation_platform_admin_password: "{{ common_admin_password }}"
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+  inject: true
+
+# -------------------------------------------------------------------
+# automation_platform_loader
+# -------------------------------------------------------------------
+
+# Common variables
+vmware_host: "{{ hostvars['localhost']['vcenter_hostname'] }}"
+project_name: OpenShift Virtualization Project
+organization: Default
+
+# Roles and variables from here: https://github.dev/redhat-cop/controller_configuration
+controller_configuration_dispatcher_roles:
+- role: credential_types
+  var: controller_credential_types
+  tags: credential_types
+- role: credentials
+  var: controller_credentials
+  tags: credentials
+- role: execution_environments
+  var: controller_execution_environments
+  tags: execution_environments
+- role: projects
+  var: controller_projects
+  tags: projects
+- role: inventories
+  var: controller_inventories
+  tags: inventories
+- role: inventory_sources
+  var: controller_inventory_sources
+  tags: inventory_sources
+- role: job_templates
+  var: controller_templates
+  tags: templates
+
+controller_credentials:
+- name: "kubeconfig"
+  credential_type: "kubeconfig"
+  organization: "Default"
+  inputs:
+    kube_config: "{{ ocp4_workload_ansible_automation_platform_kubeconfig | b64decode }}"
+- name: "VMware Credentials"
+  credential_type: "VMware vCenter"
+  organization: Default
+  inputs:
+    host: "{{ vmware_host }}"
+    username: "{{ lookup('agnosticd_user_data', 'vcenter_full_user') }}"
+    password: "{{ lookup('agnosticd_user_data', 'vcenter_password') }}"
+
+controller_execution_environments:
+- name: "AWX EE"
+  image: quay.io/ansible/awx-ee:24.3.0
+  pull: missing
+
+controller_projects:
+- name: "{{ project_name }}"
+  organization: "{{ organization }}"
+  scm_branch: virt-migration-demo-2.0.0
+  scm_clean: 'false'
+  scm_delete_on_update: 'false'
+  scm_type: git
+  scm_update_on_launch: 'true'
+  scm_url: https://github.com/rhpds/ocp-virt.git
+
+controller_inventories:
+- name: "OpenShift Virtualization Inventory"
+  organization: "{{ organization }}"
+
+controller_inventory_sources:
+- name: OpenShift Virtualization Source
+  source: scm
+  source_project: "{{ project_name }}"
+  source_path: inventory.kubevirt.yml
+  inventory: OpenShift Virtualization Inventory
+  credential: "kubeconfig"
+  execution_environment: "AWX EE"
+  organization: "{{ organization }}"
+  overwrite: true
+  update_on_launch: true
+  update_cache_timeout: 0
+  wait: true
+
+controller_templates:
+- name: 01 Migrate VMware VMs to OpenShift Virtualization
+  job_type: run
+  organization: "{{ organization }}"
+  inventory: Demo Inventory
+  project: "{{ project_name }}"
+  playbook: playbook.yml
+  credentials:
+  - "kubeconfig"
+  - "VMware Credentials"
+  survey_enabled: true
+  survey: >-
+    {
+      "name": "Basic Survey",
+      "description": "Basic Survey",
+      "spec": [
+        {
+          "question_description": "VMware Provider Name",
+          "min": 0,
+          "default": "vmware",
+          "max": 128,
+          "required": true,
+          "choices": "",
+          "new_question": true,
+          "variable": "provider_name",
+          "question_name": "Name of your provider?",
+          "type": "text"
+        },
+        {
+          "question_description": "Migration Plan",
+          "min": 0,
+          "default": "migration-plan",
+          "max": 128,
+          "required": true,
+          "choices": "",
+          "new_question": true,
+          "variable": "plan_name",
+          "question_name": "Name of your migration plan?",
+          "type": "text"
+        },
+        {
+          "question_description": "Storage Mapping",
+          "min": 0,
+          "default": "storagemap",
+          "max": 128,
+          "required": true,
+          "choices": "",
+          "new_question": true,
+          "variable": "storagemap_name",
+          "question_name": "Name of your storage mapping?",
+          "type": "text"
+        },
+        {
+          "question_description": "Network Mapping",
+          "min": 0,
+          "default": "networkmap",
+          "max": 128,
+          "required": true,
+          "choices": "",
+          "new_question": true,
+          "variable": "networkmap_name",
+          "question_name": "Name of your network mapping?",
+          "type": "text"
+        },
+        {
+          "question_description": "VM Names",
+          "min": 0,
+          "default": "",
+          "max": 128,
+          "required": true,
+          "choices": "",
+          "new_question": true,
+          "variable": "user_selected_vm_names",
+          "question_name": "What are the names of the VMs to migrate?",
+          "type": "textarea"
+        }
+      ]
+    }
+  extra_vars:
+    vmware_host: "{{ vmware_host }}"
+
+# ------------------------------------------------------
+# ocp4_workload_showroom
+# ------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/virt-migration-day2-demo
+ocp4_workload_showroom_content_git_repo_ref: v1.1.1
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: 1.2.1
+ocp4_workload_showroom_content_only: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 4bdf78fb-239f-4298-8394-59106498b17e
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+  owners:
+    maintainer:
+    - name: Juliano Mohr
+      email: jboeselm@redhat.com
+    - name: Judd Maltin
+      email: judd@redhat.com
+    sme:
+    - name: Alberto Gonzales Rodriguez
+      email: josegonz@redhat.com
+    - name: Wolfgang Kulhanek
+      email: wkulhane@redhat.com
+    instructions:
+    - name: Alan Cowles
+      email: acowles@redhat.com
+    - name: Juliano Mohr
+      email: jboeselm@redhat.com
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: OcpSandbox
+    namespace_suffix: ocp4-cluster
+    cloud_selector:
+      cloud: cnv
+      purpose: prod
+      virt: "yes"
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OpenShift Virtualisation Migration Factory Demo
+    category: Demos
+    keywords: []
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
