@@ -1,0 +1,194 @@
+---
+#include /includes/catalog-icon-aap.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-region.yaml
+
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/ansible-tower-advanced-24.yaml
+#include /includes/secrets/registry-redhat.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ansible-bu-workshop
+
+# -------------------------------------------------------------------
+# Instance Variables
+# -------------------------------------------------------------------
+default_instance_image: "RHEL87GOLD-latest"
+# bastion_instance_image: RHEL92GOLD-latest
+bastion_instance_image: RHEL94GOLD-latest
+default_rootfs_size: 50
+default_instance_type: "t3a.medium"
+
+security_groups:
+  - name: BastionSG
+    rules:
+      - name: BastionHTTPSPorts
+        description: "HTTPS Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: BastionHTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: BastionSSHPorts
+        description: "Bastion ssh"
+        from_port: 22
+        to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+
+instances:
+  - name: "{{ bastion_instance_name | default('ansible-1') }}"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ bastion_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{bastion_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ default_rootfs_size }}"
+    security_groups:
+      - BastionSG
+      - DefaultSG
+
+# -------------------------------------------------------------------
+# Config Pre/Software/Post Workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  all:
+    - set-repositories
+    - common
+  bastions:
+    - bastion-lite
+    - control-user
+
+software_workloads:
+  bastions:
+    - vscode-server
+
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------
+repo_method: satellite
+use_content_view: true
+
+
+# -------------------------------------------------
+# Role: common
+# -------------------------------------------------
+install_common: true
+common_packages_el9:
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - vim-enhanced
+  - httpd-tools
+  - tree
+  - podman
+  - podman-docker
+  - git
+  - python3
+  - python3-pip
+  - curl
+  - ansible-core
+  - ansible-test
+
+# -------------------------------------------------
+# Role: control-user
+# -------------------------------------------------
+student_name: student
+
+# -------------------------------------------------------------------
+# Role: vscode-server
+# -------------------------------------------------------------------
+install_vscode_server: true
+vscode_server_install_nginx: true
+vscode_server_ansible_become: true
+vscode_use_automationcontroller_nginx: false
+vscode_user_name: "{{ student_name }}"
+vscode_user_password: "{{ common_password }}"
+vscode_server_default_extensions: []
+vscode_server_extension_urls:
+  - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
+
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+agnosticv_meta:
+  deploy_with: babylon
+  params_to_variables:
+    user: ignore_user
+    username: student_name
+    region: aws_region
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 5268DF6C-E6D2-4DAC-8249-CA51985B3142
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    multiuser: false
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Advanced Ansible network automation
+    category: Workshops
+    keywords:
+      - ansible
+      - workshop
+      - network
+      - automation
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Automation
+      Provider: RHDP
+    parameters: []
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.0.17
+      pull: missing
