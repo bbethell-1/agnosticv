@@ -13,96 +13,10 @@ agnosticv_meta:
 # Don't update bastion packages, save some time...
 update_packages: true
 
-worker_instance_count: "{{ [(num_users | int / 1.5 ) | round(0, 'ceil') | int, 3] | max  }}"
-
-# -------------------------------------------------------------------
-# Infra Workloads
-# -------------------------------------------------------------------
-infra_workloads:
-- ocp4_workload_machinesets
-- ocp4_workload_openshift_data_foundation
-- ocp4_workload_authentication
-- ocp4_workload_pipelines
-- ocp4_workload_openshift_ai
-- ocp4_workload_openshift_gitops
-- ocp4_workload_gitea_operator
-- ocp4_workload_web_terminal
-- ocp4_workload_service_interconnect_operator_only
-- ocp4_workload_disable_self_provisioner
-- ocp4_workload_expose_registry
-- ocp4_workload_devspaces
-- ocp4_workload_nvidia_gpu_setup
-- ocp4_workload_le_certificates
-- ocp4_workload_showroom
-- ocp4_workload_cloud_native_robot
-
-ocp4_workload_authentication_admin_user: admin
-ocp4_workload_openshift_gitops_enable_route: true
-
-# Add a MachineSet for AWS Bare arm instances
-ocp4_workload_machinesets_machineset_groups:
-- name: arm
-  role: arm
-  instance_type: m7g.2xlarge
-  root_volume_size: 250
-  #  openshift-install coreos print-stream-json | jq  -r -c '.architectures | keys '
-  # ["aarch64","ppc64le","s390x","x86_64"]
-  aws_instance_ami_architecture: aarch64
-  autoscale: false
-  total_replicas: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 1] | max }}"
-  total_replicas_min: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 1] | max }}"
-  total_replicas_max: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
-  # machineConfigPool:
-  #   setup: true
-  #   maxPodsPerNode: 250
-  taints:
-  - key: "kubernetes.io/arch"
-    value: "arm"
-    effect: NoSchedule
-
-- name: worker-gpu
-  aws_instance_ami_architecture: x86_64
-  autoscale: true
-  total_replicas: "{{ gpu_node_count | int }}"
-  total_replicas_min: "{{ gpu_node_count | int }}"
-  total_replicas_max: 3
-  role: worker-gpu
-  taints:
-  - key: nvidia.com/gpu
-    value: true
-    effect: NoSchedule
-  instance_type: "g5.xlarge"
-
-# Enable workload as well: ocp4_workload_nvidia_gpu_setup
-nvidia_gpu_operator_namespace: nvidia-gpu-operator
-nvidia_gpu_operator_channel: v24.6
-nvidia_gpu_operator_automatic_install_plan_approval: true
-nvidia_gpu_operator_wait_for_deploy: false
-nvidia_gpu_operator_use_catalog_snapshot: true
-
-nvidia_gpu_operator_catalogsource_name: "{{ ocp4_workload_catalogsource_name }}"
-nvidia_gpu_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
-nvidia_gpu_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-# https://github.com/cloud-native-robotz-hackathon/infrastructure/issues/34
-# ToDo ocp4_workload_devspaces_catalogsource_name not available
-
 # ---------------------------------------------------------
 # Babylon meta variables
 # ---------------------------------------------------------
 __meta__:
-  catalog:
-    parameters:
-    - name: gpu_node_count
-      description: >-
-        Number of GPU Worker nodes (aws instance type g5.xlarge )
-        There is only one GPU per worker available
-      formLabel: GPU Worker Nodes (one GPU per Worker!)
-      openAPIV3Schema:
-        type: integer
-        default: 0
-        minimum: 0
-        maximum: 10
   deployer:
     # git_tag_prefix: cloud-native-robot
     scm_url: https://github.com/cloud-native-robotz-hackathon/agnosticd.git
