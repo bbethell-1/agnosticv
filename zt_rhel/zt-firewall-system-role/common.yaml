@@ -14,6 +14,8 @@
 # -------------------------------------------------------------------
 env_type: zero-touch-base-rhel
 cloud_provider: ec2
+software_to_deploy: none
+install_student_user: True
 
 # -------------------------------------------------------------------
 # Platform
@@ -21,50 +23,128 @@ cloud_provider: ec2
 platform: ZEROTOUCH
 
 # -------------------------------------------------------------------
-# Instance Config
+# Role: set-repositories
 # -------------------------------------------------------------------
+repo_method: satellite
+update_packages: True
+use_content_view: True
+
+agd_bastion_packages:
+- at
+- bash-completion
+- bind-utils
+- git
+- podman
+- buildah
+- tmux
+- vim-enhanced
+- wget
+- httpd
+- ansible-core
+
+# -------------------------------------------------------------------
+# Role: Common
+# -------------------------------------------------------------------
+
+common_packages:
+- python
+- unzip
+- bash-completion
+- tmux
+- bind-utils
+- wget
+- git
+- vim-enhanced
+- yum-utils
+- httpd-tools
+- ansible-core
+
+# -------------------------------------------------------------------
+# Zero Touch Configuration
+# -------------------------------------------------------------------
+# DNS available inside the environment?
+dns_support_state: True
+
+# Execute zero-touch-base-rhel "lock_bastion_security_group.yml"
+lock_bastion_security_group: True
 
 # Ports to be open for ingress / egress after server hardening from lock_bastion_security_group.yml in zero-touch-rhel config
 zero_touch_ports:
+- 443
+- 80
+- 8443
+
+zero_touch_egress_rules:
+- ports:
+  - 8443
   - 443
+  proto: tcp
+  cidr_ip: "0.0.0.0/0"
+- ports: "0-65535"
+  proto: tcp
+  group_name: ZeroRHELSG
 
-use_content_view: true
-
-agd_bastion_packages:
-  - at
-  - bash-completion
-  - bind-utils
-  - git
-  - podman
-  - buildah
-  - tmux
-  - vim-enhanced
-  - wget
-
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-
 
 bastion_instance_image: RHEL94GOLD-latest
 bastion_instance_type: "t3a.medium"
-rootfs_size_rhel9: 40
 
-# -------------------------------------------------------------------
-# Role: set-repositories
-# -------------------------------------------------------------------
+rhelvm_instance_image: RHEL94GOLD-latest
+rhelvm_instance_type: t3a.small
 
-repo_method: satellite
+instances:
+- name: bastion
+  count: 1
+  unique: True
+  public_dns: True
+  dns_loadbalancer: True
+  floating_ip: True
+  image: "{{ bastion_instance_image | default(default_instance_image) }}"
+  flavor:
+    ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions"
+  - key: "ostype"
+    value: "linux"
+  rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+  security_groups:
+  - ZeroRHELSG
+
+- name: rhelvm
+  count: 1
+  unique: True
+  public_dns: False
+  dns_loadbalancer: False
+  floating_ip: False
+  image: "{{ rhelvm_instance_image | default(default_instance_image) }}"
+  flavor:
+    ec2: "{{ rhelvm_instance_type | default(default_instance_type) }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "rhelvms"
+  - key: "ostype"
+    value: "linux"
+  rootfs_size: "{{ rootfs_size_rhelvm | default(50)  }}"
+  security_groups:
+  - ZeroRHELSG
 
 # -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
 ### Showroom broken Testing other repo https://github.com/rhpds/rhel_zero_poc_managing_user_basics.git
-showroom_git_repo: https://github.com/rhpds/rhel_zero_firewall_system_role
+showroom_git_repo: https://github.com/rhpds/rhel_zero_firewall_system_role.git
 showroom_ui: zero-touch
 
 showroom_tab_services:
-  - tty1
+- tty1
+- tty2
 
 showroom_tab_tty1_username: root
+showroom_tab_tty2_username: rhel
 
 showroom_ttys_enable_tmux: false
 
@@ -73,7 +153,7 @@ showroom_enable_root_ssh: true
 showroom_ssh_method: sshkey
 showroom_ssh_host: host.containers.internal
 showroom_lab_users:
-  - root
+- root
 
 showroom_user_password: "{{ common_password }}"
 
@@ -100,9 +180,9 @@ __meta__:
     display_name: Configure firewalls with RHEL System Roles
     category: Demos
     keywords:
-      - rhel
-      - rhel9
-      - zero-touch
+    - rhel
+    - rhel9
+    - zero-touch
     labels:
       Product: Red_Hat_Enterprise_Linux
       Product_Family: Red_Hat_Enterprise_Linux
