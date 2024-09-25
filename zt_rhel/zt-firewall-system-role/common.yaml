@@ -135,6 +135,26 @@ instances:
   - ZeroRHELSG
 
 # -------------------------------------------------------------------
+# Role: asset_injector
+# -------------------------------------------------------------------
+pre_software_asset_injector: True
+
+asset_injector_assets:
+- description: Root SSH enabled
+  type: lineinfile
+  path: /etc/ssh/sshd_config
+  regexp: '^[#\\s]*PermitRootLogin'
+  line: 'PermitRootLogin yes'
+  backrefs: true
+
+- description: Define Root Password for showroom SSH access
+  type: user
+  name: root
+  state: present
+  password: |-
+    {{ ansible_service_account_user_password | d(generated_password) | default(common_password) | password_hash('sha512') }}
+
+# -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
 ### Showroom broken Testing other repo https://github.com/rhpds/rhel_zero_poc_managing_user_basics.git
@@ -148,12 +168,19 @@ showroom_tab_services:
 showroom_tab_tty1_username: root
 showroom_tab_tty2_username: root
 
+showroom_single_ssh: False
+showroom_multi_ssh: True
+
+showroom_ssh_host: "{{ bastion_prefix }}.{{ guid }}{{ subdomain_base_suffix }}"
+showroom_ssh_host_tty1: "bastion.{{ guid }}.internal"
+showroom_ssh_host_tty2: "rhelvm.{{ guid }}.internal"
+
 showroom_ttys_enable_tmux: false
 
 showroom_showroom_default_ssh_user: root
 showroom_enable_root_ssh: true
 showroom_ssh_method: sshkey
-showroom_ssh_host: host.containers.internal
+
 showroom_lab_users:
 - root
 
