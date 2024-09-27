@@ -45,21 +45,27 @@ agd_bastion_packages:
 # -------------------------------------------------------------------
 # Role: Common
 # -------------------------------------------------------------------
-
-common_packages:
-- python
+common_packages_el9:
+- python3
 - unzip
 - bash-completion
 - tmux
 - bind-utils
 - wget
+- nano
 - git
 - vim-enhanced
-- yum-utils
 - httpd-tools
-- ansible-core
+- openldap-clients
+- podman
+- skopeo
+- buildah
+- tree
+- jq
+- libffi-devel
 - firewalld
 - nmap-ncat
+- ansible-core
 
 # -------------------------------------------------------------------
 # Zero Touch Configuration
@@ -98,7 +104,7 @@ rhelvm_instance_image: RHEL94GOLD-latest
 rhelvm_instance_type: t3a.small
 
 instances:
-- name: bastion
+- name: controlnode
   count: 1
   unique: True
   public_dns: True
@@ -154,6 +160,30 @@ asset_injector_assets:
   password: |-
     {{ ansible_service_account_user_password | d(generated_password) | default(common_password) | password_hash('sha512') }}
 
+- description: Edit ansible.cfg file for root
+  type: blockinfile
+  path: /etc/ansible/ansible.cfg
+  block: |
+    [defaults]
+    ansible_ssh_user=root
+    ansible_ssh_private_key_file=/root/.ssh/{{ guid }}key.pem
+  insertafter: EOF
+
+- description: Set ssh to pull correct key files
+  type: blockinfile
+  path: ~/.ssh/config
+  block: |
+    Host *.internal
+      User root
+      IdentityFile ~/.ssh/{{ guid }}key.pem
+      ForwardAgent yes
+      StrictHostKeyChecking no
+      ConnectTimeout 60
+      ConnectionAttempts 10
+      ControlMaster auto
+      ControlPath /tmp/%h-%r
+      ControlPersist 5m
+  insertbefore: BOF
 # -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
