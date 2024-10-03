@@ -1,5 +1,4 @@
 ---
-#include /includes/parameters/enable-lets-encrypt.yaml
 #include /includes/catalog-icon-aap.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/terms-of-service.yaml
@@ -14,6 +13,8 @@
 #include /includes/secrets/openshift-ocpv-configs.yaml
 #include /includes/sandbox-api.yaml
 #include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/secrets/zerossl.yaml
+#include /includes/parameters/enable-cert-manager.yaml
 
 # -------------------------------------------------------------------
 # Platformss
@@ -27,7 +28,7 @@ platform: RHPDS
 env_type: ocp4-cluster
 software_to_deploy: openshift4_assisted
 cloud_provider: openshift_cnv
-ocp4_installer_version: "4.12"
+ocp4_installer_version: "4.13"
 ai_cluster_version: "{{ ocp4_installer_version }}"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 master_instance_count: 1
@@ -48,10 +49,8 @@ ssh_publickey: "{{ hostvars.localhost.ssh_provision_pubkey_content }}"
 bastion_student_show_user_info: true
 create_ssh_provision_key_enable_user_info_data: true
 host_ocp4_installer_set_user_data_kubeadmin_password: true
-install_lets_encrypt_certificates: true
 aws_access_key_id: "{{ aws_credentials.aws_access_key_id }}"
 aws_secret_access_key: "{{ aws_credentials.aws_secret_access_key }}"
-
 
 # -------------------------------------------------------------------
 # Repos
@@ -78,10 +77,30 @@ student_workloads: []
 # --- Infra Workloads (YAML List)
 infra_workloads:
   - ocp4_workload_external_odf
-  - ocp4_workload_le_certificates
+  - ocp4_workload_cert_manager
   - ocp4_workload_ansible_automation_platform
   - automation_platform_loader
   - automation_platform_bastion
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+# Values from /includes/secrets/dynamic-aws-dns.yaml
+# cluster_dns_zone: dynamic.redhatworkshops.io
+# route53_aws_zone_id:
+# route53_aws_access_key_id:
+# route53_aws_secret_access_key:
+
+ocp4_workload_cert_manager_cloud_provider: ec2
+# ocp4_workload_cert_manager_ec2_region: "{{ aws_region }}"
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+ocp4_workload_cert_manager_channel: stable-v1
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+ocp4_workload_cert_manager_install_api_certificates: false
+
 
 # --------------------------------------------------------------------
 # Workload: ocp4_workload_ansible_automation_platform
@@ -120,6 +139,7 @@ requirements_content:
     - name: kubevirt.core
       version: 1.1.0
 
+odf_channel: "{{ 'stable-4.14' if ocp4_installer_version == '4.15' else 'stable-4.15' if ocp4_installer_version == '4.16' else 'stable-' + ocp4_installer_version }}"
 
 controller_configuration_dispatcher_roles:
   - {role: settings, var: controller_settings, tags: settings}
