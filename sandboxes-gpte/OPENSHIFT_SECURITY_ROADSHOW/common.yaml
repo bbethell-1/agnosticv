@@ -8,6 +8,8 @@
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/zerossl.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: DevSecOps Validated Framework - Parallel
@@ -145,7 +147,8 @@ requirements_content:
 # - rhel-graphical
 
 infra_workloads:
-- ocp4_workload_le_certificates
+- ocp4_workload_cert_manager
+- ocp4_workload_rhsso_authentication
 - ocp4_workload_openshift_data_foundation
 - ocp4_workload_rhacm
 - ocp4_workload_redhat_developer_hub_bootstrap
@@ -159,16 +162,35 @@ infra_workloads:
 - deploy-eks-cluster
 
 # -------------------------------------------------------------------
-# Workloads: bastion-gitsign
+# ocp4_workload_rhsso_authentication
 # -------------------------------------------------------------------
-bastion_gitsign_rpm_url: https://github.com/sigstore/gitsign/releases/download/v0.7.1/gitsign_0.7.1_linux_amd64.rpm
-bastion_gitsign_user_email: user1@opentlc.com
-bastion_gitsign_user_name: user1
-bastion_gitsign_fulcio_prefix: fulcio-server-trusted-artifact-signer
-bastion_gitsign_issuer_prefix: keycloak-keycloak-system
-bastion_gitsign_rekor_prefix: rekor-server-trusted-artifact-signer
-bastion_gitsign_client_id: trusted-artifact-signer
-bastion_gitsign_issuer_suffix: /auth/realms/trusted-artifact-signer
+ocp4_workload_rhsso_authentication_namespace: rhsso
+ocp4_workload_rhsso_authentication_target_namespaces: ["rhsso"]
+ocp4_workload_rhsso_authentication_channel: stable
+ocp4_workload_rhsso_authentication_starting_csv: rhsso-operator.7.6.8-opr-001
+ocp4_workload_rhsso_authentication_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_rhsso_authentication_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_rhsso_authentication_admin_create: true
+ocp4_workload_rhsso_authentication_admin_username: admin
+ocp4_workload_rhsso_authentication_admin_password: "{{ common_password }}"
+ocp4_workload_rhsso_authentication_remove_kubeadmin: false
+
+ocp4_workload_rhsso_authentication_user_count: "{{ num_users }}"
+ocp4_workload_rhsso_authentication_user_name_base: user
+ocp4_workload_rhsso_authentication_user_password: "{{ common_password }}"
+
+ocp4_workload_rhsso_authentication_env_type: "{{ env_type }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_ec2_region: "{{ aws_region }}"
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
+ocp4_workload_cert_manager_channel: stable-v1.14
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
 
 # -------------------------------------------------------------------
 # Workloads: novnc
@@ -188,15 +210,7 @@ bastion_gitsign_issuer_suffix: /auth/realms/trusted-artifact-signer
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_trusted_artifact_signer
 # -------------------------------------------------------------------
-ocp4_workload_trusted_artifact_signer_rhsso_install: true
-ocp4_workload_trusted_artifact_signer_rhsso_namespace: keycloak-system
-ocp4_workload_trusted_artifact_signer_rhsso_target_namespaces: ["keycloak-system"]
-ocp4_workload_trusted_artifact_signer_rhsso_channel: stable
-ocp4_workload_trusted_artifact_signer_rhsso_starting_csv: rhsso-operator.7.6.8-opr-001
-ocp4_workload_trusted_artifact_signer_rhsso_use_catalog_source: true
-ocp4_workload_trusted_artifact_signer_rhsso_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_trusted_artifact_signer_rhsso_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-ocp4_workload_trusted_artifact_signer_rhsso_automatic_install_plan_approval: true
+ocp4_workload_trusted_artifact_signer_rhsso_namespace: rhsso
 
 ocp4_workload_trusted_artifact_signer_rhtas_namespace: openshift-operators
 ocp4_workload_trusted_artifact_signer_rhtas_target_namespaces: openshift-operators
