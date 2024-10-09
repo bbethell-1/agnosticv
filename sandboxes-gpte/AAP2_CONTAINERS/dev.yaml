@@ -4,7 +4,82 @@
 # --------------------------------------------------------------------
 # Purpose - Cost tag. One of development, ilt, production, event
 # --------------------------------------------------------------------
-purpose: event
+purpose: dev
+
+showroom_git_repo: "https://github.com/shebistar/showroom_rh1_aap2_containerized"
+
+asset_injector_assets:
+
+  - description: Postgres Playbook for AAP2 backend
+    src: https://github.com/rhpds/postgres-for-aap2.git
+    dest: /home/devops/postgres-for-aap2
+    type: git
+    scm_ref: main
+    owner: devops
+
+  - description: Add a solution repo
+    src: https://github.com/shebistar/aap2_containerized_solution
+    dest: "/home/devops/solution"
+    type: git
+    scm_ref: main
+    owner: devops
+
+  - description: AAP2 Manifest
+    type: http
+    dest: /home/devops/manifest.zip
+    src: https://d18h2xbjo1t4w8.cloudfront.net/aap2_assets/manifest_31_10_2022.zip
+    url_username: "{{ s3_rhpds_private_username }}"
+    url_password: "{{ s3_rhpds_private_password }}"
+    owner: devops
+    group: users
+    mode: u=rw,g=r,o=r
+
+  - description: AAP2 x86 Installer
+    type: http
+    dest: /home/devops/ansible-automation-platform-containerized-setup-bundle-2.4-1-x86_64.tar.gz
+    src: >-
+      https://d18h2xbjo1t4w8.cloudfront.net/aap2_assets/ansible-automation-platform-containerized-setup-bundle-2.4-1-x86_64.tar.gz
+    url_username: "{{ s3_rhpds_private_username }}"
+    url_password: "{{ s3_rhpds_private_password }}"
+    owner: devops
+    group: users
+    mode: u=rw,g=r,o=r
+
+  - description: Inventory - AAP2 infra && app infra
+    type: template
+    src: ./files/hosts_template.j2
+    dest: /home/devops/inventory
+    owner: devops
+    group: users
+    mode: u=rw,g=r,o=r
+
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
 
 # --------------------------------------------------------------------
 # Babylon meta variables
