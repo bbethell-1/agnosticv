@@ -1,0 +1,54 @@
+---
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+
+# Agnosticd variables
+cloud_provider: test
+env_type: test-empty-config
+
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-test
+
+  asset_uuid: 7faee33b-cd7c-4046-a494-e8fc1d2997c1
+
+  catalog:
+    display_name: Test Conditional Base
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    labels:
+      Provider: RHDP
+    parameters:
+    - name: base_component
+      formLabel: Base Component
+      openAPIV3Schema:
+        type: string
+        default: none
+        enum:
+        - none
+        - test-empty-config
+
+  # Components to include in template and catalog item
+  components:
+  - name: base
+    display_name: Base Empty Config
+    item: tests/TEST_EMPTY_CONFIG
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    - name: random_string
+      var: base_random_string
+    when: base_component | default('none') == 'test-empty-config'
+
+  # Disable actions on chained config that are handled by base.
+  deployer:
+    actions:
+      destroy:
+        disable: true
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
