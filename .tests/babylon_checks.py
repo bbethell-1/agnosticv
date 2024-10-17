@@ -112,12 +112,6 @@ class BabylonComponent:
 
     @property
     def deploy_with_babylon(self):
-        if(
-            'agnosticv_meta' in self.definition and
-            'babylon' != self.definition['agnosticv_meta'].get('deploy_with')
-        ):
-            return False
-
         if self.definition.get('__meta__', {}).get('deployer', {}).get('type'):
             return True
 
