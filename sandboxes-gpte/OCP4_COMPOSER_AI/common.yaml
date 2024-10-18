@@ -5,7 +5,7 @@
 #include /includes/aws-sandbox-meta.yaml
 
 #include /includes/parameters/purpose.yaml
-#include /includes/parameters/aws-3regions.yaml
+#include /includes/parameters/aws-region2.yaml
 
 #include /includes/ansible_control_plane/current_controller.yaml
 
@@ -29,12 +29,14 @@ platform: rhpds
 # -------------------------------------------------------------------
 # VM configuration
 # -------------------------------------------------------------------
-master_instance_type: c6in.4xlarge
+master_instance_type: c6in.2xlarge
 master_instance_count: 1
 worker_instance_type: m6a.4xlarge
 worker_instance_count: 2
 bastion_instance_type: t2.small
 bastion_instance_image: RHEL93GOLD-latest
+
+gpu_instance_type: g5.2xlarge
 
 # -------------------------------------------------------------------
 # Repos
@@ -57,6 +59,7 @@ install_student_user: false
 # Workloads
 # -------------------------------------------------------------------
 infra_workloads:
+- ocp4_workload_machinesets
 - ocp4_workload_cert_manager
 - ocp4_workload_authentication
 - ocp4_workload_openshift_gitops
@@ -93,6 +96,25 @@ ocp4_workload_authentication_htpasswd_user_count: 1
 ocp4_workload_authentication_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_machinesets
+# -------------------------------------------------------------------
+ocp4_workload_machinesets_disable_default_machinesets: false
+ocp4_workload_machinesets_wait_for_nodes: false
+
+ocp4_workload_machinesets_machineset_groups:
+- name: worker-gpu
+  role: worker-gpu
+  instance_type: "{{ gpu_instance_type }}"
+  autoscale: true
+  total_replicas: 1
+  total_replicas_min: 1
+  total_replicas_max: 2
+  # taints:
+  #   - key: nvidia.com/gpu
+  #     value: true
+  #     effect: NoSchedule
+
+# -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
 ocp4_workload_openshift_gitops_channel: gitops-1.13
@@ -126,6 +148,8 @@ __meta__:
   asset_uuid: 1e251ca8-89d8-46df-9df8-8a9c8ea65923
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
+  sandbox_api:
+    reservation: pgpu
   deployer:
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:v0.1.2
