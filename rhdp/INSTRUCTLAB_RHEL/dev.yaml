@@ -38,8 +38,106 @@ security_groups:
         rule_type: Ingress
 
 # --------------------------------------------------------------------
+# Showroom
+# --------------------------------------------------------------------
+
+showroom_git_repo: https://github.com/taylorjordanNC/showroom_instructlab_summit2024.git
+showroom_git_ref: v19-updates-instructlab-classic
+
+# -------------------------------------------------------------------
+# Post Software Workloads
+# -------------------------------------------------------------------
+post_software_workloads:
+  bastions:
+    - agnosticd.ai.setup_nvidia_cuda
+    - agnosticd.ai.setup_instructlab
+
+# -------------------------------------------------------------------
+# Workloads: agnosticd.ai.setup_nvidia_cuda
+# -------------------------------------------------------------------
+
+setup_nvidia_cuda_nvidia_rhel_dnf_packages:
+  - "@nvidia-driver:latest-dkms"
+  - cuda-toolkit-12-4
+  - nvidia-gds
+  - libcudnn8
+  - libcudnn8-devel
+  - cuda-cccl-12-4
+  - libnccl-2.22.3-1+cuda12.4.x86_64
+
+# -------------------------------------------------------------------
+# Workloads: agnosticd.ai.setup_instructlab
+# -------------------------------------------------------------------
+
+setup_instructlab_llama_cpp_python_version: "0.2.79"
+setup_instructlab_git_ref: "v0.19.3"
+
+# -------------------------------------------------------------------
+# asset_injector_assets
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+
+
+  - description: Create files directory
+    type: directory
+    path: >-
+      /home/{{ student_name }}/files
+      owner: "{{ student_name }}"
+      group: users
+      mode: '0755'
+
+# replace the below once the new trained model is ready in HF
+  - description: Fetch the old trained LLM
+    type: http
+    dest: >-
+      /home/{{ student_name }}/files/ggml-ilab-pretrained-Q4_K_M.gguf
+    src: >-
+      https://gpte-public.s3.amazonaws.com/llms/ggml-ilab-pretrained-Q4_K_M.gguf
+    owner: "{{ student_name }}"
+    group: users
+    mode: u=rw,g=r,o=r
+
+  - description: Clone repo with qna.yaml file
+    type: git
+    src: 'https://github.com/rhai-code/instructlab_knowledge.git'
+    dest: '/home/{{ student_name }}/files/instructlab_knowledge'
+    version: 'main'
+    owner: "{{ student_name }}"
+    group: users
+    mode: '0755'
+
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
+
+# --------------------------------------------------------------------
 # Babylon meta variables
 # --------------------------------------------------------------------
+
 __meta__:
   deployer:
-    scm_ref: development
+    scm_url: https://github.com/taylorjordanNC/agnosticd-ilab.git
+    scm_ref: summit-connect-instruct-01-taylor
+    scm_type: git
+    type: agnosticd
