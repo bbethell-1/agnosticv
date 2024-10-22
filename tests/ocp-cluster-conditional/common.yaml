@@ -1,0 +1,109 @@
+---
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+
+# Agnosticd variables
+cloud_provider: test
+env_type: test-empty-config
+
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-test
+
+  asset_uuid: f2a93290-0732-4965-b369-cd3f8835e47a
+
+  catalog:
+    display_name: Test OpenShift Cluster
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    labels:
+      Provider: RHDP
+    parameters:
+    - name: ocp_cloud_provider
+      formLabel: Cloud Provider
+      openAPIV3Schema:
+        type: string
+        default: cnvsingle
+        enum:
+        - cnvsingle
+        - cnv
+        - aws
+        - gcp
+        - azure
+    - name: ocp4_installer_version
+      description: Version of OpenShift to Install
+      formLabel: OpenShift Version
+      required: false
+      openAPIV3Schema:
+        type: string
+        default: '4.16'
+        enum:
+        - '4.12'
+        - '4.13'
+        - '4.14'
+        - '4.15'
+        - '4.16'
+
+  # Components to include in template and catalog item
+  components:
+  - name: cnvsingle
+    display_name: OCP Single on CNV
+    item: openshift_cnv/OCPMULTI_SINGLE_NODE_CNV
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    - name: ocp4_installer_version
+      var: ocp4_installer_version
+    when: ocp_cloud_provider | default('cnvsingle') == 'cnvsingle'
+
+  - name: cnv
+    display_name: OCP on CNV
+    item: openshift_cnv/OCPMULTI_WKSP_CNV
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    - name: ocp4_installer_version
+      var: ocp4_installer_version
+    when: ocp_cloud_provider | default('') == 'cnv'
+
+  - name: aws
+    display_name: OCP on AWS
+    item: sandboxes-gpte/OCP_WKSP
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    - name: ocp4_installer_version
+      var: ocp4_installer_version
+    when: ocp_cloud_provider | default('') == 'aws'
+
+  - name: gcp
+    display_name: OCP on GCP
+    item: gcp_gpte/OCP4_ON_GCP
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    - name: ocp4_installer_version
+      var: ocp4_installer_version
+    when: ocp_cloud_provider | default('') == 'gcp'
+
+  - name: azure
+    display_name: OCP on Azure
+    item: azure_gpte/OPEN_ENVIRONMENT_ARO4_SUB
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    - name: ocp4_installer_version
+      var: ocp4_installer_version
+    when: ocp_cloud_provider | default('') == 'azure'
+
+  # Disable actions on chained config that are handled by base.
+  deployer:
+    actions:
+      destroy:
+        disable: true
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+      pull: missing
