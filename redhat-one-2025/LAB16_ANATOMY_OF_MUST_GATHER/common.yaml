@@ -1,0 +1,142 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/demosat-rhel9-base-microshift.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: rhel8-base
+
+# Unset key name
+key_name: ""
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+bastion_public_hostname: "rhel9.{{ guid }}.{{ sandbox_zone }}"
+
+# -------------------------------------------------------------------
+# Workloads: showroom
+# -------------------------------------------------------------------
+
+showroom_git_repo: https://github.com/redhat-gpte-devopsautomation/showroom-tap-workshop.git
+showroom_user: showroom
+showroom_ui: default
+
+showroom_tab_services:
+  - double_tty
+
+showroom_user_password: "{{ common_password }}"
+showroom_ssh_method: sshkey
+
+showroom_lab_users:
+  - "{{ student_name }}"
+
+showroom_tab_double_tty_top_username: "{{ student_name }}"
+showroom_tab_double_tty_bottom_username: "{{ student_name }}"
+
+showroom_ttys_enable_tmux: true
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+rhel9_instance_image: RHEL94GOLD-latest
+rhel9_instance_type: "t3a.large"
+rootfs_size_rhel9: 200
+
+instances:
+  - name: "rhel9"
+    count: 1
+    unique: true
+    public_dns: true
+    floating_ip: true
+    image: "{{ rhel9_instance_image }}"
+    flavor:
+      ec2: "{{ rhel9_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_rhel9 }}"
+    volumes:
+      - device_name: "/dev/xvdb"
+        size: "20"
+        type: gp3
+    security_groups:
+      - BastionSG
+      - ShowroomSG
+
+# -------------------------------------------------------------------
+# Security Group Config
+# -------------------------------------------------------------------
+
+security_groups:
+  - name: ShowroomSG
+    rules:
+
+      - name: ShowroomHTTPS
+        description: "Primary showroom endpoint - for reverse proxy"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+repo_method: satellite
+use_content_view: true
+
+# -------------------------------------------------------------------
+# Role: common
+# -------------------------------------------------------------------
+common_packages_el9:
+  - python3
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - httpd-tools
+  - openldap-clients
+  - podman
+  - tree
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 5454E258-82BC-4D3E-8B94-F482008EB1B5
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Anatomy of must-gather
+    category: Demos
+    keywords:
+      - rhel
+      - rhel9
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHDP
+    multiuser: false
+    parameters: []
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
