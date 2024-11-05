@@ -2,18 +2,19 @@
 #include /includes/aws-sandbox-meta.yaml
 #include /includes/catalog-icon-openshift.yaml
 #include /includes/terms-of-service.yaml
-#include /includes/lifetime-standard.yaml
-#include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
-#include /includes/parameters/aws-region.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
-#include /includes/secrets/demosat-rhel9-base-microshift.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/lifetime-standard.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-env_type: rhel8-base
+# env_type: rhel8-base
+env_type: base-infra
+cloud_provider: ec2
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
 # Unset key name
 key_name: ""
@@ -23,6 +24,40 @@ key_name: ""
 # -------------------------------------------------------------------
 platform: RHPDS
 bastion_public_hostname: "rhel9.{{ guid }}.{{ sandbox_zone }}"
+
+# -------------------------------------------------------------------
+# inventory_groups (optional but nice to have)
+# -------------------------------------------------------------------
+
+inventory_groups:
+  - bastions
+
+# -------------------------------------------------------------------
+# Role: ansible_service_account
+# -------------------------------------------------------------------
+
+ansible_service_account_user_name: "{{ student_name }}"
+ansible_service_account_user_password: "{{ common_password }}"
+ansible_service_account_user_preferred_python: "3.9"
+
+# -------------------------------------------------------------------
+# Infra workloads
+# -------------------------------------------------------------------
+software_workloads:
+  bastions:
+    - rh1_2025_must_gather
+
+must_gather_install_tools: true
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+
+requirements_content:
+  roles:
+    - name: rh1_2025_must_gather
+      src: https://github.com/opentraining-labs-customizations/rh1-2025-must-gather.git
+      version: v1.0.0
 
 # -------------------------------------------------------------------
 # Workloads: showroom
@@ -46,9 +81,54 @@ showroom_tab_double_tty_bottom_username: "{{ student_name }}"
 
 showroom_ttys_enable_tmux: true
 
+showroom_dnf_packages:
+  - git
+  - podman
+  - python3-devel
+  - systemd-container
+  - unzip
+  - ansible-core
+
+showroom_pip_packages:
+  - podman-compose
+
+# -------------------------------------------------------------------
+# asset_injector_assets
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
+
 # -------------------------------------------------------------------
 # Instance Config
 # -------------------------------------------------------------------
+cloud_tags:
+  env_type: "{{ env_type }}"
+  platform: "{{ platform | default('unknown') }}"
+
 rhel9_instance_image: RHEL94GOLD-latest
 rhel9_instance_type: "t3a.large"
 rootfs_size_rhel9: 200
@@ -101,7 +181,13 @@ use_content_view: true
 # -------------------------------------------------------------------
 # Role: common
 # -------------------------------------------------------------------
-common_packages_el9:
+
+student_name: lab-user
+student_password: "{{ common_password }}"
+
+bastion_install_basic_packages: true
+# common_packages_el9:
+agd_bastion_packages:
   - python3
   - unzip
   - bash-completion
@@ -115,6 +201,7 @@ common_packages_el9:
   - openldap-clients
   - podman
   - tree
+  - runc
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -125,8 +212,8 @@ __meta__:
     namespace: babylon-anarchy-sandboxes-gpte
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: Anatomy of must-gather
-    category: Demos
+    display_name: "RH1: Anatomy of must-gather"
+    category: Red_Hat_One_2025
     keywords:
       - rhel
       - rhel9
