@@ -1,19 +1,18 @@
 ---
 # -------------------------------------------------------------------
 # --- Catalog: Red Hat One
-# --- Catalog Item: "RH1: Troubleshoot OpenShift Virtualization (CNV)"
+# --- Catalog Item: RH1: Troubleshoot OpenShift Virtualization (CNV/Multi-User)
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # AgnosticV includes
 # -------------------------------------------------------------------
 
-# Restrict for now until ready for broad consumption
-
 #include /includes/catalog-icon-virtualization.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/lifetime-standard.yaml
 #include /includes/sandbox-api.yaml
+#include /includes/enterprise-premium-sla.yaml
 
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
@@ -28,7 +27,6 @@
 #include /includes/secrets/openshift-ocpv-configs.yaml
 #include /includes/secrets/zerossl.yaml
 #include /includes/secrets/vmware-ibm-rs-clusters-access.yaml
-
 #TODO: delete this variable when sandbox-api
 # vcenter_cluster: vcs-rs-00
 # -------------------------------------------------------------------
@@ -72,21 +70,25 @@ student_sudo: true
 # -------------------------------------------------------------------
 bastion_instance_image: rhel-9.3
 bastion_cores: 2
-bastion_memory: 4Gi
+bastion_memory: 6Gi
 
-master_instance_count: 3
-worker_instance_count: 0
+ai_control_plane_cores: >-
+  {{ 16 if worker_instance_count|int <= 10
+  else 32 if worker_instance_count|int <= 20
+  else 64
+  }}
+ai_control_plane_memory: >-
+  {{ '32Gi' if worker_instance_count|int <= 10
+  else '64Gi' if worker_instance_count|int <= 20
+  else '128Gi'
+  }}
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
 
-# ai_control_plane_cores: 8
-# Minimum control plane memory is 16Gi, anything below fails
-# ai_control_plane_memory: 16Gi
-# Try a compact cluster with just 3 bigger control plane
-ai_control_plane_cores: 16
-ai_control_plane_memory: 64Gi
-
-# ai_workers_cores: 8
-# Lab needs 3x32Gi memory
-# ai_workers_memory: 32Gi
+ai_workers_cores: 16
+ai_workers_memory: >-
+  {{ '32Gi' if num_users|int <= 10
+  else '64Gi'
+  }}
 
 # -------------------------------------------------------------------
 # Workloads
@@ -97,13 +99,14 @@ infra_workloads:
 - ocp4-workload-nfs-provisioner
 - ocp4_workload_authentication
 - ocp4_workload_cert_manager
-#- ocp4_workload_openshift_gitops
+- ocp4_workload_openshift_gitops
 - ocp4_workload_web_terminal
 - ocp4_workload_kubevirt
 #- ocp4_workload_mtv
-#- ocp4_workload_oadp_gitops
+- ocp4_workload_oadp_gitops
 #- ocp4_workload_virt_roadshow_vms
 #- ocp4_workload_virt_roadshow_vmware
+#- ocp4_workload_virt_roadshow_multi_user
 - ocp4_workload_showroom
 
 # --- Workloads that have removal logic implemented that needs to be run (YAML List)
@@ -135,7 +138,7 @@ ocp4_workload_authentication_htpasswd_user_base: user
 ocp4_workload_authentication_htpasswd_user_password: ""
 ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('1') | int }}"
 ocp4_workload_authentication_remove_kubeadmin: true
-
+ocp4_workload_authentication_enable_user_info_data: true
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager
 # -------------------------------------------------------------------
@@ -159,62 +162,62 @@ ocp4_workload_cert_manager_install_api_certificates: false
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-#ocp4_workload_openshift_gitops_channel: gitops-1.13
-#ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+ocp4_workload_openshift_gitops_channel: gitops-1.13
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
 
-#ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
 
-#ocp4_workload_openshift_gitops_update_resources: true
-#ocp4_workload_openshift_gitops_controller_update: true
-#ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
-#ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
-#ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
-#ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
 
-#ocp4_workload_openshift_gitops_repo_update: true
-#ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
-#ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
-#ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
-#ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
 
-#ocp4_workload_openshift_gitops_update_route_tls: false
-#ocp4_workload_openshift_gitops_resource_customizations: |
-#  operators.coreos.com/Subscription:
-#    health.lua: |
- #     health_status = {}
- #     if obj.status ~= nil then
- #       if obj.status.conditions ~= nil then
- #         numDegraded = 0
- #         numPending = 0
- #         msg = ""
- #         for i, condition in pairs(obj.status.conditions) do
- #           msg = msg .. i .. ": " .. condition.type .. " | " .. condition.status .. "\n"
- #           if condition.type == "InstallPlanPending" and condition.status == "True" then
- #             numPending = numPending + 1
- #           elseif (condition.type == "InstallPlanMissing" and condition.reason ~= "ReferencedInstallPlanNotFound") then
- #             numDegraded = numDegraded + 1
- #           elseif (condition.type == "CatalogSourcesUnhealthy" or condition.type == "InstallPlanFailed") and condition.status == "True" then
- #             numDegraded = numDegraded + 1
- #           end
- #         end
- #         if numDegraded == 0 and numPending == 0 then
- #           health_status.status = "Healthy"
- #           health_status.message = msg
- #           return health_status
- #         elseif numPending > 0 and numDegraded == 0 then
- #           health_status.status = "Progressing"
- #           health_status.message = "An install plan for a subscription is pending installation"
- #           return health_status
- #         else
- #           health_status.status = "Degraded"
- #           health_status.message = msg
- #           return health_status
- #         end
- #       end
- #     end
- #     health_status.status = "Progressing"
- #     health_status.message = "An install plan for a subscription is pending installation"
- #     return health_status
+ocp4_workload_openshift_gitops_update_route_tls: false
+ocp4_workload_openshift_gitops_resource_customizations: |
+  operators.coreos.com/Subscription:
+    health.lua: |
+      health_status = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          numDegraded = 0
+          numPending = 0
+          msg = ""
+          for i, condition in pairs(obj.status.conditions) do
+            msg = msg .. i .. ": " .. condition.type .. " | " .. condition.status .. "\n"
+            if condition.type == "InstallPlanPending" and condition.status == "True" then
+              numPending = numPending + 1
+            elseif (condition.type == "InstallPlanMissing" and condition.reason ~= "ReferencedInstallPlanNotFound") then
+              numDegraded = numDegraded + 1
+            elseif (condition.type == "CatalogSourcesUnhealthy" or condition.type == "InstallPlanFailed") and condition.status == "True" then
+              numDegraded = numDegraded + 1
+            end
+          end
+          if numDegraded == 0 and numPending == 0 then
+            health_status.status = "Healthy"
+            health_status.message = msg
+            return health_status
+          elseif numPending > 0 and numDegraded == 0 then
+            health_status.status = "Progressing"
+            health_status.message = "An install plan for a subscription is pending installation"
+            return health_status
+          else
+            health_status.status = "Degraded"
+            health_status.message = msg
+            return health_status
+          end
+        end
+      end
+      health_status.status = "Progressing"
+      health_status.message = "An install plan for a subscription is pending installation"
+      return health_status
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_web_terminal
@@ -234,25 +237,31 @@ ocp4_workload_kubevirt_boot_sources_shapshot: false
 # Workload: ocp4_workload_mtv
 # -------------------------------------------------------------------
 #ocp4_workload_mtv_channel: release-v2.6
-#ocp4_workload_mtv_max_vm_inflight: 1
+#ocp4_workload_mtv_max_vm_inflight: "{{ [(num_users | int * 3) | int, 40] | min }}"
+#ocp4_workload_mtv_forklift_controller_container_limits_cpu: "{{ [(num_users | int * 100) | int, 1000] | max }}m"
+#ocp4_workload_mtv_forklift_controller_container_limits_memory: "{{ [(num_users | int * 400) | int, 2000] | max }}Mi"
 
 # -------------------------------------------------------------------
 # ocp4_workload_oadp_gitops
 # -------------------------------------------------------------------
-#ocp4_workload_oadp_gitops_channel: stable-1.4
-#ocp4_workload_oadp_gitops_use_catalog_snapshot: false
+ocp4_workload_oadp_gitops_channel: stable-1.4
+ocp4_workload_oadp_gitops_use_catalog_snapshot: false
 
 # Multi User
-#ocp4_workload_oadp_gitops_multi_user: false
-#ocp4_workload_oadp_gitops_configure_dpa: true
-#ocp4_workload_oadp_gitops_storage: odf
+ocp4_workload_oadp_gitops_multi_user: true
+ocp4_workload_oadp_gitops_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+ocp4_workload_oadp_gitops_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_oadp_gitops_namespace_base: oadp
+ocp4_workload_oadp_gitops_configure_dpa: true
+ocp4_workload_oadp_gitops_storage: odf
 
 # -------------------------------------------------------------------
 # ocp4_workload_virt_roadshow_vms
 # -------------------------------------------------------------------
+#ocp4_workload_virt_roadshow_vms_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+#ocp4_workload_virt_roadshow_vms_base_namespace: vmimported-
+#ocp4_workload_virt_roadshow_vms_userbase: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
 #ocp4_workload_virt_roadshow_vms_start_vms: false
-#ocp4_workload_virt_roadshow_vms_num_users: 1
-#ocp4_workload_virt_roadshow_vms_namespace: vmimported
 # Roadshow Setup
 # When set to true (default) then the application made up from the VMs will not
 # work until instructions are followed.
@@ -262,10 +271,28 @@ ocp4_workload_kubevirt_boot_sources_shapshot: false
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_virt_roadshow_vmware
 # -------------------------------------------------------------------
-#ocp4_workload_virt_roadshow_vmware_num_users: 1
-#ocp4_workload_virt_roadshow_vmware_vcenter_folder: "ocpvirt-{{ guid }}"
+#ocp4_workload_virt_roadshow_vmware_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
 #ocp4_workload_virt_roadshow_vmware_enable_mtv: true
 #ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
+
+# For multiple users
+#ocp4_workload_virt_roadshow_vmware_vcenter_folder_base: "ocpvirt-{{ guid }}-{{ ocp4_workload_authentication_htpasswd_user_base }}"
+#ocp4_workload_virt_roadshow_vmware_vcenter_user_base: "ocpvirt-{{ guid }}-{{ ocp4_workload_authentication_htpasswd_user_base }}"
+
+# User base for OCP Authentication (to assign vCenter users to OCP users in agnosticd_user_info)
+#ocp4_workload_virt_roadshow_auth_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+
+# MTV Namespace base to use for multi user.
+# For single user the namespace is always `openshift-mtv`
+#ocp4_workload_virt_roadshow_vmware_mtv_namespace_base: "mtv-{{ ocp4_workload_virt_roadshow_auth_user_base }}"
+#ocp4_workload_virt_roadshow_vsphere_ignore_pip_check: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_roadshow_multi_user
+# -------------------------------------------------------------------
+# In the future once bug https://issues.redhat.com/browse/CNV-38284 is in the product
+# the namespace will need to change to openshift-cnv
+#ocp4_workload_virt_roadshow_multi_user_configmap_namespace: default
 
 # ------------------------------------------------------
 # Showroom
@@ -273,28 +300,70 @@ ocp4_workload_kubevirt_boot_sources_shapshot: false
 ocp4_workload_showroom_name: showroom
 ocp4_workload_showroom_namespace: showroom
 ocp4_workload_showroom_content_only: false
-ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:latest
 
-#### IF YOU UPDATE THE CONTENT_GIT_REPO, PLEASE NOTIFY kodonnel@redhat.com and andharri@redhat.com
-#### FROM SERVICES SO THEY CAN MIGRATE TO ANOTHER REPO WITH US
-#### THEY ARE DOWNSTREAM
-ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-virt-roadshow-cnv
-#### the following is the Equinix based roadshow repo:
-# ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-virt-roadshow.git
-####
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-virt-roadshow-cnv-multi-user
 ocp4_workload_showroom_content_git_repo_ref: main
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
-  asset_uuid: 396B3FA4-F9E5-421C-9154-A947446A3E2E
+  asset_uuid: 1B4843DA-6349-4F37-958F-29AE4D1C8645
   anarchy:
     namespace: babylon-anarchy-ocp-wksp
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:2024-08-08
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
       pull: missing
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: OcpSandbox
+    namespace_suffix: ocp4-cluster
+    cloud_selector:
+      cloud: cnv
+      purpose: prod
+      virt: "yes"
+  catalog:
+    display_name: "RH1: Troubleshoot OpenShift Virtualization (CNV/Multi-User)"
+    category: Red_Hat_One_2025
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    multiuser: true
+    workshopLabUiRedirect: true
+    workshopUiMaxInstances: 3
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 20
+      validation: >-
+        num_users <= 2 ||
+        user_is_admin ||
+        user_groups.includes('rhpds-devs') ||
+        check_salesforce_id(salesforce_id) ||
+        Error('User count greater than TWO requires a valid SalesForceID')
+    keywords:
+    - workshop
+    - openshift
+    - ocp
+    - ocp416
+    - cnv
+    - cnvocp
+    - ocpcnv
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+      Featured_Score: '94'
+    reportingLabels:
+      assetGroup: Virtualization
   owners:
     maintainer:
     - name: Wolfgang Kulhanek
@@ -319,33 +388,5 @@ __meta__:
       email: amaroton@redhat.com
     - name: Dan Yocum
       email: dyocum@redhat.com
-  sandbox_api:
-    actions:
-      destroy:
-        catch_all: false
-  sandboxes:
-  - kind: OcpSandbox
-    namespace_suffix: ocp4-cluster
-    cloud_selector:
-      cloud: cnv
-      purpose: prod
-      virt: "yes"
-  catalog:
-    display_name: "RH1: Troubleshoot OpenShift Virtualization (CNV)"
-    category: Red_Hat_One_2025
-    namespace: babylon-catalog-{{ stage | default('?') }}
-    multiuser: false
-    keywords:
-    - workshop
-    - openshift
-    - ocp
-    - ocp416
-    - cnv
-    - cnvocp
-    - ocpcnv
-    labels:
-      Product: Red_Hat_OpenShift_Container_Platform
-      Product_Family: Red_Hat_Cloud
-      Provider: RHDP
-    reportingLabels:
-      assetGroup: Virtualization
+  tower:
+    timeout: 21600
