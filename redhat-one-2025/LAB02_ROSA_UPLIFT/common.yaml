@@ -1,11 +1,20 @@
 ---
-#include /includes/secrets/vmware-ibm-rs-clusters-access.yaml
-#TODO: delete this variable when sandbox-api
-vcenter_cluster: vcs-rs-00
-# -------------------------------------------------------------------
-# Purpose - Cost tag. One of development, ilt, production, event
-# -------------------------------------------------------------------
-purpose: development
+
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/open-environment-annotation-hidden.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/requester_username.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/showroom-ocp-defaults.yaml
+#include /includes/parameters/student-email.yaml
+#include /includes/runtime-unlimited.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/rosa_token.yaml
+#include /includes/terms-of-service.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item:  RH1 2025: Uplift and Shift
@@ -29,14 +38,15 @@ rosa_deploy: true
 # rosa_deploy_hcp: true
 
 rosa_version: latest
-rosa_version_base: openshift-v4.16
+rosa_version_base: "openshift-v4.16"
 rosa_installer_version: latest
 
+# best guess on number of compute nodes is based on 60 users: 12 nodes
 rosa_compute_replicas: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 2] | max }}"
-rosa_compute_machine_type: m6a.4xlarge
 
 rosa_setup_cluster_admin: true
 rosa_setup_cluster_admin_login: true
+rosa_compute_machine_type: m6a.8xlarge
 
 # -------------------------------------------------------------------
 # Bastion
@@ -61,6 +71,8 @@ requirements_content:
     version: 4.5.0
   - name: vmware.vmware_rest
     version: 3.0.1
+  - name: agnosticd.labs_rosa_uplift
+    version: 1.0.1
 
 # -------------------------------------------------------------------
 # Workloads
@@ -68,27 +80,25 @@ requirements_content:
 infra_workloads:
 - ocp4_workload_rosa_machinepool
 - ocp4_workload_authentication_rosa
+- ocp4_workload_opentlc_production
+- ocp4_workload_project_request_template
 - ocp4_workload_openshift_data_foundation
 - ocp4_workload_kubevirt
 - ocp4_workload_mtv
 - ocp4_workload_web_terminal
 - ocp4_workload_mtv
-- ocp4_workload_minio
-- ocp4_workload_oadp
 - ocp4_workload_virt_roadshow_vms
 - ocp4_workload_virt_roadshow_vmware
 - ocp4_workload_openshift_gitops
 - ocp4_workload_ossm
+  #- agnosticd.labs_rosa_uplift.ocp4_workload_rosa_uplift_and_shift
+- ocp4_workload_openshift_gitops_bootstrap
 - ocp4_workload_showroom
-
-remove_workloads:
-- ocp4_workload_virt_roadshow_vmware
 
 # -------------------------------------------------------------------
 # Workload variables
 # -------------------------------------------------------------------
-ocp4_workload_user_count: 1
-ocp4_workload_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+ocp4_workload_user_count: "{{ (num_users | default('2')) | int }}"
 ocp4_workload_user_base: user
 
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
@@ -118,13 +128,23 @@ ocp4_workload_authentication_rosa_aws_secret_access_key: "{{ lookup('env','AWS_S
 ocp4_workload_authentication_rosa_aws_region: "{{ lookup('env','AWS_DEFAULT_REGION') | default(aws_region, true) | mandatory }}"
 
 # -------------------------------------------------------------------
-# ocp4_workload_openshift_data_foundation
+# OpenTLC Production
 # -------------------------------------------------------------------
+ocp4_workload_opentlc_production_remove_self_provisioner: false
+ocp4_workload_opentlc_production_expose_registry_route: false
+ocp4_workload_opentlc_production_set_build_defaults: true
+
+# -----------------------------------
+# OpenShift Data Foundations Operator
+# -----------------------------------
 ocp4_workload_openshift_data_foundation_channel: stable-4.15
 ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
 ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_ceph_storage_class_name: gp3-csi
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 500Gi
+ocp4_workload_openshift_data_foundation_ceph_storage_system_deploy_timeout: 1200
 ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1200
 
 # -------------------------------------------------------------------
@@ -139,19 +159,19 @@ ocp4_workload_kubevirt_workload_tolerations:
   operator: Exists
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_web_terminal
+# -------------------------------------------------------------------
+ocp4_workload_web_terminal_channel: fast
+ocp4_workload_web_terminal_catalogsource_setup: false
+ocp4_workload_web_terminal_configure: false
+
+# -------------------------------------------------------------------
 # ocp4_workload_mtv
 # -------------------------------------------------------------------
 ocp4_workload_mtv_channel: release-v2.7
 ocp4_workload_mtv_use_catalog_snapshot: true
 ocp4_workload_mtv_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_mtv_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_web_terminal
-# -------------------------------------------------------------------
-ocp4_workload_web_terminal_channel: fast
-ocp4_workload_web_terminal_catalogsource_setup: false
-ocp4_workload_web_terminal_configure: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_minio
@@ -189,19 +209,19 @@ ocp4_workload_oadp_storage_minio_bucket_name: ocs-storage
 # ocp4_workload_virt_roadshow_vms
 # -------------------------------------------------------------------
 ocp4_workload_virt_roadshow_vms_start_vms: false
-ocp4_workload_virt_roadshow_vms_num_users: 1
-ocp4_workload_virt_roadshow_vms_namespace: vmimported
+ocp4_workload_virt_roadshow_vms_num_users: "{{ ocp4_workload_user_count }}"
+ocp4_workload_virt_roadshow_vms_namespace: sample
 # Roadshow Setup
 # When set to true (default) then the application made up from the VMs will not
 # work until instructions are followed.
 # When false the application will work out of the box without changes
-ocp4_workload_virt_roadshow_vms_roadshow_setup: false
+ocp4_workload_virt_roadshow_vms_roadshow_setup: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_virt_roadshow_vmware
 # -------------------------------------------------------------------
-ocp4_workload_virt_roadshow_vmware_num_users: 1
-ocp4_workload_virt_roadshow_vmware_vcenter_folder: "ocpvirt-{{ guid }}"
+ocp4_workload_virt_roadshow_vmware_num_users: "{{ ocp4_workload_user_count }}"
+#ocp4_workload_virt_roadshow_vmware_vcenter_folder: "ocpvirt-{{ guid }}"
 ocp4_workload_virt_roadshow_vmware_enable_mtv: true
 ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
 
@@ -290,7 +310,16 @@ ocp4_workload_ossm_kiali_startingcsv: ""
 ocp4_workload_ossm_servicemesh_channel: stable
 ocp4_workload_ossm_servicemesh_startingcsv: ""
 
-#ocp4_workload_rhsso_starting_csv: rhsso-operator.7.6.3-opr-002
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/newgoliath/rosa_uplift.git
+ocp4_workload_gitops_bootstrap_repo_revision: main #put a tag, better
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  namespace: istio-system
+  cloud: rosa
 
 # -------------------------------------------------------------------
 # ocp4_workload_showroom
@@ -306,8 +335,53 @@ ocp4_workload_showroom_deployer_chart_version: 1.2.1
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
+  asset_uuid: 3ca15ad4-1b56-4634-80a2-2a5a33f82db2
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte # TODO: change this for RH1 2025
   deployer:
-    scm_url: https://github.com/redhat-cop/agnosticd.git
-    scm_ref: development
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:v0.1.2
+    actions:
+      start:
+        disable: true
+      stop:
+        disable: true
+  sandbox_api:
+    actions:
+      start:
+        enable: false
+      stop:
+        enable: false
+  catalog:
+    multiuser: true
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LAB 02: Uplift and Shift"
+    category: Red_Hat_One_2025
+    keywords:
+    - rosa
+    - virtualization
+    - virt
+    - rh1
+    - rh12025
+    - rh1lab2
+    - rh12025lab2
+    - opeshift_service_mesh
+    - ossm
+    - service_mesh
+    - virtualization
+    - virt
+    labels:
+      Product: Red_Hat_OpenShift_Service_on_AWS
+      Provider: RHDP
+      Product_Family: Red_Hat_Cloud
+      Featured_Score: '68'
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 1
+        maximum: 100
