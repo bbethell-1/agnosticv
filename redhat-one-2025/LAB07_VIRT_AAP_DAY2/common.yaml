@@ -62,11 +62,11 @@ install_student_user: false
 # -------------------------------------------------------------------
 infra_workloads:
 - ocp4_workload_external_odf
-- ocp4-workload-nfs-provisioner
 - ocp4_workload_authentication
 - ocp4_workload_cert_manager
 - ocp4_workload_kubevirt
 - ocp4_workload_virt_roadshow_vms
+- ocp4_workload_gitea_operator
 - ocp4_workload_ansible_automation_platform
 - ocp4_workload_showroom
 
@@ -74,6 +74,9 @@ infra_workloads:
 # Workload variables
 # -------------------------------------------------------------------
 ocp4_workload_user_count: 1
+ocp4_workload_user_base: user
+ocp4_workload_multi_user: false
+
 common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
@@ -83,12 +86,6 @@ ocp4_workload_catalogsource_tag: v4.16_2024_11_04
 # Workload: ocp4_workload_external_odf
 # -------------------------------------------------------------------
 odf_channel: stable-4.16
-
-# -------------------------------------------------------------------
-# Workload: ocp4-workload-nfs-provisioner
-# -------------------------------------------------------------------
-nfs_provisioner_nfs_server_hostname: "{{ openshift_cnv_nfs_server }}"
-nfs_provisioner_server_directory: "{{ openshift_cnv_nfs_path }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -136,9 +133,36 @@ ocp4_workload_virt_roadshow_vms_start_vms: true
 ocp4_workload_virt_roadshow_vms_roadshow_setup: false
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.7
+ocp4_workload_gitea_operator_starting_csv: gitea-operator.v2.0.7
+
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.21.11"
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel9/postgresql-13
+ocp4_workload_gitea_operator_postgresql_image_tag: 1-165
+
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_user_count }}"
+ocp4_workload_gitea_operator_generate_user_format: >-
+  {{ ocp4_workload_user_base + '%d' if ocp4_workload_multi_user else ocp4_workload_user_base + '1' }}
+ocp4_workload_gitea_operator_user_password: "{{ common_admin_password }}"
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/redhat-gpte-devopsautomation/virt-aap-day2-workspace
+  name: virt-aap-day2
+  private: false
+
+# -------------------------------------------------------------------
 # ocp4_workload_ansible_automation_platform
 # -------------------------------------------------------------------
-ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.4"
+ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.5"
 ocp4_workload_ansible_automation_platform_admin_password: "{{ common_admin_password }}"
 ocp4_workload_ansible_automation_platform_manifest:
   url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
