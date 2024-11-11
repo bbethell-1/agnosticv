@@ -1,18 +1,23 @@
 ---
-#include /includes/aws-sandbox-meta.yaml
 #include /includes/catalog-icon-openshift.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/openshift-ocpv-configs.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/sandbox-api.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/zerossl.yaml
+#include /includes/parameters/enable-cert-manager.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
 # env_type: rhel8-base
 env_type: base-infra
-cloud_provider: ec2
+cloud_provider: openshift_cnv
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
 # Unset key name
@@ -92,6 +97,25 @@ showroom_pip_packages:
   - podman-compose
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+# Values from /includes/secrets/dynamic-aws-dns.yaml
+# cluster_dns_zone: dynamic.redhatworkshops.io
+# route53_aws_zone_id:
+# route53_aws_access_key_id:
+# route53_aws_secret_access_key:
+
+ocp4_workload_cert_manager_cloud_provider: ec2
+# ocp4_workload_cert_manager_ec2_region: "{{ aws_region }}"
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+ocp4_workload_cert_manager_channel: stable-v1
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+ocp4_workload_cert_manager_install_api_certificates: false
+
+# -------------------------------------------------------------------
 # asset_injector_assets
 # -------------------------------------------------------------------
 
@@ -129,31 +153,36 @@ cloud_tags:
   platform: "{{ platform | default('unknown') }}"
 
 rhel9_instance_image: RHEL94GOLD-latest
-rhel9_instance_type: "t3a.large"
-rootfs_size_rhel9: 200
+rootfs_size_rhel9: 200Gi
 
 instances:
   - name: "rhel9"
     count: 1
     unique: true
-    public_dns: true
-    floating_ip: true
+    public_dns: false
+    floating_ip: false
     image: "{{ rhel9_instance_image }}"
-    flavor:
-      ec2: "{{ rhel9_instance_type }}"
+    memory: 8G
+    cores: 2
+    image_size: "{{ rootfs_size_rhel9 }}"
     tags:
       - key: "AnsibleGroup"
         value: "bastions,showroom"
       - key: "ostype"
         value: "linux"
-    rootfs_size: "{{ rootfs_size_rhel9 }}"
-    volumes:
-      - device_name: "/dev/xvdb"
-        size: "20"
-        type: gp3
-    security_groups:
-      - BastionSG
-      - ShowroomSG
+    services:
+      - name: bastion
+        ports:
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: bastion-https
+    routes:
+      - name: bastion-https
+        host: bastion
+        service: bastion
+        targetPort: 443
+        tls: true
 
 # -------------------------------------------------------------------
 # Security Group Config
@@ -226,6 +255,13 @@ __meta__:
       Provider: RHDP
     multiuser: false
     parameters: []
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
   deployer:
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:v0.1.0
