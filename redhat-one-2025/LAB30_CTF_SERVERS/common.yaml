@@ -42,39 +42,6 @@ ansible_service_account_user_password: "{{ common_password }}"
 ansible_service_account_user_preferred_python: "3.9"
 
 # -------------------------------------------------------------------
-# Workloads: showroom
-# -------------------------------------------------------------------
-
-showroom_git_repo: "https://github.com/redhat-gpte-devopsautomation/showroom-tap-workshop.git"
-showroom_user: showroom
-showroom_ui: default
-
-showroom_tab_services:
-  - double_tty
-
-showroom_user_password: "{{ common_password }}"
-showroom_ssh_method: sshkey
-
-showroom_lab_users:
-  - "{{ student_name }}"
-
-showroom_tab_double_tty_top_username: "{{ student_name }}"
-showroom_tab_double_tty_bottom_username: "{{ student_name }}"
-
-showroom_ttys_enable_tmux: true
-
-showroom_dnf_packages:
-  - git
-  - podman
-  - python3-devel
-  - systemd-container
-  - unzip
-  - ansible-core
-
-showroom_pip_packages:
-  - podman-compose
-
-# -------------------------------------------------------------------
 # asset_injector_assets
 # -------------------------------------------------------------------
 
@@ -115,26 +82,24 @@ rhel9_instance_image: RHEL94GOLD-latest
 rhel9_instance_type: "t3a.large"
 rootfs_size_rhel9: 200
 
-ctfdashboard_instance_name: ctfdashboard
-ctfdashboard_instance_image: RHEL8GOLD-latest
-ctfdashboard_instance_type: "r7a.2xlarge"
-rootfs_size_ctfdashboard: 50
+ctfdashboard_instance_type: "m5ad.xlarge"
+rootfs_size_ctfdashboard: 100
 
 server_image: RHEL92GOLD-latest
 server_instance_type: "t3a.large"
 
 instances:
-  - name: "rhel9"
+  - name: ctfdashboard
     count: 1
     unique: true
     public_dns: true
     floating_ip: true
     image: "{{ rhel9_instance_image }}"
     flavor:
-      ec2: "{{ rhel9_instance_type }}"
+      ec2: "{{ ctfdashboard_instance_type }}"
     tags:
       - key: "AnsibleGroup"
-        value: "bastions,showroom"
+        value: "bastions"
       - key: "ostype"
         value: "linux"
     rootfs_size: "{{ rootfs_size_rhel9 }}"
@@ -143,42 +108,66 @@ instances:
         size: "20"
         type: gp3
     security_groups:
+      - WebSG
       - BastionSG
-      - ShowroomSG
 
-  - name: "{{ ctfdashboard_instance_name }}"
+  - name: aap
     count: 1
     unique: true
     public_dns: true
     dns_loadbalancer: true
     floating_ip: true
-    image: "{{ ctfdashboard_instance_image }}"
+    image: "{{ rhel9_instance_image }}"
     flavor:
-      ec2: "{{ ctfdashboard_instance_type }}"
+      ec2: m5ad.2xlarge
     tags:
       - key: "AnsibleGroup"
-        value: "ctfdashboards"
+        value: "aap"
       - key: "ostype"
         value: "linux"
-    rootfs_size: "{{ rootfs_size_ctfdashboard }}"
+    rootfs_size: 100
     security_groups:
       - WebSG
       - DefaultSG
       - NodeSG
 
-  - name: "server"
-    count: 3
-    public_dns: false
-    image: "{{ server_image }}"
+  - name: "misc"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ rhel9_instance_image }}"
     flavor:
-      ec2: "{{ server_instance_type | default(default_instance_type) }}"
+      ec2: "{{ ctfdashboard_instance_type }}"
     tags:
       - key: "AnsibleGroup"
-        value: "servers"
+        value: "misc"
       - key: "ostype"
         value: "linux"
-    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    rootfs_size: 100
     security_groups:
+      - WebSG
+      - DefaultSG
+      - NodeSG
+
+  - name: "audit"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ rhel9_instance_image }}"
+    flavor:
+      ec2: "{{ ctfdashboard_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "audit"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: 100
+    security_groups:
+      - WebSG
       - DefaultSG
       - NodeSG
 
@@ -187,16 +176,6 @@ instances:
 # -------------------------------------------------------------------
 
 security_groups:
-  - name: ShowroomSG
-    rules:
-      - name: ShowroomHTTPS
-        description: "Primary showroom endpoint - for reverse proxy"
-        from_port: 443
-        to_port: 443
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-
   - name: BastionSG
     rules:
       - name: BastionSSHPorts
