@@ -35,6 +35,7 @@
 env_type: ocp4-cluster
 software_to_deploy: openshift4_assisted
 cloud_provider: openshift_cnv
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
 # -------------------------------------------------------------------
 # Platform
@@ -52,7 +53,10 @@ ocp4_installer_version: "4.16"
 # -------------------------------------------------------------------
 repo_method: satellite
 update_packages: true
+install_common: true
 
+common_extra_packages:
+- ansible-core
 # -------------------------------------------------------------------
 # Default Networking Stack
 # -------------------------------------------------------------------
@@ -71,6 +75,7 @@ student_sudo: true
 bastion_instance_image: rhel-9.3
 bastion_cores: 2
 bastion_memory: 6Gi
+bastion_rootfs_size: 100Gi
 
 ai_control_plane_cores: >-
   {{ 16 if worker_instance_count|int <= 10
@@ -112,9 +117,45 @@ infra_workloads:
 #remove_workloads:
 #- ocp4_workload_virt_roadshow_vmware
 
+software_workloads_for_bastion:
+- rh1_2025_ocpvirt_ar
+
 # -------------------------------------------------------------------
 # Workload variables
 # -------------------------------------------------------------------
+ocpvirt_configure: true
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+
+requirements_content:
+  collections:
+  - name: amazon.aws
+    version: 8.2.0
+  - name: ansible.posix
+    version: 1.6.0
+  - name: ansible.utils
+    version: 5.1.0
+  - name: awx.awx
+    version: 24.6.0
+  - name: community.general
+    version: 9.5.0
+  - name: infra.controller_configuration
+    version: 2.11.0
+  - name: kubernetes.core
+    version: 5.0.0
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.1
+  - name: kubevirt.core
+    version: 2.1.0
+  - name: community.okd
+    version: 4.0.0
+  roles:
+  - name: rh1_2025_ocpvirt_ar
+    src: https://github.com/opentraining-labs-customizations/rh1-2025-ocpvirt-ar.git
+    version: v1.0.3
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_external_odf
