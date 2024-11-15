@@ -100,6 +100,23 @@ security_groups:
         from_group: NodeSG
         rule_type: Ingress
 
+  - name: ServerSG
+    rules:
+      - name: Zabbix0
+        description: "Zabbix port"
+        from_port: 10050
+        to_port: 10050
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: Zabbix1
+        description: "Zabbix port"
+        from_port: 10051
+        to_port: 10051
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
 # -------------------
 # Instances
 # -------------------
@@ -162,6 +179,27 @@ instances:
     security_groups:
       - DefaultSG
       - NodeSG
+
+  - name: "server"
+    count: 1
+    unique: true
+    public_dns: true
+    floating_ip: true
+    image: "{{ server_image | default(default_instance_image)}}"
+    flavor:
+      ec2: "{{ server_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "servers"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    security_groups:
+      - DefaultSG
+      - NodeSG
+      - ServerSG
+      - WebSG
+
 
 # -------------------------------------------------------------------
 # Config Pre/Software/Post Workloads
