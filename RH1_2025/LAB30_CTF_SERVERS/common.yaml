@@ -1,45 +1,285 @@
 ---
+# -------------------------------------------------------------------
+# --- Catalog: Red Hat One
+# --- Catalog Item: "LAB 30: Servers for Red Hat One Capture The Flag Event"
+# -------------------------------------------------------------------
+
 #include /includes/aws-sandbox-meta.yaml
 #include /includes/catalog-icon-rhel.yaml
 #include /includes/terms-of-service.yaml
-#include /includes/parameters/aws-region.yaml
-#include /includes/parameters/purpose.yaml
-#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
 #include /includes/lifetime-standard.yaml
 
-# -------------------------------------------------------------------
-# Mandatory Variables
-# -------------------------------------------------------------------
-# env_type: rhel8-base
-env_type: base-infra
-cloud_provider: ec2
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
 
-# Unset key name
-key_name: ""
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/ansible-tower-advanced-24.yaml
+#include /includes/secrets/registry-redhat.yaml
 
 # -------------------------------------------------------------------
 # Platform
 # -------------------------------------------------------------------
 platform: RHPDS
-bastion_public_hostname: "bastion.{{ guid }}.{{ sandbox_zone }}"
 
 # -------------------------------------------------------------------
-# inventory_groups (optional but nice to have)
+# Mandatory Variables
 # -------------------------------------------------------------------
-
-inventory_groups:
-  - bastions
+env_type: ansible-bu-workshop
+cloud_provider: ec2
 
 # -------------------------------------------------------------------
-# Role: ansible_service_account
+# Instance Variables
 # -------------------------------------------------------------------
+default_instance_image: RHEL94GOLD-latest
+bastion_instance_image: RHEL94GOLD-latest
+default_instance_type: "t3a.large"
 
-ansible_service_account_user_name: "{{ student_name }}"
-ansible_service_account_user_password: "{{ common_password }}"
-ansible_service_account_user_preferred_python: "3.9"
+ctfdashboard_instance_type: "m5ad.xlarge"
+rootfs_size_ctfdashboard: 100
+
+controller_instance_type: "m5ad.xlarge"
+
+# -------------------
+# Security Groups
+# -------------------
+security_groups:
+  - name: BastionSG
+    rules:
+      - name: BastionSSHPorts
+        description: "Bastion ssh"
+        from_port: 22
+        to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: WebSG
+    rules:
+      - name: WebHTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: WebHTTPSPorts
+        description: "HTTPS Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: WebAhttpsSPorts
+        description: "Open HTTPS Public"
+        from_port: 8443
+        to_port: 8443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: WebControllerPorts
+        description: "Open HTTPS Public"
+        from_port: 8501
+        to_port: 8501
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: NodeSG
+    rules:
+      - name: FromNodeSGtcp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: NodeSG
+        rule_type: Ingress
+      - name: FromNodeSGudp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: NodeSG
+        rule_type: Ingress
+
+# -------------------
+# Instances
+# -------------------
+instances:
+  - name: bastion
+    count: 1
+    unique: true
+    public_dns: true
+    floating_ip: true
+    dns_loadbalancer: true
+    image: "{{ bastion_instance_image }}"
+    flavor:
+      ec2: t3a.large
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,automationcontroller"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: 50
+    volumes:
+      - device_name: "/dev/xvdb"
+        size: "2"
+        type: gp3
+    security_groups:
+      - WebSG
+      - BastionSG
+      - NodeSG
+
+  - name: ctfdashboard
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ default_instance_image }}"
+    flavor:
+      ec2: "{{ ctfdashboard_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "ctfdashboard"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: 100
+    security_groups:
+      - WebSG
+      - DefaultSG
+      - NodeSG
+
+  - name: "controller"
+    count: 1
+    unique: true
+    public_dns: true
+    floating_ip: true
+    image:
+      name: "aap2.5-2024-11-06"
+    flavor:
+      ec2: "{{ controller_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "controllers"
+      - key: "ostype"
+        value: "rhel"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: 200
+    security_groups:
+      - NodeSG
+      - WebSG
+
+  - name: "misc"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ default_instance_image }}"
+    flavor:
+      ec2: "{{ ctfdashboard_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "misc"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: 100
+    security_groups:
+      - WebSG
+      - DefaultSG
+      - NodeSG
+
+  - name: "audit"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ default_instance_image }}"
+    flavor:
+      ec2: "{{ ctfdashboard_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "audit"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: 100
+    security_groups:
+      - WebSG
+      - DefaultSG
+      - NodeSG
+
+# -------------------------------------------------------------------
+# Config Pre/Software/Post Workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  all:
+    - set-repositories
+    - common
+  bastions:
+    - bastion-lite
+    - control-user
+    - asset_injector
+
+software_workloads:
+  controllers:
+    - nginx_with_cert
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------
+repo_method: satellite
+use_content_view: true
+
+# -------------------------------------------------
+# Role: common
+# -------------------------------------------------
+install_common: true
+common_packages_el9:
+  - at
+  - bash-completion
+  - bind-utils
+  - buildah
+  - git
+  - httpd-tools
+  - nano
+  - podman
+  - python3
+  - python3-pip
+  - tmux
+  - tree
+  - unzip
+  - vim-enhanced
+  - wget
+  - ansible
+
+# -------------------------------------------------
+# Role: bastion-lite
+# -------------------------------------------------
+install_bastion_lite: true
+
+# -------------------------------------------------
+# Role: control-user
+# -------------------------------------------------
+env_authorized_key: "{{guid}}key"
+install_control_user: true
+student_name: lab-user
+student_password: "{{ common_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ common_password }}"
+control_user_private_group: "{{ omit }}"
+# control_user_ssh_config: ./files/rhel_ssh_config.j2
 
 # -------------------------------------------------------------------
 # asset_injector_assets
@@ -72,222 +312,14 @@ asset_injector_assets:
     state: restarted
 
 # -------------------------------------------------------------------
-# Instance Config
+# AgnosticV meta variables
 # -------------------------------------------------------------------
-cloud_tags:
-  env_type: "{{ env_type }}"
-  platform: "{{ platform | default('unknown') }}"
-
-rhel9_instance_image: RHEL94GOLD-latest
-rhel9_instance_type: "t3a.large"
-rootfs_size_rhel9: 200
-
-ctfdashboard_instance_type: "m5ad.xlarge"
-rootfs_size_ctfdashboard: 100
-
-server_image: RHEL92GOLD-latest
-server_instance_type: "t3a.large"
-
-instances:
-  - name: bastion
-    count: 1
-    unique: true
-    public_dns: true
-    floating_ip: true
-    image: "{{ rhel9_instance_image }}"
-    flavor:
-      ec2: t3a.large
-    tags:
-      - key: "AnsibleGroup"
-        value: "bastions"
-      - key: "ostype"
-        value: "linux"
-    rootfs_size: "{{ rootfs_size_rhel9 }}"
-    volumes:
-      - device_name: "/dev/xvdb"
-        size: "20"
-        type: gp3
-    security_groups:
-      - WebSG
-      - BastionSG
-
-  - name: ctfdashboard
-    count: 1
-    unique: true
-    public_dns: true
-    dns_loadbalancer: true
-    floating_ip: true
-    image: "{{ rhel9_instance_image }}"
-    flavor:
-      ec2: "{{ ctfdashboard_instance_type }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "ctfdashboard"
-      - key: "ostype"
-        value: "linux"
-    rootfs_size: 100
-    security_groups:
-      - WebSG
-      - DefaultSG
-      - NodeSG
-
-  - name: aap
-    count: 1
-    unique: true
-    public_dns: true
-    dns_loadbalancer: true
-    floating_ip: true
-    image: "{{ rhel9_instance_image }}"
-    flavor:
-      ec2: m5ad.2xlarge
-    tags:
-      - key: "AnsibleGroup"
-        value: "aap"
-      - key: "ostype"
-        value: "linux"
-    rootfs_size: 100
-    security_groups:
-      - WebSG
-      - DefaultSG
-      - NodeSG
-
-  - name: "misc"
-    count: 1
-    unique: true
-    public_dns: true
-    dns_loadbalancer: true
-    floating_ip: true
-    image: "{{ rhel9_instance_image }}"
-    flavor:
-      ec2: "{{ ctfdashboard_instance_type }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "misc"
-      - key: "ostype"
-        value: "linux"
-    rootfs_size: 100
-    security_groups:
-      - WebSG
-      - DefaultSG
-      - NodeSG
-
-  - name: "audit"
-    count: 1
-    unique: true
-    public_dns: true
-    dns_loadbalancer: true
-    floating_ip: true
-    image: "{{ rhel9_instance_image }}"
-    flavor:
-      ec2: "{{ ctfdashboard_instance_type }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "audit"
-      - key: "ostype"
-        value: "linux"
-    rootfs_size: 100
-    security_groups:
-      - WebSG
-      - DefaultSG
-      - NodeSG
-
-# -------------------------------------------------------------------
-# Security Group Config
-# -------------------------------------------------------------------
-
-security_groups:
-  - name: BastionSG
-    rules:
-      - name: BastionSSHPorts
-        description: "Bastion ssh"
-        from_port: 22
-        to_port: 22
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-
-  - name: WebSG
-    rules:
-      - name: WebHTTPSPorts
-        description: "HTTPS Public"
-        from_port: 443
-        to_port: 443
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-
-      - name: WebHTTPPorts
-        description: "HTTP Public"
-        from_port: 80
-        to_port: 80
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-
-      - name: WebHTTPPorts
-        description: "HTTP Public"
-        from_port: 80
-        to_port: 80
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-
-      - name: WebCockpitPorts
-        description: "Cockpit HTTP Public"
-        from_port: 9090
-        to_port: 9090
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-
-  - name: NodeSG
-    rules:
-      - name: FromNodeSGtcp
-        description: "Allow everything from HostSG servers"
-        from_port: 0
-        to_port: 65535
-        protocol: tcp
-        from_group: NodeSG
-        rule_type: Ingress
-
-      - name: FromNodeSGudp
-        description: "Allow everything from HostSG servers"
-        from_port: 0
-        to_port: 65535
-        protocol: udp
-        from_group: NodeSG
-        rule_type: Ingress
-
-# -------------------------------------------------------------------
-# Role: set-repositories
-# -------------------------------------------------------------------
-repo_method: satellite
-use_content_view: true
-
-# -------------------------------------------------------------------
-# Role: common
-# -------------------------------------------------------------------
-
-student_name: lab-user
-student_password: "{{ common_password }}"
-
-bastion_install_basic_packages: true
-# common_packages_el9:
-agd_bastion_packages:
-  - python3
-  - unzip
-  - bash-completion
-  - tmux
-  - bind-utils
-  - wget
-  - nano
-  - git
-  - vim-enhanced
-  - httpd-tools
-  - openldap-clients
-  - podman
-  - tree
-  - runc
+agnosticv_meta:
+  deploy_with: babylon
+  params_to_variables:
+    user: ignore_user
+    username: student_name
+    region: aws_region
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -297,18 +329,18 @@ __meta__:
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   catalog:
+    multiuser: false
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: "LAB 30: Servers for Red Hat One Capture The Flag Event"
     category: Red_Hat_One_2025
     keywords:
-      - ctf
-      - troubleshooting
       - lab30
+      - troubleshooting
+      - ctf
     labels:
-      Product: Red_Hat_Enterprise_Linux
-      Product_Family: Red_Hat_Enterprise_Linux
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Automation
       Provider: RHDP
-    multiuser: false
     parameters: []
   deployer:
     execution_environment:
