@@ -38,6 +38,28 @@ cloud_provider: openshift_cnv
 
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 student_password: "{{ common_password }}"
+
+openshift_cluster_admin_username: "{{ ocp4_workload_authentication_admin_user }}"
+openshift_cluster_admin_password: "{{ ocp4_workload_authentication_htpasswd_admin_password }}"
+
+userdata: >-
+  {
+  {% for i in range(1,num_users + 1) %}
+  "user{{i}}": {
+    "bastion_public_hostname": "{{ bastion_public_hostname }}",
+    "bastion_ssh_port": "{{ bastion_ssh_port }}",
+    "bastion_ssh_password": "{{ common_password }}",
+    "openshift_api_url": "{{ openshift_api_url }}"
+    },
+  {% endfor %}
+  }
+
+agnosticd_passthrough_user_data: |
+  {{ {}
+   | combine( {
+     "users": userdata })
+  }}
+
 # -------------------------------------------------------------------
 # Platform
 # -------------------------------------------------------------------
@@ -157,7 +179,7 @@ requirements_content:
   roles:
   - name: rh1_2025_ocpvirt_ar
     src: https://github.com/opentraining-labs-customizations/rh1-2025-ocpvirt-ar.git
-    version: v1.0.4
+    version: v1.0.6
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_external_odf
@@ -169,7 +191,7 @@ odf_channel: stable-4.16
 # -------------------------------------------------------------------
 ocp4_workload_authentication_idm_type: htpasswd
 ocp4_workload_authentication_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
 ocp4_workload_authentication_htpasswd_user_base: user
 ocp4_workload_authentication_htpasswd_user_password: ""
 ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('1') | int }}"
