@@ -50,7 +50,7 @@ update_packages: true
 # OpenShift Version
 # -------------------------------------------------------------------
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-ocp4_installer_version: "4.16.19"
+ocp4_installer_version: "4.17.4"
 
 # -------------------------------------------------------------------
 # Student User on Bastion
@@ -68,6 +68,7 @@ infra_workloads:
 - ocp4_workload_kubevirt
 - ocp4_workload_gitea_operator
 - ocp4_workload_ansible_automation_platform
+- ocp4_workload_codeserver
 - ocp4_workload_gitops_bootstrap
 - automation_platform_loader
 - ocp4_workload_showroom
@@ -80,6 +81,7 @@ ocp4_workload_user_base: user
 ocp4_workload_multi_user: false
 
 common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: openshift
 
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
 ocp4_workload_catalogsource_tag: v4.16_2024_11_04
@@ -107,7 +109,7 @@ ocp4_workload_authentication_idm_type: htpasswd
 ocp4_workload_authentication_admin_user: admin
 ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
 ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
 ocp4_workload_authentication_htpasswd_user_count: "{{ ocp4_workload_user_count }}"
 ocp4_workload_authentication_remove_kubeadmin: true
 
@@ -156,7 +158,7 @@ ocp4_workload_gitea_operator_create_users: true
 ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_user_count }}"
 ocp4_workload_gitea_operator_generate_user_format: >-
   {{ ocp4_workload_user_base + '%d' if ocp4_workload_multi_user else ocp4_workload_user_base + '1' }}
-ocp4_workload_gitea_operator_user_password: "{{ common_admin_password }}"
+ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
 ocp4_workload_gitea_operator_migrate_repositories: true
 ocp4_workload_gitea_operator_repositories_list:
 - repo: https://github.com/redhat-gpte-devopsautomation/virt-aap-day2-workspace
@@ -174,7 +176,7 @@ ocp4_workload_ansible_automation_platform_manifest:
   inject: true
 
 # --------------------------------------------------------------------
-# Workload: ansible_automation_loader
+# ansible_automation_loader
 # --------------------------------------------------------------------
 automation_platform_loader_aap_version: 2.5
 controller_dependency_check: false
@@ -246,6 +248,37 @@ controller_projects:
   scm_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ocp4_workload_user_base}}1/virt-aap-day2.git"
   scm_branch: "main"
   wait: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_codeserver
+# -------------------------------------------------------------------
+ocp4_workload_codeserver_image: quay.io/gpte-devops-automation/codeserver
+ocp4_workload_codeserver_image_tag: v4.95.3-java21
+ocp4_workload_codeserver_init_image: quay.io/gpte-devops-automation/codeserver-init
+ocp4_workload_codeserver_init_image_tag: v4.95.3
+
+ocp4_workload_codeserver_gitea_name: "{{ ocp4_workload_gitea_operator_gitea_hostname }}"
+ocp4_workload_codeserver_gitea_namespace: "{{ ocp4_workload_gitea_operator_project }}"
+
+ocp4_workload_codeserver_multi_user_install: "{{ ocp4_workload_multi_user }}"
+ocp4_workload_codeserver_multi_user_num_users: "{{ ocp4_workload_user_count }}"
+ocp4_workload_codeserver_multi_user_username_base: "{{ ocp4_workload_user_base }}"
+
+ocp4_workload_codeserver_repos_user: "{{ ocp4_workload_user_base + '1' }}"
+
+ocp4_workload_codeserver_password: "{{ common_user_password }}"
+
+ocp4_workload_codeserver_init_request_memory: "512Mi"
+ocp4_workload_codeserver_init_limits_memory: "512Mi"
+ocp4_workload_codeserver_request_memory: "2Gi"
+ocp4_workload_codeserver_limits_memory: "2Gi"
+
+# Repositories to set up in codeserver
+ocp4_workload_codeserver_repos_password: "{{ common_user_password }}"
+ocp4_workload_codeserver_repos:
+- name: virt-aap-day2
+  account: "{{ '' if ocp4_workload_multi_user else ocp4_workload_user_base + '1' }}"
+  branch: main
 
 # -------------------------------------------------------------------
 # ocp4_workload_gitops_bootstrap
