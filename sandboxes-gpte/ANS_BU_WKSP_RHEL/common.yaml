@@ -6,7 +6,7 @@
 #include /includes/aws-sandbox-meta.yaml
 #include /includes/parameters/aws-region.yaml
 #include /includes/terms-of-service.yaml
-#include /includes/secrets/demosat-rhel81.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
 #include /includes/secrets/ansible-tower-advanced-24.yaml
@@ -25,13 +25,34 @@ env_type: ansible-bu-workshop
 # Instance Variables
 # -------------------------------------------------------------------
 default_instance_image: "RHEL87GOLD-latest"
-default_rootfs_size: 50
-default_instance_type: "t3a.medium"
+bastion_instance_image: "RHEL94GOLD-latest"
+controller_instance_image: "aap2.5-2024-11-06"
 
+default_instance_type: "t3a.medium"
+bastion_instance_type: "t3a.large"
+controller_instance_type: "t3a.large"
+
+default_rootfs_size: 50
+bastion_rootfs_size: 100
+controller_rootfs_size: 200
+
+# ------------------
+# AWS SECURITY GROUPS
+# ------------------
 security_groups:
   - name: BastionSG
     rules:
-      - name: BastionHTTPSPorts
+      - name: BastionSSHPorts
+        description: "Bastion ssh"
+        from_port: 22
+        to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: WebSG
+    rules:
+      - name: WebHTTPSPorts
         description: "HTTPS Public"
         from_port: 443
         to_port: 443
@@ -39,7 +60,7 @@ security_groups:
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
-      - name: BastionHTTPPorts
+      - name: WebHTTPPorts
         description: "HTTP Public"
         from_port: 80
         to_port: 80
@@ -47,10 +68,10 @@ security_groups:
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
-      - name: BastionSSHPorts
-        description: "Bastion ssh"
-        from_port: 22
-        to_port: 22
+      - name: ContHTTPPorts
+        description: "HTTP Public"
+        from_port: 8501
+        to_port: 8501
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
@@ -89,6 +110,9 @@ security_groups:
         from_group: BastionSG
         rule_type: Ingress
 
+# ------------------
+# AWS INSTANCES
+# ------------------
 instances:
   - name: "{{ bastion_instance_name | default('ansible-1') }}"
     count: 1
@@ -98,7 +122,7 @@ instances:
     floating_ip: true
     image: "{{ bastion_instance_image | default(default_instance_image) }}"
     flavor:
-      ec2: "{{bastion_instance_type | default(default_instance_type) }}"
+      ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
     tags:
       - key: "AnsibleGroup"
         value: "bastions"
@@ -106,17 +130,41 @@ instances:
         value: "linux"
       - key: "instance_filter"
         value: "{{ env_type }}-{{ email }}"
-    rootfs_size: "{{ default_rootfs_size }}"
+    rootfs_size: "{{ bastion_rootfs_size }}"
     security_groups:
       - BastionSG
       - DefaultSG
+      - WebSG
+
+  - name: "controller"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image:
+      name: "{{ controller_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ controller_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "controllers"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ controller_rootfs_size | default(default_rootfs_size) }}"
+    security_groups:
+      - DefaultSG
+      - NodeSG
+      - WebSG
 
   - name: "node"
     count: 3
     public_dns: false
     image: "{{ node_instance_image | default(default_instance_image) }}"
     flavor:
-      ec2: "{{node_instance_type | default(default_instance_type) }}"
+      ec2: "{{ node_instance_type | default(default_instance_type) }}"
     tags:
       - key: "AnsibleGroup"
         value: "nodes"
@@ -178,6 +226,12 @@ ansible_bu_aws_access_policy_ec2_instances_tags:
       short_name: "node3"
       os_major_version: 8
       <<: *common_tags
+  - name: controller
+    iamprofile: false
+    tags:
+      Workshop_ansible: "controller"
+      short_name: "controller"
+      <<: *common_tags
 
 # -------------------------------------------------------------------
 # Config Pre/Software/Post Workloads
@@ -194,12 +248,11 @@ pre_software_workloads:
 
 software_workloads:
   bastions:
-    - ansible_bu_run_time_inventory
-    - deploy_automationcontroller
-    - aap_controller_cert_issue
     - vscode-server
-    - automation_platform_loader
     - ansible_bu_setup_workshop
+  controllers:
+    - nginx_with_cert
+    - automation_platform_loader
 
 # -------------------------------------------------------------------
 # Common Password
@@ -212,25 +265,51 @@ common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 repo_method: satellite
 use_content_view: true
 
-# -------------------------------------------------------------------
-# Role: deploy_automationcontroller
-# -------------------------------------------------------------------
-install_automationcontroller: true
-deploy_automationcontroller_admin_password: "{{ common_password }}"
-deploy_automationcontroller_installer_url: "{{ controller_bundle_installer.url }}"
-deploy_automationcontroller_manifest_url: "{{ controller_manifest.url }}"
+# -------------------------------------------------
+# Role: common
+# -------------------------------------------------
+common_packages_el9:
+  - python3
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - httpd-tools
+  - openldap-clients
+  - podman
+  - skopeo
+  - buildah
+  - tree
+  - jq
+  - libffi-devel
+  - ansible
+  - ansible-navigator
+
+# -------------------------------------------------
+# Role: nginx_with_cert
+# -------------------------------------------------
+nginx_with_cert_hostname: "{{ groups['controllers'][0].split('.')[0] }}.{{ subdomain_base }}"
 
 # -------------------------------------------------------------------
 # Role: automation_platform_loader
 # -------------------------------------------------------------------
+automation_platform_loader_aap_version: 2.5
+
+# Important Boolean
+controller_dependency_check: false
+
 configure_automationcontroller: true
 controller_configuration_job_templates_secure_logging: false
 controller_configuration_credentials_secure_logging: false
 
 aap_auth:
-  controller_host: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain_base }}"
+  controller_host: "{{ groups['controllers'][0].split('.')[0] }}.{{ subdomain_base }}"
   controller_username: admin
-  controller_password: "{{ common_password }}"
+  controller_password: "R3dh4t1!"
   controller_verify_ssl: false
 
 controller_configuration_dispatcher_roles:
@@ -281,7 +360,7 @@ controller_hosts:
     inventory: "Workshop Inventory"
     state: present
     variables:
-      ansible_host: "{{ groups['bastions'][0] }}"
+      ansible_host: "{{ groups['controllers'][0] }}"
 
 controller_groups:
   - name: web
@@ -298,18 +377,13 @@ controller_groups:
       - "{{ groups['bastions'][0].split('.')[0] }}"
 
 # -------------------------------------------------------------------
-# Role: aap_controller_cert_issue
-# -------------------------------------------------------------------
-enable_letsencyrpt_cert: true
-controller_admin_password: "{{ common_password }}"
-
-# -------------------------------------------------------------------
 # Role: vscode-server
 # -------------------------------------------------------------------
 install_vscode_server: true
-vscode_server_install_nginx: false
+vscode_server_install_nginx: true
 vscode_server_ansible_become: true
-vscode_use_automationcontroller_nginx: true
+vscode_use_automationcontroller_nginx: false
+vscode_server_hostname: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain_base }}"
 vscode_user_name: "{{ student_name }}"
 vscode_user_password: "{{ common_password }}"
 vscode_server_default_extensions: []
@@ -318,24 +392,28 @@ vscode_server_extension_urls:
   - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
   - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
 
-
 # -------------------------------------------------------------------
 # Role: ansible_bu_setup_workshop
 # -------------------------------------------------------------------
-workshop_type: rhel_90
+workshop_type: rhel
 workshop_version: 1.0.18
-ansible_bu_setup_workshop_exercise_src: ansible_rhel_90
+ansible_bu_setup_workshop_exercise_src: ansible_rhel
 ansible_bu_setup_workshop_exercise_dest: rhel-workshop
+ansible_bu_setup_workshop_enable_offline_aap_repo: false
+ansible_bu_setup_workshop_aap_packages: []
 
 ansible_bu_setup_workshop_ee_image:
+  - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-supported-rhel8
+    tag: 2.0.0
   - name: quay.io/acme_corp/rhel_90_ee
     tag: latest
   - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-29-rhel8
     tag: 2.0.0
-  - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-supported-rhel8
-    tag: 2.0.0
   - name: registry.redhat.io/ansible-automation-platform-20-early-access/ee-minimal-rhel8
     tag: 2.0.0
+
+ansible_bu_setup_workshop_code_server_additional_settings: |
+  "security.workspace.trust.enabled": false
 
 # -------------------------------------------------------------------
 # Test vars ends here
@@ -350,7 +428,7 @@ __meta__:
     namespace: babylon-anarchy-sandboxes-gpte
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.1
+      image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.0
       pull: missing
   # Auto stop instances using the sandbox API
   sandbox_api:
