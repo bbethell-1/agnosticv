@@ -35,7 +35,7 @@ cloud_provider: ec2
 # -------------------------------------------------------------------
 default_instance_image: RHEL92GOLD-latest
 bastion_instance_image: RHEL92GOLD-latest
-default_rootfs_size: 200
+default_rootfs_size: 50
 default_instance_type: "t3a.large"
 
 # -------------------
@@ -159,7 +159,7 @@ instances:
         value: "rhel"
       - key: "instance_filter"
         value: "{{ env_type }}-{{ email }}"
-    rootfs_size: "{{ default_rootfs_size }}"
+    rootfs_size: 200
     security_groups:
       - NodeSG
       - WebSG
@@ -178,6 +178,7 @@ instances:
     rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
     security_groups:
       - DefaultSG
+      - ServerSG
       - NodeSG
 
   - name: "server"
@@ -190,7 +191,7 @@ instances:
       ec2: "{{ server_instance_type | default(default_instance_type) }}"
     tags:
       - key: "AnsibleGroup"
-        value: "servers"
+        value: "centos_nodes"
       - key: "ostype"
         value: "linux"
     rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
@@ -218,6 +219,12 @@ software_workloads:
     - showroom
   controllers:
     - nginx_with_cert
+  centos_nodes:
+    - server_customization
+
+post_software_workloads:
+  nodes:
+    - node1_customization
 
 # -------------------------------------------------------------------
 # Common Password
@@ -360,6 +367,17 @@ showroom_dnf_packages:
 
 showroom_pip_packages:
   - podman-compose
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+requirements_content:
+  roles:
+    - name: server_customization
+      src: https://github.com/opentraining-labs-customizations/rh1-lab20-eda-server-ar.git
+
+    - name: node1_customization
+      src: https://github.com/opentraining-labs-customizations/rh1-lab20-eda-node1-ar.git
 
 # -------------------------------------------------------------------
 # AgnosticV meta variables
