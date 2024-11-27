@@ -1,0 +1,237 @@
+---
+#include /includes/catalog-icon-aap.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /enterprise/includes/lifetime-standard.yaml
+#include /includes/enterprise-premium-sla.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/credential_quay.yaml
+#include /includes/secrets/demosat-ent-demo-automate-the-enterprise.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /enterprise/includes/secrets/ent-demo-ate.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog: Development
+# --- Catalog Item: DEMO Automate the Enterprise
+# --- DEMO: Automate the Enterprise
+# -------------------------------------------------------------------
+
+# Email template and description update 2022-10-03 02
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+
+cloud_provider: multi
+env_type: ent-demo-ate-binder
+# get ssh key to add host if we need bastion access
+# really should add proper ssh keys BEFORE deployment
+
+__meta__:
+  asset_uuid: d70b1c53-c7e5-427b-b7a1-9d17e7c464d1
+  anarchy:
+    namespace: babylon-anarchy-enterprise
+  catalog:
+    display_name: Automation SSP Global Demo
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    category: Demos
+    keywords:
+      - ssp-automation
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Provider: RHDP
+      # Sales_Play: Automate_the_Enterprise
+      Featured_Score: '94'
+    parameters: []
+  deployer:
+    actions:
+      destroy:
+        disable: true
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
+# Users and passwords
+
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+student_password: "{{ common_password }}"
+vscode_user_password: "{{ common_password }}"
+tower_admin_password: "{{ common_password }}"
+
+controller_admin_user: admin
+controller_admin_password: "{{ common_password }}"
+
+ansible_service_account_user_password: "{{ common_password }}"
+
+deploy_automationcontroller_admin_user: admin
+deploy_automationcontroller_admin_password: "{{ common_password }}"
+
+default_instance_image: RHEL86GOLD
+default_instance_type: t3a.medium
+
+bastion_instance_image: RHEL86GOLD
+bastion_instance_type: t3a.medium
+
+automation_controller_instance_image: RHEL86GOLD
+automation_controller_instance_type: m5.large
+
+automation_database_instance_image: RHEL86GOLD
+automation_database_instance_type: t3a.medium
+
+# Hub setup
+
+automation_hub_instance_image: RHEL86GOLD
+automation_hub_instance_type: t3a.medium
+
+agd_automationcontroller_cert: false
+agd_automationhub_cert: false  # cert issue
+
+#
+# Instances to deploy
+#
+
+instances:
+
+  - name: bastion
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ bastion_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    security_groups:
+      - BastionSG
+      - BookbagSG
+
+  - name: aap-controller
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ automation_controller_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ automation_controller_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "automationcontroller"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion | default(50) }}"
+    security_groups:
+      - BastionSG
+      - WebSG
+      - HostSG
+
+  - name: aap-hub
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ automation_hub_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ automation_hub_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "automationhub"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    security_groups:
+      - BastionSG
+      - WebSG
+      - HostSG
+
+  - name: aap-database
+    count: 1
+    unique: true
+    public_dns: false
+    dns_loadbalancer: true
+    floating_ip: false
+    image: "{{ automation_database_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ automation_database_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "automationcontroller_database"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    security_groups:
+      - BastionSG
+      - HostSG
+
+security_groups:
+
+  - name: WebSG
+    rules:
+      - name: HTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: HTTPSPorts
+        description: "HTTP Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: BookbagSG
+    rules:
+
+      - name: BookbagMain
+        description: "Bookbag main port"
+        from_port: 8080
+        to_port: 8080
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: HostSG
+    rules:
+      - name: FromHostSG
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: -1
+        from_group: HostSG
+        rule_type: Ingress
+
+update_packages: false
+
+
+# TODO: This needs simplified at an AgD level
+
+controller_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+
+deploy_automationcontroller_manifest_url: "{{ controller_manifest.url }}"
+deploy_automationcontroller_installer_url: https://gpte-public.s3.amazonaws.com/aap2/ansible-automation-platform-setup-bundle-2.3-1.2.tar.gz
+
+registry_username: "7034876|aap2"
+registry_password: "eyJhbGciOiJSUzUxMiJ9.eyJzdWIiOiI5YTEwYzY0MjcyY2I0NDkyODQyYTEyYzA2ZDUzNGRmMCJ9.MvKwUy11JZ8UqwquiKxTpmVAMFwHA1tra6vNAhPht0C2QbQ9nbbIfnIzTy4l-sG6K0LsvFWJtt34xmTuWIPz3VHL-RULOPsJTgIumrr5LcnJoG2zMSVukte2AKy3RBLcCZMKd0fAtDhb58fmzjlcJCdTOlxNT0qVKZcjebGoQw7cJK2403TSApZmOixJBBxUqYXlf9f423CT3gtKUYiiwsg0_UqeMZz30xLj1C74_IlpUW59174ZIMvBcYWUeJ_urwxcbQTsTpPK-UIhDJvZtI7QfIZA5q0It3bhfQRpQl8PglyRLKbAlFGecaVaD6YzfrQ-mWXyeKH5FVTBypoJIpGZ_DRJQABIiqEVsgAzzZ-YVG5488qdSmAMOV9HXqNwkCauP8Jo3gTMAl9Yb8hnYaV9W1MyEOkPaMuz39VCLx53-gOV5mu45DTqF2Bh8U4GmXFMRBEBPEZ8vXU3oOQ74gQ0Xh_KpUQ-fgQV2iJFlkdMIn8H9S_yykyQE6BVrMMCtTfyJAGJ3_RTnc_99Tq4VnwJNdDOOXel9giog4QMWE-cY_aEfloP623BNDNsPjCzhQsiHFAoo9Tq-YZYiOL0Npjuep-d5n8LpnnxBfKH3Dao796HVYXrubsV2jahu7BIKKygBY4U-hZZksNE4RildD-wQ7X45WAj49_PYomTnwE"
+
+...
