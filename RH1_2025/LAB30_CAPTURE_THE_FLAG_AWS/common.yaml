@@ -1,0 +1,299 @@
+---
+#include /includes/catalog-icon-red-hat-standard-logo.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/parameters/ocp4-fips-enable.yaml
+#include /includes/parameters/aws-region.yaml
+
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog: Red Hat One
+# --- Catalog Item: "LAB30: Capture The Flag - Participant (AWS)"
+# -------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Catalog Item: ocp4-cluster
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+cloud_provider: ec2
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.16"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+master_instance_count: 1
+worker_instance_count: 0
+bastion_instance_image: RHEL92GOLD-latest
+server_disk2_size: 2
+# ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+# ocp4_workload_catalogsource_tag: v4.16_2024_07_15
+host_ocp4_installer_set_user_data_kubeadmin_password: true
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+requirements_content:
+  roles:
+    - name: rh1_lab30_labuser_ssh
+      src: https://github.com/opentraining-labs-customizations/rh1-lab30-ctf-participants-ar.git
+
+# -------------------------------------------------------------------
+# Generate Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+student_name: lab-user
+student_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# AWS Infra
+# -------------------------------------------------------------------
+bastion_instance_type: "t3a.large"
+rootfs_size_bastion: 50
+
+node_instance_image: RHEL92GOLD-latest
+node_instance_type: "t3a.large"
+
+# -----------------
+# Security Groups
+# -----------------
+security_groups:
+  - name: BastionSG
+    rules:
+      - name: BasSSHPublic
+        description: "SSH public"
+        from_port: 22
+        to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: WebSG
+    rules:
+      - name: HTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: HTTPSPorts
+        description: "HTTP Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: NodeSG
+    rules:
+      - name: FromNodeSGtcp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: NodeSG
+        rule_type: Ingress
+
+      - name: FromNodeSGudp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: NodeSG
+        rule_type: Ingress
+
+# -----------------
+# Instances
+# -----------------
+instances:
+  - name: "bastion"
+    #count: "{{ bastion_instance_count}}"
+    #unique: "{{ true if clientvm_instance_count | int <= 1 else false }}"
+    count: 1
+    unique: true
+    public_dns: true
+    image: "{{ bastion_instance_image }}"
+    flavor:
+      "ec2": "{{ bastion_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "Purpose"
+        value: "{{ purpose }}"
+      - key: "project"
+        value: "{{ project_tag }}"
+      - key: "user"
+        value: "{{ student_name }}"
+    rootfs_size: "{{ bastion_rootfs_size }}"
+    security_groups:
+      - BastionSG
+      - NodeSG
+
+  - name: "server"
+    count: 2
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ node_instance_image }}"
+    flavor:
+      ec2: "{{ node_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "servers"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion }}"
+    volumes:
+      - device_name: "/dev/xvdb"
+        size: "{{ server_disk2_size }}"
+        type: gp3
+    security_groups:
+      - WebSG
+      - NodeSG
+      - BastionSG
+
+# -------------------------------------------------------------------
+# OpenShift Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+  - rh1_lab30_labuser_ssh
+  - ocp4_workload_authentication
+  - ocp4_workload_showroom
+
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_count: 2
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_remove_kubeadmin: false
+
+# Use Let's Encrypt Prod certificates
+install_lets_encrypt_certificates: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager_operator
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_operator_channel: stable-v1
+
+sandbox_user_info_messages_enable: true
+
+
+# -------------------------------------------------------------------
+# Workload: rh1-lab30-ctf-participants-ar
+# -------------------------------------------------------------------
+rh1_lab30_ctf_participants_ar_user_password: "{{ common_password }}"
+rh1_lab30_ctf_participants_ar_username: "{{ student_name }}"
+rh1_lab30_ctf_participants_ar_group: users
+rh1_lab30_ctf_participants_ar_task_type: participant
+rh1_lab30_ctf_participants_ar_participant_hosts: "{{ groups['servers'] }}"
+
+ctf_ssh_private_key: |
+  -----BEGIN OPENSSH PRIVATE KEY-----
+  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
+  -----END OPENSSH PRIVATE KEY-----
+
+ctf_ssh_public_key: >-
+  ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCMxt3qdk7MHl7vjZ1MSItc9+DCxlv+VC
+  /Ge6vOEVgY+72XKSep6ujBgU645WaZ8YLB7so1cgqhX4BsQ6nzsMo2o4gUJcGAwIrVLVTK
+  p3nxsUp/NgQ7QhF844Wq6RosgKfjNydUzeqjmreDKzogfFG6pu0/0MzCYrfoEGFJrUrIqMY
+  /VcZnmakRX4YVNjM0JlZov5R9+MrTFX4vbZB9F1WCD9IFz2ltqvKhEvYtxDvSkZgvYyXs1l
+  74xXPUW53fUYRPNlgcMKoQXl4tnkiaMnGxgegThPODFl8V1EIS7sbsWGfP3ihjZWtzBDjcw
+  oijHHdEINVh2OWCcS8eB54Xh4JigLR+VsVDOIgnmCgdlOtn8326MMOIg5r1vkuCOi1KHRKy
+  k+LC+d9ci16rx0p9HXgEwJO3bVzbq8UnypQwPjJUvdR0CaLZ0kJiDxOhHaLUfTiSa5smRh9
+  oORhew514BbgcMdsWEXSIka9dhhGXj8mYEPAbA07cAaX429TJHcOLejE= lab-user@bastion.dhz88.internal
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/redhat-gpte-devopsautomation/ossm-showroom
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_terminal_image: quay.io/oschneid/openshift-showroom-terminal:1.0
+
+agnosticd_passthrough_user_data:
+  sandbox_domain_name: "{{ guid }}{{ subdomain_base_suffix }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: dfbcc1d2-913d-4ec1-958d-70029f175d36
+  anarchy:
+    namespace: babylon-anarchy-enterprise
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LAB30: Capture The Flag Event - Participants (AWS)"
+    category: Red_Hat_One_2025
+    keywords:
+      - openshift
+      - ocp
+      - lab30
+      - ctf
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    parameters: []
