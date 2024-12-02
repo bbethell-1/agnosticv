@@ -328,6 +328,22 @@ class BabylonChecker:
                 repo=match.group(2),
                 ref=scm_ref,
             )
+    def check_component_secrets(self, component):
+        """Ensure that secrets are not added under __meta__."""
+        # Debug print to inspect the structure
+        print(f"Component definition: {component.definition}")
+
+        # Extract secrets from the __meta__ key
+        secrets = component.definition.get('__meta__', {}).get('secrets', [])
+
+        # Debug print to check secrets
+        print(f"Extracted secrets from __meta__: {secrets}")
+
+        if secrets:
+            raise ValueError(
+                f"Secrets should not be defined under __meta__ in component {component.name}. "
+                "Please move them to the correct location. Use vaulted secret using include file."
+            )
 
     def check_components(self):
         if self.debug:
