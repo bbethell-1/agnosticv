@@ -1,8 +1,5 @@
 ---
 #include /includes/aws-sandbox-meta.yaml
-#includes/parameters/cert-manager-vars.yaml
-#include /includes/parameters/enable-cert-manager.yaml
-#include /includes/secrets/zerossl.yaml
 #include /includes/catalog-icon-cloud-native.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
@@ -15,7 +12,9 @@
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/demosat-rhel81.yaml
 #include /includes/secrets/rhods-git-secret.yml
-
+#include /includes/secrets/zerossl.yaml
+#include /includes/parameters/enable-cert-manager.yaml
+#include /includes/parameters/cert-manager-vars.yaml
 # -------------------------------------------------------------------
 # Red Hat Summit 2021
 # Building AI / ML Models leveraging Red Hat OpenShift Data Science
@@ -58,7 +57,7 @@ install_ipa_client: false
 install_ftl: false
 
 # OpenShift version
-ocp4_installer_version: "4.10"
+ocp4_installer_version: "4.17"
 
 # -------------------------------------------------------------------
 # Workloads
@@ -66,9 +65,9 @@ ocp4_installer_version: "4.10"
 
 # --- Infra Workloads (YAML List)
 infra_workloads:
+- ocp4_workload_cert_manager
 - ocp4_workload_authentication
 - ocp4_workload_opentlc_production
-- ocp4_workload_cert_manager
 - ocp4_workload_project_request_template
 - ocp-workload-terminal
 - ocp4_workload_rhods_self_managed
@@ -79,6 +78,18 @@ infra_workloads:
 become_override: false
 ocp_username: opentlc-mgr
 silent: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_ec2_region: "{{ aws_region }}"
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
+ocp4_workload_cert_manager_channel: stable-v1.14
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+# -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhods_self_managed
@@ -130,8 +141,6 @@ ocp4_workload_authentication_htpasswd_user_password: openshift
 # Create number of htpasswd users
 ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('2')) | int }}"
 
-
-# Remove the standard kubeadmin user
 ocp4_workload_authentication_remove_kubeadmin: true
 
 # OPENTLC Production Customizations
