@@ -1,7 +1,9 @@
 ---
 #include /includes/aws-sandbox-meta.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
-#include /includes/parameters/enable-lets-encrypt.yaml
+#includes/parameters/cert-manager-vars.yaml
+#include /includes/parameters/enable-cert-manager.yaml
+#include /includes/secrets/zerossl.yaml
 #include /includes/catalog-icon-openshift.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
@@ -36,13 +38,13 @@ platform: rhpds
 # OpenShift Installer Version
 # -------------------------------------------------------------------
 ocp4_installer_version: "4.10"
-
+ocp4_workload_cert_manager_channel: stable-v1
 # -------------------------------------------------------------------
 # --- Infra Workloads (YAML List)
 # -------------------------------------------------------------------
 infra_workloads:
 - ocp4_workload_authentication
-- ocp4_workload_le_certificates
+- ocp4_workload_cert_manager
 - ocp4_workload_fraud_detection_usecase
 
 # -------------------------------------------------------------------
@@ -81,9 +83,8 @@ ocp4_workload_authentication_idm_type: htpasswd
 ocp4_workload_authentication_admin_user: admin
 ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
 ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ user_count | default(num_users) | default(1) | int }}"
 ocp4_workload_authentication_remove_kubeadmin: true
-install_lets_encrypt_certificates: true
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -92,8 +93,6 @@ __meta__:
   asset_uuid: c524584f-8c5c-4b7a-9ed3-29bcd52aa6c3
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
-  deployer:
-    virtualenv: ansible2.9-python3.6-2022-07-27
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: OCP4 Workshop Financial Fraud Detection
