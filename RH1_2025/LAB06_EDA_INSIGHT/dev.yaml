@@ -1,5 +1,7 @@
 ---
-#include /includes/ee-multicloud-dev.yaml
+#include /includes/secrets/ansible-tower-advanced-24.yaml
+#include /includes/parameters/aws-region.yaml
+
 # -------------------------------------------------------------------
 # Purpose
 # -------------------------------------------------------------------
@@ -11,3 +13,316 @@ purpose: development
 __meta__:
   deployer:
     scm_ref: development
+    execution_environment:
+      image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.1
+      pull: missing
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ansible-bu-workshop
+
+# -------------------------------------------------------------------
+# Instance Variables
+# -------------------------------------------------------------------
+default_instance_image: "RHEL87GOLD-latest"
+bastion_instance_image: "RHEL94GOLD-latest"
+node_instance_image: "RHEL94GOLD-latest"
+controller_instance_image: "aap2.5-2024-11-06"
+
+default_instance_type: "t3a.medium"
+bastion_instance_type: "t3a.large"
+controller_instance_type: "t3a.large"
+
+default_rootfs_size: 50
+bastion_rootfs_size: 100
+controller_rootfs_size: 200
+
+
+# ------------------
+# AWS SECURITY GROUPS
+# ------------------
+security_groups:
+  - name: BastionSG
+    rules:
+      - name: BastionSSHPorts
+        description: "Bastion ssh"
+        from_port: 22
+        to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: WebSG
+    rules:
+      - name: WebHTTPSPorts
+        description: "HTTPS Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: WebHTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: ContHTTPPorts
+        description: "HTTP Public"
+        from_port: 8501
+        to_port: 8501
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: NodeSG
+    rules:
+      - name: FromNodeSGtcp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: NodeSG
+        rule_type: Ingress
+
+      - name: FromNodeSGudp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: NodeSG
+        rule_type: Ingress
+
+      - name: FromBastionTCP
+        description: "Allow everything from Bastion"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: BastionSG
+        rule_type: Ingress
+
+      - name: FromBastionUDP
+        description: "Allow everything from Bastion"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: BastionSG
+        rule_type: Ingress
+
+# ------------------
+# AWS INSTANCES
+# ------------------
+instances:
+  - name: "{{ bastion_instance_name | default('ansible-1') }}"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ bastion_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ bastion_rootfs_size }}"
+    security_groups:
+      - BastionSG
+      - DefaultSG
+      - WebSG
+
+  - name: "controller"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image:
+      name: "{{ controller_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ controller_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "controllers"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ controller_rootfs_size | default(default_rootfs_size) }}"
+    security_groups:
+      - DefaultSG
+      - NodeSG
+      - WebSG
+
+  - name: "node"
+    count: 1
+    public_dns: false
+    image: "{{ node_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ node_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "rhel"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ default_rootfs_size }}"
+    security_groups:
+      - DefaultSG
+      - NodeSG
+      - WebSG
+
+# -------------------------------------------------------------------
+# Config Pre/Software/Post Workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  bastions:
+    - set-repositories
+    - common
+    - bastion-lite
+    - control-user
+    - vscode-server
+
+software_workloads:
+  controllers:
+    - nginx_with_cert
+    # - ansible_automation_platform_configuration
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------
+repo_method: satellite
+use_content_view: true
+
+# -------------------------------------------------
+# Role: common
+# -------------------------------------------------
+common_packages_el9:
+  - python3
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - httpd-tools
+  - openldap-clients
+  - podman
+  - skopeo
+  - buildah
+  - tree
+  - jq
+  - libffi-devel
+  - ansible
+  - ansible-navigator
+
+# -------------------------------------------------
+# Role: nginx_with_cert
+# -------------------------------------------------
+nginx_with_cert_hostname: "{{ groups['controllers'][0].split('.')[0] }}.{{ subdomain_base }}"
+
+# -------------------------------------------------------------------
+# Workload: ansible_automation_platform_configuration
+# -------------------------------------------------------------------
+ansible_automation_platform_configuration_host: "{{ groups['controllers'][0].split('.')[0] }}.{{ subdomain_base }}"
+ansible_automation_platform_configuration_username: admin
+ansible_automation_platform_configuration_password: "R3dh4t1!"
+ansible_automation_platform_configuration_verify_ssl: true
+ansible_automation_platform_configuration_create_controller_token: true
+ansible_automation_platform_configuration_generate_ocp_token: false
+
+controller_dependency_check: false
+
+aap_configuration_dispatcher_roles: controller_configuration_dispatcher_roles
+
+controller_configuration_dispatcher_roles:
+  - role: controller_credentials
+    var: controller_credentials
+    tags: controller_credentials
+
+controller_credentials:
+  - name: "Workshop Credentials"
+    organization: Default
+    credential_type: "Machine"
+    inputs:
+      username: "ec2-user"
+      ssh_key_data: "{{ lookup('file', hostvars.localhost.env_authorized_key_path) }}"
+    state: present
+
+# controller_inventories:
+#   - name: "Workshop Inventory"
+#     organization: Default
+#     state: present
+
+# controller_hosts:
+#   - name: "{{ groups['nodes'][0].split('.')[0] }}"
+#     inventory: "Workshop Inventory"
+#     state: present
+#     variables:
+#       ansible_host: "{{ groups['nodes'][0] }}"
+#   - name: "{{ groups['nodes'][1].split('.')[0] }}"
+#     inventory: "Workshop Inventory"
+#     state: present
+#     variables:
+#       ansible_host: "{{ groups['nodes'][1] }}"
+#   - name: "{{ groups['nodes'][2].split('.')[0] }}"
+#     inventory: "Workshop Inventory"
+#     state: present
+#     variables:
+#       ansible_host: "{{ groups['nodes'][2] }}"
+#   - name: "{{ groups['bastions'][0].split('.')[0] }}"
+#     inventory: "Workshop Inventory"
+#     state: present
+#     variables:
+#       ansible_host: "{{ groups['controllers'][0] }}"
+
+# controller_groups:
+#   - name: web
+#     inventory: "Workshop Inventory"
+#     state: present
+#     hosts:
+#       - "{{ groups['nodes'][0].split('.')[0] }}"
+#       - "{{ groups['nodes'][1].split('.')[0] }}"
+#       - "{{ groups['nodes'][2].split('.')[0] }}"
+#   - name: control
+#     inventory: "Workshop Inventory"
+#     state: present
+#     hosts:
+#       - "{{ groups['bastions'][0].split('.')[0] }}"
+
+# -------------------------------------------------------------------
+# Role: vscode-server
+# -------------------------------------------------------------------
+install_vscode_server: true
+vscode_server_install_nginx: true
+vscode_server_ansible_become: true
+vscode_use_automationcontroller_nginx: false
+vscode_server_hostname: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain_base }}"
+vscode_user_name: "{{ student_name }}"
+vscode_user_password: "{{ common_password }}"
+vscode_server_default_extensions: []
+vscode_server_extension_urls:
+  - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
