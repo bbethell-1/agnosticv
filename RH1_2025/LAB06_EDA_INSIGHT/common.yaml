@@ -5,12 +5,14 @@
 #include /includes/aws-sandbox-meta.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/salesforce-id.yaml
-#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/parameters/cert-manager-vars.yaml
+#include /includes/parameters/enable-cert-manager.yaml
+#include /includes/secrets/zerossl.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-#include /includes/secrets/ocp4_token.yaml
+# # include /includes/secrets/ocp4_token.yaml
 # ocp4_token is used only for this lab
-# #include /includes/secrets/ocp4_token_jspinks.yaml
+#include /includes/secrets/ocp4_token_jspinks.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 # -------------------------------------------------------------------
 # Platform
@@ -58,7 +60,7 @@ security_groups:
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-ocp4_installer_version: "4.15"
+ocp4_installer_version: "4.16"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 master_instance_count: 1
 worker_instance_count: 0
@@ -111,8 +113,8 @@ infra_workloads:
   - ocp4_workload_cert_utils_operator
   - automation_platform_loader
   - automation_platform_bastion
-  # - eda_controller_config
-  # - vscode-server
+  - eda_controller_config
+  - vscode-server
 
 # -------------------------------------------------------------------
 # OpenShift variable
@@ -130,9 +132,6 @@ ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
 ocp4_workload_authentication_admin_user: admin
 ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
 ocp4_workload_authentication_remove_kubeadmin: false
-
-# Use Let's Encrypt Prod certificates
-install_lets_encrypt_certificates: false
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitea_operator
@@ -178,11 +177,7 @@ ocp4_workload_gitea_operator_repositories_list:
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_ansible_automation_platform
 # -------------------------------------------------------------------
-ocp4_workload_ansible_automation_platform_version: 2.5
-ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.5"
-ocp4_workload_ansible_automation_platform_admin_password: "{{ common_password }}"
-ocp4_workload_ansible_automation_platform_manifest:
-  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.4"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops
@@ -228,12 +223,17 @@ ocp4_workload_codeserver_repos:
 ocp4_workload_codeserver_image_tag: v4.8.3-java11
 ocp4_workload_codeserver_init_image_tag: v4.8.3
 
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ansible_automation_platform
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_admin_password: "{{ common_password }}"
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+  inject: true
 
 # -------------------------------------------------------------------
 # Workload: automation_platform_loader
 # -------------------------------------------------------------------
-automation_platform_loader_aap_version: 2.5
-controller_dependency_check: false
 openshift_admin_user: kubeadmin
 automation_platform_loader_generate_ocp_token: true
 
@@ -430,6 +430,5 @@ __meta__:
             - m6a.2xlarge
   deployer:
     execution_environment:
-      # image: quay.io/agnosticd/ee-multicloud:v0.1.0
-      image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.0
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
       pull: missing
