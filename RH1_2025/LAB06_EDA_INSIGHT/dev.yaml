@@ -213,7 +213,7 @@ pre_software_workloads:
 software_workloads:
   controllers:
     - nginx_with_cert
-    # - ansible_automation_platform_configuration
+    - ansible_automation_platform_configuration
 
 # -------------------------------------------------------------------
 # Common Password
@@ -267,62 +267,93 @@ ansible_automation_platform_configuration_generate_ocp_token: false
 
 controller_dependency_check: false
 
-aap_configuration_dispatcher_roles: controller_configuration_dispatcher_roles
+aap_configuration_dispatcher_roles: >
+  {{ gateway_configuration_dispatcher_roles + controller_configuration_dispatcher_roles
+   + eda_configuration_dispatcher_roles
+  }}
 
+# ----------------
+# Gateway
+# ----------------
+aap_hostname: "https://{{ ansible_automation_platform_configuration_host }}"
+aap_username: "{{ ansible_automation_platform_configuration_username }}"
+aap_password: "{{ ansible_automation_platform_configuration_password }}"
+aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
+
+gateway_configuration_dispatcher_roles:
+  - role: gateway_users
+    var: aap_user_accounts
+    tags: gateway_users
+
+aap_user_accounts:
+  - first_name: Insights
+    last_name: User
+    organization: Default
+    username: Insights_AAP
+    password: "R3dh4t2024!"
+    is_superuser: false
+    state: present
+
+# ----------------
+# Controller
+# ----------------
 controller_configuration_dispatcher_roles:
   - role: controller_credentials
     var: controller_credentials
     tags: controller_credentials
+  - role: controller_inventories
+    var: controller_inventories
+    tags: controller_inventories
+  - role: controller_inventory_sources
+    var: controller_inventory_sources
+    tags: controller_inventory_sources
+  - role: controller_projects
+    var: controller_projects
+    tags: controller_projects
 
 controller_credentials:
-  - name: "Workshop Credentials"
+  - name: "RH Insights Lab User"
+    description: "User for Red Hat insights lab"
     organization: Default
-    credential_type: "Machine"
+    credential_type: "Insights"
     inputs:
-      username: "ec2-user"
-      ssh_key_data: "{{ lookup('file', hostvars.localhost.env_authorized_key_path) }}"
+      username: "lab-EB9A"
+      password: R3dh4t2024!
     state: present
 
-# controller_inventories:
-#   - name: "Workshop Inventory"
-#     organization: Default
-#     state: present
+controller_inventories:
+  - name: "RH Insights inventory"
+    description: "Red Hat Insights Inventory"
+    organization: Default
+    prevent_instance_group_fallback: false
+    state: present
 
-# controller_hosts:
-#   - name: "{{ groups['nodes'][0].split('.')[0] }}"
-#     inventory: "Workshop Inventory"
-#     state: present
-#     variables:
-#       ansible_host: "{{ groups['nodes'][0] }}"
-#   - name: "{{ groups['nodes'][1].split('.')[0] }}"
-#     inventory: "Workshop Inventory"
-#     state: present
-#     variables:
-#       ansible_host: "{{ groups['nodes'][1] }}"
-#   - name: "{{ groups['nodes'][2].split('.')[0] }}"
-#     inventory: "Workshop Inventory"
-#     state: present
-#     variables:
-#       ansible_host: "{{ groups['nodes'][2] }}"
-#   - name: "{{ groups['bastions'][0].split('.')[0] }}"
-#     inventory: "Workshop Inventory"
-#     state: present
-#     variables:
-#       ansible_host: "{{ groups['controllers'][0] }}"
+controller_inventory_sources:
+  - name: Insights source
+    description: Red Hat Insights source
+    inventory: "RH Insights inventory"
+    execution_environment: "Default execution environment"
+    source: "insights"
+    credential: "RH Insights Lab User"
+    source_vars:
+      get_tags: true
+      get_patches: true
+      get_system_advisories: true
+      get_system_packages: true
+      staleness:
+        - fresh
+        - stale
+        - stale_warning
+        - unknown
 
-# controller_groups:
-#   - name: web
-#     inventory: "Workshop Inventory"
-#     state: present
-#     hosts:
-#       - "{{ groups['nodes'][0].split('.')[0] }}"
-#       - "{{ groups['nodes'][1].split('.')[0] }}"
-#       - "{{ groups['nodes'][2].split('.')[0] }}"
-#   - name: control
-#     inventory: "Workshop Inventory"
-#     state: present
-#     hosts:
-#       - "{{ groups['bastions'][0].split('.')[0] }}"
+controller_projects:
+  - name: "RH Insights project"
+    description: Red Hat Insights project
+    organization: Default
+    execution_environment: "Default execution environment"
+    scm_type: "insights"
+    credential: "RH Insights Lab User"
+    wait: true
 
 # -------------------------------------------------------------------
 # Role: vscode-server
