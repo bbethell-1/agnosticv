@@ -1,7 +1,4 @@
 ---
-#include /includes/secrets/ansible-tower-advanced-24.yaml
-#include /includes/parameters/aws-region.yaml
-
 # -------------------------------------------------------------------
 # Purpose
 # -------------------------------------------------------------------
@@ -23,31 +20,21 @@ __meta__:
 platform: RHPDS
 
 # -------------------------------------------------------------------
-# Mandatory Variables
+# Catalog Item: ocp4-cluster
 # -------------------------------------------------------------------
-env_type: ansible-bu-workshop
-software_to_deploy: none
+env_type: ocp4-cluster
+software_to_deploy: openshift4
 cloud_provider: ec2
 student_name: lab-user
 student_password: "{{ common_password }}"
+aws_region: us-east-2
 
-# -------------------------------------------------------------------
-# Instance Variables
-# -------------------------------------------------------------------
-default_instance_image: "RHEL87GOLD-latest"
-# bastion_instance_image: "RHEL94GOLD-latest"
-bastion_instance_image: "RHEL87GOLD-latest"
+# # -------------------------------------------------------------------
+# # Instance Variables
+# # -------------------------------------------------------------------
 node_instance_image: "RHEL94GOLD-latest"
-controller_instance_image: "aap2.5-2024-11-06"
-
 default_instance_type: "t3a.medium"
-bastion_instance_type: "t3a.large"
-controller_instance_type: "t3a.large"
-
 default_rootfs_size: 50
-bastion_rootfs_size: 100
-controller_rootfs_size: 200
-
 
 # ------------------
 # AWS SECURITY GROUPS
@@ -55,10 +42,24 @@ controller_rootfs_size: 200
 security_groups:
   - name: BastionSG
     rules:
-      - name: BastionSSHPorts
-        description: "Bastion ssh"
+      - name: BasSSHPublic
+        description: "SSH public"
         from_port: 22
         to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: HTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: HTTPSPorts
+        description: "HTTP Public"
+        from_port: 443
+        to_port: 443
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
@@ -127,7 +128,7 @@ security_groups:
 # AWS INSTANCES
 # ------------------
 instances:
-  - name: "{{ bastion_instance_name | default('ansible-1') }}"
+  - name: "{{ bastion_instance_name | default('bastion') }}"
     count: 1
     unique: true
     public_dns: true
@@ -149,29 +150,6 @@ instances:
       - DefaultSG
       - WebSG
 
-  - name: "controller"
-    count: 1
-    unique: true
-    public_dns: true
-    dns_loadbalancer: true
-    floating_ip: true
-    image:
-      name: "{{ controller_instance_image | default(default_instance_image) }}"
-    flavor:
-      ec2: "{{ controller_instance_type | default(default_instance_type) }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "controllers"
-      - key: "ostype"
-        value: "linux"
-      - key: "instance_filter"
-        value: "{{ env_type }}-{{ email }}"
-    rootfs_size: "{{ controller_rootfs_size | default(default_rootfs_size) }}"
-    security_groups:
-      - DefaultSG
-      - NodeSG
-      - WebSG
-
   - name: "node"
     count: 1
     public_dns: false
@@ -190,41 +168,65 @@ instances:
       - DefaultSG
       - NodeSG
       - WebSG
+# -------------------------------------------------------------------
+# OpenShift variable
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.16"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+master_instance_count: 1
+worker_instance_count: 0
+bastion_instance_image: RHEL92GOLD-latest
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.16_2024_07_15
+host_ocp4_installer_set_user_data_kubeadmin_password: true
+# -------------------------------------------------------------------
+# Generate Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Role: set-repository
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
 
 # -------------------------------------------------------------------
 # Ansible Module, Collections, and Roles Requirements
 # -------------------------------------------------------------------
 requirements_content:
+  roles:
+    - name: ocp_application_validation
+      src: https://github.com/redhat-gpte-devopsautomation/ocp_application_validation.git
+      version: v3.0.4
   collections:
-    - name: infra.controller_configuration
-      version: 2.2.5
+    - name: amazon.aws
+      version: 2.2.0
+    - name: ansible.posix
+      version: 1.3.0
+    - name: ansible.utils
+      version: 2.7.0
+    - name: awx.awx
+      version: 21.4.0
+    - name: community.general
+      version: 4.6.1
+    - name: kubernetes.core
+      version: 2.3.1
 
 # -------------------------------------------------------------------
-# Config Pre/Software/Post Workloads
+# List of OpenShift Workloads
 # -------------------------------------------------------------------
-pre_software_workloads:
-  bastions:
-    - set-repositories
-    - common
-    - bastion-lite
-    - control-user
-    - vscode-server
+infra_workloads:
+  - ocp4_workload_authentication
+  - ocp4_workload_le_certificates
+  - ocp4_workload_ansible_automation_platform
+  - ocp4_workload_gitea_operator
+  - ocp4_workload_cert_manager_operator
+  - ocp4_workload_cert_utils_operator
+  - automation_platform_bastion
+  - ansible_automation_platform_configuration
+  - vscode-server
 
-software_workloads:
-  controllers:
-    - nginx_with_cert
-    - ansible_automation_platform_configuration
-
-# -------------------------------------------------------------------
-# Common Password
-# -------------------------------------------------------------------
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-
-# -------------------------------------------------
-# Role: set-repositories
-# -------------------------------------------------
-repo_method: satellite
-use_content_view: true
+student_workloads: []
 
 # -------------------------------------------------
 # Role: common
@@ -249,21 +251,83 @@ common_packages_el9:
   - libffi-devel
   - ansible
   - ansible-navigator
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_count: 5
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_remove_kubeadmin: false
 
-# -------------------------------------------------
-# Role: nginx_with_cert
-# -------------------------------------------------
-nginx_with_cert_hostname: "{{ groups['controllers'][0].split('.')[0] }}.{{ subdomain_base }}"
+# Use Let's Encrypt Prod certificates
+install_lets_encrypt_certificates: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.1
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.20.1"
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 2Gi
+ocp4_workload_gitea_operator_postgresql_volume_size: 2Gi
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_disable_registration: false
+ocp4_workload_gitea_operator_enable_captcha: false
+ocp4_workload_gitea_operator_allow_create_organization: true
+ocp4_workload_gitea_operator_register_email_confirm: false
+ocp4_workload_gitea_operator_enable_notify_email: false
+ocp4_workload_gitea_operator_mailer_enabled: false
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: dev-admin
+ocp4_workload_gitea_operator_admin_email: dev-admin@opentlc.com
+ocp4_workload_gitea_operator_admin_password: "{{ common_password }}"
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: 1
+ocp4_workload_gitea_operator_generate_user_format: "{{ student_name }}"
+ocp4_workload_gitea_operator_user_password: "{{ common_password }}"
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+  - repo: https://github.com/redhat-gpte-devopsautomation/demo-event-driven-ansible.git
+    name: event-driven-ansible
+    private: false
+  - repo: https://github.com/redhat-gpte-devopsautomation/eda-rulebooks.git
+    name: eda-rulebooks
+    private: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ansible_automation_platform
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_version: 2.5
+ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.5"
+ocp4_workload_ansible_automation_platform_admin_password: "{{ common_password }}"
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+  inject: true
+ocp4_workload_ansible_automation_platform_create_eda_rolebinding: true
+
+
 
 # -------------------------------------------------------------------
 # Workload: ansible_automation_platform_configuration
 # -------------------------------------------------------------------
-ansible_automation_platform_configuration_host: "{{ groups['controllers'][0].split('.')[0] }}.{{ subdomain_base }}"
+ansible_automation_platform_configuration_host: "{{ aap_controller_web_url }}"
 ansible_automation_platform_configuration_username: admin
-ansible_automation_platform_configuration_password: "R3dh4t1!"
+ansible_automation_platform_configuration_password: "{{ aap_controller_admin_password }}"
 ansible_automation_platform_configuration_verify_ssl: true
 ansible_automation_platform_configuration_create_controller_token: true
-ansible_automation_platform_configuration_generate_ocp_token: false
+ansible_automation_platform_configuration_generate_ocp_token: true
 
 controller_dependency_check: false
 
@@ -454,17 +518,46 @@ eda_rulebook_activations:
     state: present
 
 # -------------------------------------------------------------------
-# Role: vscode-server
+# Workload: ocp4_workload_cert_manager_operator
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_operator_channel: stable-v1
+
+# -------------------------------------------------------------------
+# Workload: vscode-server
 # -------------------------------------------------------------------
 install_vscode_server: true
 vscode_server_install_nginx: true
-vscode_server_ansible_become: true
 vscode_use_automationcontroller_nginx: false
-vscode_server_hostname: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain_base }}"
+vscode_server_ansible_become: true
+vscode_user_workspace_path: "/home/{{ student_name }}"
 vscode_user_name: "{{ student_name }}"
 vscode_user_password: "{{ common_password }}"
+vscode_server_hostname: bastion.{{ guid }}.{{ sandbox_zone }}
+vscode_ansible_python_interpreter: /usr/libexec/platform-python
 vscode_server_default_extensions: []
 vscode_server_extension_urls:
   - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
   - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
   - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
+
+vscode_server_additional_settings: |
+  "files.exclude": {
+    "**/.git": true,
+    "**/.kube": true,
+    "**/.bash*": true,
+    "**/.vim*": true,
+    "**/.ssh": true,
+    "**/.vscode": true,
+    "**/.local": true,
+    "**/.config": true,
+    "**/.ansible": true,
+    "**/.cache": true },
+  "security.workspace.trust.enabled": false
+
+vscode_user_workspace_repos:
+  - repo: "{{ controller_gitea_repo_url }}"
+    name: demo
+    branch: main
+  - repo: "{{ eda_gitea_repo_url }}"
+    name: eda-rulebooks
+    branch: main
