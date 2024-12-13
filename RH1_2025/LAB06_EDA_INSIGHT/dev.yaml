@@ -213,7 +213,7 @@ pre_software_workloads:
 software_workloads:
   controllers:
     - nginx_with_cert
-    # - ansible_automation_platform_configuration
+    - ansible_automation_platform_configuration
 
 # -------------------------------------------------------------------
 # Common Password
@@ -267,26 +267,76 @@ ansible_automation_platform_configuration_generate_ocp_token: false
 
 controller_dependency_check: false
 
-aap_configuration_dispatcher_roles: controller_configuration_dispatcher_roles
+aap_configuration_dispatcher_roles: "{{ controller_configuration_dispatcher_roles }}"
 
 controller_configuration_dispatcher_roles:
+  - role: controller_users
+    var: aap_user_accounts
+    tags: controller_users
   - role: controller_credentials
     var: controller_credentials
     tags: controller_credentials
+  - role: controller_inventories
+    var: controller_inventories
+    tags: controller_inventories
+  - role: controller_inventory_sources
+    var: controller_inventory_sources
+    tag: controller_inventory_sources
+  - role: controller_projects
+    var: controller_projects
+    tags: controller_projects
 
-controller_credentials:
-  - name: "Workshop Credentials"
+aap_user_accounts:
+  - first_name: Insights
+    last_name: User
     organization: Default
-    credential_type: "Machine"
-    inputs:
-      username: "ec2-user"
-      ssh_key_data: "{{ lookup('file', hostvars.localhost.env_authorized_key_path) }}"
+    user: Insights_AAP
+    password: "R3dh4t2024!"
+    is_superuser: false
     state: present
 
-# controller_inventories:
-#   - name: "Workshop Inventory"
-#     organization: Default
-#     state: present
+controller_credentials:
+  - name: "RH Insights Lab User"
+    description: "User for Red Hat insights lab"
+    organization: Default
+    credential_type: "Insights"
+    inputs:
+      username: "lab-EB9A"
+      password: R3dh4t2024!
+    state: present
+
+controller_inventories:
+  - name: "RH Insights inventory"
+    description: "Red Hat Insights Inventory"
+    organization: Default
+    prevent_instance_group_fallback: false
+    state: present
+
+controller_inventory_sources:
+  - name: Insights source
+    description: Red Hat Insights source
+    execution_environment: "Default execution environment"
+    source: "Red Hat Insights"
+    credential: "RH Insights Lab User"
+    source_vars:
+      get_tags: true
+      get_patches: true
+      get_system_advisories: true
+      get_system_packages: true
+      staleness:
+        - fresh
+        - stale
+        - stale_warning
+        - unknown
+
+controller_projects:
+  - name: "RH Insights project"
+    description: Red Hat Insights project
+    organization: Default
+    execution_environment: "Default execution environment"
+    scm_type: "Red Hat Insights"
+    credential: "RH insights Lab User"
+
 
 # controller_hosts:
 #   - name: "{{ groups['nodes'][0].split('.')[0] }}"
