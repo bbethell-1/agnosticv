@@ -267,12 +267,37 @@ ansible_automation_platform_configuration_generate_ocp_token: false
 
 controller_dependency_check: false
 
-aap_configuration_dispatcher_roles: "{{ controller_configuration_dispatcher_roles }}"
+aap_configuration_dispatcher_roles: >
+  {{ gateway_configuration_dispatcher_roles + controller_configuration_dispatcher_roles
+   + eda_configuration_dispatcher_roles
+  }}
 
-controller_configuration_dispatcher_roles:
-  - role: controller_users
+# ----------------
+# Gateway
+# ----------------
+aap_hostname: "https://{{ ansible_automation_platform_configuration_host }}"
+aap_username: "{{ ansible_automation_platform_configuration_username }}"
+aap_password: "{{ ansible_automation_platform_configuration_password }}"
+aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
+
+gateway_configuration_dispatcher_roles:
+  - role: gateway_users
     var: aap_user_accounts
-    tags: controller_users
+    tags: gateway_users
+
+aap_user_accounts:
+  - first_name: Insights
+    last_name: User
+    organization: Default
+    username: Insights_AAP
+    password: "R3dh4t2024!"
+    is_superuser: false
+    state: present
+
+# ----------------
+# Controller
+# ----------------
+controller_configuration_dispatcher_roles:
   - role: controller_credentials
     var: controller_credentials
     tags: controller_credentials
@@ -281,19 +306,10 @@ controller_configuration_dispatcher_roles:
     tags: controller_inventories
   - role: controller_inventory_sources
     var: controller_inventory_sources
-    tag: controller_inventory_sources
+    tags: controller_inventory_sources
   - role: controller_projects
     var: controller_projects
     tags: controller_projects
-
-aap_user_accounts:
-  - first_name: Insights
-    last_name: User
-    organization: Default
-    user: Insights_AAP
-    password: "R3dh4t2024!"
-    is_superuser: false
-    state: present
 
 controller_credentials:
   - name: "RH Insights Lab User"
@@ -315,8 +331,9 @@ controller_inventories:
 controller_inventory_sources:
   - name: Insights source
     description: Red Hat Insights source
+    inventory: "RH Insights inventory"
     execution_environment: "Default execution environment"
-    source: "Red Hat Insights"
+    source: "insights"
     credential: "RH Insights Lab User"
     source_vars:
       get_tags: true
@@ -334,45 +351,107 @@ controller_projects:
     description: Red Hat Insights project
     organization: Default
     execution_environment: "Default execution environment"
-    scm_type: "Red Hat Insights"
-    credential: "RH insights Lab User"
+    scm_type: "insights"
+    credential: "RH Insights Lab User"
+    wait: true
 
+# ----------------
+# EDA
+# ----------------
+eda_configuration_dispatcher_roles:
+  - role: eda_credentials
+    var: eda_credentials
+    tags: eda_credentials
+  - role: eda_decision_environments
+    var: eda_decision_environments
+    tags: eda_decision_environments
+  - role: eda_event_streams
+    var: eda_event_streams
+    tags: eda_event_streams
+  - role: eda_projects
+    var: eda_projects
+    tags: eda_projects
+  - role: eda_rulebook_activations
+    var: eda_rulebook_activations
+    tags: eda_rulebook_activations
 
-# controller_hosts:
-#   - name: "{{ groups['nodes'][0].split('.')[0] }}"
-#     inventory: "Workshop Inventory"
-#     state: present
-#     variables:
-#       ansible_host: "{{ groups['nodes'][0] }}"
-#   - name: "{{ groups['nodes'][1].split('.')[0] }}"
-#     inventory: "Workshop Inventory"
-#     state: present
-#     variables:
-#       ansible_host: "{{ groups['nodes'][1] }}"
-#   - name: "{{ groups['nodes'][2].split('.')[0] }}"
-#     inventory: "Workshop Inventory"
-#     state: present
-#     variables:
-#       ansible_host: "{{ groups['nodes'][2] }}"
-#   - name: "{{ groups['bastions'][0].split('.')[0] }}"
-#     inventory: "Workshop Inventory"
-#     state: present
-#     variables:
-#       ansible_host: "{{ groups['controllers'][0] }}"
+eda_credentials:
+  - name: "RHInsights"
+    description: "Credential for Red Hat Insights Integration"
+    organization: Default
+    credential_type: "Token Event Stream"
+    inputs:
+      auth_type: token
+      token: "R3dh4t2024!"
+      http_header_key: X-Insights-Token
 
-# controller_groups:
-#   - name: web
-#     inventory: "Workshop Inventory"
-#     state: present
-#     hosts:
-#       - "{{ groups['nodes'][0].split('.')[0] }}"
-#       - "{{ groups['nodes'][1].split('.')[0] }}"
-#       - "{{ groups['nodes'][2].split('.')[0] }}"
-#   - name: control
-#     inventory: "Workshop Inventory"
-#     state: present
-#     hosts:
-#       - "{{ groups['bastions'][0].split('.')[0] }}"
+  - name: "registry.redhat.io"
+    description: "Registry Credentials"
+    organization: Default
+    credential_type: "Container Registry"
+    inputs:
+      host: registry.redhat.io
+      username: 13959588|HCC-Reg.IO
+      password: >-
+        eyJhbGciOiJSUzUxMiJ9.eyJzdWIiOiI0YjVjYzAzNzhjNWQ0ZWIwYjAxODB
+        lNWU4ZTk1NDc0MyJ9.AYii6tBuUFfV8KPYIf0rrAR9B0F-LRveMgUsH9XV1Y
+        PFC9IH_HBlvHVS8sUSTQYX-vubcrRGG2pxzi4cDVo5z3rEwCjlSG7CeUBUhX
+        F2ZhKJkVG7R801rGRendhn56KHpZIpQ-7w5YEsddD8iQdE3zKEOJh4HVXhga
+        SBb3BjDop_y8NeEPs4Dabq2xjoFW2-5mxl6fmCsFwk_A9Y67qjFEsAr-vfSD
+        rqPLx_eFXYWZNhRuloQgV9w95P5J_axD_LCWuOSIx8QEf9YTlZdVrvlihDqz
+        _7pbhOPpjdPeYlkyJMrretivxOiSJJ_wKlrX9DqbALznDzzStK-T5kLpFG55
+        iS3ovR7zXhbuS46be3sF37_m_TDbr_lorWmOPVHWUX7363JmkA7NX1hZAIBx
+        GFn9vCv8wP_TrZ4BbR2oUGcRqC-x4EZDrkAHCOspjvuHHxfaJNu4wP5dNNNw
+        FmN40ji1W8mzLD6o5xlauK9yqrKc6_V9aYz7meiK25YJtu1EaxM0IXyaScIC
+        Ywc3m4Pnup7luRKx_BP_UM2dwAxbgFQiKuYUCpUXDwT0Z-vzmL-l1O9Pd1Ek
+        a1hcQ-j8r-CpuOhkO739FkwBRV94hTRgnYu-SKeGbvxQBElmYPPDHUz5Zu0W
+        QcM32okQhcceghu4KXXkF4TC7SZ1jPP5-KNNobptM
+      verify_ssl: true
+
+  - name: "Insights_AAP"
+    description: "Red Hat Insights AAP User"
+    organization: Default
+    credential_type: "Red Hat Ansible Automation Platform"
+    inputs:
+      host: "{{ ansible_automation_platform_configuration_host }}/api/controller/"
+      username: Insights_AAP
+      password: R3dh4t2024!
+      verify_ssl: false
+
+eda_decision_environments:
+  - name: "Default Decision Environment"
+    organization: Default
+    image_url: "registry.redhat.io/ansible-automation-platform-25/de-supported-rhel8:latest"
+    eda_credential: "registry.redhat.io"
+    credential: "registry.redhat.io"
+
+eda_event_streams:
+  - name: "Red Hat Insights Event Stream"
+    organization: Default
+    test_mode: false
+    event_stream_type: "token"
+    credential_name: "RHInsights"
+    forward_events: true
+
+eda_projects:
+  - name: "RH Insights"
+    description: "Red Hat Insights Project"
+    organization: Default
+    url: "https://github.com/jeromemarc/eda-insights"
+    tls_validation: true
+
+eda_rulebook_activations:
+  - name: "RH Insights rulebook"
+    description: "Red Hat Insights rulebook"
+    organization: Default
+    project: "RH Insights"
+    rulebook: "insights-eda-malware-rulebook.yml"
+    decision_environment: Default Decision Environment
+    restart_policy: "on-failure"
+    eda_credentials: "Insights_AAP"
+    # event_streams: "Red Hat Insights Event Stream"
+    log_level: "error"
+    state: present
 
 # -------------------------------------------------------------------
 # Role: vscode-server
