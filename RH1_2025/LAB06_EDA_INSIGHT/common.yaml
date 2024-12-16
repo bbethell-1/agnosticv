@@ -1,19 +1,20 @@
 ---
 #include /includes/catalog-icon-aap.yaml
-#include /enterprise/includes/terms-of-service.yaml
-#include /enterprise/includes/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
 #include /includes/aws-sandbox-meta.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/cert-manager-vars.yaml
 #include /includes/parameters/enable-cert-manager.yaml
-#include /includes/secrets/zerossl.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/parameters/ocp4-fips-enable.yaml
+
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-# # include /includes/secrets/ocp4_token.yaml
-# ocp4_token is used only for this lab
-#include /includes/secrets/ocp4_token_jspinks.yaml
+#include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
 # -------------------------------------------------------------------
 # Platform
 # -------------------------------------------------------------------
@@ -30,8 +31,29 @@ student_password: "{{ common_password }}"
 aws_region: us-east-2
 
 # -------------------------------------------------------------------
-# Security group
+# OpenShift variable
 # -------------------------------------------------------------------
+ocp4_installer_version: "4.16"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+master_instance_count: 1
+worker_instance_count: 0
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.16_2024_07_15
+host_ocp4_installer_set_user_data_kubeadmin_password: true
+
+# -------------------------------------------------------------------
+# Instance Variables
+# -------------------------------------------------------------------
+bastion_instance_image: RHEL92GOLD-latest
+bastion_instance_type: "t3a.large"
+rootfs_size_bastion: 50
+
+node_instance_image: RHEL92GOLD-latest
+node_instance_type: "t3a.large"
+
+# ------------------
+# AWS SECURITY GROUPS
+# ------------------
 security_groups:
   - name: BastionSG
     rules:
@@ -42,31 +64,107 @@ security_groups:
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
-      - name: HTTPPorts
-        description: "HTTP Public"
-        from_port: 80
-        to_port: 80
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-      - name: HTTPSPorts
-        description: "HTTP Public"
+
+  - name: WebSG
+    rules:
+      - name: WebHTTPSPorts
+        description: "HTTPS Public"
         from_port: 443
         to_port: 443
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
-# -------------------------------------------------------------------
-# Mandatory Variables
-# -------------------------------------------------------------------
-ocp4_installer_version: "4.16"
-ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-master_instance_count: 1
-worker_instance_count: 0
-bastion_instance_image: RHEL92GOLD-latest
-ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.16_2024_07_15
+      - name: WebHTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: ContHTTPPorts
+        description: "HTTP Public"
+        from_port: 8501
+        to_port: 8501
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: NodeSG
+    rules:
+      - name: FromNodeSGtcp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: NodeSG
+        rule_type: Ingress
+
+      - name: FromNodeSGudp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: NodeSG
+        rule_type: Ingress
+
+      - name: FromBastionTCP
+        description: "Allow everything from Bastion"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: BastionSG
+        rule_type: Ingress
+
+      - name: FromBastionUDP
+        description: "Allow everything from Bastion"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: BastionSG
+        rule_type: Ingress
+
+# ------------------
+# AWS INSTANCES
+# ------------------
+instances:
+  - name: "bastion"
+    count: 1
+    unique: true
+    public_dns: true
+    image: "{{ bastion_instance_image }}"
+    flavor:
+      ec2: "{{ bastion_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion }}"
+    security_groups:
+      - BastionSG
+      - NodeSG
+      - WebSG
+
+  - name: "node"
+    count: 1
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ node_instance_image }}"
+    flavor:
+      ec2: "{{ node_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion }}"
+    security_groups:
+      - WebSG
+      - NodeSG
+      - BastionSG
 
 # -------------------------------------------------------------------
 # Generate Common Password
@@ -74,7 +172,7 @@ ocp4_workload_catalogsource_tag: v4.16_2024_07_15
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
 # -------------------------------------------------------------------
-# Repos
+# Role: set-repository
 # -------------------------------------------------------------------
 repo_method: satellite
 update_packages: true
@@ -98,40 +196,38 @@ requirements_content:
       version: 21.4.0
     - name: community.general
       version: 4.6.1
-    - name: infra.controller_configuration
-      version: 2.2.5
     - name: kubernetes.core
       version: 2.3.1
 
+# -------------------------------------------------------------------
+# List of OpenShift Workloads
+# -------------------------------------------------------------------
 infra_workloads:
   - ocp4_workload_authentication
   - ocp4_workload_le_certificates
-  - ocp4_workload_gitea_operator
   - ocp4_workload_ansible_automation_platform
-  - ocp4_workload_eda_controller
+  - ocp4_workload_gitea_operator
   - ocp4_workload_cert_manager_operator
   - ocp4_workload_cert_utils_operator
-  - automation_platform_loader
   - automation_platform_bastion
-  - eda_controller_config
-  - vscode-server
+  - ansible_automation_platform_configuration
+  - ocp4_workload_showroom
 
-# -------------------------------------------------------------------
-# OpenShift variable
-# -------------------------------------------------------------------
 student_workloads: []
-host_ocp4_installer_set_user_data_kubeadmin_password: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
 ocp4_workload_authentication_idm_type: htpasswd
 ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_count: 5
+ocp4_workload_authentication_htpasswd_user_count: 1
 ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
 ocp4_workload_authentication_admin_user: admin
 ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
 ocp4_workload_authentication_remove_kubeadmin: false
+
+# Use Let's Encrypt Prod certificates
+install_lets_encrypt_certificates: false
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitea_operator
@@ -177,233 +273,287 @@ ocp4_workload_gitea_operator_repositories_list:
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_ansible_automation_platform
 # -------------------------------------------------------------------
-ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.4"
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_openshift_gitops
-# -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: stable
-ocp4_workload_openshift_gitops_pipelines_csv_prefix: openshift-pipelines-operator-rh
-ocp4_workload_openshift_gitops_use_catalog_snapshot: true
-ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
-ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_codeserver
-# -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_setup_cluster_admin: true
-ocp4_workload_codeserver_name: codeserver
-ocp4_workload_codeserver_workspace_name: ide
-ocp4_workload_codeserver_password: "{{ common_password }}"
-ocp4_workload_codeserver_pvc_size: 3Gi
-ocp4_workload_codeserver_gitea_name: gitea
-ocp4_workload_codeserver_gitea_namespace: gitea
-ocp4_workload_codeserver_extensions:
-  - filename: auchenberg.vscode-browser-preview-0.7.2.vsix
-    url: https://gpte-public.s3.amazonaws.com/vscode-plugins/auchenberg.vscode-browser-preview-0.7.2.vsix
-
-ocp4_workload_codeserver_multi_user_install: false
-ocp4_workload_codeserver_multi_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
-ocp4_workload_codeserver_multi_user_username_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
-ocp4_workload_codeserver_multi_user_namespace_base: codeserver
-
-# Repositories to set up in codeserver
-ocp4_workload_codeserver_repos_user: "{{ student_name }}"
-ocp4_workload_codeserver_repos_password: "{{ common_password }}"
-ocp4_workload_codeserver_repos:
-  - name: event-driven-ansible
-    account: "{{ student_name }}"
-    branch: main
-  - name: eda-rulebooks
-    account: "{{ student_name }}"
-    branch: main
-
-# Codeserver image tags
-ocp4_workload_codeserver_image_tag: v4.8.3-java11
-ocp4_workload_codeserver_init_image_tag: v4.8.3
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_ansible_automation_platform
-# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_version: 2.5
+ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.5"
 ocp4_workload_ansible_automation_platform_admin_password: "{{ common_password }}"
 ocp4_workload_ansible_automation_platform_manifest:
   url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
   inject: true
+ocp4_workload_ansible_automation_platform_create_eda_rolebinding: true
 
 # -------------------------------------------------------------------
-# Workload: automation_platform_loader
+# Workload: ansible_automation_platform_configuration
 # -------------------------------------------------------------------
-openshift_admin_user: kubeadmin
-automation_platform_loader_generate_ocp_token: true
+ansible_automation_platform_configuration_host: "{{ aap_controller_web_url }}"
+ansible_automation_platform_configuration_username: admin
+ansible_automation_platform_configuration_password: "{{ aap_controller_admin_password }}"
+ansible_automation_platform_configuration_verify_ssl: true
+ansible_automation_platform_configuration_create_controller_token: true
+ansible_automation_platform_configuration_generate_ocp_token: true
 
+controller_dependency_check: false
+
+# --------------------------------------
+# lab_user_* vars are only for this lab
+# --------------------------------------
+lab_user_insight_token: "R3dh4t2024!"
+lab_user_registry_username: "13959588|HCC-Reg.IO"
+lab_user_registry_password: |-
+  eyJhbGciOiJSUzUxMiJ9.eyJzdWIiOiI0YjVjYzAzNzhjNWQ0ZWIwYjAxODB
+  lNWU4ZTk1NDc0MyJ9.AYii6tBuUFfV8KPYIf0rrAR9B0F-LRveMgUsH9XV1Y
+  PFC9IH_HBlvHVS8sUSTQYX-vubcrRGG2pxzi4cDVo5z3rEwCjlSG7CeUBUhX
+  F2ZhKJkVG7R801rGRendhn56KHpZIpQ-7w5YEsddD8iQdE3zKEOJh4HVXhga
+  SBb3BjDop_y8NeEPs4Dabq2xjoFW2-5mxl6fmCsFwk_A9Y67qjFEsAr-vfSD
+  rqPLx_eFXYWZNhRuloQgV9w95P5J_axD_LCWuOSIx8QEf9YTlZdVrvlihDqz
+  _7pbhOPpjdPeYlkyJMrretivxOiSJJ_wKlrX9DqbALznDzzStK-T5kLpFG55
+  iS3ovR7zXhbuS46be3sF37_m_TDbr_lorWmOPVHWUX7363JmkA7NX1hZAIBx
+  GFn9vCv8wP_TrZ4BbR2oUGcRqC-x4EZDrkAHCOspjvuHHxfaJNu4wP5dNNNw
+  FmN40ji1W8mzLD6o5xlauK9yqrKc6_V9aYz7meiK25YJtu1EaxM0IXyaScIC
+  Ywc3m4Pnup7luRKx_BP_UM2dwAxbgFQiKuYUCpUXDwT0Z-vzmL-l1O9Pd1Ek
+  a1hcQ-j8r-CpuOhkO739FkwBRV94hTRgnYu-SKeGbvxQBElmYPPDHUz5Zu0W
+  QcM32okQhcceghu4KXXkF4TC7SZ1jPP5-KNNobptM
+# --------------------------------------
+
+aap_configuration_dispatcher_roles: >
+  {{ gateway_configuration_dispatcher_roles
+    + controller_configuration_dispatcher_roles
+    + eda_configuration_dispatcher_roles
+  }}
+
+# ----------------
+# Gateway
+# ----------------
+aap_hostname: "{{ ansible_automation_platform_configuration_host }}"
+aap_username: "{{ ansible_automation_platform_configuration_username }}"
+aap_password: "{{ ansible_automation_platform_configuration_password }}"
+aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
+
+gateway_configuration_dispatcher_roles:
+  - role: gateway_users
+    var: aap_user_accounts
+    tags: gateway_users
+
+aap_user_accounts:
+  - first_name: Insights
+    last_name: User
+    organization: Default
+    username: Insights_AAP
+    password: "R3dh4t2024!"
+    is_superuser: false
+    state: present
+
+# ----------------
+# Controller
+# ----------------
 controller_configuration_dispatcher_roles:
-  - role: credentials
+  - role: controller_credentials
     var: controller_credentials
-    tags: credentials
-  - role: projects
+    tags: controller_credentials
+  - role: controller_inventories
+    var: controller_inventories
+    tags: controller_inventories
+  - role: controller_inventory_sources
+    var: controller_inventory_sources
+    tags: controller_inventory_sources
+  - role: controller_projects
     var: controller_projects
-    tags: projects
-  - role: job_templates
-    var: controller_templates
-    tags: job_templates
+    tags: controller_projects
 
 controller_credentials:
-  - name: OpenShift Credentials
-    description: Credentials for OpenShift
+  - name: "RH Insights Lab User"
+    description: "User for Red Hat insights lab"
     organization: Default
-    credential_type: "OpenShift or Kubernetes API Bearer Token"
+    credential_type: "Insights"
     inputs:
-      host: "{{ openshift_api_url }}"
-      verify_ssl: true
-      bearer_token: "{{ openshift_bearer_token }}"
+      username: "lab-EB9A"
+      password: "{{ lab_user_insight_token }}"
+    state: present
 
-controller_configuration_projects_async_retries: 90
+controller_inventories:
+  - name: "RH Insights inventory"
+    description: "Red Hat Insights Inventory"
+    organization: Default
+    prevent_instance_group_fallback: false
+    state: present
+
+controller_inventory_sources:
+  - name: Insights source
+    description: Red Hat Insights source
+    inventory: "RH Insights inventory"
+    execution_environment: "Default execution environment"
+    source: "insights"
+    credential: "RH Insights Lab User"
+    source_vars:
+      get_tags: true
+      get_patches: true
+      get_system_advisories: true
+      get_system_packages: true
+      staleness:
+        - fresh
+        - stale
+        - stale_warning
+        - unknown
 
 controller_projects:
-  - name: event-driven-ansible
+  - name: "RH Insights project"
+    description: Red Hat Insights project
     organization: Default
-    scm_branch: main
-    scm_clean: 'no'
-    scm_delete_on_update: 'no'
-    scm_type: git
-    scm_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/event-driven-ansible.git"
+    execution_environment: "Default execution environment"
+    scm_type: "insights"
+    credential: "RH Insights Lab User"
+    wait: true
 
-controller_templates:
-  - name: create-volume-snapshot
-    job_type: run
-    inventory: Demo Inventory
-    project: event-driven-ansible
-    playbook: automation_controller/create-volume-snapshot.yml
-    ask_variables_on_launch: true
-    credentials:
-      - OpenShift Credentials
-    survey: {}
-  - name: patch-route-with-cert
-    job_type: run
-    inventory: Demo Inventory
-    project: event-driven-ansible
-    playbook: automation_controller/patch-route-with-cert.yml
-    ask_variables_on_launch: true
-    credentials:
-      - OpenShift Credentials
-    survey: {}
-  - name: set-resource-quota-on-namespace
-    job_type: run
-    inventory: Demo Inventory
-    project: event-driven-ansible
-    playbook: automation_controller/set-resource-quota-on-namespace.yml
-    ask_variables_on_launch: true
-    credentials:
-      - OpenShift Credentials
-    survey: {}
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_eda_controller
-# -------------------------------------------------------------------
-ocp4_workload_eda_controller_aap_controller_url: "{{ aap_controller_web_url }}"
+# ----------------
+# EDA
+# ----------------
+eda_configuration_dispatcher_roles:
+  - role: eda_credentials
+    var: eda_credentials
+    tags: eda_credentials
+  - role: eda_decision_environments
+    var: eda_decision_environments
+    tags: eda_decision_environments
+  - role: eda_event_streams
+    var: eda_event_streams
+    tags: eda_event_streams
+  - role: eda_projects
+    var: eda_projects
+    tags: eda_projects
+  - role: eda_rulebook_activations
+    var: eda_rulebook_activations
+    tags: eda_rulebook_activations
 
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_gitops_eda
-# -------------------------------------------------------------------
-ocp4_workload_gitops_eda_service_account_role: cluster-admin
+eda_credentials:
+  - name: "RHInsights"
+    description: "Credential for Red Hat Insights Integration"
+    organization: Default
+    credential_type: "Token Event Stream"
+    inputs:
+      auth_type: token
+      token: "{{ lab_user_insight_token }}"
+      http_header_key: X-Insight-Token
 
-ocp4_workload_gitops_eda_rulebook_repo_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/event-driven-ansible.git"
-ocp4_workload_gitops_eda_rulebook_repo_version: main
-ocp4_workload_gitops_eda_rulebook_repo_path: gitops/eda/overlays
+  - name: "registry.redhat.io"
+    description: "Registry Credentials"
+    organization: Default
+    credential_type: "Container Registry"
+    inputs:
+      host: registry.redhat.io
+      username: "{{ lab_user_registry_username }}"
+      password: "{{ lab_user_registry_password }}"
+      verify_ssl: true
 
-ocp4_workload_gitops_eda_openshift_api_url: "{{ _ocp4_workload_authentication_api_server }}"
-ocp4_workload_gitops_eda_openshift_bearer_token: "{{ openshift_bearer_token }}"
-ocp4_workload_gitops_eda_openshift_user_name: "{{ ocp4_workload_authentication_admin_user }}"
-ocp4_workload_gitops_eda_openshift_user_password: "{{ _ocp4_workload_authentication_admin_password }}"
+  - name: "Insights_AAP"
+    description: "Red Hat Insights AAP User"
+    organization: Default
+    credential_type: "Red Hat Ansible Automation Platform"
+    inputs:
+      host: "{{ ansible_automation_platform_configuration_host }}/api/controller/"
+      username: Insights_AAP
+      password: "{{ lab_user_insight_token }}"
+      verify_ssl: false
 
-ocp4_workload_gitops_eda_automation_controller_url: "https://{{ automation_controller_hostname }}"
-ocp4_workload_gitops_eda_automation_token: "{{ r_aap2_token.ansible_facts.controller_token.token }}"
+eda_decision_environments:
+  - name: "Default Decision Environment"
+    organization: Default
+    image_url: "registry.redhat.io/ansible-automation-platform-25/de-supported-rhel8:latest"
+    eda_credential: "registry.redhat.io"
+    credential: "registry.redhat.io"
+
+eda_event_streams:
+  - name: "Red Hat Insights Event Stream"
+    organization: Default
+    test_mode: false
+    event_stream_type: "token"
+    credential_name: "RHInsights"
+    forward_events: true
+
+eda_projects:
+  - name: "RH Insights"
+    description: "Red Hat Insights Project"
+    organization: Default
+    url: "https://github.com/jeromemarc/eda-insights"
+    tls_validation: true
+
+# eda_rulebook_activations:
+#   - name: "RH Insights rulebook"
+#     description: "Red Hat Insights rulebook"
+#     organization: Default
+#     project: "RH Insights"
+#     rulebook: "insights-eda-malware-rulebook.yml"
+#     decision_environment: Default Decision Environment
+#     restart_policy: "on-failure"
+#     eda_credentials: "Insights_AAP"
+#     # event_streams: "Red Hat Insights Event Stream"
+#     log_level: "error"
+#     state: present
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager_operator
 # -------------------------------------------------------------------
 ocp4_workload_cert_manager_operator_channel: stable-v1
-# ocp4_workload_cert_manager_operator_channel_csv: cert-manager-operator.v1.10.3
 
 # -------------------------------------------------------------------
-# Workload: eda_pods_on_bastion
+# Workload: ocp4_workload_showroom
 # -------------------------------------------------------------------
-eda_pods_on_bastion_ac_token: "{{ r_aap2_token.ansible_facts.controller_token.token }}"
-eda_pods_on_bastion_ac_web_url: "https://{{ automation_controller_hostname }}"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/summit-opp-lab.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_only: false
+ocp4_workload_showroom_terminal_type: showroom
 
-# -------------------------------------------------------------------
-# Workload: eda_controller_config
-# -------------------------------------------------------------------
-eda_controller_config_url: "{{ eda_controller_web_url }}"
-eda_controller_config_username: "admin"
-eda_controller_config_password: "{{ common_password }}"
+# # -------------------------------------------------------------------
+# # Workload: vscode-server
+# # -------------------------------------------------------------------
+# install_vscode_server: true
+# vscode_server_install_nginx: true
+# vscode_use_automationcontroller_nginx: false
+# vscode_server_ansible_become: true
+# vscode_user_workspace_path: "/home/{{ student_name }}"
+# vscode_user_name: "{{ student_name }}"
+# vscode_user_password: "{{ common_password }}"
+# vscode_server_hostname: bastion.{{ guid }}.{{ sandbox_zone }}
+# vscode_ansible_python_interpreter: /usr/libexec/platform-python
+# vscode_server_default_extensions: []
+# vscode_server_extension_urls:
+#   - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
+#   - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
+#   - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
 
-eda_controller_config_awx_tokens:
-  - name: aap
-    token: "{{ r_aap2_token.ansible_facts.controller_token.token }}"
+# vscode_server_additional_settings: |
+#   "files.exclude": {
+#     "**/.git": true,
+#     "**/.kube": true,
+#     "**/.bash*": true,
+#     "**/.vim*": true,
+#     "**/.ssh": true,
+#     "**/.vscode": true,
+#     "**/.local": true,
+#     "**/.config": true,
+#     "**/.ansible": true,
+#     "**/.cache": true },
+#   "security.workspace.trust.enabled": false
 
-eda_controller_config_decision_envs:
-  - name: "de-for-ocp"
-    description: "Decision Environment for OpenShift"
-    image_url: "quay.io/mitsharm/eda/de-for-ocp"
+# vscode_user_workspace_repos:
+#   - repo: "{{ controller_gitea_repo_url }}"
+#     name: demo
+#     branch: main
+#   - repo: "{{ eda_gitea_repo_url }}"
+#     name: eda-rulebooks
+#     branch: main
 
-eda_controller_config_projects:
-  - name: "OpenShift Event Rulebooks"
-    description: "Event-driven Ansible rulebooks"
-    repo_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/eda-rulebooks.git"
-
-eda_controller_config_rulebook_activations:
-  - name: "Patch Route With Cert"
-    description: "Patch OpenShift Routes"
-    project: "OpenShift Event Rulebooks"
-    rulebook: "patch_route.yml"
-    decision_env: "de-for-ocp"
-    restart_policy: "on-failure"
-    enabled: true
-  - name: "Set Resource Quota On Namespace"
-    description: "Set Resource Quota on OpenShift namespace"
-    project: "OpenShift Event Rulebooks"
-    rulebook: "resource_quota.yml"
-    decision_env: "de-for-ocp"
-    restart_policy: "on-failure"
-    enabled: true
-  - name: "Create Volume Snapshot"
-    description: "Create PVC volume snapshot"
-    project: "OpenShift Event Rulebooks"
-    rulebook: "volume_snapshot.yml"
-    decision_env: "de-for-ocp"
-    restart_policy: "on-failure"
-    enabled: true
-
-# -------------------------------------------------------------------
-# Workload: vscode-server
-# -------------------------------------------------------------------
-install_vscode_server: true
-vscode_server_install_nginx: true
-vscode_server_ansible_become: true
-vscode_user_workspace_path: "/home/{{ student_name }}/demo"
-vscode_user_name: "{{ student_name }}"
-vscode_user_password: "{{ common_password }}"
-vscode_server_hostname: bastion.{{ guid }}.{{ sandbox_zone }}
-vscode_ansible_python_interpreter: /usr/libexec/platform-python
-vscode_server_default_extensions: []
-vscode_server_extension_urls:
-  - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
-  - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
-  - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
-
-sandbox_user_info_messages_enable: true
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
+sandbox_user_info_messages_enable: true
+
 __meta__:
-  asset_uuid: c32b5d7f-4be3-4eb9-9d73-e252462fca93
+  asset_uuid: 00AD9887-8439-4670-8BD7-0D9AACFF6552
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "Lab 06: Event-driven Ansible with OpenShift and Insights Demo"
+    display_name: "Lab 06.1: Event-driven Ansible with Insights Demo"
     category: Red_Hat_One_2025
     keywords:
       - eda
@@ -430,5 +580,5 @@ __meta__:
             - m6a.2xlarge
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.1
       pull: missing
