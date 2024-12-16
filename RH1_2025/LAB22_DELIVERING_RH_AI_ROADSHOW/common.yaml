@@ -5,21 +5,20 @@
 #include /includes/catalog-icon-openshift-data-science.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/parameters/purpose.yaml
-#include /includes/access-restriction-rhdp-rhoai-group.yaml
 #include /includes/aws-sandbox-meta.yaml
 #include /includes/lifetime-standard.yaml
 
 #include /includes/parameters/agnosticd_open_environment.yaml
-#include /includes/parameters/enable-cert-manager.yaml
-#include /includes/secrets/zerossl.yaml
+#include /includes/parameters/enable-lets-encrypt.yaml
 
 #include /includes/secrets/demosat-rhel-9-lab.yaml
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/rhods-git-secret.yml
 
 # -------------------------------------------------------------------
-# --- Catalog Item: Delivering The Red Hat AI Roadshow!
+# --- Catalog Item: LAB22 - Delivering The Red Hat AI Roadshow!
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
@@ -46,7 +45,8 @@ platform: rhpds
 # VM configuration
 # -------------------------------------------------------------------
 bastion_instance_type: t3.medium
-bastion_instance_image: RHEL94GOLD-latest
+#bastion_instance_image: RHEL84GOLD-latest
+bastion_instance_image: RHEL91GOLD-latest
 
 # Workload variables #
 ocp4_workload_user_base: user
@@ -54,13 +54,13 @@ ocp4_workload_user_count: "{{ num_users }}"
 ocp4_workload_multi_user: "{{ true if num_users | int > 1 else false }}"
 
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.13_2023_11_20
+ocp4_workload_catalogsource_tag: v4.16_2024_09_09
 
 # -------------------------------------------------------------------
 # Common Password
 # -------------------------------------------------------------------
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-common_user_password: openshift
+common_user_password: parasol
 
 # -------------------------------------------------------------------
 # Security group
@@ -93,13 +93,13 @@ security_groups:
 # -------------------------------------------------------------------
 # OpenShift Installer Version
 # -------------------------------------------------------------------
-ocp4_installer_version: "4.15"
+ocp4_installer_version: "4.16.10"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 master_instance_count: 3
-master_instance_type: m6a.2xlarge
+master_instance_type: m5.2xlarge
 worker_instance_count: "{{ [((num_users | int * 0.3) | round(0, 'ceil') | int) + 4, 5] | max\
   \ }}"
-worker_instance_type: m6a.4xlarge
+worker_instance_type: m5.4xlarge
 openshift_machineset_aws_zones:
   - "{{ instance_zone_a }}"
   - "{{ instance_zone_b }}"
@@ -109,8 +109,8 @@ instance_zone_a: us-east-2a
 instance_zone_b: us-east-2b
 instance_zone_c: us-east-2c
 
-gpu_instance_type: g6.24xlarge
-
+gpu_instance_type: g5.2xlarge
+#gpu_instance_type: g6.24xlarge
 
 # -------------------------------------------------------------------
 # OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
@@ -175,19 +175,17 @@ requirements_content:
 # -------------------------------------------------------------------
 infra_workloads:
   - ocp4_workload_authentication # all segments
+  - ocp4_workload_le_certificates # all segments
   - ocp4_workload_openshift_data_foundation
   - ocp4_workload_machinesets
   - ocp4_workload_nvidia_gpu_setup
   - ocp4_workload_pipelines
   - ocp4_workload_openshift_gitops
-  - ocp4_workload_gitea_operator
   - ocp4_workload_serverless
   - ocp4_workload_ossm
-  - ocp4_workload_openshift_ai
   - ocp4_workload_web_terminal
-  - ocp4_workload_cert_manager
   - ocp4_workload_showroom
-  - ocp4_workload_oai_lab_insurance_claim
+  - ocp4_workload_oai_parasol_insurance
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -214,9 +212,9 @@ ocp4_workload_machinesets_wait_for_nodes: false
 ocp4_workload_machinesets_machineset_groups:
   - name: worker-gpu
     autoscale: true
-    total_replicas: "{{ (num_users | int / 4) | round(0, 'ceil') | int }}"
-    total_replicas_min: "{{ (num_users | int / 4) | round(0, 'ceil') | int }}"
-    total_replicas_max: "{{ (num_users | int / 4) | round(0, 'ceil') | int + 1 }}"
+    total_replicas: 1
+    total_replicas_min: 1
+    total_replicas_max: 3
     role: worker-gpu
     taints:
       - key: nvidia.com/gpu
@@ -236,7 +234,7 @@ nfd_operator_use_catalog_snapshot: false
 nfd_operator_catalogsource_name: ""
 nfd_operator_catalog_snapshot_image: ""
 nfd_operator_catalog_snapshot_image_tag: ""
-nfd_operator_operand_image: "registry.redhat.io/openshift4/ose-node-feature-discovery-rhel9:v4.15"
+nfd_operator_operand_image: "registry.redhat.io/openshift4/ose-node-feature-discovery-rhel9:v4.16"
 
 # ------------------------------------------------
 # NVIDIA GPU Operator
@@ -254,7 +252,7 @@ nvidia_gpu_operator_catalog_snapshot_image_tag: ""
 # -----------------------------------
 # OpenShift Data Foundations Operator
 # -----------------------------------
-ocp4_workload_openshift_data_foundation_channel: stable-4.14
+ocp4_workload_openshift_data_foundation_channel: stable-4.16
 ocp4_workload_openshift_data_foundation_catalogsource_setup: false
 ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
 ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
@@ -295,7 +293,7 @@ ocp4_workload_ossm_kiali_startingcsv: ""
 ocp4_workload_ossm_servicemesh_channel: stable
 ocp4_workload_ossm_servicemesh_startingcsv: ""
 
-ocp4_workload_rhsso_starting_csv: rhsso-operator.7.6.3-opr-002
+ocp4_workload_rhsso_starting_csv: rhsso-operator.7.6.10-opr-001
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_ai
@@ -303,7 +301,7 @@ ocp4_workload_rhsso_starting_csv: rhsso-operator.7.6.3-opr-002
 ocp4_workload_openshift_ai_operator_group_name: "rhods-ods-operator"
 ocp4_workload_openshift_ai_operator_name: "rhods-operator"
 ocp4_workload_openshift_ai_namespace: "redhat-ods-operator"
-ocp4_workload_openshift_ai_channel: "fast"
+ocp4_workload_openshift_ai_channel: "stable"
 ocp4_workload_openshift_ai_catalogsource_setup: "False"
 ocp4_workload_openshift_ai_installPlanApproval: "Automatic"
 # Set automatic InstallPlan approval. If set to false it is also suggested
@@ -324,6 +322,7 @@ ocp4_workload_openshift_ai_workshop_password: "openshift"
 ocp4_workload_openshift_ai_codeflare: "Removed"
 ocp4_workload_openshift_ai_dashboard: "Managed"
 ocp4_workload_openshift_ai_datasciencepipelines: "Managed"
+ocp4_workload_openshift_ai_kserve: "Managed"
 ocp4_workload_openshift_ai_modelmeshserving: "Managed"
 ocp4_workload_openshift_ai_ray: "Removed"
 ocp4_workload_openshift_ai_trustyai: "Removed"
@@ -351,12 +350,12 @@ ocp4_workload_le_certificates_failure_is_fatal: true
 # 12 minutes by default to give the kube-apiserver
 # cluster operator enough time to progress.
 # Wait time may be extended if it's needed
-ocp4_workload_le_certificates_wait_after_cert_setup: 12
+ocp4_workload_le_certificates_wait_after_cert_setup: 20
 
 # ---------------------------------------------------------
 # Workload: ocp4_workload_pipelines
 # ---------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.11
+ocp4_workload_pipelines_channel: pipelines-1.15
 
 ocp4_workload_pipelines_use_catalog_snapshot: true
 ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
@@ -365,7 +364,7 @@ ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsou
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.9
+ocp4_workload_openshift_gitops_channel: gitops-1.13
 
 ocp4_workload_openshift_gitops_use_catalog_snapshot: true
 ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
@@ -412,6 +411,7 @@ ocp4_workload_openshift_gitops_ignore_differences: |
 ocp4_workload_showroom_deployment_type: helm
 ocp4_workload_showroom_content_git_repo: >-
   https://github.com/cnuland/parasol-insurance.git
+#  https://github.com/rh-aiservices-bu/parasol-insurance.git
 
 # --- Student Workloads (YAML List)
 student_workloads: []
@@ -471,11 +471,15 @@ ocp4_workload_gitea_operator_generate_user_format: lab-user
 ocp4_workload_gitea_operator_user_password: "{{ common_password }}"
 ocp4_workload_gitea_operator_migrate_repositories: true
 ocp4_workload_gitea_operator_repositories_list:
+#  - repo: https://github.com/rh-aiservices-bu/parasol-insurance
   - repo: https://github.com/cnuland/parasol-insurance.git
     name: parasol-insurance
     private: false
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_oai_parasol_insurance
+# -------------------------------------------------------------------
+ocp4_workload_oai_parasol_insurance_repo_url: https://github.com/rh-aiservices-bu/parasol-insurance.git
 # Workload: ocp4_workload_oai_lab_insurance_claim
 # -------------------------------------------------------------------
 ocp4_workload_oai_lab_insurance_claim_repo_url: https://github.com/cnuland/parasol-insurance.git
@@ -492,9 +496,9 @@ ocp4_workload_oai_lab_insurance_claim_catalog_snapshot_image_tag: v4.15_2024_03_
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
+  asset_uuid: 6D2CBA14-04C2-4730-AB19-715C09BE218C
   sandbox_api:
     reservation: pgpu
-  asset_uuid: 6D2CBA14-04C2-4730-AB19-715C09BE218C
   deployer:
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:v0.1.0
@@ -512,12 +516,9 @@ __meta__:
         formLabel: OpenShift User Count
         openAPIV3Schema:
           type: integer
-          default: 5
-          minimum: 5
+          default: 1
+          minimum: 1
     labels:
       Product: Red_Hat_OpenShift_AI
       Product_Family: Red_Hat_Cloud
       Provider: RHDP
-  secrets:
-    - namespace: gpte
-      name: rhods-git-secret
