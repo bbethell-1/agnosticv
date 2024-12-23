@@ -13,6 +13,39 @@ ocp4_workload_openshift_ai_channel: "stable-2.16"
 ocp4_workload_pipelines_channel: pipelines-1.17
 ocp4_workload_openshift_gitops_channel: gitops-1.15
 
+# Add a MachineSet for AWS Bare arm instances
+ocp4_workload_machinesets_machineset_groups:
+- name: arm
+  role: arm
+  instance_type: m7g.2xlarge
+  root_volume_size: 250
+  #  openshift-install coreos print-stream-json | jq  -r -c '.architectures | keys '
+  # ["aarch64","ppc64le","s390x","x86_64"]
+  aws_instance_ami_architecture: aarch64
+  autoscale: false
+  total_replicas: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 1] | max }}"
+  total_replicas_min: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 1] | max }}"
+  total_replicas_max: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+  # machineConfigPool:
+  #   setup: true
+  #   maxPodsPerNode: 250
+  taints:
+  - key: "kubernetes.io/arch"
+    value: "arm"
+    effect: NoSchedule
+
+- name: worker-gpu
+  aws_instance_ami_architecture: x86_64
+  autoscale: false
+  total_replicas: "{{ gpu_node_count | int }}"
+  total_replicas_min: "{{ gpu_node_count | int }}"
+  total_replicas_max: "{{ gpu_node_count | int }}"
+  role: worker-gpu
+  taints:
+  - key: nvidia.com/gpu
+    value: true
+    effect: NoSchedule
+  instance_type: "g5.xlarge"
 
 # ---------------------------------------------------------
 # Babylon meta variables
@@ -20,7 +53,7 @@ ocp4_workload_openshift_gitops_channel: gitops-1.15
 __meta__:
   access_control:
     allow_groups:
-      - rhpds-devs-cloud-native-robot
+    - rhpds-devs-cloud-native-robot
   deployer:
     # git_tag_prefix: cloud-native-robot
     scm_url: https://github.com/cloud-native-robotz-hackathon/agnosticd.git
