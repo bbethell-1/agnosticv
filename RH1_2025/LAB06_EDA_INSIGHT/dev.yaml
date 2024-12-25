@@ -10,3 +10,113 @@ purpose: development
 __meta__:
   deployer:
     scm_ref: development
+
+# --------------------------------------
+# lab_user_* vars are only for this lab
+# --------------------------------------
+lab_user_ssh_private_key_path: "{{ hostvars.localhost.ssh_provision_pubkey_content
+  | default(hostvars.localhost.env_authorized_key_content_pub) }}"
+
+# ----------------
+# Controller
+# ----------------
+controller_configuration_dispatcher_roles:
+  - role: controller_credentials
+    var: controller_credentials
+    tags: controller_credentials
+  - role: controller_inventories
+    var: controller_inventories
+    tags: controller_inventories
+  - role: controller_inventory_sources
+    var: controller_inventory_sources
+    tags: controller_inventory_sources
+  - role: controller_projects
+    var: controller_projects
+    tags: controller_projects
+  - role: controller_job_templates
+    var: controller_templates
+    tags: controller_templates
+
+controller_credentials:
+  - name: "RH Insights Lab User"
+    description: "User for Red Hat insights lab"
+    organization: Default
+    credential_type: "Insights"
+    inputs:
+      username: "lab-EB9A"
+      password: "{{ lab_user_insight_token }}"
+    state: present
+  - name: "Host Credentials"
+    description: "Machine Credential with become_method for hosts"
+    organization: Default
+    credential_type: Machine
+    inputs:
+      username: "{{ student_name }}"
+      password: "{{ common_password }}"
+      become_method: sudo
+      # ssh_key_data: "{{ lookup('file','lab_user_ssh_private_key_path') }}"
+
+controller_templates:
+  - name: "handle-malware-detection"
+    description: "Malware Detection Job"
+    job_type: run
+    inventory: "RH Insights inventory"
+    project: "Demo Project"
+    playbook: "hello_world.yml"
+    execution_environment: "Default execution environment"
+    credentials:
+      - "Demo Credential"
+    ask_variables_on_launch: true
+  # - name: "Malware Detection Job"
+  #   description: "Malware Detection Job"
+  #   job_type: run
+  #   inventory: "RH Insights inventory"
+  #   project: "RH Insights project"
+  #   playbook: "remodeiate-e0e092d8-80cc-48e1-92fd-14192f31906b.yml"
+  #   execution_environment: "Default execution environment"
+  #   credentials:
+  #   - "Host Credentials"
+  #   ask_variables_on_launch: true
+
+# ----------------
+# EDA
+# ----------------
+eda_credentials:
+  - name: "RHInsights"
+    description: "Credential for Red Hat Insights Integration"
+    organization: Default
+    credential_type: "Token Event Stream"
+    inputs:
+      auth_type: token
+      token: "{{ lab_user_insight_token }}"
+      http_header_key: X-Insight-Token
+
+  - name: "registry.redhat.io"
+    description: "Registry Credentials"
+    organization: Default
+    credential_type: "Container Registry"
+    inputs:
+      host: registry.redhat.io
+      username: "{{ lab_user_registry_username }}"
+      password: "{{ lab_user_registry_password }}"
+      verify_ssl: true
+
+  - name: "Insights_AAP"
+    description: "Red Hat Insights AAP User"
+    organization: Default
+    credential_type: "Red Hat Ansible Automation Platform"
+    inputs:
+      host: "{{ ansible_automation_platform_configuration_host }}/api/controller/"
+      username: admin
+      password: "{{ lab_user_insight_token }}"
+      verify_ssl: false
+
+# -------------------------------------------------------------------
+# Workload: additional_nodes_config_injector
+# -------------------------------------------------------------------
+additional_nodes_config_injector_user_auth_type: password
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/redhat-gpte-devopsautomation/showroom-eda-with-insight.git
