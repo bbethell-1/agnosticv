@@ -1,8 +1,8 @@
 ---
 # -------------------------------------------------------------------
 # --- Catalog: Red Workshops
-# --- Catalog Item: LAB 17: Troubleshoot OpenShift
-#                   Virtualization (GCP)"
+# --- Catalog Item: LAB 17: OpenShift Virtualization: Troubleshooting
+#                   Virtual Machines Common Issues (GCP)
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
@@ -87,6 +87,9 @@ ocp4_base_domain: "{{ cluster_dns_zone }}"
 # Bastion Image
 gcp_rhel_image_family: rhel-9
 
+# Default type for GCP instances (bastion)
+gcp_default_machine_type: n2-highcpu-8
+
 master_instance_type_family: n2-standard
 master_instance_type_size: >-
   {{ '8' if worker_instance_count|int <= 10
@@ -110,7 +113,7 @@ infra_workloads:
 - ocp4_workload_web_terminal
 - ocp4_workload_kubevirt
 #- ocp4_workload_mtv
-- ocp4_workload_oadp_gitops
+#- ocp4_workload_oadp_gitops
 #- ocp4_workload_virt_roadshow_vms
 #- ocp4_workload_virt_roadshow_vmware
 - ocp4_workload_virt_roadshow_multi_user
@@ -158,7 +161,7 @@ requirements_content:
   roles:
   - name: rh1_2025_ocpvirt_ar
     src: https://github.com/opentraining-labs-customizations/rh1-2025-ocpvirt-ar.git
-    version: v1.2.6
+    version: v1.2.8
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_data_foundation
@@ -285,16 +288,16 @@ ocp4_workload_kubevirt_use_catalog_snapshot: false
 # -------------------------------------------------------------------
 # ocp4_workload_oadp_gitops
 # -------------------------------------------------------------------
-ocp4_workload_oadp_gitops_channel: stable-1.4
-ocp4_workload_oadp_gitops_use_catalog_snapshot: false
+#ocp4_workload_oadp_gitops_channel: stable-1.4
+#ocp4_workload_oadp_gitops_use_catalog_snapshot: false
 
 # Multi User
-ocp4_workload_oadp_gitops_multi_user: true
-ocp4_workload_oadp_gitops_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
-ocp4_workload_oadp_gitops_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
-ocp4_workload_oadp_gitops_namespace_base: oadp
-ocp4_workload_oadp_gitops_configure_dpa: true
-ocp4_workload_oadp_gitops_storage: odf
+#ocp4_workload_oadp_gitops_multi_user: true
+#ocp4_workload_oadp_gitops_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+#ocp4_workload_oadp_gitops_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+#ocp4_workload_oadp_gitops_namespace_base: oadp
+#ocp4_workload_oadp_gitops_configure_dpa: true
+#ocp4_workload_oadp_gitops_storage: odf
 
 # -------------------------------------------------------------------
 # ocp4_workload_virt_roadshow_vms
@@ -356,7 +359,7 @@ __meta__:
     namespace: babylon-anarchy-gcp-gpte
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "LAB 17: Troubleshoot OpenShift Virtualization (GCP)"
+    display_name: "LAB 17: OpenShift Virtualization: Troubleshooting Virtual Machines Common Issues (GCP)"
     category: Red_Hat_One_2025
     keywords:
     - workshop
@@ -374,7 +377,22 @@ __meta__:
       Provider: RHDP
     multiuser: true
     workshopLabUiRedirect: true
-    parameters: []
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 20
+      validation: >-
+        num_users <= 2 ||
+        user_is_admin ||
+        user_groups.includes('rhpds-devs') ||
+        check_salesforce_id(salesforce_id) ||
+        Error('User count greater than TWO requires a valid SalesForceID')
   secrets:
   - namespace: gpte
     name: gcp
