@@ -56,11 +56,15 @@ bastion_instance_image: RHEL93GOLD-latest
 agnosticd_aws_capacity_reservation_enable: true
 agnosticd_aws_capacity_reservation_single_zone: true
 
-#-------------------------------------------------------------------
-#OpenShift Installer Version
-#-------------------------------------------------------------------
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
 ocp4_installer_version: "4.17"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.17_2024_11_20
+
 host_ocp4_installer_set_user_data_kubeadmin_password: true
 
 # -------------------------------------------------------------------
@@ -78,9 +82,9 @@ common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 # -------------------------------------------------------------------
 
 infra_workloads:
-- ocp4_workload_machinesets
-- ocp4_workload_cert_manager
 - ocp4_workload_openshift_data_foundation
+- ocp4_workload_cert_manager
+- ocp4_workload_machinesets
 - ocp4_workload_kubevirt
 - ocp4_workload_openshift_gitops
 - ocp4_workload_pipelines
@@ -136,14 +140,22 @@ ocp4_workload_cert_manager_install_api_certificates: false
 ocp4_workload_cert_manager_install_ingress_certificates: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_openshift_data_foundations
+# Workload: ocp4_workload_openshift_data_foundation
 # -------------------------------------------------------------------
 ocp4_workload_openshift_data_foundation_channel: stable-4.16
 ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 500Gi
-ocp4_workload_openshift_data_foundation_update_default_storage_class: true
-ocp4_workload_openshift_data_foundation_old_default_storage_class_name: gp3-csi
+#ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+#ocp4_workload_openshift_data_foundation_old_default_storage_class_name: gp3-csi
+ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1200
 
-ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+ocp4_workload_openshift_data_foundation_catalogsource_setup: true
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
+ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_data_foundation_tolerations:
+- key: metal
+  operator: Exists
 
 # -------------------------------------------------------------------
 # ocp4_workload_kubevirt
@@ -226,21 +238,14 @@ ocp4_workload_rhacs_enable_central_scanner_v4: true
 ocp4_workload_quay_operator_channel: stable-3.12
 ocp4_workload_quay_operator_registry_namespace: quay
 ocp4_workload_quay_operator_registry_admin_password: "{{ common_password }}"
-#
+
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
-ocp4_workload_gitops_bootstrap_repo_url: https://github.com/newgoliath/compliance_operator.git
-ocp4_workload_gitops_bootstrap_repo_revision: main #put a tag, better
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/newgoliath/opp-gitops.git
+#ocp4_workload_gitops_bootstrap_repo_revision: compliance #put a tag, better
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap
-
-ocp4_workload_gitops_bootstrap_helm_values:
-  istio_cp_namespace: istio-system
-  cloud: rosa
-  user:
-    count: "{{ ocp4_workload_user_count }}"
-    base: "{{ ocp4_workload_user_base }}"
-
+ocp4_workload_gitops_bootstrap_helm_values: []
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
@@ -248,7 +253,8 @@ ocp4_workload_gitops_bootstrap_helm_values:
 ocp4_workload_showroom_content_git_repo: https://github.com/mfosterrox/summit-opp-lab.git
 ocp4_workload_showroom_content_git_repo_ref: main
 ocp4_workload_showroom_content_only: false
-ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
 
 # -------------------------------------------------------------------
 # Babylon meta variables
