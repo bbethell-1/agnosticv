@@ -217,6 +217,7 @@ infra_workloads:
   - additional_nodes_config_injector
   - set_host_public_fqdn
   - ocp4_workload_showroom
+  - vscode-server
 
 student_workloads: []
 
@@ -297,6 +298,15 @@ ansible_automation_platform_configuration_create_controller_token: true
 ansible_automation_platform_configuration_generate_ocp_token: true
 
 controller_dependency_check: false
+
+# --------------------------------------
+# EDA vars
+# --------------------------------------
+eda_decision_environment_name: "AAP2.5 - OCP4 Custom Decision"
+eda_decision_environment_image: "quay.io/mitsharm/eda/de-for-ocp-aap-25:latest"
+eda_gitea_repo_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/eda-rulebooks.git"
+controller_gitea_repo_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/event-driven-ansible.git"
+
 
 # --------------------------------------
 # lab_user_* vars are only for this lab
@@ -394,6 +404,9 @@ controller_configuration_dispatcher_roles:
   - role: controller_projects
     var: controller_projects
     tags: controller_projects
+  - role: controller_job_templates
+    var: controller_templates
+    tags: controller_templates
 
 controller_credentials:
   - name: "RH Insights Lab User"
@@ -404,6 +417,22 @@ controller_credentials:
       username: "lab-EB9A"
       password: "{{ lab_user_insight_token }}"
     state: present
+  - name: "Host Credentials"
+    description: "Machine Credential with become_method for hosts"
+    organization: Default
+    credential_type: Machine
+    inputs:
+      username: "{{ student_name }}"
+      password: "{{ common_password }}"
+      become_method: sudo
+  - name: OpenShift Credentials
+    description: Credentials for OpenShift
+    organization: Default
+    credential_type: "OpenShift or Kubernetes API Bearer Token"
+    inputs:
+      host: "{{ openshift_api_url }}"
+      verify_ssl: true
+      bearer_token: "{{ openshift_bearer_token }}"
 
 controller_inventories:
   - name: "RH Insights inventory"
@@ -433,7 +462,15 @@ controller_inventory_sources:
         - stale_warning
         - unknown
 
+controller_configuration_projects_async_retries: 90
 controller_projects:
+  - name: event-driven-ansible
+    organization: Default
+    scm_branch: main
+    scm_clean: 'no'
+    scm_delete_on_update: 'no'
+    scm_type: git
+    scm_url: "{{ controller_gitea_repo_url }}"
   - name: "RH Insights project"
     description: Red Hat Insights project
     organization: Default
@@ -441,6 +478,45 @@ controller_projects:
     scm_type: "insights"
     credential: "RH Insights Lab User"
     wait: true
+
+controller_templates:
+  - name: create-volume-snapshot
+    job_type: run
+    inventory: Demo Inventory
+    project: event-driven-ansible
+    playbook: automation_controller/create-volume-snapshot.yml
+    ask_variables_on_launch: true
+    credentials:
+      - OpenShift Credentials
+    survey: {}
+  - name: patch-route-with-cert
+    job_type: run
+    inventory: Demo Inventory
+    project: event-driven-ansible
+    playbook: automation_controller/patch-route-with-cert.yml
+    ask_variables_on_launch: true
+    credentials:
+      - OpenShift Credentials
+    survey: {}
+  - name: set-resource-quota-on-namespace
+    job_type: run
+    inventory: Demo Inventory
+    project: event-driven-ansible
+    playbook: automation_controller/set-resource-quota-on-namespace.yml
+    ask_variables_on_launch: true
+    credentials:
+      - OpenShift Credentials
+    survey: {}
+  - name: "handle-malware-detection"
+    description: "Malware Detection Job"
+    job_type: run
+    inventory: "RH Insights inventory"
+    project: "Demo Project"
+    playbook: "hello_world.yml"
+    execution_environment: "Default execution environment"
+    credentials:
+      - "Demo Credential"
+    ask_variables_on_launch: true
 
 # ----------------
 # EDA
@@ -471,7 +547,6 @@ eda_credentials:
       auth_type: token
       token: "{{ lab_user_insight_token }}"
       http_header_key: X-Insight-Token
-
   - name: "registry.redhat.io"
     description: "Registry Credentials"
     organization: Default
@@ -481,15 +556,23 @@ eda_credentials:
       username: "{{ lab_user_registry_username }}"
       password: "{{ lab_user_registry_password }}"
       verify_ssl: true
-
   - name: "Insights_AAP"
     description: "Red Hat Insights AAP User"
     organization: Default
     credential_type: "Red Hat Ansible Automation Platform"
     inputs:
       host: "{{ ansible_automation_platform_configuration_host }}/api/controller/"
-      username: Insights_AAP
-      password: "{{ lab_user_insight_token }}"
+      username: admin
+      password: "{{ common_password }}"
+      verify_ssl: false
+  - name: "RH AAP Credential"
+    description: "Red Hat Ansible Automation Platform Credential"
+    organization: Default
+    credential_type: "Red Hat Ansible Automation Platform"
+    inputs:
+      host: "{{ ansible_automation_platform_configuration_host }}/api/controller/"
+      password: "{{ ansible_automation_platform_configuration_password }}"
+      username: "{{ ansible_automation_platform_configuration_username }}"
       verify_ssl: false
 
 eda_decision_environments:
@@ -498,6 +581,10 @@ eda_decision_environments:
     image_url: "registry.redhat.io/ansible-automation-platform-25/de-supported-rhel8:latest"
     eda_credential: "registry.redhat.io"
     credential: "registry.redhat.io"
+  - name: "{{ eda_decision_environment_name }}"
+    description: "Decision Environment for OpenShift"
+    organization: Default
+    image_url: "{{ eda_decision_environment_image }}"
 
 eda_event_streams:
   - name: "Red Hat Insights Event Stream"
@@ -508,24 +595,48 @@ eda_event_streams:
     forward_events: true
 
 eda_projects:
+  - name: "OpenShift Event Rulebooks"
+    description: "Event-driven Ansible rulebooks"
+    organization: Default
+    url: "{{ eda_gitea_repo_url }}"
+    tls_validation: false
   - name: "RH Insights"
     description: "Red Hat Insights Project"
     organization: Default
     url: "https://github.com/jeromemarc/eda-insights"
     tls_validation: true
 
-# eda_rulebook_activations:
-#   - name: "RH Insights rulebook"
-#     description: "Red Hat Insights rulebook"
-#     organization: Default
-#     project: "RH Insights"
-#     rulebook: "insights-eda-malware-rulebook.yml"
-#     decision_environment: Default Decision Environment
-#     restart_policy: "on-failure"
-#     eda_credentials: "Insights_AAP"
-#     # event_streams: "Red Hat Insights Event Stream"
-#     log_level: "error"
-#     state: present
+eda_rulebook_activations:
+  - name: "Patch Route With Cert"
+    description: "Patch OpenShift Routes"
+    organization: Default
+    project: "OpenShift Event Rulebooks"
+    rulebook: "patch_route.yml"
+    decision_environment: "{{ eda_decision_environment_name }}"
+    restart_policy: "on-failure"
+    enabled: false
+    eda_credentials: "RH AAP Credential"
+    state: present
+  - name: "Set Resource Quota On Namespace"
+    description: "Set Resource Quota on OpenShift namespace"
+    organization: Default
+    project: "OpenShift Event Rulebooks"
+    rulebook: "resource_quota.yml"
+    decision_environment: "{{ eda_decision_environment_name }}"
+    restart_policy: "on-failure"
+    eda_credentials: "RH AAP Credential"
+    enabled: false
+    state: present
+  - name: "Create Volume Snapshot"
+    description: "Create PVC volume snapshot"
+    organization: Default
+    project: "OpenShift Event Rulebooks"
+    rulebook: "volume_snapshot.yml"
+    decision_environment: "{{ eda_decision_environment_name }}"
+    restart_policy: "on-failure"
+    eda_credentials: "RH AAP Credential"
+    enabled: false
+    state: present
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager_operator
@@ -535,51 +646,68 @@ ocp4_workload_cert_manager_operator_channel: stable-v1
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
 # -------------------------------------------------------------------
-ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/summit-opp-lab.git
+ocp4_workload_showroom_content_git_repo: https://github.com/redhat-gpte-devopsautomation/showroom-eda-with-insight.git
 ocp4_workload_showroom_content_git_repo_ref: main
 ocp4_workload_showroom_content_only: false
 ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
 
-# # -------------------------------------------------------------------
-# # Workload: vscode-server
-# # -------------------------------------------------------------------
-# install_vscode_server: true
-# vscode_server_install_nginx: true
-# vscode_use_automationcontroller_nginx: false
-# vscode_server_ansible_become: true
-# vscode_user_workspace_path: "/home/{{ student_name }}"
-# vscode_user_name: "{{ student_name }}"
-# vscode_user_password: "{{ common_password }}"
-# vscode_server_hostname: bastion.{{ guid }}.{{ sandbox_zone }}
-# vscode_ansible_python_interpreter: /usr/libexec/platform-python
-# vscode_server_default_extensions: []
-# vscode_server_extension_urls:
-#   - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
-#   - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
-#   - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
+# -------------------------------------------------------------------
+# Workload: additional_nodes_config_injector
+# -------------------------------------------------------------------
+additional_nodes_config_injector_user_auth_type: password
+additional_nodes_config_injector_insights: true
+additional_nodes_config_injector_insights_org: 13959588
+additional_nodes_config_injector_insights_activation_key: AK_Summit_Lab
 
-# vscode_server_additional_settings: |
-#   "files.exclude": {
-#     "**/.git": true,
-#     "**/.kube": true,
-#     "**/.bash*": true,
-#     "**/.vim*": true,
-#     "**/.ssh": true,
-#     "**/.vscode": true,
-#     "**/.local": true,
-#     "**/.config": true,
-#     "**/.ansible": true,
-#     "**/.cache": true },
-#   "security.workspace.trust.enabled": false
+# -------------------------------------------------------------------
+# Workload: vscode-server
+# -------------------------------------------------------------------
+install_vscode_server: true
+vscode_server_install_nginx: true
+vscode_use_automationcontroller_nginx: false
+vscode_server_ansible_become: true
+vscode_user_workspace_path: "/home/{{ student_name }}"
+vscode_user_name: "{{ student_name }}"
+vscode_user_password: "{{ common_password }}"
+vscode_server_hostname: bastion.{{ guid }}.{{ sandbox_zone }}
+vscode_ansible_python_interpreter: /usr/libexec/platform-python
+vscode_server_default_extensions: []
+vscode_server_extension_urls:
+  - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
 
-# vscode_user_workspace_repos:
-#   - repo: "{{ controller_gitea_repo_url }}"
-#     name: demo
-#     branch: main
-#   - repo: "{{ eda_gitea_repo_url }}"
-#     name: eda-rulebooks
-#     branch: main
+vscode_server_additional_settings: |
+  "files.exclude": {
+    "**/.git": true,
+    "**/.kube": true,
+    "**/.bash*": true,
+    "**/.vim*": true,
+    "**/.ssh": true,
+    "**/.vscode": true,
+    "**/.local": true,
+    "**/.config": true,
+    "**/.ansible": true,
+    "**/.cache": true },
+  "security.workspace.trust.enabled": false
 
+vscode_user_workspace_repos:
+  - repo: "{{ controller_gitea_repo_url }}"
+    name: demo
+    branch: main
+  - repo: "{{ eda_gitea_repo_url }}"
+    name: eda-rulebooks
+    branch: main
+
+# -------------------------------------------------------------------
+# Agnosticd Passthrough Userdata
+# -------------------------------------------------------------------
+agnosticd_passthrough_user_data:
+  hybrid_cloud_url: https://console.redhat.com[window=_blank]
+  hybrid_cloud_username: lab-EB9A
+  hybrid_cloud_password: "R3dh4t2024!"
+  subdomain_base_suffix: "{{ subdomain_base_suffix }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
