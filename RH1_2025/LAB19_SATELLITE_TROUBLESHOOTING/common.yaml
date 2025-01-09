@@ -53,6 +53,16 @@ pert_capsule_user_name: admin
 pert_capsule_user_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
+# Role: rh1_lab19_satellite_init
+# -------------------------------------------------------------------
+var_guid: "{{ guid }}"
+var_subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
+var_subdomain_internal: "{{ guid }}.internal"
+var_workshop_satellite_url: "{{ groups['satellites'][0].split('.')[0] }}.{{ guid }}{{ subdomain_base_suffix}}"
+var_workshop_satellite_user_name: admin
+var_workshop_satellite_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
 # Workloads: showroom
 # -------------------------------------------------------------------
 
@@ -84,36 +94,6 @@ showroom_dnf_packages:
 
 showroom_pip_packages:
   - podman-compose
-
-# -------------------------------------------------------------------
-# asset_injector_assets
-# -------------------------------------------------------------------
-
-asset_injector_assets:
-
-  - description: Remove 50-cloud-init.conf, ssh issue
-    type: remove
-    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
-
-  - description: Remove 50-redhat.conf, ssh issue
-    type: remove
-    path: /etc/ssh/sshd_config.d/50-redhat.conf
-
-  - description: Update sshd_config for password auth
-    type: blockinfile
-    path: /etc/ssh/sshd_config
-    state: present
-    marker: "# {mark} Our custom SSH settings via Ansible"
-    block: |
-      # Our custom SSH settings via Ansible
-      ChallengeResponseAuthentication no
-      PasswordAuthentication yes
-      UsePAM yes
-
-  - description: Restart sshd to pick up new password support configuration
-    type: service
-    name: sshd
-    state: restarted
 
 # -------------------------------------------------------------------
 # Instance Config
@@ -335,6 +315,9 @@ software_workloads:
     - reconfigure_satellite
   capsules:
     - deploy_capsule
+post_software_workloads:
+  satellites:
+    - rh1_lab19_satellite_init
 
 # -------------------------------------------------------------------
 # Role: set-repositories
@@ -366,6 +349,7 @@ agd_bastion_packages:
   - podman
   - tree
   - runc
+  - ansible-navigator
 
 # -------------------------------------------------------------------
 # Ansible Module, Collections, and Roles Requirements
@@ -377,6 +361,44 @@ requirements_content:
 
     - name: deploy_capsule
       src: https://github.com/opentraining-labs-customizations/capsule-deploy-ar.git
+
+    - name: rh1_lab19_satellite_init
+      src: https://github.com/opentraining-labs-customizations/rh1-lab19-satellite-init.git
+
+# -------------------------------------------------------------------
+# asset_injector_assets
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
+
+  - description: Clone Git repository
+    type: git
+    src: https://github.com/opentraining-labs-customizations/rh1-lab19-satellite.git
+    dest: /home/lab-user/rh1-lab19-satellite
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -401,5 +423,5 @@ __meta__:
     parameters: []
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      image: quay.io/agnosticd/ee-ubi9-aap2.5:latest
       pull: missing
