@@ -110,7 +110,7 @@ requirements_content:
 infra_workloads:
   - ocp4_workload_authentication
   - ocp4_workload_le_certificates
-  - ocp4_workload_ansible_automation_platform
+  - ocp4_workload_ansible_automation_platform_25
   - ocp4_workload_gitea_operator
   - ocp4_workload_cert_manager_operator
   - ocp4_workload_cert_utils_operator
@@ -178,13 +178,12 @@ ocp4_workload_gitea_operator_repositories_list:
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_ansible_automation_platform
 # -------------------------------------------------------------------
-ocp4_workload_ansible_automation_platform_version: 2.5
-ocp4_workload_ansible_automation_platform_subscription_channel: "stable-2.5"
 ocp4_workload_ansible_automation_platform_admin_password: "{{ common_password }}"
+ocp4_workload_ansible_automation_platform_inject_manifest: true
 ocp4_workload_ansible_automation_platform_manifest:
   url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
-  inject: true
 ocp4_workload_ansible_automation_platform_create_eda_rolebinding: true
+ocp4_workload_ansible_automation_platform_ocp_cluster_role: cluster-reader
 
 # -------------------------------------------------------------------
 # Workload: ansible_automation_platform_configuration
@@ -198,15 +197,39 @@ ansible_automation_platform_configuration_generate_ocp_token: true
 
 controller_dependency_check: false
 
+# --------------------------------------
+# EDA vars
+# --------------------------------------
 eda_decision_environment_name: "AAP2.5 - OCP4 Custom Decision"
 eda_decision_environment_image: "quay.io/mitsharm/eda/de-for-ocp-aap-25:latest"
 eda_gitea_repo_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/eda-rulebooks.git"
 controller_gitea_repo_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ student_name }}/event-driven-ansible.git"
 
+# --------------------------------------
+# infra aap configuration
+# --------------------------------------
 aap_configuration_dispatcher_roles: >
-  {{ controller_configuration_dispatcher_roles
-   + eda_configuration_dispatcher_roles
+  {{ gateway_configuration_dispatcher_roles
+    + controller_configuration_dispatcher_roles
+    + eda_configuration_dispatcher_roles
   }}
+
+
+# ----------------
+# Gateway
+# ----------------
+aap_hostname: "{{ ansible_automation_platform_configuration_host }}"
+aap_username: "{{ ansible_automation_platform_configuration_username }}"
+aap_password: "{{ ansible_automation_platform_configuration_password }}"
+aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
+
+gateway_configuration_dispatcher_roles:
+  - role: gateway_settings
+    var: gateway_settings
+    tags: gateway_settings
+
+gateway_settings:
+  SESSION_COOKIE_AGE: 9000
 
 # ----------------
 # Controller
@@ -421,7 +444,7 @@ __meta__:
         formLabel: Control Plane Instance Type
         openAPIV3Schema:
           type: string
-          default: m6a.2xlarge
+          default: m6a.4xlarge
           enum:
             - m6a.4xlarge
             - m6a.2xlarge
