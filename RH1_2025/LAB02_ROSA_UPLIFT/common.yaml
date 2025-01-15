@@ -52,7 +52,8 @@ rosa_version_base: "openshift-v4.16"
 rosa_installer_version: latest
 
 # best guess on number of compute nodes is based on 60 users: 12 nodes
-rosa_compute_replicas: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 2] | max }}"
+# minimum compute nodes, 3
+rosa_compute_replicas: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
 
 rosa_setup_cluster_admin: true
 rosa_setup_cluster_admin_login: true
@@ -90,9 +91,10 @@ bastion_custom_motd: |-
 infra_workloads:
 - ocp4_workload_rosa_machinepool
 - ocp4_workload_authentication_rosa
+# - ocp4_workload_openshift_data_foundation
 - ocp4_workload_kubevirt
-- ocp4_workload_mtv
-# - ocp4_workload_virt_roadshow_vmware
+# - ocp4_workload_mtv # no MTV in RH1
+# - ocp4_workload_virt_roadshow_vmware # no vmware in RH1
 - ocp4_workload_openshift_gitops
 - ocp4_workload_ossm
 - ocp4_workload_gitops_bootstrap
@@ -105,14 +107,20 @@ ocp4_workload_user_count: "{{ (num_users | default('2')) | int }}"
 ocp4_workload_user_base: user
 
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.16_2024_10_21
+ocp4_workload_catalogsource_tag: v4.16_2025_01_13
 
 # -------------------------------------------------------------------
 # ocp4_workload_rosa_machinepool
 # -------------------------------------------------------------------
-# best guess on number of metal nodes: 8 users per metal node
-ocp4_workload_rosa_machinepool_replicas: "{{ [(num_users | int / 8) | round(0, 'ceil') | int, 2] | max }}"
+# best guess on number of metal nodes: 6 users per metal node
+# This assumes that the environment will start with users having
+# the three VMs in ns windowsnetworking-userN running
+# the three VMs in ns windowsmesh-userN stopped
+# For the last module, users must STOP their windowsnetworking-userN VMs
+# and START their windowsmesh-userN VMs
+ocp4_workload_rosa_machinepool_replicas: "{{ [(num_users | int / 6) | round(0, 'ceil') | int, 2] | max }}"
 ocp4_workload_rosa_machinepool_instance_types:
+- i3.metal
 - m5zn.metal
 - m5n.metal
 - m5.metal
@@ -129,6 +137,16 @@ ocp4_workload_authentication_rosa_token: "{{ rosa_token }}"
 ocp4_workload_authentication_rosa_aws_access_key_id: "{{ lookup('env','AWS_ACCESS_KEY_ID') | default(aws_access_key_id, true) | mandatory }}"
 ocp4_workload_authentication_rosa_aws_secret_access_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') | default(aws_secret_access_key, true) | mandatory }}"
 ocp4_workload_authentication_rosa_aws_region: "{{ lookup('env','AWS_DEFAULT_REGION') | default(aws_region, true) | mandatory }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_data_foundation
+# -------------------------------------------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.15
+ocp4_workload_openshift_data_foundation_catalogsource_setup: true
+ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1200
 
 # -------------------------------------------------------------------
 # ocp4_workload_kubevirt
@@ -248,6 +266,7 @@ ocp4_workload_ossm_servicemesh_startingcsv: ""
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/newgoliath/rosa_uplift.git
 ocp4_workload_gitops_bootstrap_repo_revision: main #put a tag, better
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+ocp4_workload_gitops_bootstrap_application_health_retries: 180 # 30 minutes
 
 ocp4_workload_gitops_bootstrap_helm_values:
   istio_cp_namespace: istio-system
