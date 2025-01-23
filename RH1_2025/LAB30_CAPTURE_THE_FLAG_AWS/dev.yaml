@@ -1,5 +1,5 @@
 ---
-#include /includes/ee-multicloud-dev.yaml
+# #include /includes/ee-multicloud-dev.yaml
 #include /includes/access-restriction-sme-tester.yaml
 # -------------------------------------------------------------------
 # Purpose
@@ -18,3 +18,219 @@ showroom_git_repo: https://github.com/RedHatQuickCourses/rh1-lab30-capture-the-f
 __meta__:
   deployer:
     scm_ref: development
+    execution_environment:
+      #image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.1
+      pull: always
+
+# -------------------------------------------------------------------
+# OpenShift Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+  - ocp4_workload_cert_manager
+  - rh1_lab30_labuser_ssh
+  - ocp4_workload_authentication
+  - rh1_lab30_ctf_ocp_config
+  #- ocp4_workload_showroom
+  - ctf_infra_role
+  - ansible_automation_platform_configuration
+
+# --------------------------------------------------------------------------------
+# ansible_automation_platform_configuration
+# --------------------------------------------------------------------------------
+ansible_automation_platform_configuration_host: "https://controller.{{ server_domain_suffix }}"
+ansible_automation_platform_configuration_username: admin
+ansible_automation_platform_configuration_password: "R3dh4t1!"
+ansible_automation_platform_configuration_verify_ssl: true
+ansible_automation_platform_configuration_create_controller_token: false
+ansible_automation_platform_configuration_generate_ocp_token: false
+
+controller_dependency_check: false
+
+aap_hostname: "{{ ansible_automation_platform_configuration_host }}"
+aap_username: "{{ ansible_automation_platform_configuration_username }}"
+aap_password: "{{ ansible_automation_platform_configuration_password }}"
+aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
+
+# ----------------
+# Gateway
+# ----------------
+aap_configuration_dispatcher_roles:
+  - {role: gateway_organizations, var: aap_organizations, tags: gateway_organizations}
+  - {role: gateway_users, var: aap_user_accounts, tags: gateway_users}
+  - {role: controller_inventories, var: controller_inventories, tags: controller_inventories}
+  - {role: controller_hosts, var: controller_hosts, tags: controller_hosts}
+  - {role: controller_projects, var: controller_projects, tags: controller_projects}
+  - {role: controller_job_templates, var: controller_templates, tags: controller_job_templates}
+
+lab_base_aap_name: "Table-{{guid}}"
+
+aap_organizations:
+  - name: "{{lab_base_aap_name}}-org"
+    description: Org for CTF people {{lab_base_aap_name}}-org
+
+aap_user_accounts:
+  - username: "{{lab_base_aap_name}}-user"
+    is_superuser: false
+    password: "R3dh4t1!"
+    email: "{{lab_base_aap_name}}-user@redhat.com"
+    organizations: "{{lab_base_aap_name}}-org"
+    first_name: "{{lab_base_aap_name}}"
+    last_name: User
+
+controller_inventories:
+  - name: "{{lab_base_aap_name}}-inventory"
+    description: "Inventory {{lab_base_aap_name}}"
+    organization: "{{lab_base_aap_name}}-org"
+    prevent_instance_group_fallback: false
+    state: present
+
+controller_hosts:
+  - name: server1
+    inventory: "{{lab_base_aap_name}}-inventory"
+    variables:
+      ansible_host: "server1.{{guid}}{{ subdomain_base_suffix }}"
+  - name: server2
+    inventory: "{{lab_base_aap_name}}-inventory"
+    variables:
+      ansible_host: "server2.{{guid}}{{ subdomain_base_suffix }}"
+
+controller_projects:
+  - name: "{{lab_base_aap_name}}-CTF Flags"
+    description: Red Hat Insights project
+    organization: "{{lab_base_aap_name}}-org"
+    execution_environment: "Default execution environment"
+    scm_type: git
+    scm_url: "https://github.com/rhpds/Red-Hat-CTF-Flags.git"
+    scm_branch: main
+    scm_clean: 'no'
+    scm_delete_on_update: 'no'
+    credential: "CTF Git Credential"
+
+controller_templates:
+  - name: "{{lab_base_aap_name}} - RHEL_1_funny_file_check"
+    job_type: run
+    inventory: "{{lab_base_aap_name}}-inventory"
+    project: "{{lab_base_aap_name}}-CTF Flags"
+    playbook: RHEL_1_funny_file_check.yaml
+    execution_environment: "Default execution environment"
+    credentials:
+      - "CTF Host Credential"
+
+  - name: "{{lab_base_aap_name}} - RHEL_2_sos_report_check"
+    job_type: run
+    inventory: "{{lab_base_aap_name}}-inventory"
+    project: "{{lab_base_aap_name}}-CTF Flags"
+    playbook: RHEL_2_sos_report_check.yaml
+    execution_environment: "Default execution environment"
+    credentials:
+      - "CTF Host Credential"
+
+  - name: "{{lab_base_aap_name}} - RHEL_3_podman_sandbox_check"
+    job_type: run
+    inventory: "{{lab_base_aap_name}}-inventory"
+    project: "{{lab_base_aap_name}}-CTF Flags"
+    playbook: RHEL_3_podman_sandbox_check.yaml
+    execution_environment: "Default execution environment"
+    credentials:
+      - "CTF Host Credential"
+
+  - name: "{{lab_base_aap_name}} - RHEL_4_podman_playground_check"
+    job_type: run
+    inventory: "{{lab_base_aap_name}}-inventory"
+    project: "{{lab_base_aap_name}}-CTF Flags"
+    playbook: RHEL_4_podman_playground_check.yaml
+    execution_environment: "Default execution environment"
+    credentials:
+      - "CTF Host Credential"
+
+  - name: "{{lab_base_aap_name}} - RHEL_5_install_a_webserver_check"
+    job_type: run
+    inventory: "{{lab_base_aap_name}}-inventory"
+    project: "{{lab_base_aap_name}}-CTF Flags"
+    playbook: RHEL_5_install_a_webserver_check.yaml
+    execution_environment: "Default execution environment"
+    credentials:
+      - "CTF Host Credential"
+
+  - name: "{{lab_base_aap_name}} - Ansible 1 - Users and Groups"
+    job_type: run
+    inventory: "{{lab_base_aap_name}}-inventory"
+    project: "{{lab_base_aap_name}}-CTF Flags"
+    playbook: ANSIBLE_Users-and-groups_check.yml
+    execution_environment: Default execution environment
+    credentials:
+      - "CTF Host Credential"
+
+  - name: "{{lab_base_aap_name}} - Ansible 2 - Permissions and Files"
+    job_type: run
+    inventory: "{{lab_base_aap_name}}-inventory"
+    project: "{{lab_base_aap_name}}-CTF Flags"
+    playbook: ANSIBLE_Permissions-and-Files_check.yml
+    execution_environment: Default execution environment
+    credentials:
+      - "CTF Host Credential"
+
+  - name: "{{lab_base_aap_name}} - Ansible 3 - Storage Management"
+    job_type: run
+    inventory: "{{lab_base_aap_name}}-inventory"
+    project: "{{lab_base_aap_name}}-CTF Flags"
+    playbook: ANSIBLE_Storage-Management_check.yml
+    execution_environment: Default execution environment
+    credentials:
+      - "CTF Host Credential"
+
+  - name: "{{lab_base_aap_name}} - Ansible 4 - Scheduling and Network Management"
+    job_type: run
+    inventory: "{{lab_base_aap_name}}-inventory"
+    project: "{{lab_base_aap_name}}-CTF Flags"
+    playbook: ANSIBLE_Scheduling-and-Networking_check.yml
+    execution_environment: Default execution environment
+    credentials:
+      - "CTF Host Credential"
+
+  - name: "{{lab_base_aap_name}} - OCP 1 - Adding Users and Assigning Permissions"
+    job_type: run
+    inventory: "{{lab_base_aap_name}}-inventory"
+    project: "{{lab_base_aap_name}}-CTF Flags"
+    playbook: OCP_users.yaml
+    execution_environment: "Custom RHO EE"
+    credentials:
+      - "CTF Host Credential"
+
+  - name: "{{lab_base_aap_name}} - OCP 2 - Resolving connectivity issues to a website hosted in OpenShift"
+    job_type: run
+    inventory: "{{lab_base_aap_name}}-inventory"
+    project: "{{lab_base_aap_name}}-CTF Flags"
+    playbook: OCP_connectivity.yaml
+    execution_environment: "Custom RHO EE"
+    credentials:
+      - "CTF Host Credential"
+    extra_vars:
+      cluster_api_url: "{{ lookup('agnosticd_user_data', 'openshift_api_server_url') }}"
+      # cluster_api_url: "{{ openshift_api_server_url | default('<Replace with OCP API URL e.g. api.example.opentlc.com:6443>') }}"
+
+  - name: "{{lab_base_aap_name}} - OCP 3 - Deploy MySQL DB and PHP Application"
+    job_type: run
+    inventory: "{{lab_base_aap_name}}-inventory"
+    project: "{{lab_base_aap_name}}-CTF Flags"
+    playbook: OCP_php_mysql.yaml
+    execution_environment: "Custom RHO EE"
+    credentials:
+      - "CTF Host Credential"
+    extra_vars:
+      cluster_api_url: "{{ lookup('agnosticd_user_data', 'openshift_api_server_url') }}"
+      # "{{ openshift_api_server_url | default('<Replace with OCP API URL e.g. api.example.opentlc.com:6443>') }}"
+
+  - name: "{{lab_base_aap_name}} - OCP 4 - Scheduling Issues"
+    job_type: run
+    inventory: "{{lab_base_aap_name}}-inventory"
+    project: "{{lab_base_aap_name}}-CTF Flags"
+    # playbook: OCP_scheduling_issues.yaml
+    playbook: hello_world.yml
+    execution_environment: "Custom RHO EE"
+    credentials:
+      - "CTF Host Credential"
+    extra_vars:
+      cluster_api_url: "{{ lookup('agnosticd_user_data', 'openshift_api_server_url') }}"
+      # cluster_api_url: "{{ openshift_api_server_url | default('<Replace with OCP API URL e.g. api.example.opentlc.com:6443>') }}"
