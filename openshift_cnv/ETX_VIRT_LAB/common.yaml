@@ -1,0 +1,245 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog: Red Workshops
+# --- Catalog Item: ETX Virtualization Lab
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+
+#include /includes/catalog-icon-virtualization.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/showroom-ocp-defaults.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/secrets/openshift-ocpv-configs.yaml
+#include /includes/secrets/zerossl.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.17"
+
+# host_ocp4_installer_use_dev_preview: true
+# host_ocp4_installer_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp/candidate-4.18/openshift-install-linux.tar.gz
+# host_ocp4_client_url: https://mirror.openshift.com/pub/openshift-v4/clients/ocp/candidate-4.18/openshift-client-linux.tar.gz
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.5
+bastion_cores: 2
+bastion_memory: 6Gi
+
+ai_control_plane_cores: 16
+ai_control_plane_memory: 32Gi
+
+worker_instance_count: 3
+ai_workers_cores: 16
+ai_workers_memory: 32Gi
+
+ai_attach_workers_networks:
+- default/flatnetwork
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+- ocp4_workload_external_odf
+- ocp4_workload_authentication
+- ocp4_workload_cert_manager
+- ocp4_workload_kubevirt
+- ocp4_workload_mtv
+- ocp4_workload_nmstate
+- ocp4_workload_virt_network_config
+# - ocp4_workload_showroom
+
+# --- Workloads that have removal logic implemented that needs to be run (YAML List)
+remove_workloads: []
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# -------------------------------------------------------------------
+odf_channel: stable-4.17
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_count: 2
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+# Values from /includes/secrets/dynamic-aws-dns.yaml
+# route53_aws_zone_id:
+# route53_aws_access_key_id:
+# route53_aws_secret_access_key:
+
+ocp4_workload_cert_manager_channel: stable-v1.15
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+
+ocp4_workload_cert_manager_cloud_provider: ec2
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+# For 4.18 use dev preview
+# ocp4_workload_kubevirt_channel: dev-preview
+# Use PVCs for KubeVirt boot images
+ocp4_workload_kubevirt_boot_sources_shapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_mtv
+# -------------------------------------------------------------------
+ocp4_workload_mtv_channel: release-v2.7
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_nmstate
+# -------------------------------------------------------------------
+# 2025/02/19: NMState Operator is missing from 4.18 catalog
+ocp4_workload_nmstate_channel: stable
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_virt_network_config
+# -------------------------------------------------------------------
+ocp4_workload_virt_network_config_multi_user: false
+ocp4_workload_virt_network_config_networks: "{{ ai_attach_workers_networks | default([]) }}"
+
+# ------------------------------------------------------
+# Showroom
+# ------------------------------------------------------
+# ocp4_workload_showroom_name: showroom
+# ocp4_workload_showroom_namespace: showroom
+# ocp4_workload_showroom_content_only: true
+
+# ocp4_workload_showroom_content_git_repo: tbd
+# ocp4_workload_showroom_content_git_repo_ref: main
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 010827a2-b898-4e7f-b980-8239f56f7bbe
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2025-02-14
+      pull: missing
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: OcpSandbox
+    namespace_suffix: ocp4-cluster
+    cloud_selector:
+      cloud: cnv
+      name: "{{ job_vars.ocpv_cluster }}"
+      virt: "yes"
+    quota:
+      limits.cpu: "128"
+      requests.cpu: "128"
+      limits.memory: "400Gi"
+      requests.memory: "400Gi"
+  catalog:
+    display_name: ETX Virtualization Lab
+    category: Workshops
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    multiuser: false
+    workshopLabUiRedirect: false
+    workshopUiMaxInstances: 3
+    keywords:
+    - workshop
+    - openshift
+    - ocp
+    - ocp417
+    - cnv
+    - cnvocp
+    - ocpcnv
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+      Featured_Score: '94'
+    reportingLabels:
+      assetGroup: Virtualization
+  owners:
+    maintainer:
+    - name: Wolfgang Kulhanek
+      email: wkulhane@redhat.com
+    - name: Judd Maltin
+      email: judd@redhat.com
+    sme:
+    - name: Juliano Mohr
+      email: jboeselm@redhat.com
+    - name: Alberto Gonzales Rodriguez
+      email: josegonz@redhat.com
+    instructions:
+    - name: Alan Cowles
+      email: acowles@redhat.com
+    - name: Wolfgang Kulhanek
+      email: wkulhane@redhat.com
+  tower:
+    timeout: 21600
