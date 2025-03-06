@@ -30,7 +30,7 @@ cloud_provider: ec2
 # -------------------------------------------------------------------
 # Instance Variables
 # -------------------------------------------------------------------
-default_instance_image: RHEL94GOLD-latest
+default_instance_image: RHEL95GOLD-latest
 controller_instance_image: aap-2.5-10.1-x86_64-20250304
 
 default_instance_type: "t3a.large"
@@ -65,6 +65,13 @@ security_groups:
         description: "HTTPS Public"
         from_port: 443
         to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: GiteaHTTPSPorts
+        description: "Gitea HTTPS Public"
+        from_port: 488
+        to_port: 488
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
@@ -128,7 +135,7 @@ instances:
       - WebSG
       - NodeSG
 
-  - name: "controller"
+  - name: "aap"
     count: 1
     unique: true
     public_dns: true
@@ -187,15 +194,20 @@ pre_software_workloads:
     - control-user
     - vscode-server
     - gitea_vm_setup
+
 software_workloads:
   controllers:
     - nginx_with_cert
     - ansible_automation_platform_configuration
 
+post_software_workloads:
+  bastions:
+    - showroom
+
 # -------------------------------------------------------------------
 # Common Password
 # -------------------------------------------------------------------
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:12] }}"
 
 # -------------------------------------------------
 # Role: set-repositories
@@ -244,14 +256,21 @@ control_user_private_group: "{{ omit }}"
 # -------------------------------------------------------------------
 # Workload: vscode-server
 # -------------------------------------------------------------------
+vscode_server_version: "4.95.3"
+vscode_server_rpm_url: >-
+  https://github.com/coder/code-server/releases/download/v{{ vscode_server_version }}/code-server-{{ vscode_server_version }}-amd64.rpm
+
 install_vscode_server: true
 vscode_server_install_nginx: true
 vscode_use_automationcontroller_nginx: false
+vscode_server_nginx_https_port: 8443
+
 vscode_server_ansible_become: true
 vscode_user_workspace_path: "/home/{{ student_name }}"
+vscode_auth_type: none
 vscode_user_name: "{{ student_name }}"
 vscode_user_password: "{{ common_password }}"
-vscode_server_hostname: bastion.{{ guid }}.{{ sandbox_zone }}
+vscode_server_hostname: "{{ groups['bastions'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}"
 vscode_ansible_python_interpreter: /usr/libexec/platform-python
 vscode_server_default_extensions: []
 vscode_server_extension_urls:
@@ -280,7 +299,6 @@ vscode_server_additional_settings: |
 #   - repo: "{{ eda_gitea_repo_url }}"
 #     name: eda-rulebooks
 #     branch: main
-
 # -------------------------------------------------------------------
 # Workload: nginx_with_cert
 # -------------------------------------------------------------------
@@ -291,7 +309,11 @@ nginx_with_cert_hostname: "{{ groups['controllers'][0].split('.')[0] }}.{{ guid 
 # Workload: gitea_vm_setup
 # -------------------------------------------------------------------
 gitea_db_pasword: "{{ common_password }}"
-gitea_vm_https_port: 8443
+gitea_vm_https_port: 488
+
+gitea_vm_repos:
+  - name: project-automation-controller
+    url: https://gitlab.com/ansible-labs-crew/playbooks-adv-controller-2025.git
 
 # -------------------------------------------------------------------
 # Workload: ansible_automation_platform_configuration
@@ -311,6 +333,7 @@ aap_password: "{{ ansible_automation_platform_configuration_password }}"
 aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
 
 ssh_privatekey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path) }}"
+gitea_host_repo_url: https://{{ groups['bastions'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}:488
 
 aap_configuration_dispatcher_roles:
   - {role: controller_license, var: controller_license, tags: controller_license}
@@ -338,6 +361,13 @@ aap_user_accounts:
     last_name: User
 
 controller_credentials:
+  - name: gitea-credential
+    description: gitea credential
+    organization: "Default"
+    credential_type: "Source Control"
+    inputs:
+      username: "{{ student_name }}"
+      password: "{{ common_password }}"
   - name: lab-credential
     description: lab-user credential
     organization: "Default"
@@ -355,14 +385,47 @@ controller_inventories:
     state: present
 
 controller_hosts:
-  - name: node1
+  - name: "{{ groups['nodes'][0].split('.')[0] }}"
     inventory: "lab-inventory"
     variables:
-      ansible_host: "node1.example.com"
-  - name: node2
+      ansible_host: "{{ groups['nodes'][0].split('.')[0] }}.example.com"
+  - name: "{{ groups['nodes'][1].split('.')[0] }}"
     inventory: "lab-inventory"
     variables:
-      ansible_host: "node2.example.com"
+      ansible_host: "{{ groups['nodes'][1].split('.')[0] }}.example.com"
+
+controller_configuration_projects_async_retries: 90
+controller_projects:
+  - name: project-automation-controller
+    organization: Default
+    scm_branch: main
+    scm_clean: 'no'
+    scm_delete_on_update: 'no'
+    scm_type: git
+    scm_url: "{{gitea_host_repo_url }}/{{ student_name }}/project-automation-controller"
+    credential: gitea-credential
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+showroom_git_repo: https://github.com/rhpds/showroom-lb1706.git
+showroom_user: showroom
+showroom_ui: default
+
+showroom_user_password: "{{ common_password }}"
+showroom_ssh_method: sshkey
+showroom_tab_services:
+  - web1
+  - single_terminal
+
+showroom_ttys_enable_tmux: false
+showroom_lab_users:
+  - "{{ student_name }}"
+
+showroom_ssh_username: "{{ student_name }}"
+
+showroom_tab_web1_url: "https://{{ showroom_host }}:8443/"
+showroom_tab_web1_name: Codeserver
 
 # -------------------------------------------------------------------
 # Babylon meta variables
