@@ -1,0 +1,227 @@
+---
+#include /includes/catalog-icon-service-mesh.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+
+#include /includes/secrets/zerossl.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/vmware-ibm-rs-clusters-access.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/secrets/openshift-ocpv-configs.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: LB1755: Migrate now with the Migration Toolkit for Virtualization
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Top level vars
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+platform: rhpds
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.5
+bastion_cores: 2
+bastion_memory: 4Gi
+
+master_instance_count: 3
+worker_instance_count: 3
+
+ai_control_plane_cores: 8
+ai_control_plane_memory: 16Gi
+
+ai_workers_memory: 32Gi
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.18.1"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: false
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_cert_manager
+- ocp4_workload_external_odf
+- ocp4_workload_authentication
+- ocp4_workload_openshift_gitops
+- ocp4_workload_kubevirt
+- ocp4_workload_mtv
+- ocp4_workload_virt_roadshow_vms
+- ocp4_workload_virt_roadshow_vmware
+- ocp4_workload_gitops_bootstrap
+- ocp4_workload_showroom
+
+remove_workloads:
+- ocp4_workload_virt_roadshow_vmware
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_count: 1
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.18_2025_02_24
+
+# -------------------------------------------------------------------
+# ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_count: 1
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1.15
+ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_cert_manager_starting_csv: cert-manager-operator.v1.15.0
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_external_odf
+# -------------------------------------------------------------------
+odf_channel: stable-4.17
+
+# -------------------------------------------------------------------
+# ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+ocp4_workload_kubevirt_use_catalog_snapshot: true
+ocp4_workload_kubevirt_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_kubevirt_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_kubevirt_starting_csv: kubevirt-hyperconverged-operator.v4.17.v5.8.v1.62.v1.89.v2.6.5
+
+# -------------------------------------------------------------------
+# ocp4_workload_mtv
+# -------------------------------------------------------------------
+ocp4_workload_mtv_channel: release-v2.7
+ocp4_workload_mtv_use_catalog_snapshot: true
+ocp4_workload_mtv_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_mtv_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_roadshow_vms
+# -------------------------------------------------------------------
+ocp4_workload_virt_roadshow_vms_num_users: "{{ ocp4_workload_user_count }}"
+ocp4_workload_virt_roadshow_vms_namespace: vmimported
+ocp4_workload_virt_roadshow_vms_start_vms: true
+# Roadshow Setup
+# When set to true (default) then the application made up from the VMs will not
+# work until instructions are followed.
+# When false the application will work out of the box without changes
+ocp4_workload_virt_roadshow_vms_roadshow_setup: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_roadshow_vmware
+# -------------------------------------------------------------------
+ocp4_workload_virt_roadshow_vmware_num_users: "{{ ocp4_workload_user_count }}"
+ocp4_workload_virt_roadshow_vmware_vcenter_folder: "ocpvirt-{{ guid }}"
+ocp4_workload_virt_roadshow_vmware_enable_mtv: true
+ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/redhat-gpte-devopsautomation/virt-ossm-showroom
+ocp4_workload_showroom_content_git_repo_ref: v1.0.1
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: 1.3.3
+ocp4_workload_showroom_terminal_image: quay.io/oschneid/openshift-showroom-terminal:1.0
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/redhat-gpte-devopsautomation/virt-mtv
+ocp4_workload_gitops_bootstrap_repo_revision: v1.0.0
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  user: user1
+  ossm:
+    git:
+      revision: v1.0.0
+    values:
+      myKey: myValue1
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 09058d33-d984-40f3-a3c1-70333b285c13
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2025-02-14
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: OcpSandbox
+    namespace_suffix: ocp4-cluster
+    cloud_selector:
+      cloud: cnv
+      purpose: prod
+      virt: "yes"
+  catalog:
+    display_name: "LB1755: Migrate now with the Migration Toolkit for Virtualization"
+    category: Red_Hat_Summit_2025
+    keywords:
+    - workshop
+    - openshift
+    - virtualization
+    - migration
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+  owners:
+    maintainer:
+    - name: Judd Maltin
+      email: judd@redhat.com
+    - name: Juliano Mohr
+      email: jboeselm@redhat.com
+    sme:
+    - name: Alberto Gonzalez Rodriguez
+      email: josegonz@redhat.com
+    - name: Wolfgang Kulhanek
+      email: wkulhane@redhat.com
+    instructions:
+    - name: Judd Maltin
+      email: judd@redhat.com
+    - name: Jochen Shroder
+      email: joschrod@redhat.com
