@@ -1,0 +1,118 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-9-arm-latest.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: rhel8-base
+
+# Unset key name
+key_name: ""
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+bastion_public_hostname: "rhel9.{{ guid }}.{{ sandbox_zone }}"
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+rhel9_instance_image: RHEL94GOLD-latest
+rhel9_instance_type: "t4g.medium"
+infra_images_arch: arm64
+rootfs_size_rhel9: 200
+
+instances:
+- name: "rhel9"
+  count: 1
+  unique: true
+  public_dns: true
+  floating_ip: true
+  image: "{{ rhel9_instance_image }}"
+  flavor:
+    ec2: "{{ rhel9_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions"
+  - key: "ostype"
+    value: "linux"
+  rootfs_size: "{{ rootfs_size_rhel9 }}"
+  volumes:
+  - device_name: "/dev/xvdb"
+    size: "20"
+    type: gp3
+  security_groups:
+  - BastionSG
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+repo_method: satellite
+use_content_view: true
+
+# -------------------------------------------------------------------
+# Role: common
+# -------------------------------------------------------------------
+common_packages_el9:
+- python3
+- unzip
+- bash-completion
+- tmux
+- bind-utils
+- wget
+- nano
+- git
+- vim-enhanced
+- httpd-tools
+- openldap-clients
+- podman
+- tree
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: a5580035-7446-4302-975b-9db47c4258f8
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: >-
+      LB2255: Project Jumpstarter: RHEL ARM
+    category: Red_Hat_Summit_2025
+    keywords:
+    - summit
+    - summit_2025
+    - summit2025
+    - lb2255
+    - lab2255
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHDP
+    multiuser: false
+    parameters: []
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.1
+      pull: missing
+  owners:
+    maintainer:
+    - email: mkuehl@redhat.com
+      name: Michael Kuehl
+    - email: majopela@redhat.com
+      name: Miguel Angel Ago
+    sme:
+    - email: mkuehl@redhat.com
+      name: Michael Kuehl
+    - email: majopela@redhat.com
+      name: Miguel Angel Ago
