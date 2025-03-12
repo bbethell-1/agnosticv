@@ -1,0 +1,205 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog: Red Hat Summit 2025
+# --- Catalog Item: "LB1136: The Definitive Red Hat Enterprise Linux 10 Hands-On Lab"
+# -------------------------------------------------------------------
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+#include /includes/secrets/openshift-ocpv-configs.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/lifetime-standard.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: base-infra
+cloud_provider: openshift_cnv
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}.{{ guid }}{{ subdomain_base_suffix }}"
+
+# -------------------------------------------------------------------
+# inventory_groups (optional but nice to have)
+# -------------------------------------------------------------------
+
+inventory_groups:
+  - bastions
+
+# -------------------------------------------------------------------
+# Role: ansible_service_account
+# -------------------------------------------------------------------
+
+ansible_service_account_user_name: "{{ student_name }}"
+ansible_service_account_user_password: "{{ common_password }}"
+ansible_service_account_user_preferred_python: "3.12"
+
+# -------------------------------------------------------------------
+# asset_injector_assets
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+cloud_tags:
+  env_type: "{{ env_type }}"
+  platform: "{{ platform | default('unknown') }}"
+
+rhel_instance_image: rhel10-beta
+rootfs_size_rhel: 200Gi
+
+instances:
+  - name: "rhel"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel_instance_image }}"
+    memory: 16G
+    cores: 4
+    image_size: "{{ rootfs_size_rhel }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: rhel
+        ports:
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: rhel-https
+    routes:
+      - name: rhel-https
+        host: rhel
+        service: rhel
+        targetPort: 443
+        tls: true
+
+# -------------------------------------------------------------------
+# Workloads: showroom
+# -------------------------------------------------------------------
+
+#showroom_git_repo: "https://github.com/rhpds/showroom-lb1136-rhel-10-hol.git"
+showroom_user: showroom
+showroom_ui: default
+
+showroom_tab_services:
+#  - web1
+  - tty1
+
+showroom_tab_tty1_username: "{{ student_name }}"
+showroom_showroom_default_ssh_user: "{{ student_name }}"
+showroom_ttys_enable_tmux: false
+showroom_enable_root_ssh: true
+showroom_ssh_method: sshkey
+showroom_ssh_host: host.containers.internal
+showroom_lab_users:
+  - "{{ student_name }}"
+showroom_user_password: "{{ common_password }}"
+
+#showroom_tab_web1_url: "https://{{ showroom_host }}:8443/"
+#showroom_tab_web1_name: Codeserver
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+repo_method: none
+use_content_view: false
+
+# -------------------------------------------------------------------
+# Role: common
+# -------------------------------------------------------------------
+
+student_name: lab-user
+student_password: "{{ common_password }}"
+
+agd_install_bastion_base: false
+bastion_install_basic_packages: false
+install_common: false
+# common_packages_el9:
+#agd_bastion_packages:
+#  - python3
+# - unzip
+#  - bash-completion
+#  - tmux
+#  - bind-utils
+  # - wget
+  # - nano
+  # - git
+  # - vim-enhanced
+  # - httpd-tools
+  # - openldap-clients
+  # - podman
+  # - tree
+  # - runc
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 6F387EE4-3F15-4DDB-A5C1-182776E56CEE
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1136: The Definitive Red Hat Enterprise Linux 10 Hands-On Lab"
+    category: Red_Hat_Summit_2025
+    keywords:
+      - rhel
+      - rhel10
+      - lb1136
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHDP
+    multiuser: false
+    parameters: []
+    reportingLabels:
+      primaryBU: RHEL
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        name: ocpv07
+        purpose: prod
+        virt: "yes"
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
