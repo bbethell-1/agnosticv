@@ -1,26 +1,14 @@
 ---
-# -------------------------------------------------------------------
-# --- Catalog: Summit 2025
-# --- Catalog Item: LB1212: Cooking Up A Perfect Model - The Recipe for Success with InstructLab & RHEL AI
-# -------------------------------------------------------------------
-
-# -------------------------------------------------------------------
-# AgnosticV includes
-# -------------------------------------------------------------------
-
-#include /includes/ansible_control_plane/current_controller.yaml
 #include /includes/aws-sandbox-meta.yaml
 #include /includes/catalog-icon-rhel.yaml
-#include /includes/lifetime-standard.yaml
-#include /includes/parameters/salesforce-id.yaml
-#include /includes/parameters/purpose.yaml
-#include /includes/parameters/aws-gpu-regions-us.yaml
-#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-#include /includes/secrets/ocp4_token.yaml
-#include /includes/secrets/s3-rhpds-private-bucket.yaml
-#include /includes/secrets/zerossl.yaml
 #include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+#include /includes/secrets/hugging-face-ro-token.yaml
 
 # ---------------------------------------------------------------------
 # Mandatory Variables
@@ -28,17 +16,7 @@
 
 env_type: base-infra
 cloud_provider: ec2
-# this is default region but overriden by the aws-region2 parameter include
-aws_region: us-east-2
-
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-
-# ---------------------------------------------------------------------
-# Work around the RHELAI12 cloud-user issue, see instance tags
-# ---------------------------------------------------------------------
-
-ansible_user: ec2-user
-remote_user: ec2-user
 
 # --------------------------------------------------------------------
 # Platform
@@ -47,30 +25,157 @@ remote_user: ec2-user
 platform: RHPDS
 
 # --------------------------------------------------------------------
+# Post Software Workloads
+# --------------------------------------------------------------------
+
+software_workloads:
+  bastions:
+    - novnc
+    - rhel-graphical
+    - podman_desktop
+    - vscode-server
+    - agnosticd.ai.setup_nvidia_cuda
+    - agnosticd.ai.setup_instructlab
+
+# -------------------------------------------------------------------
+# Workloads: rhel_firewalld
+# -------------------------------------------------------------------
+rhel_firewalld_open_ports:
+  - 6443/tcp
+  - 8443/tcp
+  - 8000/tcp
+  - 8001/tcp
+  - 8002/tcp
+  - 8003/tcp
+  - 8004/tcp
+  - 8005/tcp
+  - 8006/tcp
+  - 8007/tcp
+  - 8008/tcp
+  - 8009/tcp
+  - 8010/tcp
+
+# -------------------------------------------------------------------
+# Workloads: novnc
+# -------------------------------------------------------------------
+
+novnc_proxy_port: 6443
+
+# --------------------------------------------------------------------
 # Repos and packages
 # --------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Workloads: rhel-graphical
+# -------------------------------------------------------------------
+
+install_rhel_graphical: true
+
+# -------------------------------------------------------------------
+# Workloads: showroom
+# -------------------------------------------------------------------
+
+showroom_git_repo: https://github.com/rhpds/showroom_instructlab_summit_connect.git
+showroom_git_ref: v19-updates-summit-connect-tag-1.1.0
+
+showroom_user: showroom
+showroom_ui: default
+
+showroom_tab_services:
+  - single_terminal
+  - parasol
+  - web2
+
+showroom_user_password: "{{ common_password }}"
+showroom_ssh_method: sshkey
+
+showroom_lab_users:
+  - "{{ student_name }}"
+
+showroom_tab_double_tty_top_username: "{{ student_name }}"
+showroom_tab_double_tty_bottom_username: "{{ student_name }}"
+
+showroom_ttys_enable_tmux: true
+
+# TODO: Add a parasol port var
+
+showroom_tab_web1_url: "http://{{ showroom_host }}:8005/v1"
+showroom_tab_web1_name: Parasol
+
+showroom_tab_web2_url: "http://{{ showroom_host }}:8443"
+showroom_tab_web2_name: CodeServer
+
+# -------------------------------------------------------------------
+# Role: vscode-server
+# -------------------------------------------------------------------
+
+vscode_auth_type: none
+
+vscode_server_version: "4.95.3" #NOTE No leading `v` due to braindead url which mixes v and non v semantic versions
+vscode_server_rpm_url: >-
+  https://github.com/coder/code-server/releases/download/v{{ vscode_server_version }}/code-server-{{ vscode_server_version }}-amd64.rpm
+
+vscode_server_install_vscode: true
+vscode_server_install_nginx: true
+vscode_server_ansible_become: true
+vscode_server_nginx_https_port: 8443
+vscode_server_hostname: "{{ groups['bastions'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}"
+vscode_server_default_extensions: []
+vscode_server_extension_urls: []
+vscode_user_name: "{{ student_name }}"
+
+vscode_server_additional_settings: |
+  "files.exclude": {
+    "**/.git": true,
+    "**/.bash*": true,
+    "**/.vim*": true,
+    "**/.ssh": true,
+    "**/.vscode": true,
+    "**/.local": true,
+    "**/.config": true,
+    "**/.ansible": true,
+    "**/.cache": true
+  },
+  "security.workspace.trust.enabled": false
+
+# -------------------------------------------------------------------
+# Workloads: agnosticd.ai.setup_nvidia_cuda
+# -------------------------------------------------------------------
+
+setup_nvidia_cuda_nvidia_rhel_dnf_packages:
+  - "@nvidia-driver:latest-dkms"
+  - cuda-toolkit-12-4
+  - nvidia-gds
+  - libcudnn8
+  - libcudnn8-devel
+  - cuda-cccl-12-4
+  - libnccl-2.22.3-1+cuda12.4.x86_64
 
 use_content_view: true
 update_packages: true      # Do you want to run a full yum update
 
 agd_bastion_packages:
   - at
+  - ansible
   - bash-completion
   - bind-utils
   - git
   - podman
-  - buildah
-  - tmux
+  - python3.11
+  - python3.11-devel
+  - python3.11-pip
+  - tree
   - vim-enhanced
   - wget
+  - zip
 
 # -------------------------------------------------------------------
-# Role: software_workloads
+# Workloads: agnosticd.ai.setup_instructlab
 # -------------------------------------------------------------------
 
-software_workloads:
-  bastions:
-    - vscode-server
+setup_instructlab_llama_cpp_python_version: "0.2.79"
+setup_instructlab_git_ref: "v0.19.3"
+setup_instructlab_user: "{{ student_name }}"
 
 # -------------------------------------------------------------------
 # Role: set-repositories
@@ -84,14 +189,36 @@ repo_method: satellite
 
 asset_injector_assets:
 
-  # TODO: Leave for now but consider removing as redundant? Tony Kay 2024-01-05
-  # - description: Make ssh config
-  #   type: 'template'
-  #   src: ./files/ssh_config.j2
-  #   dest: /home/devops/ssh-config
-  #   owner: devops
-  #   group: users
-  #   mode: "u=r,g-rwx,o-rwx"
+  - description: Create files directory
+    type: directory
+    path: >-
+      /home/{{ student_name }}/files
+      owner: "{{ student_name }}"
+      group: users
+      mode: '0755'
+
+  - description: Clone repo with qna.yaml file
+    type: git
+    src: 'https://github.com/rhai-code/backToTheFuture.git'
+    dest: '/home/{{ student_name }}/files/backToTheFuture'
+    version: 'main'
+    owner: "{{ student_name }}"
+    group: users
+    mode: '0755'
+
+# Replace below with new model when ready in HuggingFace
+
+  - description: LLM fetch summit-connect-merlinite-lab-Q4
+    type: http
+    dest: >-
+      /home/{{ student_name }}/files/summit-connect-merlinite-lab-Q4.gguf
+    src: >-
+      https://d18h2xbjo1t4w8.cloudfront.net/ai-assets/summit-connect-merlinite-lab-Q4.gguf
+    url_username: "{{ s3_rhpds_private_username }}"
+    url_password: "{{ s3_rhpds_private_password }}"
+    owner: "{{ student_name }}"
+    group: users
+    mode: u=rw,g=r,o=r
 
   - description: Remove 50-cloud-init.conf, ssh issue
     type: remove
@@ -121,77 +248,20 @@ asset_injector_assets:
 # inventory_groups (optional but nice to have)
 # -------------------------------------------------------------------
 
-# inventory_groups:
-#   - bastions
-
-# -------------------------------------------------------------------
-# Workloads: showroom
-# -------------------------------------------------------------------
-
-showroom_git_repo: https://github.com/rhpds/showroom_instructlab_summit_connect.git
-showroom_git_ref: v19-updates-summit-connect-tag-1.1.0
-
-showroom_user: showroom
-showroom_ui: default
-
-showroom_tab_services:
-  - single_terminal
-  - web1
-  - parasol
-
-showroom_user_password: "{{ common_password }}"
-showroom_ssh_method: sshkey
-
-showroom_lab_users:
-  - "{{ student_name }}"
-
-showroom_ttys_enable_tmux: true
-
-showroom_tab_web1_url: "https://{{ showroom_host }}:8443/"
-showroom_tab_web1_name: Codeserver
-
-showroom_tab_web2_url: "http://{{ showroom_host }}:8005/v1"
-showroom_tab_web2_name: Parasol
-
-# -------------------------------------------------------------------
-# Role: vscode-server
-# -------------------------------------------------------------------
-
-vscode_auth_type: none
-
-vscode_server_version: "4.95.3" #NOTE No leading `v` due to braindead url which mixes v and non v semantic versions
-vscode_server_rpm_url: >-
-  https://github.com/coder/code-server/releases/download/v{{ vscode_server_version }}/code-server-{{ vscode_server_version }}-amd64.rpm
-
-vscode_server_install_vscode: true
-vscode_server_install_nginx: true
-vscode_server_ansible_become: true
-vscode_server_nginx_https_port: 8443
-vscode_server_hostname: "{{ groups['bastions'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}"
-vscode_user_name: dev
-vscode_server_default_extensions: []
-vscode_server_extension_urls: []
-
-vscode_server_additional_settings: |
-  "files.exclude": {
-    "**/.git": true,
-    "**/.bash*": true,
-    "**/.vim*": true,
-    "**/.ssh": true,
-    "**/.vscode": true,
-    "**/.local": true,
-    "**/.config": true,
-    "**/.ansible": true,
-    "**/.cache": true
-  },
-  "security.workspace.trust.enabled": false
+inventory_groups:
+  - bastions
 
 # -------------------------------------------------------------------
 # Role: common
 # -------------------------------------------------------------------
 
-student_name: dev
+student_name: developer
 student_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Role: create_ssh_provision_key
+# -------------------------------------------------------------------
+create_ssh_provision_key_enable_user_info_data: true
 
 # -------------------------------------------------------------------
 # Role: ansible_service_account
@@ -202,14 +272,7 @@ ansible_service_account_user_password: "{{ common_password }}"
 ansible_service_account_user_preferred_python: "3.9"
 
 # -------------------------------------------------------------------
-# inventory_groups (optional but nice to have)
-# -------------------------------------------------------------------
-
-inventory_groups:
-  - bastions
-
-# -------------------------------------------------------------------
-# cloud_tags
+# Cloud Tags
 # -------------------------------------------------------------------
 
 cloud_tags:
@@ -220,44 +283,22 @@ cloud_tags:
 # Instance Config
 # -------------------------------------------------------------------
 
-default_instance_type: t3a.large
-default_instance_image: RHEL95GOLD-latest
+rootfs_size_rhel9: 100
+rootfs_size_bastion: 1024
+bastion_rootfs_size: 200
 
-code_instance_type: "{{ default_instance_type }}"
-code_instance_image: "{{ default_instance_image }}"
-code_rootfs_size: 100
-
-rhelai_instance_type: g6.12xlarge
-rhelai_rootfs_size: 1024
-
-# -------------------------------------------------------------------
-# AMI Config - tmp for RHEL AI Eng CI
-# -------------------------------------------------------------------
-
-aws_ami_region_mapping:
-  us-east-2:
-    RHELAI10: ami-0be2f5c0ca770a10f
-    RHELAI12: ami-0cb37f2a376f6e2c6
-    RHELAI13: ami-0d9420df759e9a765  # Really 1.3.1
-  us-east-1:
-    RHELAI13: ami-05dc5d703f2600daf
-  us-west-1:
-    RHELAI13: ami-00963c6bcda96ee28
-  us-west-2:
-    RHELAI13: ami-02af9afa320f2f523
-
-rhelai_instance_image: RHELAI13
+bastion_instance_image: RHEL94GOLD-latest
 
 instances:
-
-  - name: code
+  - name: desktop
     count: 1
     unique: true
     public_dns: true
+    dns_loadbalancer: true
     floating_ip: true
-    image: "{{ code_instance_image }}"
+    image: "{{ bastion_instance_image }}"
     flavor:
-      ec2: "{{ code_instance_type }}"
+      ec2: "{{ bastion_instance_type }}"
     tags:
       - key: "AnsibleGroup"
         value: "bastions,showroom"
@@ -265,52 +306,44 @@ instances:
         value: "linux"
       - key: "instance_filter"
         value: "{{ env_type }}-{{ email }}"
-    rootfs_size: "{{ code_rootfs_size | default(100)  }}"
+    rootfs_size: "{{ rootfs_size_bastion | default(100)  }}"
     security_groups:
       - BastionSG
+      - RhelSG
       - HostSG
-      - ShowroomSG
-      - CodeserverSG
-      - ApplicationSG
-
-  - name: rhelai
-    count: 1
-    unique: true
-    public_dns: true
-    dns_loadbalancer: true
-    floating_ip: true
-    image: "{{ rhelai_instance_image }}"
-    flavor:
-      ec2: "{{ rhelai_instance_type }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "rhelai"
-      - key: "ostype"
-        value: "linux"
-      - key: "instance_filter"
-        value: "{{ env_type }}-{{ email }}"
-    rootfs_size: "{{ rhelai_rootfs_size | default(100) }}"
-    security_groups:
-      - BastionSG
-      - LLMSG
 
 # -------------------------------------------------------------------
 # Security Group Config
 # -------------------------------------------------------------------
 
 security_groups:
-  - name: HostSG
+  - name: RhelSG
     rules:
-      - name: FromHostSG
-        description: "Allow everything from HostSG nodes"
-        from_port: 0
-        to_port: 65535
-        protocol: -1
-        from_group: HostSG
+
+      - name: ClientNOVNCPort
+        description: "Client NOVNC Public"
+        from_port: 6080
+        to_port: 6080
+        protocol: tcp
+        cidr: "0.0.0.0/0"
         rule_type: Ingress
 
-  - name: ShowroomSG
-    rules:
+      - name: CertBotChallangePort
+        description: "Lets encrypt talks to 80"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: CertBotTLSPort
+        description: "TLS"
+        from_port: 6443
+        to_port: 6443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
       - name: ShowroomHTTPS
         description: "Primary showroom endpoint - for reverse proxy"
         from_port: 443
@@ -319,29 +352,6 @@ security_groups:
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
-  - name: ApplicationSG
-    rules:
-
-      - name: ApplicationHTTP
-        description: "Application HTTP Port"
-        from_port: 8005
-        to_port: 8005
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-
-  - name: LLMSG
-    rules:
-      - name: LLMAPI
-        description: "LLM API Port"
-        from_port: 8000
-        to_port: 8000
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-
-  - name: CodeserverSG
-    rules:
       - name: Codeserver
         description: "Codeserver Port"
         from_port: 8443
@@ -350,12 +360,30 @@ security_groups:
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
-      - name: LEChallange
-        description: LEChallange Port
-        from_port: 80
-        to_port: 80
+      - name: InstructLabAPI
+        description: "InstructLab API Port"
+        from_port: 8000
+        to_port: 8010 # lets open up a few ports for now
         protocol: tcp
         cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: ParasolHTTP
+        description: "Parasol HTTP Port"
+        from_port: 8005
+        to_port: 8005
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: HostSG
+    rules:
+      - name: FromHostSG
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: -1
+        from_group: HostSG
         rule_type: Ingress
 
 # -------------------------------------------------------------------
