@@ -22,7 +22,11 @@ common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 software_to_deploy: none
 install_student_user: True
 
-instructlab_zt_setup: True #For pre-installation tasks prior to network shutoff
+# Code to pre-configure ilab found at:
+# /agnosticd/ansible/configs/zero-touch-base-rhel/instructlab_setup.yml
+# Save in case of new image build
+instructlab_zt_setup: False
+
 # --------------------------------------------------------------------
 # Platform
 # --------------------------------------------------------------------
@@ -32,15 +36,15 @@ platform: ZEROTOUCH
 # -------------------------------------------------------------------
 # Post Software Workloads
 # -------------------------------------------------------------------
-post_software_workloads:
-  bastions:
-    - agnosticd.ai.setup_nvidia_cuda
-    - agnosticd.ai.setup_instructlab
+## Save in case of new image build
+# post_software_workloads:
+#   bastions:
+#     - agnosticd.ai.setup_nvidia_cuda
+#     - agnosticd.ai.setup_instructlab
 
 # -------------------------------------------------------------------
 # Workloads: agnosticd.ai.setup_nvidia_cuda
 # -------------------------------------------------------------------
-
 setup_nvidia_cuda_nvidia_rhel_dnf_packages:
   - "@nvidia-driver:latest-dkms"
   - cuda-toolkit-12-4
@@ -65,10 +69,9 @@ setup_instructlab_cuda_lib_path: "/usr/local/cuda-12.4/lib64:/usr/local/cuda-12.
 # --------------------------------------------------------------------
 
 use_content_view: true
-update_packages: true      # Do you want to run a full yum update
+update_packages: False     # Do you want to run a full yum update
 
 agd_bastion_packages:
-
   - at
   - bash-completion
   - bind-utils
@@ -91,46 +94,6 @@ repo_method: satellite
 # -------------------------------------------------------------------
 
 asset_injector_assets:
-
-  - description: Create files directory
-    type: directory
-    path: >-
-      /home/{{ student_name }}/files
-      owner: "{{ student_name }}"
-      group: users
-      mode: '0755'
-
-# replace the below once the new trained model is ready in HF
-  - description: Fetch the old trained LLM
-    type: http
-    dest: >-
-      /home/{{ student_name }}/files/ggml-ilab-pretrained-Q4_K_M.gguf
-    src: >-
-      https://gpte-public.s3.amazonaws.com/llms/ggml-ilab-pretrained-Q4_K_M.gguf
-    owner: "{{ student_name }}"
-    group: users
-    mode: u=rw,g=r,o=r
-
-  - description: Clone repo with qna.yaml file
-    type: git
-    src: 'https://github.com/rhai-code/instructlab_knowledge.git'
-    dest: '/home/{{ student_name }}/files/instructlab_knowledge'
-    version: 'main'
-    owner: "{{ student_name }}"
-    group: users
-    mode: '0755'
-
-  - description: Clone repo with cleanup script
-    type: git
-    src: 'https://github.com/rhai-code/workshop_reset_scripts.git'
-    dest: '/home/{{ student_name }}/files/reset'
-    version: 'main'
-    owner: "{{ student_name }}"
-    mode: '0755'
-
-  - description: Change reset script to executable
-    type: command
-    cmd: "chmod 0755 /home/{{ student_name }}/files/reset/cleanup_and_reset.sh"
 
   - description: Remove 50-cloud-init.conf, ssh issue
     type: remove
@@ -155,6 +118,47 @@ asset_injector_assets:
     type: service
     name: sshd
     state: restarted
+
+## Assets needed for new image build:
+#   - description: Create files directory
+#     type: directory
+#     path: >-
+#       /home/{{ student_name }}/files
+#       owner: "{{ student_name }}"
+#       group: users
+#       mode: '0755'
+
+# # replace the below once the new trained model is ready in HF
+#   - description: Fetch the old trained LLM
+#     type: http
+#     dest: >-
+#       /home/{{ student_name }}/files/ggml-ilab-pretrained-Q4_K_M.gguf
+#     src: >-
+#       https://gpte-public.s3.amazonaws.com/llms/ggml-ilab-pretrained-Q4_K_M.gguf
+#     owner: "{{ student_name }}"
+#     group: users
+#     mode: u=rw,g=r,o=r
+
+#   - description: Clone repo with qna.yaml file
+#     type: git
+#     src: 'https://github.com/rhai-code/instructlab_knowledge.git'
+#     dest: '/home/{{ student_name }}/files/instructlab_knowledge'
+#     version: 'main'
+#     owner: "{{ student_name }}"
+#     group: users
+#     mode: '0755'
+
+#   - description: Clone repo with cleanup script
+#     type: git
+#     src: 'https://github.com/rhai-code/workshop_reset_scripts.git'
+#     dest: '/home/{{ student_name }}/files/reset'
+#     version: 'main'
+#     owner: "{{ student_name }}"
+#     mode: '0755'
+
+#   - description: Change reset script to executable
+#     type: command
+#     cmd: "chmod 0755 /home/{{ student_name }}/files/reset/cleanup_and_reset.sh"
 
 # -------------------------------------------------------------------
 # inventory_groups (optional but nice to have)
@@ -193,7 +197,7 @@ showroom_lab_users:
 showroom_tab_double_tty_top_username: "{{ student_name }}"
 showroom_tab_double_tty_bottom_username: "{{ student_name }}"
 
-showroom_preffered_ansible_exec: "/usr/bin/python3.9 /usr/bin/ansible-playbook"
+showroom_preffered_ansible_exec: "/usr/bin/python3.11 /usr/bin/ansible-playbook"
 # -------------------------------------------------------------------
 # Role: common
 # -------------------------------------------------------------------
@@ -227,7 +231,17 @@ cloud_tags:
   env_type: "{{ env_type }}"
   platform: "{{ platform | default('unknown') }}"
 
-bastion_instance_image: RHEL93GOLD-latest
+infra_images_owner_id: "809721187735"
+
+infra_images_predefined:
+  RHEL95GOLD-latest:
+    owner: "{{ infra_images_owner_id }}"
+    name: zt-instructlab-rhel-03122025
+    architecture: x86_64
+    aws_filters:
+      is-public: false
+
+bastion_instance_image: RHEL95GOLD-latest
 bastion_instance_type: g5.xlarge
 
 instances:
