@@ -19,22 +19,20 @@
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/aws-regions-us.yaml
-#include /includes/parameters/showroom-ocp-defaults.yaml
 
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/secrets/ocp4_token.yaml
-#include /includes/secrets/zerossl.yaml
+#include /includes/secrets/rosa_token.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
 cloud_provider: ec2
-env_type: ocp4-cluster
-software_to_deploy: openshift4
+env_type: rosa-consolidated
 
 # Temporary create an open environment so that NetApp can examine what they need
-open_environment: true
+agnosticd_open_environment: true
+sandbox_user_info_messages_enable: false
 
 # -------------------------------------------------------------------
 # Platform
@@ -53,68 +51,26 @@ update_packages: true
 bastion_instance_type: t3a.medium
 bastion_instance_image: RHEL95GOLD-latest
 
-master_instance_count: 1
-master_instance_type: m6a.2xlarge
-
-worker_instance_count: 2
-worker_instance_type: m6a.4xlarge
-
 # -------------------------------------------------------------------
-# Student User on Bastion
+# ROSA specific
 # -------------------------------------------------------------------
-install_student_user: true
-student_name: lab-user
-student_sudo: true
+rosa_setup_cluster_admin: true
+rosa_setup_cluster_admin_login: true
+
+rosa_version: default
+rosa_version_base: "openshift-v4.16"
 
 # -------------------------------------------------------------------
-# OpenShift Installer Version
-# -------------------------------------------------------------------
-ocp4_installer_version: "4.18"
-ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-
-# -------------------------------------------------------------------
-# Workloads
+# Infra Workloads
 # -------------------------------------------------------------------
 infra_workloads:
-- ocp4_workload_authentication
-- ocp4_workload_cert_manager
+- ocp4_workload_rosa_fsx
 - ocp4_workload_kubevirt
-- ocp4_workload_showroom
 
 # -------------------------------------------------------------------
-# Workload variables
+# ocp4_workload_rosa_fsx
 # -------------------------------------------------------------------
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication
-# -------------------------------------------------------------------
-ocp4_workload_authentication_idm_type: htpasswd
-
-ocp4_workload_authentication_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: ""
-
-ocp4_workload_authentication_htpasswd_user_base: user
-# Generate user password
-ocp4_workload_authentication_htpasswd_user_password_randomized: true
-ocp4_workload_authentication_htpasswd_user_password: ""
-ocp4_workload_authentication_htpasswd_user_password_length: 16
-ocp4_workload_authentication_htpasswd_user_count: 1
-
-ocp4_workload_authentication_remove_kubeadmin: true
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_cert_manager
-# -------------------------------------------------------------------
-ocp4_workload_cert_manager_channel: stable-v1.15
-ocp4_workload_cert_manager_use_catalog_snapshot: false
-
-ocp4_workload_cert_manager_ec2_region: "{{ aws_region }}"
-ocp4_workload_cert_manager_ec2_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
-ocp4_workload_cert_manager_ec2_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
-
-ocp4_workload_cert_manager_install_ingress_certificates: true
-ocp4_workload_cert_manager_install_api_certificates: false
-ocp4_workload_cert_manager_ignore_errors: true
+ocp4_workload_rosa_fsx_deploy_fsx: true
 
 # -------------------------------------------------------------------
 # ocp4_workload_kubevirt
@@ -128,14 +84,17 @@ ocp4_workload_kubevirt_deploy_hyperconverged: true
 # ------------------------------------------------------
 # Showroom
 # ------------------------------------------------------
-ocp4_workload_showroom_name: showroom
-ocp4_workload_showroom_namespace: showroom
-ocp4_workload_showroom_content_only: false
-ocp4_workload_showroom_terminal_type: wetty
-ocp4_workload_showroom_wetty_ssh_bastion_login: true
+showroom_deploy: true
+showroom_git_repo: https://github.com/rhpds/showroom-summit2025-lb2739-trident
+showroom_git_ref: main
+showroom_var_inject: true
 
-ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom-summit2025-lb2739-trident
-ocp4_workload_showroom_content_git_repo_ref: main
+showroom_ssh_method: sshkey
+showroom_ssh_username: "{{ bastion_user_name }}"
+showroom_default_ssh_user: "{{ bastion_user_name }}"
+showroom_ssh_host: "bastion.{{ subdomain_base }}"
+showroom_lab_users:
+- "{{ bastion_user_name }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
