@@ -41,8 +41,6 @@ worker_storage_size: 250
 bastion_instance_type: t2.small
 bastion_instance_image: RHEL95GOLD-latest
 
-gpu_instance_type: g5.2xlarge
-
 aws_region: us-east-2
 
 openshift_machineset_aws_zones:
@@ -71,12 +69,10 @@ install_student_user: false
 # Workloads
 # -------------------------------------------------------------------
 infra_workloads:
-  - ocp4_workload_machinesets
   - ocp4_workload_authentication
   - ocp4_workload_cert_manager
   - ocp4_workload_openshift_data_foundation
   - ocp4_workload_openshift_gitops
-  - ocp4_workload_nvidia_gpu_setup
   - ocp4_workload_pipelines
   - ocp4_workload_serverless
   - ocp4_workload_ossm
@@ -102,24 +98,6 @@ common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:
 common_user_password: openshift
 
 # -------------------------------------------------------------------
-# ocp4_workload_machinesets
-# -------------------------------------------------------------------
-ocp4_workload_machinesets_wait_for_nodes: false
-
-ocp4_workload_machinesets_machineset_groups:
-  - name: worker-gpu
-    role: worker-gpu
-    instance_type: "{{ gpu_instance_type }}"
-    autoscale: true
-    total_replicas: 1
-    total_replicas_min: 1
-    total_replicas_max: 3
-    taints:
-      - key: nvidia.com/gpu
-        value: true
-        effect: NoSchedule
-
-# -------------------------------------------------------------------
 # ocp4_workload_authentication
 # -------------------------------------------------------------------
 ocp4_workload_authentication_idm_type: htpasswd
@@ -139,8 +117,7 @@ ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsour
 ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_cert_manager_starting_csv: cert-manager-operator.v1.15.0
 ocp4_workload_cert_manager_install_ingress_certificates: true
-# TODO check if api certs required
-ocp4_workload_cert_manager_install_api_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
 
 # -----------------------------------
 # ocp4_workload_openshift_data_foundation
@@ -197,27 +174,6 @@ ocp4_workload_openshift_gitops_ignore_differences: |
       jqPathExpressions:
       - .spec.template.spec.containers[] | select(.name == "redis")
 
-# ------------------------------------------------
-# ocp4_workload_nvidia_gpu_setup
-# ------------------------------------------------
-nfd_operator_channel: stable
-nfd_operator_operand_image: "registry.redhat.io/openshift4/ose-node-feature-discovery-rhel9:v4.18.0"
-nfd_operator_starting_csv: nfd.4.18.0-202502101733
-
-nvidia_gpu_operator_channel: v24.9
-nvidia_gpu_operator_starting_csv: gpu-operator-certified.v24.9.2
-
-# Operator not found in the this catalog snapshot.
-# nfd_operator_use_catalog_snapshot: true
-# nfd_operator_catalogsource_name: redhat-operators-snapshot-nfd
-# nfd_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
-# nfd_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-# Not implemented in the agd role.
-# nvidia_gpu_operator_use_catalog_snapshot: true
-# nvidia_gpu_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
-# nvidia_gpu_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
 # ---------------------------------------------------------
 # ocp4_workload_pipelines
 # ---------------------------------------------------------
@@ -254,9 +210,6 @@ ocp4_workload_ossm_kiali_startingcsv: kiali-operator.v1.89.9
 
 ocp4_workload_ossm_servicemesh_channel: stable
 ocp4_workload_ossm_servicemesh_startingcsv: servicemeshoperator.v2.6.5
-
-# TODO check if rhsso is required
-# ocp4_workload_rhsso_starting_csv: rhsso-operator.7.6.3-opr-002
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_ai
@@ -343,8 +296,6 @@ __meta__:
   asset_uuid: 725e14d2-ff6a-4e5d-a078-010ba0da071d
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
-  sandbox_api:
-    reservation: pgpu
   deployer:
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:2025-02-14
