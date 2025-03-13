@@ -10,36 +10,32 @@ ocp4_workload_showroom_terminal_type: wetty
 
 instances:
 - name: "{{ bastion_hostname | default('bastion') }}"
-  count: 1
-  unique: true
-  public_dns: false
-  dns_loadbalancer: true
-  floating_ip: false
   image: "{{ bastion_instance_image | default(default_instance_image) }}"
   image_type: registry
   memory: 2G
   cores: 1
-  image_size: 100Gi
+  image_size: 20Gi
   tags:
   - key: "AnsibleGroup"
     value: "bastions,showroom"
   - key: "ostype"
     value: "linux"
-  networks:
-  - default
-  services:
-  - name: bastion
-    ports:
-    - port: 443
-      protocol: TCP
-      targetPort: 443
-      name: bastion-https
-  routes:
-  - name: bastion-https
-    host: bastion
-    service: bastion
-    targetPort: 443
-    tls: true
+bastion_userdata: |
+    #cloud-config
+    write_files:
+      - path: /root/config.yaml
+        content: |
+          - hosts: localhost
+            gather_facts: false
+            tasks:
+            - name: Configure /etc/motd
+              blockinfile:
+                path: /etc/motd
+                content: "welcome to the lab"
+
+    runcmd:
+      - yum install -y ansible
+      - ansible-playbook /root/config.yaml
 
 # -------------------------------------------------------------------
 # Babylon meta variables
