@@ -13,15 +13,18 @@ jobs:
         uses: actions/checkout@v4
 
       - uses: actions/labeler@v5
+        id: label-the-PR
         with:
           repo-token: "${{ secrets.GITHUB_TOKEN }}"
           sync-labels: true
 
-      - name: Auto approve when 'dev only' label is present
+      - name: Auto approve when 'dev only', 'test only', or 'desc only' label is present
+        if: >-
+          contains(steps.label-the-PR.outputs.all-labels, 'dev only')
+          || contains(steps.label-the-PR.outputs.all-labels, 'test only')
+          || contains(steps.label-the-PR.outputs.all-labels, 'desc only')
         run: |-
-          if gh pr view "${PR_URL}" --json labels --jq '.labels[].name'| grep -qE -e '^dev only$' -e '^desc only$'; then
-            gh pr review --approve "$PR_URL"
-          fi
+          gh pr review --approve "$PR_URL"
         env:
           PR_URL: ${{github.event.pull_request.html_url}}
           GITHUB_TOKEN: "${{ secrets.RHPDS_BOT_REPO }}"
