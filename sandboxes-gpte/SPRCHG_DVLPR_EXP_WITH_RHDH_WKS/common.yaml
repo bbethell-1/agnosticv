@@ -1,18 +1,15 @@
 ---
-#include /enterprise/includes/aws-sandbox-meta.yaml
-#include /enterprise/includes/catalog-icon-red-hat-standard-logo.yaml
-#include /includes/parameters/cert-manager-vars.yaml
-#include /includes/parameters/enable-cert-manager.yaml
-#include /includes/secrets/zerossl.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/catalog-icon-project-dance.yaml
 #include /includes/terms-of-service.yaml
-#include /includes/lifetime-standard.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/secrets/ocp4_token.yaml
-#include /includes/secrets/rhods-git-secret.yml
+#include /includes/secrets/rhods_git.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/zerossl.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: DevSecOps Validated Framework - Parallel
@@ -85,12 +82,12 @@ common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 # Workload variables
 # -------------------------------------------------------------------
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.14_2024_05_20
+ocp4_workload_catalogsource_tag: v4.17_2024_11_20
 
 # -------------------------------------------------------------------
 # OpenShift Installer Version
 # -------------------------------------------------------------------
-ocp4_installer_version: "4.14.20"
+ocp4_installer_version: "4.17"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 master_instance_count: 3
 master_instance_type: m5.4xlarge
@@ -171,7 +168,7 @@ infra_workloads:
 ocp4_workload_rhsso_authentication_namespace: rhsso
 ocp4_workload_rhsso_authentication_target_namespaces: ["rhsso"]
 ocp4_workload_rhsso_authentication_channel: stable
-ocp4_workload_rhsso_authentication_starting_csv: rhsso-operator.7.6.8-opr-001
+ocp4_workload_rhsso_authentication_starting_csv: rhsso-operator.7.6.9-opr-001
 ocp4_workload_rhsso_authentication_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_rhsso_authentication_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_rhsso_authentication_admin_create: true
@@ -215,10 +212,11 @@ ocp4_workload_minio_bucket_multi_user: false
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacs
 # -------------------------------------------------------------------
-ocp4_workload_rhacs_install_operator_channel: "rhacs-4.2"
-ocp4_workload_rhacs_install_operator_starting_csv: "rhacs-operator.v4.2.5"
-ocp4_workload_rhacs_install_operator_use_catalog_snapshot: true
+ocp4_workload_rhacs_install_operator_channel: "rhacs-4.6"
+ocp4_workload_rhacs_install_operator_starting_csv: "rhacs-operator.v4.6.2"
+ocp4_workload_rhacs_install_operator_use_catalog_snapshot: false
 ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
+ocp4_workload_rhacs_enable_route_certs: false
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_project_dance
@@ -229,17 +227,18 @@ ocp4_workload_project_dance_docker_password: "{{ common_password }}"
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm
 # -------------------------------------------------------------------
-
-ocp4_workload_rhacm_acm_channel: "release-2.8"
+ocp4_workload_rhacm_acm_channel: "release-2.12"
 ocp4_workload_rhacm_use_catalog_snapshot: false
+ocp4_workload_rhacm_catalog_source_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_rhacm_catalog_source_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # -----------------------------------
 # Quay Operator
 # -----------------------------------
 ocp4_workload_quay_operator_namespace: quay-registry
 ocp4_workload_quay_operator_catalogsource_namespace: quay-registry
-ocp4_workload_quay_operator_channel: stable-3.8
-ocp4_workload_quay_operator_starting_csv: quay-operator.v3.8.15
+ocp4_workload_quay_operator_channel: stable-3.13
+ocp4_workload_quay_operator_starting_csv: quay-operator.v3.13.1
 ocp4_workload_quay_operator_use_catalog_snapshot: true
 ocp4_workload_quay_operator_catalogsource_name: redhat-operators-snapshot-quay
 ocp4_workload_quay_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
@@ -249,14 +248,20 @@ ocp4_workload_quay_operator_registry_admin_password: "{{ common_password }}"
 # -------------------------------------------------------------------
 # OpenShift Data Foundations Operator
 # -------------------------------------------------------------------
-ocp4_workload_openshift_data_foundation_channel: stable-4.14
-ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+ocp4_workload_openshift_data_foundation_channel: stable-4.17
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_old_default_storage_class_name: gp3-csi
+
+ocp4_workload_openshift_data_foundation_catalogsource_setup: true
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
+ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # ---------------------------------------------------------
 # Workload: OpenShift Pipelines
 # ---------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.12
-ocp4_workload_pipelines_tkn_version: 0.41.0
+ocp4_workload_pipelines_channel: pipelines-1.16
 ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
 ocp4_workload_pipelines_use_catalog_snapshot: true
 ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
