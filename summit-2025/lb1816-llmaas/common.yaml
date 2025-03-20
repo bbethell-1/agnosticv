@@ -26,15 +26,11 @@ platform: rhpds
 # -------------------------------------------------------------------
 # VM configuration
 # -------------------------------------------------------------------
-master_instance_type: c6in.4xlarge
+master_instance_type: c6in.2xlarge
 master_instance_count: 3
-master_storage_type: io1
-master_storage_size: 250
 
 worker_instance_type: m6a.4xlarge
-worker_instance_count: "{{ [(num_users | int / 3.0) | round(0, 'ceil') | int, 3] | max }}"
-worker_storage_type: gp3
-worker_storage_size: 250
+worker_instance_count: 3
 
 bastion_instance_type: t2.small
 bastion_instance_image: RHEL95GOLD-latest
@@ -88,7 +84,7 @@ infra_workloads:
 # Workload variables
 # -------------------------------------------------------------------
 ocp4_workload_user_base: user
-ocp4_workload_user_count: "{{ num_users }}"
+ocp4_workload_user_count: 1
 
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
 ocp4_workload_catalogsource_tag: v4.18_2025_02_24
@@ -108,10 +104,10 @@ ocp4_workload_machinesets_machineset_groups:
   - name: worker-gpu
     role: worker-gpu
     instance_type: "{{ gpu_instance_type }}"
-    autoscale: true
-    total_replicas: 2
-    total_replicas_min: 2
-    total_replicas_max: 3
+    autoscale: false
+    total_replicas: 1
+    total_replicas_min: 1
+    total_replicas_max: 1
     taints:
       - key: nvidia.com/gpu
         value: true
@@ -139,6 +135,7 @@ ocp4_workload_rhsso_authentication_env_type: "{{ env_type }}"
 # ocp4_workload_cert_manager
 # -------------------------------------------------------------------
 ocp4_workload_cert_manager_channel: stable-v1.15
+ocp4_workload_cert_manager_use_catalog_snapshot: true
 ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_cert_manager_starting_csv: cert-manager-operator.v1.15.0
@@ -304,7 +301,7 @@ ocp4_workload_ossm_servicemesh_startingcsv: servicemeshoperator.v2.6.5
 # ocp4_workload_openshift_ai
 # -------------------------------------------------------------------
 ocp4_workload_openshift_ai_channel: stable
-ocp4_workload_openshift_ai_use_catalog_snapshot: false
+ocp4_workload_openshift_ai_use_catalog_snapshot: true
 ocp4_workload_openshift_ai_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_openshift_ai_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_openshift_ai_starting_csv: rhods-operator.2.16.1
@@ -315,7 +312,7 @@ ocp4_workload_openshift_ai_kserve: Managed
 # ocp4_workload_web_terminal
 # -------------------------------------------------------------------
 ocp4_workload_web_terminal_channel: fast
-ocp4_workload_web_terminal_use_catalog_snapshot: false
+ocp4_workload_web_terminal_use_catalog_snapshot: true
 ocp4_workload_web_terminal_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_web_terminal_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_web_terminal_starting_csv: web-terminal.v1.12.1
@@ -364,19 +361,9 @@ __meta__:
   catalog:
     display_name: "LB1816: LLM as a Service for the Enterprise"
     category: Red_Hat_Summit_2025
-    multiuser: true
+    multiuser: false
     keywords: []
     labels:
       Provider: RHDP
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: Red_Hat_Cloud
-    parameters:
-      - name: num_users
-        description: >-
-          Number of users to provision within the environment.
-        formLabel: User Count
-        openAPIV3Schema:
-          type: integer
-          default: 2
-          minimum: 2
-          maximum: 50
