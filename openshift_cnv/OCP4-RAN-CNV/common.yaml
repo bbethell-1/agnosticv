@@ -1,0 +1,138 @@
+---
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/ansible-tower-advanced-24.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/secrets/openshift-ocpv-configs.yaml
+#include /includes/secrets/zerossl.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+
+platform: RHPDS
+
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+
+bastion_instance_image: rhel-9.3
+bastion_cores: 2
+bastion_memory: 6Gi
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+
+
+infra_workloads:
+  - ocp4_workload_external_odf
+  - ocp4_workload_5gran_deployments_lab
+  - ocp4_workload_authentication
+  - ocp4_workload_cert_manager
+
+pull_secret: "{{ ocp4_pull_secret }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# -------------------------------------------------------------------
+odf_channel: stable-4.16
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('1') | int }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+# Values from /includes/secrets/dynamic-aws-dns.yaml
+# route53_aws_zone_id:
+# route53_aws_access_key_id:
+# route53_aws_secret_access_key:
+
+ocp4_workload_cert_manager_channel: stable-v1.14
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+
+ocp4_workload_cert_manager_cloud_provider: ec2
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+
+set_env_authorized_key: false
+
+# Don't configure repos as this is a RHEL Linux
+repo_method: none
+install_common: false
+install_bastion: false
+
+# Do install env key
+install_student_user: true
+student_name: lab-user
+
+__meta__:
+  asset_uuid: 71fae99a-84d8-4b31-926b-341a0f8cff91
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+      pull: missing
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: 5G RAN Deployment on OpenShift (CNV)
+    category: Workshops
+    keywords:
+      - workshop
+      - openshift
+      - ran
+      - 5g
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Featured_Score: '82'
+    parameters: []
+    reportingLabels:
+      primaryBU: Edge
+      secondaryBU: Hybrid_Platforms
+  owners:
+    maintainer:
+      - name: Alberto Losada Grande
+        email: alosadag@redhat.com
+      - name: Billy Bethell
+        email: bbethell@redhat.com
+    sme:
+      - name: Alberto Gonzales Rodriguez
+        email: josegonz@redhat.com
+    instructions:
+      - name: Alberto Losada Grande
+        email: alosadag@redhat.com
