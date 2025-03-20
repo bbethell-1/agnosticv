@@ -7,6 +7,7 @@
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/aws-region2.yaml
 #include /includes/parameters/aws-gpu-regions-us.yaml
+#include /includes/parameters/ocp4-fips-enable.yaml
 
 #include /includes/secrets/zerossl.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
@@ -107,6 +108,13 @@ security_groups:
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
+      - name: KafkaPorts
+        description: "Open Kafka Public"
+        from_port: 9092
+        to_port: 9092
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
 
   - name: NodeSG
     rules:
@@ -182,7 +190,6 @@ instances:
     count: 1
     unique: true
     public_dns: true
-    floating_ip: true
     image:
       name: "{{ controller_instance_image | default(default_instance_image) }}"
     flavor:
@@ -203,8 +210,6 @@ instances:
     count: 1
     unique: true
     public_dns: true
-    dns_loadbalancer: true
-    floating_ip: true
     image: "{{ rhelai_instance_image | default(default_instance_image) }}"
     flavor:
       ec2: "{{ rhelai_instance_type | default(default_instance_type) }}"
@@ -223,7 +228,7 @@ instances:
 
   - name: "node"
     count: 1
-    public_dns: false
+    public_dns: true
     image: "{{ node_instance_image | default(default_instance_image) }}"
     flavor:
       ec2: "{{ node_instance_type | default(default_instance_type) }}"
@@ -236,12 +241,14 @@ instances:
         value: "{{ env_type }}-{{ email }}"
     rootfs_size: "{{ node_rootfs_size | default(default_rootfs_size) }}"
     security_groups:
+      - BastionSG
       - DefaultSG
       - NodeSG
+      - WebSG
 
   - name: "service"
     count: 1
-    public_dns: false
+    public_dns: true
     image: "{{ service_instance_image | default(default_instance_image) }}"
     flavor:
       ec2: "{{ service_instance_type | default(default_instance_type) }}"
@@ -254,12 +261,14 @@ instances:
         value: "{{ env_type }}-{{ email }}"
     rootfs_size: "{{ service_rootfs_size | default(default_rootfs_size) }}"
     security_groups:
+      - BastionSG
       - DefaultSG
       - NodeSG
+      - WebSG
 
   - name: win
     count: 1
-    public_dns: true
+    public_dns: false
     image:
       name: "Windows_Server-2016-English-Full-Base*"
     flavor:
@@ -511,7 +520,8 @@ controller_hosts:
     enabled: true
     state: present
     variables:
-      ansible_host: "{{ groups['windows'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}"
+      # ansible_host: "{{ groups['windows'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}"
+      ansible_host: "{{ groups['windows'][0].split('.')[0] }}.example.com"
       ansible_password: "{{ windows_password }}"
       ansible_user: "Administrator"
 
