@@ -1,18 +1,22 @@
 ---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/aws-regions-us.yaml
+#include /includes/parameters/purpose.yaml
+
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+
 # -------------------------------------------------------------------
 # --- Catalog: Red Hat Summit 2025
 # --- Catalog Item: "LB1624: Enabling RHEL Security - SELinux, Fapolicyd and Auditd"
 # -------------------------------------------------------------------
-#include /includes/aws-sandbox-meta.yaml
-#include /includes/catalog-icon-rhel.yaml
-#include /includes/terms-of-service.yaml
-#include /includes/parameters/aws-regions-us.yaml
-#include /includes/parameters/purpose.yaml
-#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/secrets/s3-rhpds-private-bucket.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
-#include /includes/lifetime-standard.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -44,90 +48,6 @@ inventory_groups:
 ansible_service_account_user_name: "{{ student_name }}"
 ansible_service_account_user_password: "{{ common_password }}"
 ansible_service_account_user_preferred_python: "3.9"
-
-# -------------------------------------------------------------------
-# asset_injector_assets
-# -------------------------------------------------------------------
-
-asset_injector_assets:
-
-  - description: Remove 50-cloud-init.conf, ssh issue
-    type: remove
-    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
-
-  - description: Remove 50-redhat.conf, ssh issue
-    type: remove
-    path: /etc/ssh/sshd_config.d/50-redhat.conf
-
-  - description: Update sshd_config for password auth
-    type: blockinfile
-    path: /etc/ssh/sshd_config
-    state: present
-    marker: "# {mark} Our custom SSH settings via Ansible"
-    block: |
-      # Our custom SSH settings via Ansible
-      ChallengeResponseAuthentication no
-      PasswordAuthentication yes
-      UsePAM yes
-
-  - description: Restart sshd to pick up new password support configuration
-    type: service
-    name: sshd
-    state: restarted
-
-# -------------------------------------------------------------------
-# Instance Config
-# -------------------------------------------------------------------
-cloud_tags:
-  env_type: "{{ env_type }}"
-  platform: "{{ platform | default('unknown') }}"
-
-rhel9_instance_image: RHEL95GOLD-latest
-rhel9_instance_type: "t3a.large"
-rootfs_size_rhel9: 100
-
-node_image: "{{ rhel9_instance_image }}"
-node_instance_type: "{{ rhel9_instance_type }}"
-
-instances:
-  - name: "rhel"
-    count: 1
-    unique: true
-    public_dns: true
-    floating_ip: true
-    image: "{{ rhel9_instance_image }}"
-    flavor:
-      ec2: "{{ rhel9_instance_type }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "bastions,showroom"
-      - key: "ostype"
-        value: "linux"
-    rootfs_size: "{{ rootfs_size_rhel9 }}"
-    volumes:
-      - device_name: "/dev/xvdb"
-        size: "20"
-        type: gp3
-    security_groups:
-      - BastionSG
-      - ShowroomSG
-
-  - name: "infra"
-    count: 1
-    public_dns: false
-    image: "{{ node_image }}"
-    flavor:
-      ec2: "{{ node_instance_type | default(default_instance_type) }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "nodes"
-      - key: "ostype"
-        value: "linux"
-    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
-    security_groups:
-      - DefaultSG
-      - NodeSG
-      - InfraSG
 
 # -------------------------------------------------------------------
 # Security Group Config
@@ -191,6 +111,112 @@ security_groups:
         rule_type: Ingress
 
 # -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+cloud_tags:
+  env_type: "{{ env_type }}"
+  platform: "{{ platform | default('unknown') }}"
+
+rhel9_instance_image: RHEL95GOLD-latest
+rhel9_instance_type: "t3a.large"
+rootfs_size_rhel9: 100
+
+node_image: "{{ rhel9_instance_image }}"
+node_instance_type: "{{ rhel9_instance_type }}"
+
+instances:
+  - name: "rhel"
+    count: 1
+    unique: true
+    public_dns: true
+    floating_ip: true
+    image: "{{ rhel9_instance_image }}"
+    flavor:
+      ec2: "{{ rhel9_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_rhel9 }}"
+    volumes:
+      - device_name: "/dev/xvdb"
+        size: "20"
+        type: gp3
+    security_groups:
+      - BastionSG
+      - ShowroomSG
+
+  - name: "infra"
+    count: 1
+    public_dns: false
+    image: "{{ node_image }}"
+    flavor:
+      ec2: "{{ node_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    security_groups:
+      - DefaultSG
+      - NodeSG
+      - InfraSG
+
+# -------------------------------------------------------------------
+# Infra workloads
+# -------------------------------------------------------------------
+software_workloads:
+  bastions:
+    - asset_injector
+    - lb1624_rhel_security
+  nodes:
+    - lb1624_rhel_security
+
+rhel_security_sa: true
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+
+requirements_content:
+  roles:
+    - name: lb1624_rhel_security
+      src: https://github.com/rhpds/lb1624_rhel_security
+      version: v1.0.2
+
+# -------------------------------------------------------------------
+# asset_injector_assets
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
+
+# -------------------------------------------------------------------
 # Workloads: showroom
 # -------------------------------------------------------------------
 
@@ -220,7 +246,6 @@ showroom_user_password: "{{ common_password }}"
 # -------------------------------------------------------------------
 repo_method: satellite
 use_content_view: true
-
 
 # -------------------------------------------------------------------
 # Role: common
