@@ -1,18 +1,22 @@
 ---
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/lifetime-standard.yaml
+
+#include /includes/parameters/purpose.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/showroom-shared-cluster1.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+#include /includes/secrets/openshift-ocpv-configs.yaml
+
 # -------------------------------------------------------------------
 # --- Catalog: Red Hat Summit 2025
 # --- Catalog Item: "LB1136: The Definitive Red Hat Enterprise Linux 10 Hands-On Lab"
 # -------------------------------------------------------------------
-#include /includes/catalog-icon-rhel.yaml
-#include /includes/terms-of-service.yaml
-#include /includes/sandbox-api.yaml
-#include /includes/parameters/purpose.yaml
-#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/secrets/s3-rhpds-private-bucket.yaml
-#include /includes/secrets/openshift-ocpv-configs.yaml
-#include /includes/secrets/showroom-shared-cluster1.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
-#include /includes/lifetime-standard.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -43,36 +47,6 @@ ansible_service_account_user_password: "{{ common_password }}"
 ansible_service_account_user_preferred_python: "3.9"
 
 # -------------------------------------------------------------------
-# asset_injector_assets
-# -------------------------------------------------------------------
-
-asset_injector_assets:
-
-  - description: Remove 50-cloud-init.conf, ssh issue
-    type: remove
-    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
-
-  - description: Remove 50-redhat.conf, ssh issue
-    type: remove
-    path: /etc/ssh/sshd_config.d/50-redhat.conf
-
-  - description: Update sshd_config for password auth
-    type: blockinfile
-    path: /etc/ssh/sshd_config
-    state: present
-    marker: "# {mark} Our custom SSH settings via Ansible"
-    block: |
-      # Our custom SSH settings via Ansible
-      ChallengeResponseAuthentication no
-      PasswordAuthentication yes
-      UsePAM yes
-
-  - description: Restart sshd to pick up new password support configuration
-    type: service
-    name: sshd
-    state: restarted
-
-# -------------------------------------------------------------------
 # Instance Config
 # -------------------------------------------------------------------
 cloud_tags:
@@ -82,6 +56,8 @@ cloud_tags:
 bastion_instance_image: rhel-9.4
 rhel_instance_image: rhel10-beta
 rootfs_size_rhel: 50Gi
+node_name: node
+pv_size_node: 4Gi
 
 instances:
   - name: "bastion"
@@ -114,7 +90,7 @@ instances:
         targetPort: 443
         tls: true
 
-  - name: "node"
+  - name: "{{ node_name }}"
     count: 2
     unique: true
     public_dns: false
@@ -141,6 +117,55 @@ instances:
         service: node
         targetPort: 443
         tls: true
+    disks:
+      - metadata:
+          name: "{{ node_name }}{{ guid }}"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "{{ node_name }}{{ guid }}1"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "{{ node_name }}{{ guid }}2"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "{{ node_name }}{{ guid }}3"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
 
   - name: "node3"
     count: 1
@@ -181,6 +206,55 @@ instances:
         service: cockpit
         targetPort: 9090
         tls: true
+    disks:
+      - metadata:
+          name: "node3{{ guid }}"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "node3{{ guid }}1"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "node3{{ guid }}2"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "node3{{ guid }}3"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
 
   - name: "leapp"
     count: 1
@@ -209,6 +283,58 @@ instances:
         service: leapp
         targetPort: 443
         tls: true
+
+# -------------------------------------------------------------------
+# Infra workloads
+# -------------------------------------------------------------------
+software_workloads:
+  bastions:
+    - asset_injector
+  nodes:
+    - lb1136_rhel10_hol
+
+rhel10_hol_config: true
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+
+requirements_content:
+  roles:
+    - name: lb1136_rhel10_hol
+      src: https://github.com/rhpds/lb1136_rhel10_hol
+      version: v1.0.0
+
+# -------------------------------------------------------------------
+# asset_injector_assets
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
+
 # -------------------------------------------------------------------
 # Workloads: showroom
 # -------------------------------------------------------------------
@@ -216,8 +342,10 @@ ocp4_workload_showroom_content_git_repo: >-
   https://github.com/rhpds/showroom-lb1136-rhel-10-hol.git
 ocp4_workload_showroom_content_only: false
 
-showroom_deploy_shared_cluster_enable: true
+ocp4_workload_showroom_stacked_terminals_enable: true
+ocp4_workload_showroom_stacked_terminals_display_name: "Terminals"
 
+showroom_deploy_shared_cluster_enable: true
 # -------------------------------------------------------------------
 # Role: set-repositories
 # -------------------------------------------------------------------
