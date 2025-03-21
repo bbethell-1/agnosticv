@@ -16,11 +16,10 @@
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/aws-gpu-regions-us.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-#include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/s3-rhpds-private-bucket.yaml
-#include /includes/secrets/zerossl.yaml
 #include /includes/terms-of-service.yaml
+#include /includes/secrets/demosat-ai-rhel-agentic-ai.yaml
+#include /includes/secrets/zerossl.yaml
 
 # ---------------------------------------------------------------------
 # Mandatory Variables
@@ -28,27 +27,25 @@
 
 env_type: base-infra
 cloud_provider: ec2
-# this is default region but overriden by the aws-region2 parameter include
-aws_region: us-east-2
+aws_region: us-east-2 # this is default region but overriden by the aws-region2 parameter include
 
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
-# ---------------------------------------------------------------------
-# Work around the RHELAI12 cloud-user issue, see instance tags
-# ---------------------------------------------------------------------
-
-ansible_user: ec2-user
-remote_user: ec2-user
-
-# --------------------------------------------------------------------
-# Platform
-# --------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Platform and cloud_tags
+# -------------------------------------------------------------------
 
 platform: RHPDS
 
+cloud_tags:
+  env_type: "{{ env_type }}"
+  platform: "{{ platform | default('unknown') }}"
+
 # --------------------------------------------------------------------
-# Repos and packages
+# Repos and packages set-repositories
 # --------------------------------------------------------------------
+
+repo_method: satellite
 
 use_content_view: true
 update_packages: true      # Do you want to run a full yum update
@@ -61,6 +58,8 @@ agd_bastion_packages:
   - bind-utils
   - git
   - podman
+  - python3.12
+  - python3.12-devel
   - buildah
   - tmux
   - vim-enhanced
@@ -68,24 +67,100 @@ agd_bastion_packages:
 
 # -------------------------------------------------------------------
 # Role: software_workloads
+#   - agnosticd.ai.setup_nvidia_cuda - Cuda for ollama and local LLMs on the bastions
+#   - agnosticd.ai.setup_python_env - Pythonvenv and modern 3.12 python
+#   - vscode-server - vscode-server as a courtesy for showroom users who want an editor
 # -------------------------------------------------------------------
 
 software_workloads:
   bastions:
 
+    - agnosticd.ai.setup_nvidia_cuda
+    - agnosticd.ai.setup_python_env
+    - agnosticd.ai.setup_ollama
     - vscode-server
 
 # -------------------------------------------------------------------
-# Role: set-repositories
+# Workloads: agnosticd.ai.setup_nvidia_cuda
 # -------------------------------------------------------------------
 
-repo_method: satellite
+setup_nvidia_cuda_python_version: '3.12'
+setup_nvidia_cuda_cuda_version: '12.8'
+setup_nvidia_cuda_cuda_major_version: '12'
+setup_nvidia_cuda_cuda_minor_version: '8'
+setup_nvidia_cuda_nvidia_rhel_dnf_packages:
+
+  - "@nvidia-driver:latest-dkms"
+  - "cuda-toolkit-{{ setup_nvidia_cuda_cuda_major_version }}-{{ setup_nvidia_cuda_cuda_minor_version }}"
+  - nvidia-gds
+  - libcudnn8
+  - libcudnn8-devel
+  - "cuda-cccl-{{ setup_nvidia_cuda_cuda_major_version }}-{{ setup_nvidia_cuda_cuda_minor_version }}"
+  - "libnccl-2.26.2-1+cuda12.8.x86_64"        # Make sure you choosle the correct version...
+
+# -------------------------------------------------------------------
+# Workloads: setup_python_env_python_version
+# -------------------------------------------------------------------
+
+setup_python_env_python_version: "3.12"
+setup_python_env_default_user: "{{ student_name }}"
+setup_python_env_create_default_venv: true
+setup_python_env_create_default_venv_name: venv
+
+# -------------------------------------------------------------------
+# Workloads: setup_ollama
+# -------------------------------------------------------------------
+
+setup_ollama_models:
+  - granite3.2
+
+# -------------------------------------------------------------------
+# Role: vscode-server
+# -------------------------------------------------------------------
+
+vscode_auth_type: none
+
+vscode_server_version: "4.98.2" # NOTE No leading `v` due to braindead url which mixes v and non v semantic versions
+vscode_server_rpm_url: >-
+  https://github.com/coder/code-server/releases/download/v{{ vscode_server_version }}/code-server-{{ vscode_server_version }}-amd64.rpm
+
+vscode_server_install_vscode: true
+vscode_server_install_nginx: true
+vscode_server_ansible_become: true
+vscode_server_nginx_https_port: 8443
+vscode_server_hostname: "{{ groups['bastions'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}"
+vscode_user_name: "{{ student_name }}"
+vscode_server_default_extensions: []
+vscode_server_extension_urls: []
+
+vscode_server_additional_settings: |
+  "files.exclude": {
+    "**/.git": true,
+    "**/.bash*": true,
+    "**/.vim*": true,
+    "**/.ssh": true,
+    "**/.vscode": true,
+    "**/.local": true,
+    "**/.config": true,
+    "**/.ansible": true,
+    "**/.cache": true
+  },
+  "security.workspace.trust.enabled": false
 
 # -------------------------------------------------------------------
 # asset_injector_assets
 # -------------------------------------------------------------------
 
 asset_injector_assets:
+
+  - description: Clone lab environment
+    type: git
+    src: "https://github.com/rhpds/agentic-ai.git"
+    dest: "/home/{{ student_name }}/lab"
+    version: 'main'
+    owner: "{{ student_name }}"
+    group: users
+    mode: '0755'
 
   - description: Remove 50-cloud-init.conf, ssh issue
     type: remove
@@ -112,13 +187,6 @@ asset_injector_assets:
     state: restarted
 
 # -------------------------------------------------------------------
-# inventory_groups (optional but nice to have)
-# -------------------------------------------------------------------
-
-# inventory_groups:
-#   - bastions
-
-# -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
 
@@ -131,51 +199,20 @@ showroom_ssh_method: sshkey
 
 showroom_tab_services:
   - web1
+  - web2
   - double_tty
 
 showroom_ttys_enable_tmux: false
-
 showroom_lab_users:
   - "{{ student_name }}"
-
 showroom_tab_double_tty_top_username: "{{ student_name }}"
 showroom_tab_double_tty_bottom_username: "{{ student_name }}"
 
 showroom_tab_web1_url: "https://{{ showroom_host }}:8443/"
 showroom_tab_web1_name: Codeserver
 
-# -------------------------------------------------------------------
-# Role: vscode-server
-# -------------------------------------------------------------------
-
-vscode_auth_type: none
-
-vscode_server_version: "4.95.3" #NOTE No leading `v` due to braindead url which mixes v and non v semantic versions
-vscode_server_rpm_url: >-
-  https://github.com/coder/code-server/releases/download/v{{ vscode_server_version }}/code-server-{{ vscode_server_version }}-amd64.rpm
-
-vscode_server_install_vscode: true
-vscode_server_install_nginx: true
-vscode_server_ansible_become: true
-vscode_server_nginx_https_port: 8443
-vscode_server_hostname: "{{ groups['bastions'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}"
-vscode_user_name: dev
-vscode_server_default_extensions: []
-vscode_server_extension_urls: []
-
-vscode_server_additional_settings: |
-  "files.exclude": {
-    "**/.git": true,
-    "**/.bash*": true,
-    "**/.vim*": true,
-    "**/.ssh": true,
-    "**/.vscode": true,
-    "**/.local": true,
-    "**/.config": true,
-    "**/.ansible": true,
-    "**/.cache": true
-  },
-  "security.workspace.trust.enabled": false
+showroom_tab_web2_url: "https://{{ showroom_host }}:9443/"
+showroom_tab_web2_name: "Jupyter Notes"
 
 # -------------------------------------------------------------------
 # Role: common
@@ -203,12 +240,12 @@ inventory_groups:
 # Instance Config
 # -------------------------------------------------------------------
 
-default_instance_type: t3a.large
+default_instance_type: g6.xlarge # Could revert to t3a.large if using MaaS
 default_instance_image: RHEL95GOLD-latest
 
 code_instance_type: "{{ default_instance_type }}"
 code_instance_image: "{{ default_instance_image }}"
-code_rootfs_size: 100
+code_rootfs_size: 200
 
 # -------------------------------------------------------------------
 # AMI Config - tmp for RHEL AI Eng CI
@@ -237,6 +274,7 @@ instances:
       - HostSG
       - ShowroomSG
       - CodeserverSG
+      - JupyterSG
 
 # -------------------------------------------------------------------
 # Security Group Config
@@ -256,6 +294,7 @@ security_groups:
 
   - name: ShowroomSG
     rules:
+
       - name: ShowroomHTTPS
         description: "Primary showroom endpoint - for reverse proxy"
         from_port: 443
@@ -266,6 +305,7 @@ security_groups:
 
   - name: CodeserverSG
     rules:
+
       - name: Codeserver
         description: "Codeserver Port"
         from_port: 8443
@@ -282,6 +322,17 @@ security_groups:
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
+  - name: JupyterSG
+    rules:
+
+      - name: Jupyter
+        description: "Jupyter Port"
+        from_port: 9443
+        to_port: 9443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
@@ -293,7 +344,7 @@ __meta__:
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: "LB2806: Managing Cloud Deployments with Open Source Agentic Al"
-    category: Red_Hat_One_2025
+    category: Red_Hat_Summit_2025
     keywords:
       - rhel
       - ai
@@ -307,7 +358,23 @@ __meta__:
     parameters: []
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      image: quay.io/agnosticd/ee-multicloud:2025-02-14
       pull: missing
-  # sandbox_api:
-  #   reservation: pgpu-rh1
+  sandbox_api:
+    reservation: pgpu-rh1
+  owners:
+    maintainer:
+      - name: Tony Kay
+        email: tok@redhat.com
+      - name: Joydeep Banerjee
+        email: jbanerje@redhat.com
+    sme:
+      - name: Tony Kay
+        email: tok@redhat.com
+      - name: Joydeep Banerjee
+        email: jbanerje@redhat.com
+    instructions:
+      - name: Tony Kay
+        email: tok@redhat.com
+      - name: Joydeep Banerjee
+        email: jbanerje@redhat.com
