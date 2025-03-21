@@ -45,8 +45,8 @@ aws_billing_account_id: "017310218799"
 # ROSA
 # -------------------------------------------------------------------
 rosa_deploy: true
-# rosa_deploy_hcp: true # available the virt in 4.18
-rosa_classic_multi_az: true #make this the default after RH1 2025
+rosa_deploy_hcp: true
+# rosa_classic_multi_az: true #make this the default after RH1 2025
 
 rosa_version: latest
 rosa_version_base: "openshift-v4.17"
@@ -90,7 +90,7 @@ bastion_custom_motd: |-
 infra_workloads:
 - ocp4_workload_rosa_machinepool
 - ocp4_workload_authentication_rosa
-# - ocp4_workload_openshift_data_foundation
+- ocp4_workload_openshift_data_foundation
 - ocp4_workload_kubevirt
 #- ocp4_workload_mtv # no MTV in RH1
 #- ocp4_workload_virt_roadshow_vmware # no vmware in RH1
@@ -115,6 +115,7 @@ ocp4_workload_catalogsource_tag: v4.17_2025_01_27
 # -------------------------------------------------------------------
 # ocp4_workload_rosa_machinepool
 # -------------------------------------------------------------------
+# MINIMUM 3 nodes to support ODF
 # best guess on number of metal nodes: 15 users per metal node
 # 2 x winweb @ 1Gi
 # 1 x database @ 2Gi
@@ -124,11 +125,16 @@ ocp4_workload_catalogsource_tag: v4.17_2025_01_27
 # m5zn.metal has 192 Gi RAM
 # Let's say 10Gi per user, to be "safe".  We can have 19 users, theoretically, per m5zn.metal
 # Problem is, it's storage.  I need a better storage solution
-ocp4_workload_rosa_machinepool_replicas: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 2] | max }}"
-ocp4_workload_rosa_machinepool_instance_types:
-- m5zn.metal
-- m5n.metal
-- m5.metal
+ocp4_workload_rosa_machinepool_replicas: "{{ [(num_users | int / 7) | round(0, 'ceil') | int, 3] | max }}"
+
+metal_type: "i3.metal" # kind of baremetal instance to use with this lab.
+# Other metal instance types that support fast disk IO
+# - i3.metal
+# - i3en.metal
+# - i4i.metal
+
+ocp4_workload_rosa_machinepool_instance_types: # AgD code cannot actually deploy different metal instance types
+- "{{ metal_type }}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_authentication_rosa
@@ -146,12 +152,13 @@ ocp4_workload_authentication_rosa_aws_region: "{{ lookup('env','AWS_DEFAULT_REGI
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_data_foundation
 # -------------------------------------------------------------------
-ocp4_workload_openshift_data_foundation_channel: stable-4.15
+ocp4_workload_openshift_data_foundation_channel: stable-4.17
 ocp4_workload_openshift_data_foundation_catalogsource_setup: true
 ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_openshift_data_foundation_update_default_storage_class: true
 ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1200
+ocp4_workload_openshift_data_foundation_add_selector: "beta.kubernetes.io/instance-type={{ metal_type }}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_kubevirt
@@ -194,10 +201,10 @@ ocp4_workload_kubevirt_workload_tolerations:
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.14
+ocp4_workload_openshift_gitops_channel: gitops-1.15
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 
-ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
 ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
 ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
@@ -279,16 +286,16 @@ ocp4_workload_ossm_servicemesh_startingcsv: ""
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
-ocp4_workload_gitops_bootstrap_repo_url: https://github.com/newgoliath/rosa_uplift.git
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/uplift-gitops.git
 ocp4_workload_gitops_bootstrap_repo_revision: main
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap
-ocp4_workload_gitops_bootstrap_application_health_retries: 320 # 30 minutes
+ocp4_workload_gitops_bootstrap_application_health_retries: 360 # 30 minutes
 ocp4_workload_gitops_bootstrap_helm_values:
   content:
-    repoUrl: https://github.com/rhpds/showroom_rosa_uplift.git
+    repoUrl: https://github.com/rhpds/uplift-showroom.git
     repoRef: main
   workloads:
-    repoUrl: https://github.com/newgoliath/rosa_uplift.git
+    repoUrl: https://github.com/rhpds/uplift-gitops.git
     repoRef: "{{ ocp4_workload_gitops_bootstrap_repo_revision }}"
   user:
     count: "{{ ocp4_workload_user_count }}"
@@ -300,7 +307,7 @@ ocp4_workload_gitops_bootstrap_helm_values:
 # -------------------------------------------------------------------
 # ocp4_workload_showroom
 # -------------------------------------------------------------------
-ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom_rosa_uplift.git
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/uplift-showroom.git
 ocp4_workload_showroom_content_git_repo_ref: main
 ocp4_workload_showroom_deployment_type: helm
 ocp4_workload_showroom_content_only: true
@@ -330,10 +337,12 @@ __meta__:
   catalog:
     multiuser: true
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "Virtualization on ROSA: Uplift and Shift"
+    display_name: "UpLift and Shift"
     category: Workshops
     keywords:
+    - uplift
     - rosa
+    - managed
     - virtualization
     - virt
     - opeshift_service_mesh
