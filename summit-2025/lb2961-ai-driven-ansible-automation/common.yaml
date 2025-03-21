@@ -133,6 +133,16 @@ security_groups:
         from_group: NodeSG
         rule_type: Ingress
 
+  - name: ServiceSG
+    rules:
+      - name: MattermostPort
+        description: "Port for Mattermost"
+        from_port: 8065
+        to_port: 8065
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
   - name: LLMSG
     rules:
       - name: LLMAPI
@@ -264,6 +274,7 @@ instances:
       - BastionSG
       - DefaultSG
       - NodeSG
+      - ServiceSG
       - WebSG
 
   - name: win
@@ -335,6 +346,8 @@ software_workloads:
     - ansible_automation_platform_configuration
   nodes:
     - lb2961.ai_driven_aap.rhelai_model_serve
+  servers:
+    - lb2961.ai_driven_aap.mattermost
 
 post_software_workloads:
   bastions:
@@ -468,6 +481,13 @@ aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
 
 ssh_privatekey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path) }}"
 
+# --------------------------------------
+# EDA vars
+# --------------------------------------
+eda_decision_environment_name: "Network_de"
+eda_decision_environment_image: "quay.io/nmartins/network_de"
+eda_repo_url: "https://github.com/nmartins0611/ai-eda-adp.git"
+
 aap_configuration_dispatcher_roles:
   - {role: controller_license, var: controller_license, tags: controller_license}
   - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
@@ -477,6 +497,11 @@ aap_configuration_dispatcher_roles:
   - {role: controller_hosts, var: controller_hosts, tags: controller_hosts}
   - {role: controller_projects, var: controller_projects, tags: controller_projects}
   - {role: controller_job_templates, var: controller_templates, tags: controller_job_templates}
+  - {role: controller_job_launch, var: controller_launch_jobs, tags: controller_job_launch}
+  - {role: eda_projects, var: eda_projects, tags: eda_projects}
+  - {role: eda_credentials, var: eda_credentials, tags: eda_credentials}
+  - {role: eda_decision_environments, var: eda_decision_environments, tags: eda_decision_environments}
+  - {role: eda_rulebook_activations, var: eda_rulebook_activations, tags: eda_rulebook_activations}
 
 controller_license:
   manifest_url: "https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip"
@@ -509,12 +534,20 @@ controller_inventories:
     organization: "Default"
     prevent_instance_group_fallback: false
     state: present
-
+  - name: "service-inventory"
+    description: "Service Inventory"
+    organization: "Default"
+    prevent_instance_group_fallback: false
+    state: present
 controller_hosts:
   - name: "{{ groups['rhel9_nodes'][0].split('.')[0] }}"
     inventory: "lab-inventory"
     variables:
       ansible_host: "node1.example.com"
+  - name: "{{ groups['servers'][0].split('.')[0] }}"
+    inventory: "service-inventory"
+    variables:
+      ansible_host: "service1.example.com"
   - name: "{{ groups['windows'][0].split('.')[0] }}"
     inventory: "lab-inventory"
     enabled: true
@@ -524,6 +557,82 @@ controller_hosts:
       ansible_host: "{{ groups['windows'][0].split('.')[0] }}.example.com"
       ansible_password: "{{ windows_password }}"
       ansible_user: "Administrator"
+controller_projects:
+  - name: "AI-EDA"
+    description: "Project for AI EDA ADP"
+    organization: "Default"
+    scm_type: "git"
+    scm_url: "https://github.com/ansible-tmm/aiops-summitlab.git"
+    scm_branch: "main"
+    scm_clean: true
+    scm_delete_on_update: false
+    scm_update_on_launch: false
+    update_project: true
+controller_templates:
+  - name: "Break Apache"
+    description: "Job template to break Apache config"
+    organization: "Default"
+    job_type: "run"
+    inventory: "lab-inventory"
+    project: "AI-EDA"
+    playbook: "playbooks/break_httpd.yml"
+    credentials:
+      - "lab-credential"
+    ask_variables_on_launch: false
+    survey_enabled: false
+    verbosity: 1
+    job_tags: "break"
+  - name: "Restore Apache"
+    description: "Job template to break Apache config"
+    organization: "Default"
+    job_type: "run"
+    inventory: "lab-inventory"
+    project: "AI-EDA"
+    playbook: "playbooks/break_httpd.yml"
+    credentials:
+      - "lab-credential"
+    ask_variables_on_launch: false
+    survey_enabled: false
+    verbosity: 1
+    job_tags: "restore"
+controller_launch_jobs:
+  - name: "Break Apache"
+
+eda_projects:
+  - name: "ai-eda-adp"
+    description: "Event-driven Ansible rulebooks for AIOps"
+    organization: Default
+    url: "{{ eda_repo_url }}"
+    tls_validation: true
+
+eda_credentials:
+  - name: "AAP"
+    description: "Red Hat Ansible Automation Platform Credential"
+    organization: Default
+    credential_type: "Red Hat Ansible Automation Platform"
+    inputs:
+      host: "{{ ansible_automation_platform_configuration_host }}/api/controller/"
+      password: "{{ ansible_automation_platform_configuration_password }}"
+      username: "{{ ansible_automation_platform_configuration_username }}"
+      verify_ssl: false
+
+eda_decision_environments:
+  - name: "{{ eda_decision_environment_name }}"
+    description: "Decision Environment for AIOps"
+    organization: Default
+    image_url: "{{ eda_decision_environment_image }}"
+
+eda_rulebook_activations:
+  - name: "Web App"
+    description: "Capture service errors"
+    organization: Default
+    project: "ai-eda-adp"
+    rulebook: "web_app.yml"
+    decision_environment: "{{ eda_decision_environment_name }}"
+    restart_policy: "on-failure"
+    enabled: true
+    eda_credentials: "AAP"
+    state: present
 
 # -------------------------------------------------------------------
 # Workload: lb2961.ai_driven_aap.rhelai_model_serve
