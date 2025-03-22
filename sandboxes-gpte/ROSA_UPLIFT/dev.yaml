@@ -16,7 +16,7 @@ purpose: development
 # Workloads
 # -------------------------------------------------------------------
 infra_workloads:
-- ocp4_workload_rosa_machinepool
+#- ocp4_workload_rosa_machinepool
 - ocp4_workload_authentication_rosa
 - ocp4_workload_openshift_data_foundation
 - ocp4_workload_kubevirt
@@ -37,11 +37,12 @@ aws_billing_account_id: "017310218799"
 rosa_deploy: true
 rosa_deploy_hcp: true
 
-metal_type: "i3.metal"
+rosa_compute_replicas: "{{ [(num_users | int / 10) | round(0, 'ceil') | int, 3] | max }}"
 
 ocp4_workload_rosa_machinepool_replicas: "{{ [(num_users | int / 7) | round(0, 'ceil') | int, 3] | max }}"
 ocp4_workload_rosa_machinepool_instance_types:
 - "{{ metal_type }}"
+metal_type: "i3.metal"
 
 # - m5zn.metal
 # - m5n.metal
@@ -59,7 +60,16 @@ ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_c
 ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_openshift_data_foundation_update_default_storage_class: true
 ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1200
-ocp4_workload_openshift_data_foundation_add_selector: "beta.kubernetes.io/instance-type={{ metal_type }}"
+# remove to test nested virt
+# ocp4_workload_openshift_data_foundation_add_selector: "beta.kubernetes.io/instance-type={{ metal_type }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+ocp4_workload_kubevirt_use_catalog_snapshot: false
+ocp4_workload_kubevirt_enabled_nested_kvm: true
+ocp4_workload_kubevirt_workload_tolerations: {}
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitops_bootstrap
@@ -88,6 +98,6 @@ ocp4_workload_gitops_bootstrap_helm_values:
 __meta__:
   deployer:
     scm_url: https://github.com/redhat-cop/agnosticd.git
-    scm_ref: judd-odf-internal-labelselector
+    scm_ref: development
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:v0.1.2
