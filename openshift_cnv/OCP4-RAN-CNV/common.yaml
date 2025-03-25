@@ -26,6 +26,27 @@ bastion_instance_image: rhel-9.3
 bastion_cores: 2
 bastion_memory: 6Gi
 
+ai_control_plane_cores: >-
+  {{ 16 if worker_instance_count|int <= 10
+  else 32 if worker_instance_count|int <= 20
+  else 64
+  }}
+ai_control_plane_memory: >-
+  {{ '32Gi' if worker_instance_count|int <= 10
+  else '64Gi' if worker_instance_count|int <= 20
+  else '128Gi'
+  }}
+
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+
+ai_workers_cores: 16
+# WK: Hardcoding memory - seems wrong to calculate both number of workers and then adjust the memory as well
+ai_workers_memory: '64Gi'
+# ai_workers_memory: >-
+#   {{ '32Gi' if num_users|int <= 10
+#   else '64Gi'
+#   }}
+
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
@@ -78,14 +99,23 @@ ocp4_workload_cert_manager_install_api_certificates: false
 
 set_env_authorized_key: false
 
-# Don't configure repos as this is a RHEL Linux
-repo_method: none
-install_common: false
-install_bastion: false
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
 
-# Do install env key
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
 install_student_user: true
 student_name: lab-user
+student_sudo: true
 
 __meta__:
   asset_uuid: 71fae99a-84d8-4b31-926b-341a0f8cff91
