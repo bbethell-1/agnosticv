@@ -18,34 +18,11 @@
 
 platform: RHPDS
 
-env_type: ocp4-cluster
+env_type: base-infra
 software_to_deploy: openshift4_assisted
 cloud_provider: openshift_cnv
 
-bastion_instance_image: rhel-9.3
-bastion_cores: 2
-bastion_memory: 6Gi
-
-ai_control_plane_cores: >-
-  {{ 16 if worker_instance_count|int <= 10
-  else 32 if worker_instance_count|int <= 20
-  else 64
-  }}
-ai_control_plane_memory: >-
-  {{ '32Gi' if worker_instance_count|int <= 10
-  else '64Gi' if worker_instance_count|int <= 20
-  else '128Gi'
-  }}
-
-worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
-
-ai_workers_cores: 16
-# WK: Hardcoding memory - seems wrong to calculate both number of workers and then adjust the memory as well
-ai_workers_memory: '64Gi'
-# ai_workers_memory: >-
-#   {{ '32Gi' if num_users|int <= 10
-#   else '64Gi'
-#   }}
+bastion_instance_image: rhel-labs-9.2
 
 # -------------------------------------------------------------------
 # Workloads
@@ -55,8 +32,6 @@ ai_workers_memory: '64Gi'
 infra_workloads:
   - ocp4_workload_external_odf
   - ocp4_workload_5gran_deployments_lab
-  - ocp4_workload_authentication
-  - ocp4_workload_cert_manager
 
 pull_secret: "{{ ocp4_pull_secret }}"
 
@@ -64,41 +39,6 @@ pull_secret: "{{ ocp4_pull_secret }}"
 # Workload: ocp4_workload_external_odf
 # -------------------------------------------------------------------
 odf_channel: stable-4.16
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication
-# -------------------------------------------------------------------
-ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: ""
-ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_password: ""
-ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('1') | int }}"
-ocp4_workload_authentication_remove_kubeadmin: true
-ocp4_workload_authentication_enable_user_info_data: true
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_cert_manager
-# -------------------------------------------------------------------
-# Values from /includes/secrets/dynamic-aws-dns.yaml
-# route53_aws_zone_id:
-# route53_aws_access_key_id:
-# route53_aws_secret_access_key:
-
-ocp4_workload_cert_manager_channel: stable-v1.14
-ocp4_workload_cert_manager_use_catalog_snapshot: false
-
-ocp4_workload_cert_manager_cloud_provider: ec2
-ocp4_workload_cert_manager_ec2_region: us-east-2
-ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
-ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
-ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
-
-ocp4_workload_cert_manager_install_ingress_certificates: true
-ocp4_workload_cert_manager_install_api_certificates: false
-
-set_env_authorized_key: false
-
 # -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
