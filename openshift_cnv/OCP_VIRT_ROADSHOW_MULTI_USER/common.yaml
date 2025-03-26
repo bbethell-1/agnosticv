@@ -45,7 +45,6 @@ platform: RHPDS
 # OpenShift Version
 # -------------------------------------------------------------------
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-ocp4_installer_version: "4.16"
 
 # -------------------------------------------------------------------
 # Repos
@@ -91,11 +90,77 @@ ai_workers_memory: '64Gi'
 #   {{ '32Gi' if num_users|int <= 10
 #   else '64Gi'
 #   }}
+#
+#
+ocp4_installer_version: "4.18.3"
+
+ai_attach_workers_networks:
+  - default/flatnetwork
+
+networks:
+  - name: cluster
+
+ai_install_use_network: "cluster{{ guid }}"
+bastion_extra_networks:
+  - "cluster"
+
+bastion_userdata: |
+    #cloud-config
+    write_files:
+      - path: /etc/sysctl.d/99-ip-forwarding.conf
+        content: |
+          net.ipv4.ip_forward=1
+
+      - path: /etc/nftables/ruleset.nft
+        content: |
+          table inet nat {
+            chain postrouting {
+              type nat hook postrouting priority 100; policy accept;
+              oifname "eth0" masquerade
+            }
+          }
+
+          table inet filter {
+            chain forward {
+              type filter hook forward priority 0; policy drop;
+              iifname "eth1" oifname "eth0" accept
+              iifname "eth0" oifname "eth1" ct state related,established accept
+            }
+          }
+
+      - path: /etc/systemd/system/nftables-restore.service
+        content: |
+          [Unit]
+          Description=Restore nftables rules
+          After=network.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/bash -c 'while [ ! -x /usr/sbin/nft ]; do sleep 2; done; /usr/sbin/nft -f /etc/nftables/ruleset.nft'
+          RemainAfterExit=yes
+
+          [Install]
+          WantedBy=multi-user.target
+
+    runcmd:
+      - sysctl --system
+      - systemctl daemon-reload
+      - systemctl enable --now nftables-restore.service
+
+bastion_networkdata: |
+    network:
+      version: 2
+      ethernets:
+        eth0:
+          dhcp4: yes
+        eth1:
+          dhcp4: no
+          addresses:
+            - 10.10.10.1/24
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
-# --- Infra Workloads (YAML List)
 infra_workloads:
   - ocp4_workload_external_odf
   - ocp4_workload_authentication
@@ -105,14 +170,26 @@ infra_workloads:
   - ocp4_workload_kubevirt
   - ocp4_workload_mtv
   - ocp4_workload_oadp_gitops
+  - ocp4_workload_nmstate
   - ocp4_workload_virt_roadshow_vms
   - ocp4_workload_virt_roadshow_vmware
   - ocp4_workload_virt_roadshow_multi_user
+  - ocp4_workload_virt_network_config
   - ocp4_workload_showroom
 
-# --- Workloads that have removal logic implemented that needs to be run (YAML List)
-remove_workloads:
-  - ocp4_workload_virt_roadshow_vmware
+# -------------------------------------------------------------------
+# ocp4_workload_virt_roadshow_vmware
+# -------------------------------------------------------------------
+ocp4_workload_virt_roadshow_vmware_use_pool: true
+ocp4_workload_virt_roadshow_vmware_vddk_registry: "icr.io/rhdp/vddk:latest"
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_network_config
+# -------------------------------------------------------------------
+ocp4_workload_virt_network_config_multi_user: true
+ocp4_workload_virt_network_config_networks: "{{ ai_attach_workers_networks | default([]) }}"
+ocp4_workload_virt_network_config_bridge_type: linux-bridge
+ocp4_workload_virt_network_config_bridge_name: br-flat
 
 # -------------------------------------------------------------------
 # Workload variables
@@ -121,7 +198,7 @@ remove_workloads:
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_external_odf
 # -------------------------------------------------------------------
-odf_channel: stable-4.16
+odf_channel: stable-4.18
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -142,7 +219,7 @@ ocp4_workload_authentication_enable_user_info_data: true
 # route53_aws_access_key_id:
 # route53_aws_secret_access_key:
 
-ocp4_workload_cert_manager_channel: stable-v1.14
+ocp4_workload_cert_manager_channel: stable-v1.15
 ocp4_workload_cert_manager_use_catalog_snapshot: false
 
 ocp4_workload_cert_manager_cloud_provider: ec2
@@ -231,7 +308,7 @@ ocp4_workload_kubevirt_boot_sources_shapshot: false
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_mtv
 # -------------------------------------------------------------------
-ocp4_workload_mtv_channel: release-v2.6
+ocp4_workload_mtv_channel: release-v2.7
 ocp4_workload_mtv_max_vm_inflight: "{{ [(num_users | int * 3) | int, 40] | min }}"
 ocp4_workload_mtv_forklift_controller_container_limits_cpu: "{{ [(num_users | int * 100) | int, 1000] | max }}m"
 ocp4_workload_mtv_forklift_controller_container_limits_memory: "{{ [(num_users | int * 400) | int, 2000] | max }}Mi"
@@ -287,7 +364,7 @@ ocp4_workload_virt_roadshow_vsphere_ignore_pip_check: false
 # -------------------------------------------------------------------
 # In the future once bug https://issues.redhat.com/browse/CNV-38284 is in the product
 # the namespace will need to change to openshift-cnv
-ocp4_workload_virt_roadshow_multi_user_configmap_namespace: default
+ocp4_workload_virt_roadshow_multi_user_configmap_namespace: openshift-cnv
 
 # ------------------------------------------------------
 # Showroom
@@ -297,7 +374,7 @@ ocp4_workload_showroom_namespace: showroom
 ocp4_workload_showroom_content_only: true
 
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-virt-roadshow-cnv-multi-user
-ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_git_repo_ref: network
 
 # -------------------------------------------------------------------
 # Babylon meta variables
