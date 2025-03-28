@@ -1,150 +1,77 @@
 ---
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/aws-sandbox-meta.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-region2.yaml
+
+#include /includes/secrets/zerossl.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
 # -------------------------------------------------------------------
 # --- Catalog: Red Hat Summit 2025
 # --- Catalog Item: "LB1152: Red Hat Insights On-Premise - Hands on Lab for Insights' new Footprint"
 # -------------------------------------------------------------------
-#include /includes/aws-sandbox-meta.yaml
-#include /includes/catalog-icon-rhel.yaml
-#include /includes/terms-of-service.yaml
-#include /includes/parameters/aws-regions-us.yaml
-#include /includes/parameters/purpose.yaml
-#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/secrets/s3-rhpds-private-bucket.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
-#include /includes/lifetime-standard.yaml
+
+# --------------------------------------------------------------------
+# Platform
+# --------------------------------------------------------------------
+platform: RHPDS
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-env_type: base-infra
+env_type: multi-cloud-base-infra
 cloud_provider: ec2
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
-# Unset key name
-key_name: ""
+# -------------------------------------------------------------------
+# Instance Variables
+# -------------------------------------------------------------------
+default_instance_image: RHEL94GOLD-latest
+# bastion_instance_image: RHEL94GOLD-latest
+satellite_instance_image: lb1152-satellite-6.17-20250327
+node1_instance_image: RHEL91GOLD-latest
+node2_instance_image: RHEL92GOLD-latest
+
+default_instance_type: "t3a.large"
+satellite_instance_type: r7a.2xlarge
+# node_instance_type: "t3a.large"
+# rhel9_instance_type: "t3a.large"
+
+default_rootfs_size: 50
+satellite_rootfs_size: 250
 
 # -------------------------------------------------------------------
-# Platform
+# Security Groups
 # -------------------------------------------------------------------
-platform: RHPDS
-bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}.{{ guid }}{{ subdomain_base_suffix }}"
-
-# -------------------------------------------------------------------
-# inventory_groups (optional but nice to have)
-# -------------------------------------------------------------------
-
-inventory_groups:
-  - bastions
-
-# -------------------------------------------------------------------
-# Role: ansible_service_account
-# -------------------------------------------------------------------
-
-ansible_service_account_user_name: "{{ student_name }}"
-ansible_service_account_user_password: "{{ common_password }}"
-ansible_service_account_user_preferred_python: "3.9"
-
-# -------------------------------------------------------------------
-# asset_injector_assets
-# -------------------------------------------------------------------
-
-asset_injector_assets:
-
-  - description: Remove 50-cloud-init.conf, ssh issue
-    type: remove
-    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
-
-  - description: Remove 50-redhat.conf, ssh issue
-    type: remove
-    path: /etc/ssh/sshd_config.d/50-redhat.conf
-
-  - description: Update sshd_config for password auth
-    type: blockinfile
-    path: /etc/ssh/sshd_config
-    state: present
-    marker: "# {mark} Our custom SSH settings via Ansible"
-    block: |
-      # Our custom SSH settings via Ansible
-      ChallengeResponseAuthentication no
-      PasswordAuthentication yes
-      UsePAM yes
-
-  - description: Restart sshd to pick up new password support configuration
-    type: service
-    name: sshd
-    state: restarted
-
-# -------------------------------------------------------------------
-# Instance Config
-# -------------------------------------------------------------------
-rhel9_instance_image: RHEL94GOLD-latest
-rhel9_instance_type: "m6a.8xlarge"
-rootfs_size_rhel9: 200
-
-node_image: RHEL92GOLD-latest
-node_instance_type: "t3a.large"
-
-instances:
-  - name: "bastion"
-    count: 1
-    unique: true
-    public_dns: true
-    floating_ip: true
-    image: "{{ rhel9_instance_image }}"
-    flavor:
-      ec2: "{{ rhel9_instance_type }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "bastions,showroom"
-      - key: "ostype"
-        value: "linux"
-    rootfs_size: "{{ rootfs_size_rhel9 }}"
-    volumes:
-      - device_name: "/dev/xvdb"
-        size: "20"
-        type: gp3
-    security_groups:
-      - BastionSG
-      - ShowroomSG
-
-  - name: "node"
-    count: 2
-    public_dns: false
-    image: "{{ node_image }}"
-    flavor:
-      ec2: "{{ node_instance_type | default(default_instance_type) }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "nodes"
-      - key: "ostype"
-        value: "linux"
-    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
-    security_groups:
-      - DefaultSG
-      - NodeSG
-
-# -------------------------------------------------------------------
-# Security Group Config
-# -------------------------------------------------------------------
-
 security_groups:
-  - name: ShowroomSG
-    rules:
-      - name: ShowroomHTTPS
-        description: "Primary showroom endpoint - for reverse proxy"
-        from_port: 443
-        to_port: 443
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-
   - name: BastionSG
     rules:
       - name: BastionSSHPorts
         description: "Bastion ssh"
         from_port: 22
         to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: WebSG
+    rules:
+      - name: WebHTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: WebHTTPSPorts
+        description: "HTTPS Public"
+        from_port: 443
+        to_port: 443
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
@@ -158,7 +85,6 @@ security_groups:
         protocol: tcp
         from_group: NodeSG
         rule_type: Ingress
-
       - name: FromNodeSGudp
         description: "Allow everything from HostSG nodes"
         from_port: 0
@@ -167,30 +93,125 @@ security_groups:
         from_group: NodeSG
         rule_type: Ingress
 
+  - name: SatSG
+    rules:
+      - name: SatCustomPort
+        description: "Sat custom port"
+        from_port: 10090
+        to_port: 10090
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
 # -------------------------------------------------------------------
-# Workloads: showroom
+# Instances
 # -------------------------------------------------------------------
+instances:
+  - name: "bastion"
+    count: 1
+    unique: true
+    public_dns: true
+    floating_ip: true
+    dns_loadbalancer: true
+    image: "{{ bastion_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ bastion_rootfs_size | default(default_rootfs_size) }}"
+    security_groups:
+      - BastionSG
+      - DefaultSG
+      - WebSG
+      - NodeSG
 
-#showroom_git_repo: "https://github.com/rhpds/showroom-lb1152-insights-on-prem.git"
-showroom_user: showroom
-showroom_ui: default
+  - name: satellite
+    count: 1
+    unique: true
+    public_dns: true
+    floating_ip: true
+    image:
+      name: "{{ satellite_instance_image }}"
+    flavor:
+      ec2: "{{ satellite_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "satellites"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ satellite_rootfs_size | default(default_rootfs_size) }}"
+    security_groups:
+      - SatSG
+      - DefaultSG
+      - WebSG
+      - NodeSG
 
-showroom_tab_services:
-#  - web1
-  - tty1
+  - name: node1
+    count: 1
+    unique: true
+    public_dns: false
+    image: "{{ node1_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ node1_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ node1_rootfs_size | default(default_rootfs_size) }}"
+    security_groups:
+      - DefaultSG
+      - NodeSG
 
-showroom_tab_tty1_username: "{{ student_name }}"
-showroom_showroom_default_ssh_user: "{{ student_name }}"
-showroom_ttys_enable_tmux: false
-showroom_enable_root_ssh: true
-showroom_ssh_method: sshkey
-showroom_ssh_host: host.containers.internal
-showroom_lab_users:
-  - "{{ student_name }}"
-showroom_user_password: "{{ common_password }}"
+  - name: node2
+    count: 1
+    unique: true
+    public_dns: false
+    image: "{{ node2_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ node2_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel9_nodes"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ node2_rootfs_size | default(default_rootfs_size) }}"
+    security_groups:
+      - DefaultSG
+      - NodeSG
 
-#showroom_tab_web1_url: "https://{{ showroom_host }}:8443/"
-#showroom_tab_web1_name: Codeserver
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+requirements_content:
+  roles:
+    - name: satellite_reconfigure_ar
+      src: https://github.com/opentraining-labs-customizations/satellite-reconfigure-ar.git
+      version: main
+      # version: 1.0.1
+
+# -------------------------------------------------------------------
+# Config Pre/Software/Post Workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  bastions:
+    - set-repositories
+    - common
+    - bastion-lite
+    - control-user
+  satellites:
+    - satellite_reconfigure_ar
 
 # -------------------------------------------------------------------
 # Role: set-repositories
@@ -198,40 +219,79 @@ showroom_user_password: "{{ common_password }}"
 repo_method: satellite
 use_content_view: true
 
-# -------------------------------------------------------------------
+# -------------------------------------------------
 # Role: common
-# -------------------------------------------------------------------
+# -------------------------------------------------
+install_common: true
+common_packages_el9:
+  - at
+  - bash-completion
+  - bind-utils
+  - buildah
+  - git
+  - httpd-tools
+  - nano
+  - podman
+  - python3
+  - python3-pip
+  - tmux
+  - tree
+  - unzip
+  - vim-enhanced
+  - wget
+  - ansible
 
+# -------------------------------------------------
+# Role: bastion-lite
+# -------------------------------------------------
+install_bastion_lite: true
+
+# -------------------------------------------------
+# Role: control-user
+# -------------------------------------------------
+env_authorized_key: "{{guid}}key"
+install_control_user: true
 student_name: lab-user
 student_password: "{{ common_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ common_password }}"
+control_user_private_group: "{{ omit }}"
 
-bastion_install_basic_packages: true
-# common_packages_el9:
-agd_bastion_packages:
-  - python3
-  - unzip
-  - bash-completion
-  - tmux
-  - bind-utils
-  - wget
-  - nano
-  - git
-  - vim-enhanced
-  - httpd-tools
-  - openldap-clients
-  - podman
-  - tree
-  - runc
+# -------------------------------------------------
+# Role: satellite_reconfigure_ar
+# -------------------------------------------------
+pert_satellite_user_password: "{{ common_password }}"
+pert_satellite_internal_fqdn: satellite.q7n6f.sandbox11.opentlc.com
+dns_information: ""
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+showroom_git_repo: "https://github.com/rhpds/showroom-lb1152-insights-on-prem.git"
+showroom_user: showroom
+showroom_ui: default
+showroom_user_password: "{{ common_password }}"
+showroom_ssh_method: sshkey
+showroom_tab_services:
+  # - web1
+  - tty1
+
+showroom_ttys_enable_tmux: false
+showroom_lab_users:
+  - "{{ student_name }}"
+
+showroom_ssh_username: "{{ student_name }}"
+
+# showroom_tab_web1_url: "https://{{ showroom_host }}:8443/"
+# showroom_tab_web1_name: Codeserver
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
   asset_uuid: BB7C7CAC-F399-4756-A6C3-4FE8534F1ACC
-  anarchy:
-    namespace: babylon-anarchy-sandboxes-gpte
   catalog:
-    namespace: babylon-catalog-{{ stage | default('?') }}
+    multiuser: false
     display_name: "LB1152: Red Hat Insights On-Premise - Hands on Lab for Insights' new Footprint"
     category: Red_Hat_Summit_2025
     keywords:
@@ -244,10 +304,7 @@ __meta__:
       Product: Red_Hat_Enterprise_Linux
       Product_Family: Red_Hat_Enterprise_Linux
       Provider: RHDP
-    multiuser: false
     parameters: []
-    reportingLabels:
-      primaryBU: RHEL
   deployer:
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:v0.1.0
