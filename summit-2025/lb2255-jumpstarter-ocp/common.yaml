@@ -21,7 +21,6 @@
 env_type: ocp4-cluster
 software_to_deploy: openshift4
 project_tag: "{{ env_type }}-{{ guid }}"
-num_users: 5
 
 # -------------------------------------------------------------------
 # Platform
@@ -228,14 +227,38 @@ infra_workloads:
   - ocp4_workload_cert_manager
   - ocp4_workload_rhsso_authentication
   - ocp4_workload_openshift_data_foundation
-  - ocp4_workload_rhacm
+  - ocp4_workload_machinesets
+  - ocp4_workload_kubevirt
+  - ocp4_workload_virt_roadshow_multi_user
   - ocp4_workload_minio
   - ocp4_workload_redhat_developer_hub_bootstrap
   - ocp4_workload_pipelines
   - ocp4_workload_gitops_gitlab
   - ocp4_workload_redhat_developer_hub
-  - ocp4_workload_machinesets
+  - ocp4_workload_rhacm
   - lb2255.jumpstarter_lab.example_role
+  - ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+ocp4_workload_kubevirt_use_catalog_snapshot: true
+ocp4_workload_kubevirt_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_kubevirt_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_kubevirt_workload_tolerations:
+  - key: metal
+    operator: Exists
+
+# ------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# ------------------------------------------------------
+ocp4_workload_showroom_name: showroom
+ocp4_workload_showroom_namespace: showroom
+ocp4_workload_showroom_content_only: true
+
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom-lb2255-jumpstarter.git
+ocp4_workload_showroom_content_git_repo_ref: main
 
 # -------------------------------------------------------------------
 #  lb2255.jumpstarter_lab.example_role
@@ -248,23 +271,11 @@ example_role_guid: "{{ guid }}"
 ocp4_workload_machinesets_disable_default_machinesets: false
 ocp4_workload_machinesets_wait_for_nodes: true
 ocp4_workload_machinesets_machineset_groups:
-  # - name: worker-arm
-  #   autoscale: true
-  #   total_replicas: 1
-  #   total_replicas_min: 1
-  #   total_replicas_max: 5
-  #   role: worker-arm
-  #   taints:
-  #     - key: "kubernetes.io/arch"
-  #       value: "arm"
-  #       effect: NoSchedule
-  #   instance_type: m6g.4xlarge
-  #   aws_instance_ami_architecture: aarch64
   - name: metal-arm
     role: metal-arm
     instance_type: m7g.metal
     autoscale: false
-    total_replicas: 1
+    total_replicas: "{{ max_metal_arm }}"
     total_replicas_min: 1
     total_replicas_max: 2
     machineConfigPool:
@@ -526,15 +537,36 @@ __meta__:
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: >-
-      LB2255: Project Jumpstarter - OCP
+      LB2255: Project Jumpstarter - An open source framework for cloud-native hardware-in-the-loop (HIL) testing in Automotive DevSecOps
     category: Red_Hat_Summit_2025
+    multiuser: true
+    workshopUiDisabled: false
+    workshopLabUiRedirect: true
     keywords:
       - summit
       - summit_2025
       - summit2025
       - lb2255
       - lab2255
-    parameters: []
+    parameters:
+      - name: max_metal_arm
+        description: >-
+          Number of ARM metal nodes
+        formLabel: Metal ARM Nodes
+        openAPIV3Schema:
+          type: integer
+          default: 1
+          minimum: 1
+          maximum: 2
+      - name: num_users
+        description: >-
+          Number of users to provision within the cluster.
+        formLabel: OpenShift User Count
+        openAPIV3Schema:
+          type: integer
+          default: 2
+          minimum: 2
+          maximum: 30
     labels:
       Base_Component: 'True' #Required to show up in status page list of items
       Product: Red_Hat_OpenShift_Container_Platform
