@@ -50,7 +50,7 @@ rhelai_instance_image: RHELAI13
 
 default_instance_type: "t3a.large"
 controller_instance_type: "m5ad.2xlarge"
-rhelai_instance_type: g6.12xlarge
+rhelai_instance_type: g6.2xlarge
 windows_instance_type: m5.2xlarge
 
 default_rootfs_size: 50
@@ -354,6 +354,8 @@ software_workloads:
   servers:
     - lb2961.ai_driven_aap.mattermost
     - lb2961.ai_driven_aap.kafka
+    - lb2961.ai_driven_aap.gitea_create
+
 
 post_software_workloads:
   bastions:
@@ -467,6 +469,8 @@ nginx_with_cert_hostname: "{{ groups['controllers'][0].split('.')[0] }}.{{ guid 
 # -------------------------------------------------------------------
 gitea_db_pasword: "{{ common_password }}"
 gitea_vm_https_port: 488
+gitea_create_url: "https://{{ groups['bastions'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}:488"
+gitea_create_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
 # Workload: ansible_automation_platform_configuration
@@ -533,6 +537,15 @@ controller_credentials:
       username: ec2-user
       ssh_key_data: "{{ ssh_privatekey }}"
       become_method: sudo
+  - name: "AAP"
+    description: "Red Hat Ansible Automation Platform Credential"
+    organization: Default
+    credential_type: "Red Hat Ansible Automation Platform"
+    inputs:
+      host: "{{ ansible_automation_platform_configuration_host }}/api/controller/"
+      password: "{{ ansible_automation_platform_configuration_password }}"
+      username: "{{ ansible_automation_platform_configuration_username }}"
+      verify_ssl: false
 
 controller_inventories:
   - name: "lab-inventory"
@@ -545,6 +558,11 @@ controller_inventories:
     organization: "Default"
     prevent_instance_group_fallback: false
     state: present
+  - name: "gitea-inventory"
+    description: "Gitea Inventory"
+    organization: "Default"
+    prevent_instance_group_fallback: false
+    state: present
 controller_hosts:
   - name: "{{ groups['rhel9_nodes'][0].split('.')[0] }}"
     inventory: "lab-inventory"
@@ -554,6 +572,10 @@ controller_hosts:
     inventory: "service-inventory"
     variables:
       ansible_host: "service1.example.com"
+  - name: "gitea"
+    inventory: "gitea-inventory"
+    variables:
+      ansible_host: "{{ groups['bastions'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}"
   - name: "{{ groups['windows'][0].split('.')[0] }}"
     inventory: "lab-inventory"
     enabled: true
@@ -581,26 +603,26 @@ controller_templates:
     job_type: "run"
     inventory: "lab-inventory"
     project: "AI-EDA"
-    playbook: "playbooks/break_httpd.yml"
+    playbook: "playbooks/httpd_break.yml"
     credentials:
       - "lab-credential"
     ask_variables_on_launch: false
     survey_enabled: false
     verbosity: 1
-    job_tags: "break"
+    limit: "node1"
   - name: "Restore Apache"
     description: "Job template to break Apache config"
     organization: "Default"
     job_type: "run"
     inventory: "lab-inventory"
     project: "AI-EDA"
-    playbook: "playbooks/break_httpd.yml"
+    playbook: "playbooks/httpd_fix.yml"
     credentials:
       - "lab-credential"
     ask_variables_on_launch: false
     survey_enabled: false
     verbosity: 1
-    job_tags: "restore"
+    limit: "node1"
 controller_launch_jobs:
   - name: "Break Apache"
 
@@ -649,6 +671,7 @@ rhelai_model_serve_api_token: "{{ common_password }}"
 rhelai_model_serve_rh_registry_user: "{{ registry_credentials_username }}"
 rhelai_model_serve_rh_registry_password: "{{ registry_credentials_password }}"
 rhelai_model_serve_instance_type: "{{ rhelai_instance_type }}"
+
 # -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
