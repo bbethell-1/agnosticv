@@ -32,7 +32,7 @@ ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
 ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
 ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
 
-ocp4_workload_lb2221_aqua_reporef: 1.0.1
+ocp4_workload_lb2221_aqua_reporef: 1.0.2
 
 ai_control_plane_cores: >-
   {{ 16 if worker_instance_count|int <= 10
@@ -45,12 +45,27 @@ ai_control_plane_memory: >-
   else '128Gi'
   }}
 
-# per user: 2cpu and 8gi ram
-worker_instance_count: "{{ [(num_users | int / 7) | round(0, 'ceil') | int, 2] | max }}"
-ai_workers_cores: 16
+# lab requires: per user: 2cpu and 8gi ram
+#
+# if num_users <= 3 use 16 cores, 32 ram, and 2 workers
+# if num_users <= 7 use 32 cores, 64 ram, and 2 workers
+# if num_users > 7 the provision 10 users per worker node:
+#      64 cores, 128 ram, and num_users / 10
+worker_instance_count: >-
+  {{ '2' if num_users|int <= 7
+     else [(num_users | int / 10) | round(0, 'ceil') | int, 2] | max
+  }}
+
+# [(num_users | int / 7) | round(0, 'ceil') | int, 2] | max }}"
+ai_workers_cores: >-
+  {{ '16' if num_users|int <= 3
+  else '32' if num_users|int <= 7
+  else '64'
+  }}
 ai_workers_memory: >-
-  {{ '32Gi' if num_users|int <= 4
-  else '64Gi'
+  {{ '32Gi' if num_users|int <= 3
+  else '64Gi' if num_users|int <= 7
+  else '128Gi'
   }}
 
 
