@@ -1,9 +1,9 @@
 ---
-#include /enterprise/includes/aws-sandbox-meta.yaml
-#include /enterprise/includes/ansible_control_plane/current_controller.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
 #include /includes/catalog-icon-project-dance.yaml
 #include /includes/terms-of-service.yaml
-#include /enterprise/includes/lifetime-standard.yaml
+#include /includes/lifetime-standard.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
@@ -37,6 +37,12 @@ bastion_instance_image: RHEL94GOLD-latest
 
 key_name: opentlc_admin_backdoor
 region: us-east-2
+cloud_tags:
+  env_type: "{{ env_type }}"
+  #guid: "{{ guid }}"
+  #course_name: "{{ course_name | d('unknown') }}"
+  platform: "{{ platform | d('unknown') }}"
+  #purpose: "{{ purpose | d('unknown') }}"
 aws_region: us-east-2
 
 # -------------------------------------------------------------------
@@ -72,76 +78,32 @@ instance_zone_c: us-east-2c
 gpu_instance_type: g6.4xlarge
 
 # -------------------------------------------------------------------
-# Role: create_ssh_provision_key
+# Security group
 # -------------------------------------------------------------------
-create_ssh_provision_key_enable_user_info_data: true
-
-
-# -------------------------------------------------------------------
-# Security Group Config
-# -------------------------------------------------------------------
-
 security_groups:
-
-  - name: HostSG
+  - name: BastionSG
     rules:
-      - name: FromHostSG
-        description: "Allow everything from HostSG nodes"
-        from_port: 0
-        to_port: 65535
-        protocol: -1
-        from_group: HostSG
-        rule_type: Ingress
-
-  - name: NOvncSG
-    rules:
-
-      - name: ClientNOVNCPort
-        description: "Client NOVNC Public"
-        from_port: 6080
-        to_port: 6080
+      - name: BasSSHPublic
+        description: "SSH public"
+        from_port: 22
+        to_port: 22
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
-
-      - name: CertBotChallangePort
-        description: "Lets encrypt talks to 80"
+      - name: BasHTTPPublic
+        description: "HTTP public for Let's Encrypt verification"
         from_port: 80
         to_port: 80
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
-
-      - name: CertBotTLSPort
-        description: "TLS"
+      - name: BasHTTPSPublic
+        description: "HTTPS public for Let's Encrypt verification"
         from_port: 443
         to_port: 443
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
-
-# -------------------
-# Instances
-# -------------------
-instances:
-  - name: bastion
-    count: 1
-    unique: true
-    public_dns: true
-    floating_ip: true
-    image: "{{ bastion_instance_image }}"
-    flavor:
-      ec2: "{{ bastion_instance_type }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "bastions"
-      - key: "ostype"
-        value: "linux"
-    rootfs_size: "{{ rootfs_size_bastion | default(100)  }}"
-    security_groups:
-      - BastionSG
-      - HostSG
-      - NOvncSG
 
 # -------------------------------------------------------------------
 # Workload variables
@@ -162,9 +124,7 @@ update_packages: true
 # -------------------------------------------------------------------
 install_student_user: true
 student_name: lab-user
-# --- student_password not set -> generate random password
-# student_password: ""
-# --- Student is allowed to sudo and switch to root
+student_password: "{{ common_password }}"
 student_sudo: true
 
 # -------------------------------------------------------------------
