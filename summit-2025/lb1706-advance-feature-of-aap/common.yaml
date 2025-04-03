@@ -11,6 +11,7 @@
 #include /includes/secrets/demosat-rhel-9-latest-and-aap25.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/secrets/ansible-tower-advanced-24.yaml
+
 # -------------------------------------------------------------------
 # --- Catalog Item: Advanced features of Ansible Automation Platform
 #                   - Automation Controller
@@ -24,7 +25,7 @@ platform: RHPDS
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-env_type: ansible-bu-workshop
+env_type: multi-cloud-base-infra
 cloud_provider: ec2
 
 # -------------------------------------------------------------------
@@ -33,7 +34,7 @@ cloud_provider: ec2
 default_instance_image: RHEL95GOLD-latest
 controller_instance_image: aap-2.5-10.1-x86_64-20250304
 
-default_instance_type: "t3a.large"
+default_instance_type: "t3a.xlarge"
 controller_instance_type: "m5ad.2xlarge"
 default_rootfs_size: 50
 controller_rootfs_size: 200
@@ -203,7 +204,15 @@ software_workloads:
 post_software_workloads:
   bastions:
     - aap_devel_tools
+
+post_software_final_workloads:
+  localhost:
+    - agnosticv-userdata-import
+  bastions:
+    - asset_injector
     - showroom
+  nodes:
+    - asset_injector
 
 # -------------------------------------------------------------------
 # Common Password
@@ -434,6 +443,41 @@ aap_devel_tools_env_set:
   CONTROLLER_PASSWORD: "{{ common_password }}"
   CONTROLLER_VERIFY_SSL: true
 
+
+# -------------------------------------------------------------------
+# Role: asset_injector
+# -------------------------------------------------------------------
+asset_injector_assets:
+  - description: Remove insights-client package
+    type: dnf
+    name: insights-client
+    state: removed
+
+  - description: Create ansible group directory
+    type: file
+    path: /etc/ansible/group_vars/
+    state: directory
+
+  - description: Create ansible group directory
+    type: file
+    path: /etc/ansible/group_vars/all
+    state: directory
+
+  - description: Create ansible group directory
+    type: file
+    path: /etc/ansible/group_vars/all/agnosticd_user_data.yml
+    state: touch
+
+  - description: Save agnosticd_user_info
+    type: lineinfile
+    path: /etc/ansible/group_vars/all/agnosticd_user_data.yml
+    state: present
+    insertafter: 'EOF'
+    line: |
+      ---
+      {{ lookup ('agnosticd_user_data', '*' ) |  to_nice_yaml }}
+
+
 # -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
@@ -464,11 +508,10 @@ showroom_tab_web2_name: AAP
 showroom_tab_web3_url: "{{ gitea_host_repo_url }}"
 showroom_tab_web3_name: Gitea
 
-
 # -------------------------------------------------------------------
-# Agnosticd Passthrough Userdata
+# Role: agnosticv-userdata-import
 # -------------------------------------------------------------------
-agnosticd_passthrough_user_data:
+agnosticv_importdata:
   gitea_web_ui_port: 488
   lab_password: "{{ common_password }}"
   lab_username: "{{ student_name }}"
