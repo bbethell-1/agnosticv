@@ -34,7 +34,7 @@ common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 default_instance_image: RHEL94GOLD-latest
 # bastion_instance_image: RHEL94GOLD-latest
 #satellite_instance_image: lb1152-satellite-6.17-20250327
-satellite_instance_image: lb1152-satellite-6.17-20250402
+satellite_instance_image: lb1152-satellite-6.17-20250403
 node1_instance_image: RHEL91GOLD-latest
 node2_instance_image: RHEL92GOLD-latest
 
@@ -154,7 +154,7 @@ instances:
       - WebSG
       - NodeSG
 
-  - name: node1
+  - name: "node1-{{ guid }}"
     count: 1
     unique: true
     public_dns: false
@@ -173,7 +173,7 @@ instances:
       - DefaultSG
       - NodeSG
 
-  - name: node2
+  - name: "node2-{{ guid }}"
     count: 1
     unique: true
     public_dns: false
@@ -200,6 +200,9 @@ requirements_content:
     - name: lb1152_satellite_reconfigure
       src: https://github.com/rhpds/lb1152_satellite_reconfigure.git
       version: main
+    - name: lb1152_satellite_node_config
+      src: https://github.com/opentraining-labs-customizations/lb1152_satellite_node_config.git
+      version: main
   #collections:
   #  - name: https://github.com/rhpds/lb1152.hol.git
   #    type: git
@@ -213,10 +216,22 @@ pre_software_workloads:
     - set-repositories
     - common
     - bastion-lite
+
+software_workloads:
+  all:
     - control-user
   satellites:
     - lb1152_satellite_reconfigure
+  nodes:
+    - lb1152_satellite_node_config
+  # rhel9_nodes:
+  #   - lb1152_satellite_node_config
 
+post_software_final_workloads:
+  bastions:
+    - showroom
+  localhost:
+    - agnosticv-userdata-import
 # -------------------------------------------------------------------
 # Role: set-repositories
 # -------------------------------------------------------------------
@@ -270,6 +285,17 @@ lb1152_satellite_reconfigure_internal_fqdn: satellite.example.com
 lb1152_satellite_reconfigure_user_name: admin
 lb1152_satellite_reconfigure_user_password: "{{ common_password }}"
 
+# -------------------------------------------------
+# Role: lb1152_satellite_node_config
+# -------------------------------------------------
+lb1152_subdomain_base: "{{ guid }}{{ subdomain_base_suffix }}"
+lb1152_satellite_node_config_internal: "{{ aws_dns_zone_private_chomped }}"
+lb1152_satellite_node_config_user_name: admin
+lb1152_satellite_node_config_user_password: "{{ common_password }}"
+lb1152_satellite_node_config_org: Default_Organization
+lb1152_satellite_node_config_activation_key: AK_RHEL9
+lb1152_satellite_node_config_insights_org: 13959588
+lb1152_satellite_node_config_insights_activation_key: "{{ lb1152_satellite_node_config_activation_key }}"
 # -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
@@ -290,6 +316,12 @@ showroom_ssh_username: "{{ student_name }}"
 
 # showroom_tab_web1_url: "https://{{ showroom_host }}:8443/"
 # showroom_tab_web1_name: Codeserver
+
+# -------------------------------------------------------------------
+# Role: agnosticv-userdata-import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  guid: "{{ guid }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
