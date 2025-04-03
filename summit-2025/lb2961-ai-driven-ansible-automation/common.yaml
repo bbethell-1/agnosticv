@@ -330,8 +330,11 @@ pre_software_workloads:
     - common
   controllers:
     - set-repositories
+  # servicenode
   servers:
     - set-repositories
+    - lb2961.ai_driven_aap.mattermost
+    - lb2961.ai_driven_aap.kafka
   rhel9_nodes:
     - set-repositories
 
@@ -350,12 +353,8 @@ software_workloads:
   # nodes being automated
   rhel9_nodes:
     - lb2961.ai_driven_aap.filebeat
-  # servicenode
   servers:
-    - lb2961.ai_driven_aap.mattermost
-    - lb2961.ai_driven_aap.kafka
     - lb2961.ai_driven_aap.gitea_create
-
 
 post_software_workloads:
   bastions:
@@ -496,7 +495,7 @@ ssh_privatekey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path) }}
 # --------------------------------------
 eda_decision_environment_name: "Network_de"
 eda_decision_environment_image: "quay.io/nmartins/network_de"
-eda_repo_url: "https://github.com/nmartins0611/ai-eda-adp.git"
+eda_repo_url: "https://github.com/ansible-tmm/aiops-summitlab.git"
 
 aap_configuration_dispatcher_roles:
   - {role: controller_license, var: controller_license, tags: controller_license}
@@ -542,9 +541,9 @@ controller_credentials:
     organization: Default
     credential_type: "Red Hat Ansible Automation Platform"
     inputs:
-      host: "{{ ansible_automation_platform_configuration_host }}/api/controller/"
-      password: "{{ ansible_automation_platform_configuration_password }}"
-      username: "{{ ansible_automation_platform_configuration_username }}"
+      host: "{{ ansible_automation_platform_configuration_host }}"
+      password: "{{ common_password }}"
+      username: "{{ student_name }}"
       verify_ssl: false
 
 controller_inventories:
@@ -623,11 +622,65 @@ controller_templates:
     survey_enabled: false
     verbosity: 1
     limit: "node1"
-controller_launch_jobs:
-  - name: "Break Apache"
+
+  - name: "Check HTTPD status"
+    description: "Job template to get httpd logs"
+    organization: "Default"
+    job_type: "run"
+    inventory: "lab-inventory"
+    project: "AI-EDA"
+    playbook: "playbooks/systemd_check_status.yml"
+    credentials:
+      - "lab-credential"
+    ask_variables_on_launch: false
+    survey_enabled: false
+    verbosity: 1
+    limit: "node1"
+
+  - name: "Mattermost Message"
+    description: "Job template to send mattermost message"
+    organization: "Default"
+    job_type: "run"
+    inventory: "Demo Inventory"
+    project: "AI-EDA"
+    playbook: "playbooks/mattermost_first_message.yml"
+    credentials:
+      - "Demo Credential"
+    ask_variables_on_launch: false
+    survey_enabled: false
+    verbosity: 1
+    extra_vars:
+      mattermost_instance: "http://{{ groups['servers'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}:8065"
+      mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
+
+  - name: "RHEL AI Inference"
+    description: "Job template to get details from RHEL AI"
+    organization: "Default"
+    job_type: "run"
+    inventory: "Demo Inventory"
+    project: "AI-EDA"
+    playbook: "playbooks/rhelai_inference_survey.yml"
+    ask_variables_on_launch: false
+    survey_enabled: false
+    verbosity: 1
+    extra_vars:
+      rhelai_token: "{{ common_password }}"
+
+  - name: "Generate Lightspeed Job Template"
+    description: "Generate job template for Ansible Lightsoeed to generate playbook"
+    organization: "Default"
+    job_type: "run"
+    inventory: "Demo Inventory"
+    project: "AI-EDA"
+    playbook: "playbooks/aap_create_job_template.yml"
+    credentials:
+      - "AAP"
+    ask_variables_on_launch: false
+    survey_enabled: false
+    verbosity: 1
 
 eda_projects:
-  - name: "ai-eda-adp"
+  - name: "ai-eda"
     description: "Event-driven Ansible rulebooks for AIOps"
     organization: Default
     url: "{{ eda_repo_url }}"
@@ -639,9 +692,9 @@ eda_credentials:
     organization: Default
     credential_type: "Red Hat Ansible Automation Platform"
     inputs:
-      host: "{{ ansible_automation_platform_configuration_host }}/api/controller/"
-      password: "{{ ansible_automation_platform_configuration_password }}"
-      username: "{{ ansible_automation_platform_configuration_username }}"
+      host: "{{ ansible_automation_platform_configuration_host }}/api/controller"
+      password: "{{ common_password }}"
+      username: "{{ student_name }}"
       verify_ssl: false
 
 eda_decision_environments:
@@ -654,7 +707,7 @@ eda_rulebook_activations:
   - name: "Web App"
     description: "Capture service errors"
     organization: Default
-    project: "ai-eda-adp"
+    project: "ai-eda"
     rulebook: "web_app.yml"
     decision_environment: "{{ eda_decision_environment_name }}"
     restart_policy: "on-failure"
