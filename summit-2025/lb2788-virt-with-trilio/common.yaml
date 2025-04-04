@@ -42,12 +42,14 @@ bastion_cores: 2
 bastion_memory: 4Gi
 
 master_instance_count: 3
-worker_instance_count: "{{ 0 if master_instance_count | int == 1 else [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max }}"
+worker_instance_count: >-
+  {{ 0 if master_instance_count | int == 1
+    else [(num_users | int / 6) | round(0, 'ceil') | int, 3] | max }}"
 
 ai_control_plane_cores: 16
 ai_control_plane_memory: "{{ '64Gi' if master_instance_count | int == 1 else '32Gi' }}"
 
-ai_workers_memory: 32Gi
+ai_workers_memory: 64Gi
 
 # -------------------------------------------------------------------
 # Bastion
@@ -75,10 +77,10 @@ infra_workloads:
   - ocp4_workload_kubevirt
   - ocp4_workload_minio
   - ocp4_workload_virt_roadshow_vms
-  # - ocp4_workload_virt_roadshow_multi_user
+  - ocp4_workload_virt_roadshow_multi_user
   - ocp4_workload_trilio_backup_restore_vms
   - ocp4_workload_openshift_gitops
-  # - ocp4_workload_gitops_bootstrap
+  #- ocp4_workload_gitops_bootstrap
   - ocp4_workload_showroom
 
 # -------------------------------------------------------------------
@@ -86,6 +88,8 @@ infra_workloads:
 # -------------------------------------------------------------------
 num_users: 2
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+ocp4_workload_user_base: dr-admin
 
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
 ocp4_workload_catalogsource_tag: v4.18_2025_02_24
@@ -123,7 +127,7 @@ ocp4_workload_rhsso_authentication_admin_username: admin
 ocp4_workload_rhsso_authentication_admin_password: "{{ common_password }}"
 
 ocp4_workload_rhsso_authentication_user_count: "{{ num_users }}"
-ocp4_workload_rhsso_authentication_user_name_base: dr-admin
+ocp4_workload_rhsso_authentication_user_name_base: "{{ ocp4_workload_user_base }}"
 ocp4_workload_rhsso_authentication_user_password: "{{ common_password }}"
 
 ocp4_workload_rhsso_authentication_env_type: "{{ env_type }}"
@@ -133,10 +137,12 @@ ocp4_workload_rhsso_authentication_env_type: "{{ env_type }}"
 # -------------------------------------------------------------------
 ocp4_workload_trilio_backup_restore_vms_namespace: trilio-system
 ocp4_workload_trilio_backup_restore_vms_operator_channel: 5.0.x
-ocp4_workload_trilio_backup_restore_vms_dr_user: dr-admin
+ocp4_workload_trilio_backup_restore_vms_dr_user: "{{ ocp4_workload_user_base }}"
+ocp4_workload_trilio_backup_restore_vms_dr_user_base: "{{ ocp4_workload_user_base }}"
 ocp4_workload_trilio_backup_restore_vms_dr_user_password: "{{ common_password }}"
 ocp4_workload_trilio_backup_restore_vms_s3_accessKey: minio
 ocp4_workload_trilio_backup_restore_vms_s3_secretKey: "{{ common_password }}"
+ocp4_workload_trilio_backup_restore_vms_user_count: "{{ num_users }}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_kubevirt
@@ -163,15 +169,17 @@ ocp4_workload_minio_image_tag: RELEASE.2024-05-28T17-19-04Z
 ocp4_workload_minio_bucket_setup: true
 ocp4_workload_minio_bucket_name:
   - trilio-storage
-ocp4_workload_minio_bucket_multi_user: false
+ocp4_workload_minio_bucket_multi_user: true
+ocp4_workload_minio_bucket_num_users: "{{ num_users }}"
+ocp4_workload_minio_bucket_userbase: "{{ ocp4_workload_user_base }}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_virt_roadshow_vms
 # -------------------------------------------------------------------
-ocp4_workload_virt_roadshow_vms_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+ocp4_workload_virt_roadshow_vms_num_users: "{{ num_users }}"
 ocp4_workload_virt_roadshow_vms_base_namespace: vmimported-
-ocp4_workload_virt_roadshow_vms_userbase: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
-ocp4_workload_virt_roadshow_vms_start_vms: true
+ocp4_workload_virt_roadshow_vms_userbase: "{{ ocp4_workload_rhsso_authentication_user_name_base}}"
+ocp4_workload_virt_roadshow_vms_start_vms: false
 # Roadshow Setup
 # When set to true (default) then the application made up from the VMs will not
 # work until instructions are followed.
@@ -183,7 +191,7 @@ ocp4_workload_virt_roadshow_vms_roadshow_setup: true
 # -------------------------------------------------------------------
 # In the future once bug https://issues.redhat.com/browse/CNV-38284 is in the product
 # the namespace will need to change to openshift-cnv
-# ocp4_workload_virt_roadshow_multi_user_configmap_namespace: openshift-cnv
+ocp4_workload_virt_roadshow_multi_user_configmap_namespace: openshift-cnv
 
 # ------------------------------------------------------
 # ocp4_workload_showroom
@@ -265,19 +273,16 @@ ocp4_workload_openshift_gitops_resource_health:
 # ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/trilio-gitops
-ocp4_workload_gitops_bootstrap_repo_revision: v1.0.1
+ocp4_workload_gitops_bootstrap_repo_revision: main
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap
-
-# 3scale requires RWX storage, so disable it for now.
 ocp4_workload_gitops_bootstrap_helm_values:
-  git:
-    url: https://github.com/rhpds/ocp-cluster-addons
-    revision: v1.2.2
-  rhsso:
-    startingCSV: rhsso-operator.7.6.9-opr-002
-    admin:
-      username: ssoadmin
-      password: "{{ common_admin_password }}"
+  user:
+    count: "{{ num_users }}"
+    prefix: "{{ ocp4_workload_user_base }}"
+  workspace:
+    git:
+      url: https://github.com/rhpds/trilio-gitops
+      revision: main
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -302,7 +307,7 @@ __meta__:
   catalog:
     display_name: "LB2788: Backup and Recovery of Red Hat OpenShift Virtualization VMs using Trilio"
     category: Red_Hat_Summit_2025
-    #multiuser: true
+    multiuser: true
     keywords: []
     labels:
       Provider: RHDP
@@ -315,18 +320,18 @@ __meta__:
           type: integer
           default: 1
           minimum: 1
-          maximum: 125
+          maximum: 62
   tower:
     timeout: 14400
   owners:
     maintainer:
       - name: Judd Maltin
         email: judd@redhat.com
-      - name: Juliano Moore
-        email: jboselem@redhat.com
+      - name: Tyrell Reddy
+        email: treddy@redhat.com
     sme:
-      - name: Alberto Gonzalez Rodriguez
-        email: josegonz@redhat.com
+      - name: Tyrell Reddy
+        email: treddy@redhat.com
       - name: Andrew Harrison
         email: andharri@redhat.com
     instructions:
