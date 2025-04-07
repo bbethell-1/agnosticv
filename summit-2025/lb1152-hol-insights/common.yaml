@@ -31,20 +31,20 @@ common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 # -------------------------------------------------------------------
 # Instance Variables
 # -------------------------------------------------------------------
-default_instance_image: RHEL94GOLD-latest
-# bastion_instance_image: RHEL94GOLD-latest
-#satellite_instance_image: lb1152-satellite-6.17-20250327
-satellite_instance_image: lb1152-satellite-6.17-20250403
-node1_instance_image: RHEL91GOLD-latest
-node2_instance_image: RHEL92GOLD-latest
+default_instance_image: RHEL95GOLD-latest
+# bastion_instance_image: RHEL95GOLD-latest
+satellite_instance_image: lb1152-satellite-6.17-20250407
+node_instance_image: RHEL91GOLD-latest
 
 default_instance_type: "t3a.large"
+# bastion_instance_type: "t3a.large"
 satellite_instance_type: r7a.2xlarge
 # node_instance_type: "t3a.large"
-# rhel9_instance_type: "t3a.large"
 
 default_rootfs_size: 50
+# bastion_rootfs_size: 50
 satellite_rootfs_size: 250
+# node_rootfs_size: 50
 
 # -------------------------------------------------------------------
 # Security Groups
@@ -136,6 +136,7 @@ instances:
     unique: true
     public_dns: true
     floating_ip: true
+    #image: "{{ satellite_instance_image | default(default_instance_image) }}"
     image:
       name: "{{ satellite_instance_image }}"
     flavor:
@@ -154,13 +155,12 @@ instances:
       - WebSG
       - NodeSG
 
-  - name: "node1-{{ guid }}"
-    count: 1
-    unique: true
+  - name: "node-{{ guid }}-"
+    count: 2
     public_dns: false
-    image: "{{ node1_instance_image | default(default_instance_image) }}"
+    image: "{{ node_instance_image | default(default_instance_image) }}"
     flavor:
-      ec2: "{{ node1_instance_type | default(default_instance_type) }}"
+      ec2: "{{ node_instance_type | default(default_instance_type) }}"
     tags:
       - key: "AnsibleGroup"
         value: "nodes"
@@ -168,26 +168,7 @@ instances:
         value: "linux"
       - key: "instance_filter"
         value: "{{ env_type }}-{{ email }}"
-    rootfs_size: "{{ node1_rootfs_size | default(default_rootfs_size) }}"
-    security_groups:
-      - DefaultSG
-      - NodeSG
-
-  - name: "node2-{{ guid }}"
-    count: 1
-    unique: true
-    public_dns: false
-    image: "{{ node2_instance_image | default(default_instance_image) }}"
-    flavor:
-      ec2: "{{ node2_instance_type | default(default_instance_type) }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "rhel9_nodes"
-      - key: "ostype"
-        value: "linux"
-      - key: "instance_filter"
-        value: "{{ env_type }}-{{ email }}"
-    rootfs_size: "{{ node2_rootfs_size | default(default_rootfs_size) }}"
+    rootfs_size: "{{ node_rootfs_size | default(default_rootfs_size) }}"
     security_groups:
       - DefaultSG
       - NodeSG
@@ -203,10 +184,10 @@ requirements_content:
     - name: lb1152_satellite_node_config
       src: https://github.com/opentraining-labs-customizations/lb1152_satellite_node_config.git
       version: main
-  #collections:
-  #  - name: https://github.com/rhpds/lb1152.hol.git
-  #    type: git
-  #    version: main
+  # collections:
+  #   - name: https://github.com/rhpds/lb1152.hol.git
+  #     type: git
+  #     version: main
 
 # -------------------------------------------------------------------
 # Config Pre/Software/Post Workloads
@@ -224,14 +205,12 @@ software_workloads:
     - lb1152_satellite_reconfigure
   nodes:
     - lb1152_satellite_node_config
-  # rhel9_nodes:
-  #   - lb1152_satellite_node_config
 
 post_software_final_workloads:
-  bastions:
-    - showroom
   localhost:
     - agnosticv-userdata-import
+  bastions:
+    - showroom
 # -------------------------------------------------------------------
 # Role: set-repositories
 # -------------------------------------------------------------------
@@ -305,8 +284,8 @@ showroom_ui: default
 showroom_user_password: "{{ common_password }}"
 showroom_ssh_method: sshkey
 showroom_tab_services:
-  # - web1
   - tty1
+  - web1
 
 showroom_ttys_enable_tmux: false
 showroom_lab_users:
@@ -314,8 +293,8 @@ showroom_lab_users:
 
 showroom_ssh_username: "{{ student_name }}"
 
-# showroom_tab_web1_url: "https://{{ showroom_host }}:8443/"
-# showroom_tab_web1_name: Codeserver
+showroom_tab_web1_url: "https://{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
+showroom_tab_web1_name: Satellite Server
 
 # -------------------------------------------------------------------
 # Role: agnosticv-userdata-import
@@ -338,6 +317,7 @@ __meta__:
       - lb1152
       - satellite
       - satellite6.17
+      - insights
     labels:
       Product: Red_Hat_Enterprise_Linux
       Product_Family: Red_Hat_Enterprise_Linux
