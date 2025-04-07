@@ -8,7 +8,6 @@
 
 #include /includes/ansible_control_plane/current_controller.yaml
 
-#include /includes/secrets/showroom-shared-cluster1.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/secrets/s3-rhpds-private-bucket.yaml
 #include /includes/secrets/openshift-ocpv-configs.yaml
@@ -25,6 +24,7 @@
 env_type: base-infra
 cloud_provider: openshift_cnv
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
 
 # -------------------------------------------------------------------
 # Platform
@@ -338,16 +338,24 @@ asset_injector_assets:
     state: restarted
 
 # -------------------------------------------------------------------
-# Workloads: showroom
+# Role: showroom
 # -------------------------------------------------------------------
-ocp4_workload_showroom_content_git_repo: >-
-  https://github.com/rhpds/showroom-lb1136-rhel-10-hol.git
-ocp4_workload_showroom_content_only: false
+showroom_git_repo: "https://github.com/rhpds/showroom-lb1136-rhel-10-hol.git"
+showroom_user: showroom
+showroom_ui: default
+showroom_user_password: "{{ common_password }}"
+showroom_ssh_method: sshkey
+showroom_tab_services:
+  - double_tty
 
-ocp4_workload_showroom_stacked_terminals_enable: true
-ocp4_workload_showroom_stacked_terminals_display_name: "Terminals"
+showroom_ttys_enable_tmux: false
+showroom_lab_users:
+  - "{{ student_name }}"
 
-showroom_deploy_shared_cluster_enable: true
+showroom_ssh_username: "{{ student_name }}"
+
+# showroom_tab_web1_url: "https://node3.{{ subdomain }}"
+# showroom_tab_web1_name: Cockpit UI
 # -------------------------------------------------------------------
 # Role: set-repositories
 # -------------------------------------------------------------------
