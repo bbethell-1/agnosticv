@@ -346,7 +346,6 @@ software_workloads:
     - gitea_vm_setup
   controllers:
     - nginx_with_cert
-    - ansible_automation_platform_configuration
   #ai server
   nodes:
     - lb2961.ai_driven_aap.rhelai_model_serve
@@ -357,6 +356,8 @@ software_workloads:
     - lb2961.ai_driven_aap.gitea_create
 
 post_software_workloads:
+  controllers:
+    - ansible_automation_platform_configuration
   bastions:
     - showroom
 
@@ -504,7 +505,7 @@ lightspeed_wca_token: !vault |
 # --------------------------------------
 # EDA vars
 # --------------------------------------
-eda_decision_environment_name: "Network_de"
+eda_decision_environment_name: "Kafka Decision Environment"
 eda_decision_environment_image: "quay.io/nmartins/network_de"
 eda_repo_url: "https://github.com/ansible-tmm/aiops-summitlab.git"
 
@@ -549,7 +550,7 @@ controller_credentials:
       become_method: sudo
   - name: "AAP"
     description: "Red Hat Ansible Automation Platform Credential"
-    organization: Default
+    organization: "Default"
     credential_type: "Red Hat Ansible Automation Platform"
     inputs:
       host: "{{ ansible_automation_platform_configuration_host }}"
@@ -558,10 +559,18 @@ controller_credentials:
       verify_ssl: false
   - name: "ansible-vault"
     description: "Ansible Vault Credentials"
-    organization: Default
+    organization: "Default"
     credential_type: "Vault"
     inputs:
       vault_password: MzIzNTE0OTEw
+  - name: "Gitea"
+    description: "Gitea Credentials"
+    organization: Default
+    credential_type: "Source Control"
+    inputs:
+      username: "lab-user"
+      password: "{{ common_password }}"
+
 
 controller_inventories:
   - name: "lab-inventory"
@@ -612,8 +621,20 @@ controller_projects:
     scm_delete_on_update: false
     scm_update_on_launch: false
     update_project: true
+  - name: "Lightspeed-Playbooks"
+    description: "Project to check AI generated Lightspeed Playbooks"
+    organization: "Default"
+    scm_type: "git"
+    scm_url: "{{ gitea_create_url }}/lab-user/lightspeed_playbooks.git"
+    scm_clean: true
+    scm_delete_on_update: false
+    scm_update_on_launch: false
+    scm_branch: "main"
+    credential: "Gitea"
+    wait: false
+
 controller_templates:
-  - name: "Break Apache"
+  - name: "❌ Break Apache"
     description: "Job template to break Apache config"
     organization: "Default"
     job_type: "run"
@@ -626,7 +647,7 @@ controller_templates:
     survey_enabled: false
     verbosity: 1
     limit: "node1"
-  - name: "Restore Apache"
+  - name: "✅ Restore Apache"
     description: "Job template to break Apache config"
     organization: "Default"
     job_type: "run"
@@ -639,8 +660,7 @@ controller_templates:
     survey_enabled: false
     verbosity: 1
     limit: "node1"
-
-  - name: "Check HTTPD status"
+  - name: "1. ⚙️ Apache Service Status Check"
     description: "Job template to get httpd logs"
     organization: "Default"
     job_type: "run"
@@ -653,8 +673,7 @@ controller_templates:
     survey_enabled: false
     verbosity: 1
     limit: "node1"
-
-  - name: "Mattermost Message"
+  - name: "3. 📣 Notify via Mattermost"
     description: "Job template to send mattermost message"
     organization: "Default"
     job_type: "run"
@@ -669,8 +688,7 @@ controller_templates:
     extra_vars:
       mattermost_instance: "http://{{ groups['servers'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}:8065"
       mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
-
-  - name: "RHEL AI Inference"
+  - name: "2. 🤖 RHEL AI: Analyze Incident"
     description: "Job template to get details from RHEL AI"
     organization: "Default"
     job_type: "run"
@@ -682,14 +700,38 @@ controller_templates:
     verbosity: 1
     extra_vars:
       rhelai_token: "{{ common_password }}"
-
-  - name: "Generate Lightspeed Job Template"
+  - name: "4. ⚙️ Build Ansible Lightspeed Job Template"
     description: "Generate job template for Ansible Lightsoeed to generate playbook"
     organization: "Default"
     job_type: "run"
     inventory: "Demo Inventory"
     project: "AI-EDA"
     playbook: "playbooks/aap_create_job_template.yml"
+    credentials:
+      - "AAP"
+    ask_variables_on_launch: false
+    survey_enabled: false
+    verbosity: 1
+  - name: "🧾 Commit Fix to Gitea"
+    description: "Push the generated remediation playbook to Gitea"
+    organization: "Default"
+    job_type: "run"
+    inventory: "Demo Inventory"
+    project: "AI-EDA"
+    playbook: "playbooks/scm_pr.yml"
+    ask_variables_on_launch: false
+    survey_enabled: false
+    verbosity: 1
+    extra_vars:
+      gitea_token: "{{ hostvars[groups['servers'][0]]['gitea_token_sha1'] }}"
+      gitea_url: "{{ gitea_create_url }}"
+  - name: "⚙️ Build HTTPD Remediation Template"
+    description: "Generate job template to fix httpd"
+    organization: "Default"
+    job_type: "run"
+    inventory: "Demo Inventory"
+    project: "AI-EDA"
+    playbook: "playbooks/httpd_remediation_job_template.yml"
     credentials:
       - "AAP"
     ask_variables_on_launch: false
