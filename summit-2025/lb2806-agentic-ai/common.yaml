@@ -254,12 +254,9 @@ inventory_groups:
 # Instance Config
 # -------------------------------------------------------------------
 
-default_instance_type: g6.xlarge # Could revert to t3a.large if using MaaS
-default_instance_image: RHEL95GOLD-latest
-
-code_instance_type: "{{ default_instance_type }}"
-code_instance_image: "{{ default_instance_image }}"
-code_rootfs_size: 200
+bastion_instance_image: RHEL95GOLD-latest
+bastion_instance_name: dev
+bastion_rootfs_size: 200
 
 # -------------------------------------------------------------------
 # AMI Config - tmp for RHEL AI Eng CI
@@ -267,14 +264,14 @@ code_rootfs_size: 200
 
 instances:
 
-  - name: dev
+  - name: "{{ bastion_instance_name }}"
     count: 1
     unique: true
     public_dns: true
     floating_ip: true
-    image: "{{ code_instance_image }}"
+    image: "{{ bastion_instance_image }}"
     flavor:
-      ec2: "{{ code_instance_type }}"
+      ec2: "{{ bastion_instance_type }}"
     tags:
       - key: "AnsibleGroup"
         value: "bastions,showroom"
@@ -282,7 +279,7 @@ instances:
         value: "linux"
       - key: "instance_filter"
         value: "{{ env_type }}-{{ email }}"
-    rootfs_size: "{{ code_rootfs_size | default(100)  }}"
+    rootfs_size: "{{ bastion_rootfs_size | default(100)  }}"
     security_groups:
       - BastionSG
       - HostSG
@@ -369,7 +366,33 @@ __meta__:
       Product_Family: Red_Hat_Enterprise_Linux
       Provider: RHDP
     multiuser: false
-    parameters: []
+    parameters:
+      - name: aws_region
+        description: AWS Region to Provision Environment.
+        formLabel: Region
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: us-east-2
+          enum:
+            - us-east-2
+            - us-west-2
+            - us-east-1
+            - eu-central-1
+            - ap-northeast-1
+      - name: bastion_instance_type
+        description: GPU Selection by Node Type
+        formLabel: GPU Selection by Node Type
+        openAPIV3Schema:
+          type: string
+          default: g4dn.xlarge
+          enum:
+            - g4dn.xlarge
+            - g6.xlarge
+            - g6.4xlarge
+            - g6.12xlarge
+            - g5.xlarge
+            - g5.4xlarge
   deployer:
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:2025-02-14
