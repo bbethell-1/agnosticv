@@ -177,17 +177,17 @@ instances:
 # Ansible Module, Collections, and Roles Requirements
 # -------------------------------------------------------------------
 requirements_content:
-  roles:
-    - name: lb1152_satellite_reconfigure
-      src: https://github.com/rhpds/lb1152_satellite_reconfigure.git
-      version: main
-    - name: lb1152_satellite_node_config
-      src: https://github.com/opentraining-labs-customizations/lb1152_satellite_node_config.git
-      version: main
-  # collections:
-  #   - name: https://github.com/rhpds/lb1152.hol.git
-  #     type: git
+  # roles:
+  #   - name: lb1152_satellite_reconfigure
+  #     src: https://github.com/rhpds/lb1152_satellite_reconfigure.git
   #     version: main
+  #   - name: lb1152_satellite_node_config
+  #     src: https://github.com/opentraining-labs-customizations/lb1152_satellite_node_config.git
+  #     version: main
+  collections:
+    - name: https://github.com/rhpds/lb1152.hol.git
+      type: git
+      version: main
 
 # -------------------------------------------------------------------
 # Config Pre/Software/Post Workloads
@@ -202,9 +202,9 @@ software_workloads:
   all:
     - control-user
   satellites:
-    - lb1152_satellite_reconfigure
+    - lb1152.hol.satellite_reconfigure
   nodes:
-    - lb1152_satellite_node_config
+    - lb1152.hol.node_config
 
 post_software_final_workloads:
   localhost:
@@ -256,25 +256,22 @@ control_user_password: "{{ common_password }}"
 control_user_private_group: "{{ omit }}"
 
 # -------------------------------------------------
-# Role: lb1152_satellite_reconfigure
+# Role: lb1152.hol.satellite_reconfigure
 # -------------------------------------------------
-dns_information: ""
-lb1152_satellite_reconfigure_external_fqdn: "{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
-lb1152_satellite_reconfigure_internal_fqdn: satellite.example.com
-lb1152_satellite_reconfigure_user_name: admin
-lb1152_satellite_reconfigure_user_password: "{{ common_password }}"
+lb1152_hol_satellite_reconfigure_external_fqdn: "{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
+lb1152_hol_satellite_reconfigure_internal_fqdn: satellite.example.com
+lb1152_hol_satellite_reconfigure_user_name: admin
+lb1152_hol_satellite_reconfigure_user_password: "{{ common_password }}"
 
 # -------------------------------------------------
-# Role: lb1152_satellite_node_config
+# Role: lb1152.hol.node_config
 # -------------------------------------------------
-lb1152_subdomain_base: "{{ guid }}{{ subdomain_base_suffix }}"
-lb1152_satellite_node_config_internal: "{{ aws_dns_zone_private_chomped }}"
-lb1152_satellite_node_config_user_name: admin
-lb1152_satellite_node_config_user_password: "{{ common_password }}"
-lb1152_satellite_node_config_org: Default_Organization
-lb1152_satellite_node_config_activation_key: AK_RHEL9
-lb1152_satellite_node_config_insights_org: 13959588
-lb1152_satellite_node_config_insights_activation_key: "{{ lb1152_satellite_node_config_activation_key }}"
+lb1152_hol_node_config_sat_hostname: "satellite.example.com"
+lb1152_hol_node_config_sat_org: Default_Organization
+lb1152_hol_node_config_sat_activation_key: AK_RHEL9
+lb1152_hol_node_config_insights_org: 13959588
+lb1152_hol_node_config_insights_activation_key: AK_RHEL9
+
 # -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
@@ -285,7 +282,7 @@ showroom_user_password: "{{ common_password }}"
 showroom_ssh_method: sshkey
 showroom_tab_services:
   - tty1
-  - web1
+  # - web1
 
 showroom_ttys_enable_tmux: false
 showroom_lab_users:
@@ -293,14 +290,17 @@ showroom_lab_users:
 
 showroom_ssh_username: "{{ student_name }}"
 
-showroom_tab_web1_url: "https://{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
-showroom_tab_web1_name: Satellite Server
+# showroom_tab_web1_url: "https://{{ groups['satellites'][0].split('.')[0] }}.{{ subdomain_base }}"
+# showroom_tab_web1_name: Satellite Server
 
 # -------------------------------------------------------------------
 # Role: agnosticv-userdata-import
 # -------------------------------------------------------------------
 agnosticv_importdata:
   guid: "{{ guid }}"
+  workshop_satellite_url: "https://{{ lb1152_hol_satellite_reconfigure_external_fqdn }}"
+  workshop_satellite_user_name: "{{ lb1152_hol_satellite_reconfigure_user_name }}"
+  workshop_satellite_user_password: "{{ lb1152_hol_satellite_reconfigure_user_password }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -325,5 +325,5 @@ __meta__:
     parameters: []
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
       pull: missing
