@@ -169,14 +169,55 @@ vscode_server_additional_settings: |
 
 asset_injector_assets:
 
-  - description: Clone lab environment
+  - description: Clone lab code repo
     type: git
     src: "https://github.com/rhpds/llamastack-lab.git"
     dest: "/home/{{ student_name }}/lab"
-    version: 'main'
+    version: main
+    mode: u=rwx,g=rx,o=rx
     owner: "{{ student_name }}"
     group: users
-    mode: '0755'
+
+  - description: Create directory for additional bonus content
+    type: file
+    state: directory
+    path: "/home/{{ student_name }}/additional_content"
+    mode: u=rwx,g=rx,o=rx
+    owner: "{{ student_name }}"
+    group: users
+
+  # Via Peter Double
+
+  - description: Clone solaius/llama-stack
+    type: git
+    src: https://github.com/solaius/llama-stack
+    dest: "/home/{{ student_name }}/additional_content/llama-stack"
+    version: main
+    mode: u=rwx,g=rx,o=rx
+    owner: "{{ student_name }}"
+    group: users
+
+  # Via Philip Hayes
+
+  - description: Clone Opendatahub llama-stack-demos
+    type: git
+    src: https://github.com/opendatahub-io/llama-stack-demos.git
+    dest: "/home/{{ student_name }}/additional_content/llama-stack-demos"
+    version: main
+    mode: u=rwx,g=rx,o=rx
+    owner: "{{ student_name }}"
+    group: users
+
+  # Via Burr Sutter
+
+  - description: Clone Opendatahub llama-stack-demos
+    type: git
+    src: https://github.com/burrsutter/llama-stack-tutorial
+    dest: "/home/{{ student_name }}/additional_content/llama-stack-tutorial"
+    version: main
+    mode: u=rwx,g=rx,o=rx
+    owner: "{{ student_name }}"
+    group: users
 
   - description: Remove 50-cloud-init.conf, ssh issue
     type: remove
@@ -292,8 +333,7 @@ instances:
       - BastionSG
       - HostSG
       - ShowroomSG
-      - CodeserverSG
-      - JupyterSG
+      - AITabServicesSG
 
 # -------------------------------------------------------------------
 # Security Group Config
@@ -303,6 +343,7 @@ security_groups:
 
   - name: HostSG
     rules:
+
       - name: FromHostSG
         description: "Allow everything from HostSG nodes"
         from_port: 0
@@ -322,7 +363,7 @@ security_groups:
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
-  - name: CodeserverSG
+  - name: AITabServicesSG
     rules:
 
       - name: Codeserver
@@ -341,13 +382,26 @@ security_groups:
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
-  - name: JupyterSG
-    rules:
-
       - name: Jupyter
         description: "Jupyter Port"
         from_port: 9443
         to_port: 9443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: LlamaStackUIdev
+        description: "React Llamastack dev port"
+        from_port: 5000
+        to_port: 5000
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: LlamaStackUIprod
+        description: "React Llamastack rod port"
+        from_port: 3000
+        to_port: 3000
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
@@ -400,7 +454,7 @@ __meta__:
             - g6.xlarge
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:2025-02-14
+      image: quay.io/agnosticd/ee-multicloud:2025-04-07 # last known good: 2025-02-14
       pull: missing
   sandbox_api:
     reservation: pgpu-event
