@@ -37,7 +37,7 @@ master_instance_count: 1
 worker_instance_count: 0
 ai_control_plane_cores: 16
 ai_control_plane_memory: '64Gi'
-openshift_admin_user: kubeadmin
+#openshift_admin_user: kubeadmin
 bastion_instance_image: rhel-9.3
 
 # -------------------------------------------------------------------
@@ -47,12 +47,19 @@ project_tag: "{{ env_type }}-{{ guid }}"
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 ssh_privatekey: "{{ lookup('file', hostvars.localhost.ssh_provision_key_path) }}"
 ssh_publickey: "{{ hostvars.localhost.ssh_provision_pubkey_content }}"
-bastion_student_show_user_info: true
-create_ssh_provision_key_enable_user_info_data: true
-host_ocp4_installer_set_user_data_kubeadmin_password: true
+#bastion_student_show_user_info: true
+#create_ssh_provision_key_enable_user_info_data: true
+#host_ocp4_installer_set_user_data_kubeadmin_password: true
 aws_access_key_id: "{{ aws_credentials.aws_access_key_id }}"
 aws_secret_access_key: "{{ aws_credentials.aws_secret_access_key }}"
 
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+student_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
 # Repos
@@ -101,6 +108,7 @@ requirements_content:
 student_workloads: []
 
 infra_workloads:
+  - ocp4_workload_authentication
   - ocp4_workload_external_odf
   - ocp4_workload_cert_manager
   - ocp4_workload_ansible_automation_platform_25
@@ -108,6 +116,23 @@ infra_workloads:
   - automation_platform_bastion
   - ocp4_workload_gitea_operator
   - ocp4_workload_quay_operator
+  - ocp4_workload_kubevirt
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('1') | int }}"
+ocp4_workload_authentication_remove_kubeadmin: false
+
+# --------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# --------------------------------------------------------------------
+odf_channel: "stable-4.16"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager
@@ -121,11 +146,6 @@ ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
 ocp4_workload_cert_manager_channel: stable-v1
 ocp4_workload_cert_manager_use_catalog_snapshot: false
 ocp4_workload_cert_manager_install_api_certificates: false
-
-# --------------------------------------------------------------------
-# Workload: ocp4_workload_external_odf
-# --------------------------------------------------------------------
-odf_channel: "stable-4.16"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_ansible_automation_platform_25
@@ -198,6 +218,12 @@ ocp4_workload_gitea_operator_repositories_list:
 ocp4_workload_quay_operator_channel: stable-3.12
 ocp4_workload_quay_operator_registry_namespace: quay
 ocp4_workload_quay_operator_registry_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+ocp4_workload_kubevirt_use_catalog_snapshot: false
 
 # ------------------------
 # Config values
