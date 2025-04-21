@@ -35,12 +35,33 @@ bastion_cores: 2
 bastion_memory: 4Gi
 
 master_instance_count: 3
-worker_instance_count: "{{ 0 if master_instance_count | int == 1 else [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max }}"
 
-ai_control_plane_cores: 16
-ai_control_plane_memory: "{{ '64Gi' if master_instance_count | int == 1 else '32Gi' }}"
+ai_control_plane_cores: >-
+  {{ 16 if worker_instance_count|int <= 10
+  else 32
+  }}
 
-ai_workers_memory: 32Gi
+ai_control_plane_memory: >-
+  {{ '32Gi' if worker_instance_count|int <= 10
+  else '64Gi'
+  }}
+
+# COMPUTE:  lab requires: per user: 2cpu and at least 8gi ram
+# 7 * 8 = 56Gi
+# if num_users <= 7 use 32 cores, 64 ram, and 2 workers
+# if num_users > 7 the provision 10 users per worker node:
+#      64 cores, 128 ram, and num_users / 10
+worker_instance_count: >-
+  {{ 2 if num_users|int <= 7
+     else [(num_users | int / 10) | round(0, 'ceil') | int, 2] | max
+  }}
+
+# [(num_users | int / 7) | round(0, 'ceil') | int, 2] | max }}"
+ai_workers_cores: 64
+ai_workers_memory: >-
+  {{ '64Gi' if num_users|int <= 7
+     else '128Gi'
+  }}
 
 # -------------------------------------------------------------------
 # Repos
@@ -68,6 +89,7 @@ infra_workloads:
 - ocp4_workload_external_odf
 - ocp4_workload_openshift_gitops
 - ocp4_workload_gitops_bootstrap
+- ocp4_workload_lb2221_aqua
 - ocp4_workload_showroom
 
 # -------------------------------------------------------------------
@@ -76,19 +98,29 @@ infra_workloads:
 ocp4_workload_user_count: "{{ num_users }}"
 ocp4_workload_user_base: user
 
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.18_2025_03_24
+
 common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
 # -------------------------------------------------------------------
-# ocp4_workload_cert_manager
+# Workload: ocp4_workload_cert_manager
 # -------------------------------------------------------------------
 ocp4_workload_cert_manager_channel: stable-v1.15
-ocp4_workload_cert_manager_use_catalog_snapshot: false
+ocp4_workload_cert_manager_use_catalog_snapshot: true
+ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_cert_manager_install_ingress_certificates: true
 ocp4_workload_cert_manager_install_api_certificates: false
 ocp4_workload_cert_manager_ec2_region: us-east-2
 ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
 ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
 ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_lb2221_aqua
+# -------------------------------------------------------------------
+ocp4_workload_lb2221_aqua_reporef: main
 
 # -------------------------------------------------------------------
 # ocp4_workload_external_odf
@@ -175,43 +207,13 @@ ocp4_workload_openshift_gitops_resource_health:
 # -------------------------------------------------------------------
 # ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
-# ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ocp4-cnv-gitops
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/lb2221-aqua-gitops.git
-ocp4_workload_gitops_bootstrap_repo_revision: v1.0.0
+ocp4_workload_gitops_bootstrap_repo_revision: v1.0.10
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap
 
-# 3scale requires RWX storage, so disable it for now.
-ocp4_workload_gitops_bootstrap_helm_values:
-  git:
-    url: https://github.com/rhpds/ocp-cluster-addons
-    revision: v1.2.2
-  rhoai:
-    startingCSV: rhods-operator.2.16.0
-    datasciencecluster:
-      components:
-        dashboard:
-          managementState: Managed
-        datasciencepipelines:
-          managementState: Managed
-        kserve:
-          managementState: Managed
-        kueue:
-          managementState: Managed
-        modelmeshserving:
-          managementState: Managed
-        modelregistry:
-          managementState: Managed
-        ray:
-          managementState: Managed
-        workbenches:
-          managementState: Managed
-  rhsso:
-    startingCSV: rhsso-operator.7.6.9-opr-002
-    admin:
-      username: ssoadmin
-      password: "{{ common_admin_password }}"
-  webterminal:
-    startingCSV: web-terminal.v1.12.1
+ocp4_workload_gitops_bootstrap_health_retries: 2
+
+# ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ocp4-cnv-gitops
 
 # ------------------------------------------------------
 # ocp4_workload_showroom
@@ -235,13 +237,6 @@ __meta__:
     actions:
       destroy:
         catch_all: false
-  sandboxes:
-  - kind: OcpSandbox
-    namespace_suffix: ocp4-cluster
-    cloud_selector:
-      cloud: cnv
-      purpose: prod
-      virt: "yes"
   catalog:
     display_name: "LB2221: Smart Aquaculture edge-to-cloud developer workshop"
     multiuser: true
@@ -280,3 +275,17 @@ __meta__:
       email: ctate@redhat.com
     - name: Judd Maltin
       email: judd@redhat.com
+  sandboxes:
+  - kind: OcpSandbox
+    namespace_suffix: ocp4-cluster
+    cloud_selector:
+      cloud: cnv
+      purpose: prod
+      virt: "yes"
+    quota:
+      requests.storage: "2000Gi"
+      limits.cpu: "512"
+      requests.cpu: "512"
+        # 390529548295
+      limits.memory: "2000Gi"
+      requests.memory: "2000Gi"
