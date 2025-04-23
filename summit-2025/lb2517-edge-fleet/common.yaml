@@ -21,7 +21,7 @@
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/dynamic-aws-dns.yaml
-#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/secrets/openshift_assisted_installer_icr.yaml
 #include /includes/secrets/openshift-ocpv-configs.yaml
 #include /includes/secrets/zerossl.yaml
 # -------------------------------------------------------------------
@@ -40,7 +40,7 @@ platform: RHPDS
 # OpenShift Version
 # -------------------------------------------------------------------
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-ocp4_installer_version: "4.18"
+ocp4_installer_version: "4.18.8"
 
 # -------------------------------------------------------------------
 # Repos
@@ -78,25 +78,28 @@ ai_workers_memory: 32Gi
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
-# --- Infra Workloads (YAML List)
 infra_workloads:
+  - ocp4_workload_cert_manager
   - ocp4_workload_external_odf
   - ocp4_workload_authentication
-  - ocp4_workload_cert_manager
   - ocp4_workload_openshift_gitops
   - ocp4_workload_web_terminal
   - ocp4_workload_kubevirt
+  - ocp4_workload_oadp_gitops
   - ocp4_workload_gitea_operator
-#  - ocp4_workload_virt_roadshow_multi_user
+  - ocp4_workload_gitops_bootstrap
   - ocp4_workload_showroom
-
 
 # -------------------------------------------------------------------
 # Workload variables
 # -------------------------------------------------------------------
 num_users: 2
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits')
+  }}
 
+ocp4_workload_user_base: user
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
 ocp4_workload_catalogsource_tag: v4.18_2025_02_24
 # -------------------------------------------------------------------
@@ -141,13 +144,6 @@ ocp4_workload_kubevirt_channel: stable
 ocp4_workload_kubevirt_use_catalog_snapshot: true
 ocp4_workload_kubevirt_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_kubevirt_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-# -------------------------------------------------------------------
-# ocp4_workload_virt_roadshow_multi_user
-# -------------------------------------------------------------------
-# In the future once bug https://issues.redhat.com/browse/CNV-38284 is in the product
-# the namespace will need to change to openshift-cnv
-#ocp4_workload_virt_roadshow_multi_user_configmap_namespace: default
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
@@ -214,6 +210,20 @@ ocp4_workload_openshift_gitops_resource_health:
       end
       return health_status
 
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/lb2517-edge-fleet-gitops.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+
+# 3scale requires RWX storage, so disable it for now.
+ocp4_workload_gitops_bootstrap_helm_values:
+  common_password: "{{ common_password }}"
+  user:
+    count: "{{ num_users }}"
+    prefix: "{{ ocp4_workload_user_base }}"
+
 # ------------------------------------------------------
 # ocp4_workload_showroom
 # ------------------------------------------------------
@@ -245,9 +255,17 @@ __meta__:
         cloud: cnv
         purpose: prod
         virt: "yes"
+      quota:
+        requests.storage: "4000Gi"
+        limits.cpu: "512"
+        requests.cpu: "512"
+        limits.memory: "1000Gi"
+        requests.memory: "1000Gi"
   catalog:
     display_name: "LB2517 - Device Edge Fleet Management with Red Hat Edge Manager (Tech Preview)"
+    workshopLabUiRedirect: true
     category: Red_Hat_Summit_2025
+    multiuser: true
     keywords:
       - lb2517
       - openshift
@@ -264,7 +282,7 @@ __meta__:
           type: integer
           default: 1
           minimum: 2
-          maximum: 30
+          maximum: 122
     labels:
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: Red_Hat_Cloud
