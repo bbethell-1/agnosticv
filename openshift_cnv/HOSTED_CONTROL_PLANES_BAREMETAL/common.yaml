@@ -1,0 +1,193 @@
+---
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/ansible-tower-advanced-24.yaml
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+#include /includes/secrets/openshift-ocpv-configs.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+
+platform: RHPDS
+
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}.{{ guid }}{{ subdomain_base_suffix }}"
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+env_type: base-infra
+cloud_provider: openshift_cnv
+
+# -------------------------------------------------------------------
+# inventory_groups (optional but nice to have)
+# -------------------------------------------------------------------
+
+inventory_groups:
+  - bastions
+
+node_name: node
+pv_size_node: 4Gi
+
+bastion_instance_image: rhel-9.4
+bastion_cores: 64
+bastion_memory: 128Gi
+bastion_rootfs_size: 400Gi
+project_tag: "{{ env_type }}-{{ guid }}"
+
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+student_password: "{{ common_password }}"
+
+install_common: true
+install_bastion: false
+config_user_preferred_python: false
+
+common_extra_packages:
+  - libvirt
+  - qemu-kvm
+  - libvirt-daemon-driver-qemu
+  - python3-devel
+  - dnsmasq
+  - policycoreutils-python-utils
+  - podman
+  - httpd-tools
+  - git
+  - python3-pip
+
+software_workloads:
+  bastions:
+    - ocp4_workload_telco_hypershift_lab
+
+instances:
+  - name: bastion
+    count: 1
+    unique: true
+    alt_name: bastion
+    memory: "{{ bastion_memory }}"
+    cores: "{{ bastion_cores }}"
+    image_size: "{{ bastion_rootfs_size }}"
+    image: "{{ bastion_instance_image }}"
+    metadata:
+      - AnsibleGroup: "bastions"
+      - function: bastion
+      - user: "{{ student_name }}"
+      - project: "{{ project_tag }}"
+      - ostype: linux
+      - Purpose: "{{ purpose }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ guid }}"
+    networks:
+      - default
+    services:
+      - name: bastion
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: bastion-http
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: bastion-https
+    routes:
+      - name: bastion-http
+        host: bastion
+        service: bastion
+        targetPort: 80
+        tls: false
+      - name: bastion-https
+        host: bastion
+        service: bastion
+        targetPort: 443
+        tls: true
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+
+
+infra_workloads:
+  - ocp4_workload_external_odf
+  - ocp4_workload_telco_hypershift_lab
+
+pull_secret: "{{ ocp4_pull_secret }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# -------------------------------------------------------------------
+odf_channel: stable-4.16
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: 671376d5-07f5-4776-9f69-d2eaa2b88bca
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+      pull: missing
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+      quota:
+        requests.storage: "2600Gi"
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Hosted Control Planes on Baremetal (CNV)"
+    category: Workshops
+    keywords:
+      - workshop
+      - hypershift
+      - hostedcontrolplanes
+      - telco
+      - equinix
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Featured_Score: '82'
+    parameters: []
+    reportingLabels:
+      primaryBU: Edge
+      secondaryBU: Hybrid_Platforms
+  owners:
+    maintainer:
+      - name: Mario Vazquez Cebrian
+        email: mavazque@redhat.com
+      - name: Billy Bethell
+        email: bbethell@redhat.com
+    sme:
+      - name: Alberto Gonzales Rodriguez
+        email: josegonz@redhat.com
+    instructions:
+      - name: Mario Vazquez Cebrian
+        email: mavazque@redhat.com
