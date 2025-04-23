@@ -35,10 +35,10 @@ bastion_cores: 2
 bastion_memory: 4Gi
 
 master_instance_count: 3
-worker_instance_count: 0
+worker_instance_count: 4
 
 ai_control_plane_cores: 16
-ai_control_plane_memory: 32Gi
+ai_control_plane_memory: 64Gi
 
 # -------------------------------------------------------------------
 # Repos
@@ -50,7 +50,7 @@ update_packages: true
 # OpenShift Version
 # -------------------------------------------------------------------
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-ocp4_installer_version: "4.18.1"
+ocp4_installer_version: "4.18.8"
 
 # -------------------------------------------------------------------
 # Student User on Bastion
@@ -197,40 +197,48 @@ ansible_automation_platform_configuration_generate_ocp_token: true
 
 controller_dependency_check: false
 
-aap_configuration_dispatcher_roles: >
-  {{ gateway_configuration_dispatcher_roles
-    + controller_configuration_dispatcher_roles
-  }}
-
-# ----------------
-# Gateway
-# ----------------
-aap_hostname: "{{ ansible_automation_platform_configuration_host }}"
-aap_username: "{{ ansible_automation_platform_configuration_username }}"
-aap_password: "{{ ansible_automation_platform_configuration_password }}"
-aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
-
-gateway_configuration_dispatcher_roles:
-- role: gateway_settings
-  var: gateway_settings
-  tags: gateway_settings
-
-gateway_settings:
-  SESSION_COOKIE_AGE: 9000
-
-# ----------------
-# Controller
-# ----------------
-controller_configuration_dispatcher_roles:
+# --------------------------------------------------------------------
+# ansible_automation_platform_configuration
+# --------------------------------------------------------------------
+aap_configuration_dispatcher_roles:
+- role: controller_credential_types
+  var: controller_credential_types
+  tags: controller_credential_types
 - role: controller_credentials
   var: controller_credentials
   tags: controller_credentials
-- role: controller_projects
-  var: controller_projects
-  tags: controller_projects
 - role: controller_execution_environments
   var: controller_execution_environments
   tags: controller_execution_environments
+- role: controller_projects
+  var: controller_projects
+  tags: controller_projects
+- role: controller_inventories
+  var: controller_inventories
+  tags: controller_inventories
+- role: controller_inventory_sources
+  var: controller_inventory_sources
+  tags: controller_inventory_sources
+- role: controller_job_templates
+  var: controller_templates
+  tags: controller_job_templates
+
+controller_projects:
+- name: "Workshop Project"
+  organization: Default
+  scm_type: git
+  scm_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ocp4_workload_user_base}}1/{{common_user_workspace_repo}}.git"
+  scm_branch: "{{ common_user_workspace_revision }}"
+  scm_update_on_launch: true
+  wait: true
+
+controller_execution_environments:
+- name: "Day 2 EE"
+  image: "quay.io/acme_corp/aap-day2-ee:latest"
+  pull: missing
+- name: "AWX EE"
+  image: "quay.io/ansible/awx-ee:24.3.0"
+  pull: missing
 
 controller_credentials:
 - name: "Vault Credential"
@@ -294,19 +302,22 @@ controller_credentials:
     bearer_token: "{{ openshift_bearer_token }}"
     verify_ssl: true
 
-controller_projects:
-- name: "Workshop Project"
-  organization: Default
-  scm_type: git
-  scm_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ocp4_workload_user_base}}1/{{common_user_workspace_repo}}.git"
-  scm_branch: "{{ common_user_workspace_revision }}"
-  scm_update_on_launch: true
-  wait: true
 
-controller_execution_environments:
-- name: "Day 2 EE"
-  image: "quay.io/acme_corp/aap-day2-ee:latest"
-  pull: missing
+# ----------------
+# Gateway
+# ----------------
+aap_hostname: "{{ ansible_automation_platform_configuration_host }}"
+aap_username: "{{ ansible_automation_platform_configuration_username }}"
+aap_password: "{{ ansible_automation_platform_configuration_password }}"
+aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
+
+gateway_configuration_dispatcher_roles:
+- role: gateway_settings
+  var: gateway_settings
+  tags: gateway_settings
+
+gateway_settings:
+  SESSION_COOKIE_AGE: 9000
 
 # -------------------------------------------------------------------
 # ocp4_workload_codeserver
@@ -342,7 +353,7 @@ ocp4_workload_codeserver_repos:
 # -------------------------------------------------------------------
 # ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
-ocp4_workload_gitops_bootstrap_repo_url: https://github.com/redhat-gpte-devopsautomation/virt-aap-day2-gitops
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/lb1969-virtday2-gitops.git
 ocp4_workload_gitops_bootstrap_repo_revision: v1.0.0
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap
 
