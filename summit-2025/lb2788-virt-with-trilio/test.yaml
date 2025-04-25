@@ -1,0 +1,82 @@
+---
+# -------------------------------------------------------------------
+# Purpose - Cost tag. One of development, ilt, production, event
+# -------------------------------------------------------------------
+purpose: test
+
+# -------------------------------------------------------------------
+# Remove use of catalogsources/snaphots in DEV
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_use_catalog_snapshot: false
+
+env_type: ocp4-cluster
+software_to_deploy: openshift4_hcp_cnv
+cloud_provider: openshift_cnv
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+hcp_control_plane_cores: >-
+  {{ 8 if worker_instance_count|int <= 10
+  else 16 if worker_instance_count|int <= 20
+  else 32
+  }}
+hcp_control_plane_memory: >-
+  {{ '16Gi' if worker_instance_count|int <= 10
+  else '32Gi' if worker_instance_count|int <= 20
+  else '64Gi'
+  }}
+worker_instance_count: 3
+
+hcp_etcd_storage_class: "hostpath-csi"
+hcp_worker_cores: 32
+hcp_worker_memory: 64Gi
+
+ocp4_installer_version: "4.18.8"
+
+# -------------------------------------------------------------------
+# AgnosticV meta variables
+# -------------------------------------------------------------------
+__meta__:
+  deployer:
+    scm_ref: development
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2024-10-28
+      pull: missing
+  # catalog:
+  #   parameters:
+  #     - name: ocpv_cluster
+  #       description: target OCPV cluster
+  #       formLabel: OCPV cluster
+  #       required: true
+  #       openAPIV3Schema:
+  #         type: string
+  #         default: ocpvdev01
+  #         enum:
+  #           - ocpv03
+  #           - ocpv04
+  #           - ocpv05
+  #           - ocpv06
+  #           - ocpv07
+  #           - ocpvdev01
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      alias: A
+      quota:
+        limits.cpu: "128"
+        requests.cpu: "128"
+      cloud_selector:
+        cloud: cnv
+        purpose: "prod"
+        name: "{{ job_vars.ocpv_cluster }}"
+        virt: "yes"
+        hcp: "no"
+    - kind: OcpSandbox
+      var: sandbox_hcp
+      namespace_suffix: ocp4-cluster
+      alias: B
+      cloud_selector:
+        purpose: "prod"
+        hcp: "yes"
+      cluster_condition: "child('A')"
