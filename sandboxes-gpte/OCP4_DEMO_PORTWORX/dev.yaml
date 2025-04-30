@@ -4,9 +4,110 @@
 # -------------------------------------------------------------------
 purpose: development
 
+update_packages: false
+
+ocp4_installer_version: "4.18"
+bastion_instance_type: t3a.medium
+bastion_instance_image: RHEL95GOLD-latest
+
+master_instance_count: 3
+master_instance_type: m6a.2xlarge
+
+worker_instance_count: 3
+worker_instance_type: m6a.4xlarge
+
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_cert_manager
+- ocp4_workload_portworx
+- ocp4_workload_web_terminal
+- ocp4_workload_kubevirt
+- ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# ocp4_workload_portworx
+# -------------------------------------------------------------------
+# Only predeploy for the Portworx lab for containerized workloads
+ocp4_workload_portworx_install_operator: "{{ deploy_container_showroom | bool }}"
+ocp4_workload_portworx_deploy_storagecluster: "{{ deploy_container_showroom | bool }}"
+
+# The next section is only relevant if the operator and storagecluster are being installed
+ocp4_workload_portworx_channel: stable
+
+# Pin the version of the Portworx operator
+# ocp4_workload_portworx_installplan: Manual
+# ocp4_workload_portworx_csv: portworx-operator.v24.1.2
+
+ocp4_workload_portworx_storagecluster_storage_size: 500
+ocp4_workload_portworx_update_default_storageclass: true
+
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1.15
+
+# -------------------------------------------------------------------
+# ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+ocp4_workload_kubevirt_use_catalog_snapshot: false
+ocp4_workload_kubevirt_enabled_nested_kvm: true
+ocp4_workload_kubevirt_deploy_hyperconverged: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_web_terminal
+# -------------------------------------------------------------------
+ocp4_workload_web_terminal_channel: fast
+ocp4_workload_web_terminal_catalogsource_setup: false
+ocp4_workload_web_terminal_configure: false
+
+# ------------------------------------------------------
+# Showroom
+# ------------------------------------------------------
+ocp4_workload_showroom_name: showroom
+ocp4_workload_showroom_namespace: showroom
+ocp4_workload_showroom_content_only: false
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+# Repo from CI parameter
+ocp4_workload_showroom_content_git_repo: >-
+  {% if deploy_virt_showroom | bool %}
+  https://github.com/PureStorage-OpenConnect/pxe-osv-rhdp-lab
+  {% else %}
+  https://github.com/PureStorage-OpenConnect/pxe-rhdp-lab.git
+  {% endif %}
+ocp4_workload_showroom_content_git_repo_ref: main
+
+ocp4_workload_showroom_content_antora_playbook: default-site.yml
+
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
   deployer:
     scm_ref: development
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2025-04-07
+      pull: missing
+  catalog:
+    parameters:
+    - name: deploy_virt_showroom
+      description: Deploy for Portworx with Virtualization
+      formGroup: Type of Environment
+      formLabel: This deploys the environment to demonstrate Portworx with virtualized workloads
+      openAPIV3Schema:
+        type: boolean
+        default: true
+    - name: deploy_container_showroom
+      description: Deploy for Portworx with Containers
+      formGroup: Type of Environment
+      formLabel: This deploys the environment to demonstrate Portworx with containerized workloads
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      validation: >-
+        (deploy_container_showroom == true && deploy_virt_showroom == false) ||
+        (deploy_container_showroom == false && deploy_virt_showroom == true) ||
+        Error('Exactly one type of environment must be selected.')
