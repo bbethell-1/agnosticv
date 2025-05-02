@@ -82,7 +82,8 @@ ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 infra_workloads:
   - ocp4_workload_cert_manager
   - ocp4_workload_external_odf
-  - ocp4_workload_rhsso_authentication
+  - ocp4_workload_authentication
+#  - ocp4_workload_rhsso_authentication
   - ocp4_workload_kubevirt
   - ocp4_workload_minio
   - ocp4_workload_openshift_gitops
@@ -94,9 +95,13 @@ infra_workloads:
 # Workload variables
 # -------------------------------------------------------------------
 num_users: 1
-common_password: >-
+admin_password: >-
   {{
-    lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits')
+    lookup('password', output_dir ~ '/admin_password length=12 chars=ascii_letters,digits')
+  }}
+user_password: >-
+  {{
+    lookup('password', output_dir ~ '/user_password length=12 chars=ascii_letters,digits')
   }}
 original_namespace: originalvms
 
@@ -105,7 +110,18 @@ ocp4_workload_user_base: dr-admin
 
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
 ocp4_workload_catalogsource_tag: v4.18_2025_02_24
-ocp4_workload_authentication_admin_user: kubeadmin
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: dr-admin
+ocp4_workload_authentication_htpasswd_user_password: "{{ user_password }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+
 
 # -------------------------------------------------------------------
 # ocp4_workload_cert_manager
@@ -124,27 +140,27 @@ ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
 # -------------------------------------------------------------------
 odf_channel: stable-4.18
 
-# -------------------------------------------------------------------
-# ocp4_workload_rhsso_authentication
-# -------------------------------------------------------------------
-ocp4_workload_rhsso_authentication_namespace: rhsso
-ocp4_workload_rhsso_authentication_target_namespaces: ["rhsso"]
-ocp4_workload_rhsso_authentication_channel: stable
-ocp4_workload_rhsso_authentication_starting_csv: rhsso-operator.7.6.11-opr-003
-ocp4_workload_rhsso_authentication_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_rhsso_authentication_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-ocp4_workload_rhsso_authentication_admin_create: true
-ocp4_workload_rhsso_authentication_admin_username: admin
-ocp4_workload_rhsso_authentication_admin_password: "{{ common_password }}"
-
-ocp4_workload_rhsso_authentication_remove_kubeadmin: true
-
-ocp4_workload_rhsso_authentication_user_count: "1"
-ocp4_workload_rhsso_authentication_user_name_base: "dr-admin"
-ocp4_workload_rhsso_authentication_user_password: "{{ common_password }}"
-
-ocp4_workload_rhsso_authentication_env_type: "{{ env_type }}"
+# # -------------------------------------------------------------------
+# # ocp4_workload_rhsso_authentication
+# # -------------------------------------------------------------------
+# ocp4_workload_rhsso_authentication_namespace: rhsso
+# ocp4_workload_rhsso_authentication_target_namespaces: ["rhsso"]
+# ocp4_workload_rhsso_authentication_channel: stable
+# ocp4_workload_rhsso_authentication_starting_csv: rhsso-operator.7.6.11-opr-003
+# ocp4_workload_rhsso_authentication_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+# ocp4_workload_rhsso_authentication_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+#
+# ocp4_workload_rhsso_authentication_admin_create: true
+# ocp4_workload_rhsso_authentication_admin_username: admin
+# ocp4_workload_rhsso_authentication_admin_password: "{{ admin_password }}"
+#
+# ocp4_workload_rhsso_authentication_remove_kubeadmin: true
+#
+# ocp4_workload_rhsso_authentication_user_count: "1"
+# ocp4_workload_rhsso_authentication_user_name_base: "dr-admin"
+# ocp4_workload_rhsso_authentication_user_password: "{{ user_password }}"
+#
+# ocp4_workload_rhsso_authentication_env_type: "{{ env_type }}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_trilio_backup_restore_vms
@@ -153,9 +169,9 @@ ocp4_workload_trilio_backup_restore_vms_namespace: trilio-system
 ocp4_workload_trilio_backup_restore_vms_operator_channel: 5.0.x
 ocp4_workload_trilio_backup_restore_vms_dr_user: "dr-admin1"
 ocp4_workload_trilio_backup_restore_vms_dr_user_base: "{{ ocp4_workload_user_base }}"
-ocp4_workload_trilio_backup_restore_vms_dr_user_password: "{{ common_password }}"
+ocp4_workload_trilio_backup_restore_vms_dr_user_password: "{{ user_password }}"
 ocp4_workload_trilio_backup_restore_vms_s3_accessKey: minio
-ocp4_workload_trilio_backup_restore_vms_s3_secretKey: "{{ common_password }}"
+ocp4_workload_trilio_backup_restore_vms_s3_secretKey: "{{ user_password }}"
 ocp4_workload_trilio_backup_restore_vms_user_count: "{{ num_users }}"
 ocp4_workload_trilio_backup_restore_vms_dr_user_namespace: "{{ original_namespace }}"
 
@@ -179,7 +195,7 @@ ocp4_workload_minio_storage_size: 256Gi
 ocp4_workload_minio_modern_deployment: true
 ocp4_workload_minio_expose_route: true
 ocp4_workload_minio_root_user: minio
-ocp4_workload_minio_root_password: "{{ common_password }}"
+ocp4_workload_minio_root_password: "{{ user_password }}"
 ocp4_workload_minio_image: quay.io/minio/minio
 ocp4_workload_minio_image_tag: RELEASE.2024-05-28T17-19-04Z
 ocp4_workload_minio_bucket_setup: true
@@ -222,7 +238,7 @@ ocp4_workload_gitops_bootstrap_helm_values:
   user:
     count: "{{ num_users }}"
     prefix: "{{ ocp4_workload_user_base }}"
-  common_password: "{{ common_password }}"
+  user_password: "{{ user_password }}"
   vms:
     namespace: "{{ original_namespace }}"
 
