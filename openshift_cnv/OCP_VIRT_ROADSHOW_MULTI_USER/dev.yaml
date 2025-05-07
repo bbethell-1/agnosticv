@@ -1,94 +1,13 @@
 ---
-# -------------------------------------------------------------------
-# AgnosticV includes
-# -------------------------------------------------------------------
-#include /includes/secrets/openshift_assisted_installer_icr.yaml
+purpose: dev
 
-ocp4_installer_version: "4.18.3"
-odf_channel: stable-4.18
-ocp4_workload_cert_manager_channel: stable-v1.15
-ocp4_workload_mtv_channel: release-v2.7
 ocp4_workload_virt_roadshow_vms_imported_configure_svc_and_route: false
-
-ocp4_workload_showroom_content_git_repo_ref: network
-ocp4_workload_virt_roadshow_multi_user_configmap_namespace: openshift-cnv
-
-# -------------------------------------------------------------------
-# Purpose - Cost tag. One of development, ilt, production, event
-# -------------------------------------------------------------------
-purpose: development
-ai_workers_cores: 16
-
-ai_attach_workers_networks:
-- default/flatnetwork
-
-networks:
-- name: cluster
-
-ai_install_use_network: "cluster{{ guid }}"
-bastion_extra_networks:
-- "cluster"
-
-bastion_userdata: |
-    #cloud-config
-    write_files:
-      - path: /etc/sysctl.d/99-ip-forwarding.conf
-        content: |
-          net.ipv4.ip_forward=1
-
-      - path: /etc/nftables/ruleset.nft
-        content: |
-          table inet nat {
-            chain postrouting {
-              type nat hook postrouting priority 100; policy accept;
-              oifname "eth0" masquerade
-            }
-          }
-
-          table inet filter {
-            chain forward {
-              type filter hook forward priority 0; policy drop;
-              iifname "eth1" oifname "eth0" accept
-              iifname "eth0" oifname "eth1" ct state related,established accept
-            }
-          }
-
-      - path: /etc/systemd/system/nftables-restore.service
-        content: |
-          [Unit]
-          Description=Restore nftables rules
-          After=network.target
-
-          [Service]
-          Type=oneshot
-          ExecStart=/bin/bash -c 'while [ ! -x /usr/sbin/nft ]; do sleep 2; done; /usr/sbin/nft -f /etc/nftables/ruleset.nft'
-          RemainAfterExit=yes
-
-          [Install]
-          WantedBy=multi-user.target
-
-    runcmd:
-      - sysctl --system
-      - systemctl daemon-reload
-      - systemctl enable --now nftables-restore.service
-
-bastion_networkdata: |
-    network:
-      version: 2
-      ethernets:
-        eth0:
-          dhcp4: yes
-        eth1:
-          dhcp4: no
-          addresses:
-            - 10.10.10.1/24
 
 infra_workloads:
 - ocp4_workload_external_odf
 - ocp4_workload_authentication
 - ocp4_workload_cert_manager
 - ocp4_workload_openshift_gitops
-- ocp4_workload_web_terminal
 - ocp4_workload_kubevirt
 - ocp4_workload_mtv
 - ocp4_workload_oadp_gitops
@@ -98,20 +17,6 @@ infra_workloads:
 - ocp4_workload_virt_roadshow_multi_user
 - ocp4_workload_virt_network_config
 - ocp4_workload_showroom
-
-# -------------------------------------------------------------------
-# ocp4_workload_virt_roadshow_vmware
-# -------------------------------------------------------------------
-ocp4_workload_virt_roadshow_vmware_use_pool: true
-ocp4_workload_virt_roadshow_vmware_vddk_registry: "icr.io/rhdp/vddk:latest"
-
-# -------------------------------------------------------------------
-# ocp4_workload_virt_network_config
-# -------------------------------------------------------------------
-ocp4_workload_virt_network_config_multi_user: true
-ocp4_workload_virt_network_config_networks: "{{ ai_attach_workers_networks | default([]) }}"
-ocp4_workload_virt_network_config_bridge_type: linux-bridge
-ocp4_workload_virt_network_config_bridge_name: br-flat
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -134,6 +39,7 @@ __meta__:
         - ocpv05
         - ocpv06
         - ocpv07
+        - ocpv08
         - ocpvdev01
   sandboxes:
   - kind: OcpSandbox
