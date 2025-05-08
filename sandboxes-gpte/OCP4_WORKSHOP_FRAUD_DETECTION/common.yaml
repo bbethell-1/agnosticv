@@ -15,7 +15,7 @@
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/starburst_license.yaml
-#include /includes/secrets/demosat-rhel81.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 
 # -------------------------------------------------------------------
 # Maintainers:
@@ -37,21 +37,16 @@ platform: rhpds
 # -------------------------------------------------------------------
 # OpenShift Installer Version
 # -------------------------------------------------------------------
-ocp4_installer_version: "4.10"
-ocp4_workload_cert_manager_channel: stable-v1
-# -------------------------------------------------------------------
-# --- Infra Workloads (YAML List)
-# -------------------------------------------------------------------
-infra_workloads:
-  - ocp4_workload_authentication
-  - ocp4_workload_cert_manager
-  - ocp4_workload_fraud_detection_usecase
+ocp4_installer_version: "4.18"
 
 # -------------------------------------------------------------------
 # Repos
 # -------------------------------------------------------------------
 repo_method: satellite
 update_packages: true
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.18_2025_04_14
 
 # -------------------------------------------------------------------
 # Custom collections for this environment
@@ -61,7 +56,7 @@ requirements_content:
     - name: kubernetes.core
       version: 2.4.0
     - name: amazon.aws
-      version: 4.4.0
+      version: 8.2.0
     - name: community.general
       version: 6.4.0
     - name: ansible.posix
@@ -72,30 +67,85 @@ requirements_content:
 master_instance_type: m5.xlarge
 master_instance_count: 3
 worker_instance_type: m5.2xlarge
-worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max }}"
+worker_instance_count: 3
 bastion_instance_type: t3.medium
-bastion_instance_image: RHEL84GOLD-latest
+bastion_instance_image: RHEL95GOLD-latest
+
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+# -------------------------------------------------------------------
+infra_workloads:
+  - ocp4_workload_authentication
+  - ocp4_workload_cert_manager
+  - ocp4_workload_authorino
+  - ocp4_workload_pipelines
+  - ocp4_workload_serverless
+  - ocp4_workload_ossm
+  - ocp4_workload_openshift_ai
+  - ocp4_workload_fraud_detection_usecase
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
 ocp4_workload_authentication_idm_type: htpasswd
 ocp4_workload_authentication_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+ocp4_workload_authentication_htpasswd_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_count: "{{ user_count | default(num_users) | default(1) | int }}"
+ocp4_workload_authentication_htpasswd_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ user_count | default(num_users) | default('1') | int }}"
 ocp4_workload_authentication_remove_kubeadmin: true
+
+# ------------------------------------------------
+# ocp4_workload_authorino
+# ------------------------------------------------
+ocp4_workload_authorino_operator_channel: stable
+ocp4_workload_authorino_operator_use_catalog_snapshot: true
+ocp4_workload_authorino_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_authorino_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_authorino_operator_catalogsource_name: redhat-operators-snapshot-authorino
+
+# -------------------------------------------------------------------
+# Workload ocp4_workload_ossm - Service Mesh
+# -------------------------------------------------------------------
+ocp4_workload_ossm_catalogsource_setup: true
+ocp4_workload_ossm_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_ossm_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# ---------------------------------------------------------
+# Workload: OpenShift Pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.16
+ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_serverless
+# -------------------------------------------------------------------
+ocp4_workload_serverless_use_catalog_snapshot: true
+ocp4_workload_serverless_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_serverless_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_serverless_install_serving: false
+ocp4_workload_serverless_install_eventing: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_ai
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_channel: "stable"
+ocp4_workload_openshift_ai_automatic_install_plan_approval: true
+# ocp4_workload_openshift_ai_starting_csv: "rhods-operator.2.16.1"
+ocp4_workload_openshift_ai_kserve: Managed
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
   asset_uuid: c524584f-8c5c-4b7a-9ed3-29bcd52aa6c3
-  owners:
-    maintainer:
-      - name: Suvro Ghosh
-        email: sghosh@redhat.com
-
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2025-02-14
+      pull: missing
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   catalog:
@@ -106,15 +156,20 @@ __meta__:
       - workshop
       - openshift
       - ocp
-      - ocp410
-      - nginx
+      - ocp418
+      - starburst
+      - ai
     labels:
-      #OpenShift_Version: "4.10"
       Product: Red_Hat_OpenShift_Container_Platform
-      Provider: RHDP
+      Provider: RH_Community
       Product_Family: Red_Hat_Cloud
+      SLA: Community
     multiuser: false
     parameters: []
     reportingLabels:
       primaryBU: Artificial_Intelligence
       secondaryBU: Hybrid_Platforms
+  owners:
+    maintainer:
+      - name: Suvro Ghosh
+        email: sghosh@redhat.com
