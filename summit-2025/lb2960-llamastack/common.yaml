@@ -11,7 +11,7 @@
 #include /includes/ansible_control_plane/current_controller.yaml
 #include /includes/aws-sandbox-meta.yaml
 #include /includes/catalog-icon-rh-ai-2025.yaml
-
+#include /includes/lifetime-standard.yaml
 #include /includes/terms-of-service.yaml
 
 #include /includes/parameters/salesforce-id.yaml
@@ -270,7 +270,7 @@ showroom_tab_double_tty_top_username: "{{ student_name }}"
 showroom_tab_double_tty_bottom_username: "{{ student_name }}"
 
 showroom_tab_web1_url: "https://{{ showroom_host }}:9443/"
-showroom_tab_web1_name: "Jupyter Lab"
+showroom_tab_web1_name: "JupyterLab"
 
 showroom_tab_web2_url: "https://llama-stack.readthedocs.io/en/latest/"
 showroom_tab_web2_name: "Llamastack Docs"
@@ -334,7 +334,8 @@ instances:
       - BastionSG
       - HostSG
       - ShowroomSG
-      - AITabServicesSG
+      - AIServicesSG
+      - LLamaStackServicesSG
 
 # -------------------------------------------------------------------
 # Security Group Config
@@ -364,25 +365,6 @@ security_groups:
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
-  - name: AITabServicesSG
-    rules:
-
-      - name: Streamlit
-        description: "Streamlit default Port"
-        from_port: 8501
-        to_port: 8501
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-
-      - name: BonusPorts
-        description: "Extra ports for bonus content - llms, streamlit etc"
-        from_port: 8000
-        to_port: 8010
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-
       - name: LEChallange
         description: LEChallange Port
         from_port: 80
@@ -399,6 +381,52 @@ security_groups:
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
+  - name: AIServicesSG
+    rules:
+
+      - name: OllamaPort
+        description: "Default Ollama Port if exposed"
+        from_port: 11434
+        to_port: 11434
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: VLLMPort
+        description: "Default VLLM Port if exposed"
+        from_port: 8000
+        to_port: 8000
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: BonusPorts
+        description: "Extra ports for additional services"
+        from_port: 8001
+        to_port: 8010
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: Streamlit
+        description: "Streamlit default Port"
+        from_port: 8501
+        to_port: 8501
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: LLamaStackServicesSG
+    rules:
+
+      - name: LlamaStackUIprod
+        description: "React Llamastack rod port"
+        from_port: 3000
+        to_port: 3000
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
       - name: LlamaStackUIdev
         description: "React Llamastack dev port"
         from_port: 5000
@@ -407,10 +435,10 @@ security_groups:
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
-      - name: LlamaStackUIprod
-        description: "React Llamastack rod port"
-        from_port: 3000
-        to_port: 3000
+      - name: LlamaStackServer
+        description: "LlamaStackServer default Port"
+        from_port: 8321
+        to_port: 8321
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
@@ -459,8 +487,11 @@ __meta__:
           type: string
           default: g6.xlarge
           enum:
-            - g4dn.xlarge
             - g6.xlarge
+            - g6.12xlarge
+            - g6e.xlarge
+            - g6e.12xlarge
+            - g4dn.xlarge
   deployer:
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:2025-04-07 # last known good: 2025-02-14
