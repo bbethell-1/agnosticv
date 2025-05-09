@@ -12,7 +12,7 @@
 #include /includes/aws-sandbox-meta.yaml
 #include /includes/catalog-icon-rh-ai-2025.yaml
 #include /includes/terms-of-service.yaml
-
+#include /includes/lifetime-standard.yaml
 #
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
@@ -73,7 +73,7 @@ agd_bastion_packages:
 #   - agnosticd.ai.setup_python_env - Pythonvenv and modern 3.12 python
 #   - agnosticd.ai.service_vm_ollama - setups ollama as a systemd service and enables/starts it
 #   - agnosticd.ai.service_vm_jupyter_lab - setus up jupyter as a systemd service and enable/starts it
-#   - vscode-server - vscode-server as a courtesy for showroom users who want an editor
+#   Removed: - vscode-server - vscode-server as a courtesy for showroom users who want an editor
 # -------------------------------------------------------------------
 
 software_workloads:
@@ -83,7 +83,6 @@ software_workloads:
     - agnosticd.ai.setup_python_env
     - agnosticd.ai.service_vm_ollama
     - agnosticd.ai.service_vm_jupyter_lab
-#    - vscode-server
 
 # -------------------------------------------------------------------
 # Workloads: agnosticd.ai.setup_nvidia_cuda
@@ -118,7 +117,7 @@ setup_python_env_create_default_venv_name: venv
 
 service_vm_ollama_models:
 
-  - granite3.2
+  - mistral-small
 
 # -------------------------------------------------------------------
 # Role: service_vm_jupyter_lab
@@ -129,39 +128,6 @@ service_vm_jupyter_lab_jupyter_user: "{{ student_name }}"
 # short term hack :( Fix Monday in the AgD role)
 service_vm_lab_juypter_user: "{{ student_name }}"
 service_vm_jupyter_lab_jupyter_ssl_dir: "/home/{{ service_vm_lab_juypter_user }}/.jupyter/ssl"
-
-# -------------------------------------------------------------------
-# Role: vscode-server
-# -------------------------------------------------------------------
-
-vscode_auth_type: none
-
-vscode_server_version: "4.98.2" # NOTE No leading `v` due to braindead url which mixes v and non v semantic versions
-vscode_server_rpm_url: >-
-  https://github.com/coder/code-server/releases/download/v{{ vscode_server_version }}/code-server-{{ vscode_server_version }}-amd64.rpm
-
-vscode_server_install_vscode: true
-vscode_server_install_nginx: true
-vscode_server_ansible_become: true
-vscode_server_nginx_https_port: 8443
-vscode_server_hostname: "{{ groups['bastions'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}"
-vscode_user_name: "{{ student_name }}"
-vscode_server_default_extensions: []
-vscode_server_extension_urls: []
-
-vscode_server_additional_settings: |
-  "files.exclude": {
-    "**/.git": true,
-    "**/.bash*": true,
-    "**/.vim*": true,
-    "**/.ssh": true,
-    "**/.vscode": true,
-    "**/.local": true,
-    "**/.config": true,
-    "**/.ansible": true,
-    "**/.cache": true
-  },
-  "security.workspace.trust.enabled": false
 
 # -------------------------------------------------------------------
 # asset_injector_assets
@@ -217,17 +183,15 @@ showroom_tab_services:
   - web1
   - double_tty
 
-showroom_ttys_enable_tmux: false
+showroom_ttys_enable_tmux: true
+
 showroom_lab_users:
   - "{{ student_name }}"
 showroom_tab_double_tty_top_username: "{{ student_name }}"
 showroom_tab_double_tty_bottom_username: "{{ student_name }}"
 
 showroom_tab_web1_url: "https://{{ showroom_host }}:9443/"
-showroom_tab_web1_name: "Jupyter Notes"
-
-# showroom_tab_web2_url: "https://{{ showroom_host }}:8443/"
-# showroom_tab_web2_name: Codeserver
+showroom_tab_web1_name: "JupyterLab"
 
 # -------------------------------------------------------------------
 # Role: common
@@ -285,7 +249,8 @@ instances:
       - BastionSG
       - HostSG
       - ShowroomSG
-      - JupyterSG
+      - AIServicesSG
+      - LLamaStackServicesSG
 
 # -------------------------------------------------------------------
 # Security Group Config
@@ -295,6 +260,7 @@ security_groups:
 
   - name: HostSG
     rules:
+
       - name: FromHostSG
         description: "Allow everything from HostSG nodes"
         from_port: 0
@@ -314,8 +280,13 @@ security_groups:
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
-  - name: JupyterSG
-    rules:
+      - name: LEChallange
+        description: LEChallange Port
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
 
       - name: Jupyter
         description: "Jupyter Port"
@@ -325,18 +296,64 @@ security_groups:
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
-      - name: CertAuth
-        description: "CertAuth Port"
-        from_port: 80
-        to_port: 80
+  - name: AIServicesSG
+    rules:
+
+      - name: OllamaPort
+        description: "Default Ollama Port if exposed"
+        from_port: 11434
+        to_port: 11434
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: VLLMPort
+        description: "Default VLLM Port if exposed"
+        from_port: 8000
+        to_port: 8000
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
       - name: BonusPorts
-        description: "Extra ports for bonus content - llms, streamlit etc"
-        from_port: 8000
+        description: "Extra ports for additional services"
+        from_port: 8001
         to_port: 8010
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: Streamlit
+        description: "Streamlit default Port"
+        from_port: 8501
+        to_port: 8501
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: LLamaStackServicesSG
+    rules:
+
+      - name: LlamaStackUIprod
+        description: "React Llamastack rod port"
+        from_port: 3000
+        to_port: 3000
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: LlamaStackUIdev
+        description: "React Llamastack dev port"
+        from_port: 5000
+        to_port: 5000
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+      - name: LlamaStackServer
+        description: "LlamaStackServer default Port"
+        from_port: 8321
+        to_port: 8321
         protocol: tcp
         cidr: "0.0.0.0/0"
         rule_type: Ingress
@@ -384,9 +401,11 @@ __meta__:
           type: string
           default: g6.xlarge
           enum:
-            - g4dn.xlarge
             - g6.xlarge
-            - g6.4xlarge
+            - g4dn.xlarge
+            - g4dn.12xlarge
+            - g6.12xlarge
+            - g6e.xlarge
   deployer:
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:2025-02-14
