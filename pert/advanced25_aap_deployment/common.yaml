@@ -98,6 +98,26 @@ asset_injector_assets:
       PasswordAuthentication yes
       UsePAM yes
 
+  - description: Adding a patch to the file
+    type: blockinfile
+    path: /home/devops/patch.yml
+    state: present
+    create: true
+    marker: "# {mark} Our custom patch settings via Ansible"
+    block: |
+     # Adding the patch for the installer
+     - name: Install psycopg2 using pip on RHEL
+       hosts: all
+       tasks:
+       - name: Install python-psycopg2
+         ansible.builtin.package:
+           name: python3-psycopg2
+         become: true
+
+  - description: Run command to patch the installer
+    type: command
+    cmd: 'ansible-playbook /home/devops/patch.yml -i /home/devops/inventory'
+
   - description: Restart sshd to pick up new password support configuration
     type: service
     name: sshd
@@ -105,14 +125,14 @@ asset_injector_assets:
 
   - description: Update sshd_config for password auth
     type: lineinfile
-    path: /home/lab-user/.challenge
+    path: /home/devops/.challenge
     state: present
     create: true
     line: "{{ common_password }}"
 
   - description: Add vim profile
     type: lineinfile
-    path: /home/lab-user/.vimrc
+    path: /home/devops/.vimrc
     state: present
     create: true
     line: "autocmd FileType yaml setlocal ai ts=2 et nu cuc cursorline"
@@ -141,7 +161,7 @@ student_password: "{{ common_password }}"
 
 ansible_service_account_user_name: "{{ student_name }}"
 ansible_service_account_user_password: "{{ common_password }}"
-ansible_service_account_user_preferred_python: "3.11"
+ansible_service_account_user_preferred_python: "3.9"
 
 # -------------------------------------------------------------------
 # Instance Config
