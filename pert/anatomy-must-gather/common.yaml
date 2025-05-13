@@ -1,0 +1,196 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/aws-regions-us.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/lifetime-standard.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+# env_type: rhel8-base
+env_type: base-infra
+cloud_provider: openshift_cnv
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+bastion_public_hostname: "rhel9.{{ guid }}.{{ subdomain_base_suffix }}"
+
+# -------------------------------------------------------------------
+# inventory_groups (optional but nice to have)
+# -------------------------------------------------------------------
+
+inventory_groups:
+  - bastions
+
+# -------------------------------------------------------------------
+# Role: ansible_service_account
+# -------------------------------------------------------------------
+
+ansible_service_account_user_name: "{{ student_name }}"
+ansible_service_account_user_password: "{{ common_password }}"
+ansible_service_account_user_preferred_python: "3.9"
+
+# -------------------------------------------------------------------
+# Infra workloads
+# -------------------------------------------------------------------
+software_workloads:
+  bastions:
+    - asset_injector
+    - rh1_2025_must_gather
+
+must_gather_install_tools: true
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+
+requirements_content:
+  roles:
+    - name: rh1_2025_must_gather
+      src: https://github.com/rhpds/rh1-2025-must-gather.git
+      version: v1.0.5
+
+# -------------------------------------------------------------------
+# asset_injector_assets
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
+
+  - description: Download must-gather archive
+    type: http
+    dest: /home/lab-user/rh1-lab16-must-gather.zip
+    src: https://d18h2xbjo1t4w8.cloudfront.net/must_gather_lab/rh1-lab16-must-gather.zip
+    url_username: "{{ s3_rhpds_private_username }}"
+    url_password: "{{ s3_rhpds_private_password }}"
+    owner: lab-user
+    group: users
+    mode: u=rw,g=r,o=r
+
+  - description: Unarchive must-gather file
+    type: unarchive
+    src: /home/lab-user/rh1-lab16-must-gather.zip
+    dest: /home/lab-user
+    remote_src: true
+
+  - description: Change ownership of Module directories
+    type: command
+    cmd: 'chown -R lab-user:users /home/lab-user/'
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+rhel_instance_image: rhel-9.5
+rootfs_size_rhel: 200
+
+instances:
+  - name: "rhel9"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel_instance_image }}"
+    memory: 4Gi
+    image_size: "{{ rootfs_size_rhel }}"
+    cores: 2
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+    networks:
+      - default
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+repo_method: satellite
+use_content_view: true
+
+# -------------------------------------------------------------------
+# Role: common
+# -------------------------------------------------------------------
+
+student_name: lab-user
+student_password: "{{ common_password }}"
+
+bastion_install_basic_packages: true
+agd_bastion_packages:
+  - python3
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - httpd-tools
+  - openldap-clients
+  - podman
+  - tree
+  - runc
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 333ae3b6-a9bc-41ac-9234-0305efd7b7b8
+  owners:
+    maintainer:
+      - name: Sarvesh Pandit
+        email: sapandit@redhat.com
+    instructions:
+      - name: Sarvesh Pandit
+        email: spandit@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Product Enablement: Must-Gather"
+    category: Labs
+    keywords:
+      - openshift
+      - troubleshooting
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: Product_Technical_Learning
+    parameters: []
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2025-04-14
+      pull: missing
