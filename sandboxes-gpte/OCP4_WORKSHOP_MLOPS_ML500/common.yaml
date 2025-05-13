@@ -1,0 +1,107 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/parameters/cert-manager-vars.yaml
+#include /includes/parameters/enable-cert-manager.yaml
+#include /includes/secrets/zerossl.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/agnosticd_open_environment.yaml
+#include /includes/parameters/num-users-salesforce.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/demosat-rhel81.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+# -------------------------------------------------------------------
+# --- Catalog: Workshops
+# --- Catalog Item: OCP4 TL500 Workshop
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.18"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+# -------------------------------------------------------------------
+infra_workloads:
+  - ocp4_workload_authentication
+  - ocp4_workload_cert_manager
+  - ocp4_workload_ml500
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Machine Count
+# -------------------------------------------------------------------
+master_instance_type: m6a.4xlarge
+master_instance_count: 3
+worker_instance_type: m6a.4xlarge
+worker_instance_count: "{{ [(num_users | int / 3.0) | round(0, 'ceil') | int, 3] | max }}"
+bastion_instance_type: t3.medium
+bastion_instance_image: RHEL84GOLD-latest
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
+# We dont need learners provisioned in htpasswd
+ocp4_workload_authentication_htpasswd_user_count: 0
+ocp4_workload_authentication_remove_kubeadmin: true
+install_lets_encrypt_certificates: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 36dcd2f8-cd5d-4ba0-b6ad-dd1b7e9af466
+  owners:
+    maintainer:
+      - name: Cansu Kavili Oernek
+        email: ckavili@redhat.com
+
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.1
+      pull: missing
+  catalog:
+    workshopUiDisabled: true #not supported by this CI
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: ML500 - MLOps Enablement with OpenShift AI
+    category: Workshops
+    keywords:
+      - workshop
+      - openshift
+      - ocp
+      - ai
+      - mlops
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Provider: RHDP
+      Product_Family: Red_Hat_Cloud
+    multiuser: true
+    parameters: []
