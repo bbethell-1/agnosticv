@@ -1,0 +1,172 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/parameters/cert-manager-vars.yaml
+#include /includes/parameters/enable-cert-manager.yaml
+#include /includes/secrets/zerossl.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-region.yaml
+#include /includes/parameters/ocp4-fips-enable.yaml
+#include /includes/parameters/agnosticd_open_environment.yaml
+#include /includes/parameters/num-users-salesforce.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/parameters/showroom-ocp-defaults.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+ocp4_installer_version: "4.18"
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# -------------------------------------------------------------------
+# AWS Specific
+# -------------------------------------------------------------------
+master_instance_type_family: m5
+master_instance_type_size: >-
+  {{ 'xlarge' if worker_instance_count|int <= 10
+  else '2xlarge' if worker_instance_count|int <= 20
+  else '4xlarge'
+  }}
+master_instance_type: "{{ master_instance_type_family }}.{{ master_instance_type_size }}"
+
+master_storage_type: >-
+  {{ 'io1' if worker_instance_count|int >= 10
+  else 'gp2' }}
+master_instance_count: 3
+worker_instance_type: "m5.4xlarge"
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+
+worker_storage_type: "gp2"
+bastion_instance_image: RHEL92GOLD-latest
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+# --- student_name not set -> Requestor User ID is used as student_name
+student_name: lab-user
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+  - ocp4_workload_authentication
+  - ocp4_workload_project_request_template
+  - ocp4_workload_opentlc_production
+  - ocp4_workload_cert_manager
+  - ocp4_workload_openshift_gitops
+  - ocp4_workload_namespace_generator
+  - ocp4_workload_advanced_gitops_workshop
+  - ocp4_workload_showroom
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Common Admin Password
+# -------------------------------------------------------------------
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: openshift
+
+# -------------------------------------------------------------------
+# Showroom Variables
+# -------------------------------------------------------------------
+ocp4_workload_showroom_name: showroom
+ocp4_workload_showroom_namespace: showroom
+ocp4_workload_showroom_content_only: false
+ocp4_workload_showroom_content_git_repo: https://github.com/OpenShiftDemos/advanced-gitops-workshop
+# Default but gets overridden in environments
+ocp4_workload_showroom_content_git_repo_ref: showroom
+ocp4_workload_showroom_terminal_image: quay.io/openshiftdemos/rollouts-terminal-tooling:summit
+ocp4_workload_showroom_terminal_type: showroom
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+# When no password specified it is generated
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+# Create 100 users
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+# Remove the standard kubeadmin user
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_opentlc_production
+# -------------------------------------------------------------------
+ocp4_workload_opentlc_production_remove_self_provisioner: false
+
+# workshop-specific variables
+ocp4_workload_namespace_generator_prefix: "user"
+ocp4_workload_namespace_generator_suffix: ""
+ocp4_workload_namespace_generator_list:
+  - argocd
+  - dev
+  - stage
+  - prod
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 3aca4fa9-fe6b-483d-ac57-23421d082fc5
+  owners:
+    maintainer:
+      - name: Gerald Nunn
+        email: gnunn@redhat.com
+    instructions:
+      - name: Gerald Nunn
+        email: gnunn@redhat.com
+
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OpenShift Advanced GitOps Workshop
+    category: Workshops
+    keywords:
+      - workshop
+      - openshift
+      - argo
+      - argocd
+      - gitops
+    labels:
+      ##OpenShift_Version: "4.10"
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    multiuser: true
+    parameters: []
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      pull: missing
