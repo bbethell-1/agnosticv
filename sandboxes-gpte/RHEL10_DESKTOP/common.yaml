@@ -1,0 +1,203 @@
+---
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/aws-sandbox-meta.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/aws-regions-us.yaml
+
+#include /includes/secrets/demosat-rhel-10.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: multi-cloud-base-infra
+cloud_provider: ec2
+software_to_deploy: none
+
+# -------------------------------------------------------------------
+# Generate Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+default_instance_image: RHEL-10.0-GOLD-latest
+bastion_instance_name: rhel
+
+# -------------------
+# Security Groups
+# -------------------
+security_groups:
+  - name: BastionSG
+    rules:
+      - name: BastionSSHPorts
+        description: "Bastion ssh"
+        from_port: 22
+        to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: WebSG
+    rules:
+      - name: WebHTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: WebHTTPSPorts
+        description: "HTTPS Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: cockpit
+        description: "HTTPS cockpit Public"
+        from_port: 9090
+        to_port: 9090
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+# -------------------
+# Instances
+# -------------------
+instances:
+  - name: "{{ bastion_instance_name | default('bastion') }}"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ bastion_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ bastion_rootfs_size | default(default_rootfs_size) }}"
+    security_groups:
+      - BastionSG
+      - DefaultSG
+      - WebSG
+
+# -------------------------------------------------------------------
+# Workloads: Pre/Software/Post
+# -------------------------------------------------------------------
+pre_software_workloads:
+  bastions:
+    - set-repositories
+    - common
+    - bastion-lite
+    - control-user
+    - asset_injector
+
+post_software_final_workloads:
+  localhost:
+    - agnosticv-userdata-import
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+repo_method: satellite
+use_content_view: true
+update_all_packages: true
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+common_install_extra_packages: true
+common_extra_packages:
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - tree
+  - cockpit
+
+# -------------------------------------------------
+# Role: bastion-lite
+# -------------------------------------------------
+install_bastion_lite: true
+
+# -------------------------------------------------
+# Role: control-user
+# -------------------------------------------------
+env_authorized_key: "{{guid}}key"
+install_control_user: true
+student_name: lab-user
+student_password: "{{ common_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ common_password }}"
+control_user_private_group: "{{ omit }}"
+
+# -------------------------------------------------------------------
+# asset_injector_assets
+# -------------------------------------------------------------------
+asset_injector_assets:
+  - description: Start cockpit
+    type: service
+    name: cockpit.service
+    state: started
+    enabled: true
+
+# -------------------------------------------------------------------
+# Role: agnosticv-userdata-import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  guid: "{{ guid }}"
+  cockpit_console_url: "https://rhel.{{ guid }}{{ subdomain_base_suffix }}:9090"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: aa3a9b43-9e1f-4df6-8c7e-f0a9bd7248e7
+  owners:
+    maintainer:
+      - name: Mitesh Sharma
+        email: msharma@redhat.com
+
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    multiuser: false
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: RHEL10 Desktop
+    category: Workshops
+    keywords:
+      - rhel10
+      - desktop
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHDP
+    parameters: []
+    reportingLabels:
+      primaryBU: RHEL
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2025-04-14
+      pull: missing
