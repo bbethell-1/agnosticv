@@ -1,0 +1,149 @@
+---
+# touched
+#include /includes/catalog-icon-rhibm.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/runtime-unlimited.yaml
+#include /includes/parameters/student-email.yaml
+#include /includes/parameters/requester_username.yaml
+#include /includes/parameters/open-environment-annotation-hidden.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/access-restriction-devs-only.yaml
+
+# The agnosticd config to use
+env_type: base-infra
+
+agnosticd_open_environment: False
+__meta__:
+  asset_uuid: f2be1b0f-3ca6-4dc8-84b7-fbde3252ad49
+  access_control:
+    allow_groups:
+      - rhpds-devs
+      - rhpds-devs-rh1
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: RHEL AI on IBM Cloud
+    category: Demos
+    keywords:
+      - ibm
+      - ai
+      - rhai
+      - rhelai
+      - ilab
+    labels:
+      Product_Family: Red_Hat_Cloud
+#     Product:
+      Provider: RHDP
+    parameters:
+      - name: ibmcloud_region
+        description: IBM Cloud region
+        formLabel: Instance Region
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: eu-es
+          enum:
+            - us-south
+            - eu-es
+      - name: default_instance_type
+        description: IBM Cloud instance type, see https://cloud.ibm.com/docs/vpc?topic=vpc-profiles&interface=ui
+        formLabel: Instance Type
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: gx3-16x80x1l4
+          enum:
+            - gx3-16x80x1l4
+            - gx3-32x160x2l4
+            - gx3-64x320x4l4
+            - gx3-24x120x1l40s
+            - gx3-48x240x2l40s
+      - name: default_instance_image
+        description: IBM Cloud instance image
+        formLabel: Instance Image
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: rhel-ai-nvidia-1-4-x86-64-kvm-20250403v1
+          enum:
+            - rhel-ai-nvidia-1-4-x86-64-kvm-20250403v1
+      - name: default_rootfs_size_node
+        description: IBM Cloud instance disk size. Use 0 to use minimum provisioned size of the image.
+        formLabel: Instance Disk size
+        required: true
+        openAPIV3Schema:
+          type: integer
+          default: 0
+          maximum: 250
+
+      - name: second_volume_size
+        description: /mnt/vol0 size
+        formLabel: /mnt/vol0 Disk size
+        required: true
+        openAPIV3Schema:
+          type: integer
+          default: 100
+          maximum: 2500
+
+  owners:
+    maintainer:
+      - name: Guillaume Core
+        email: gucore@redhat.com
+      - name: Cyril Lopez
+        email: cylopez@redhat.com
+    sme:
+      - name: Guillaume Core
+        email: gucore@redhat.com
+      - name: Cyril Lopez
+        email: cylopez@redhat.com
+    instructions:
+      - name: Guillaume Core
+        email: gucore@redhat.com
+      - name: Cyril Lopez
+        email: cylopez@redhat.com
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2025-04-14
+      pull: always
+
+# gucore, 2025-03-13: The following tasks are too slow:
+# common : Update all packages ------------ 251.17s
+# bastion-base : Setup Red Hat packages for bastion -----47.29s
+# common : install common packages for RHEL 9 -----------40.45s
+# disable it. Use a more recent image instead.
+common_update_packages: false
+common_install_basic_packages: false
+common_install_extra_packages: false
+bastion_install_basic_packages: false
+
+bastion_user_data: |-
+  mkdir -p /etc/ilab
+  touch /etc/ilab/insights-opt-out
+
+# -------------------------------------------------
+# IBM CLOUD Instances
+# -------------------------------------------------
+instances:
+  - name: "bastion-{{ guid }}"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ bastion_instance_image | default(default_instance_image) }}"
+    profile: "{{ bastion_instance_type | default(default_instance_type) }}"
+    tags:
+      - "AnsibleGroup:bastions"
+      - "ostype:linux"
+      - "instance_filter:{{ env_type }}"
+    rootfs_size: "{{ bastion_rootfs_size_node | default(default_rootfs_size_node) }}"
+    security_groups:
+      - bastionsg
+    user_data: "{{ bastion_user_data | default('') }}"
+    volumes:
+      - name: "data-vol0"
+        size: "{{ second_volume_size | default(100) }}"
+        mount: "/mnt/vol0"
