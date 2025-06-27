@@ -13,7 +13,7 @@
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/registry-redhat.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/secrets/zerossl.yaml
+#include /includes/parameters/enable-lets-encrypt.yaml
 
 # -------------------------------------------------------------------
 # Platform
@@ -33,13 +33,7 @@ default_instance_image: RHEL95GOLD-latest
 bastion_instance_image: RHEL95GOLD-latest
 default_rootfs_size: 50
 default_instance_type: "t3a.large"
-
-# -------------------------------------------------------------------
-# Registry credentials created by Giuliano Quites for RH1 event.
-# Do not use this for other labs.
-# -------------------------------------------------------------------
-lab20_registry_username: CHANGEME
-lab20_registry_token: CHANGEME
+controller_instance_image: aap2.5-2024-11-06
 
 # -------------------
 # Security Groups
@@ -152,7 +146,7 @@ instances:
     public_dns: true
     floating_ip: true
     image:
-      name: "aap2.5-2024-11-06"
+      name: "{{ controller_instance_image | default(default_instance_image) }}"
     flavor:
       ec2: "{{ controller_instance_type | default(default_instance_type) }}"
     tags:
@@ -218,18 +212,15 @@ pre_software_workloads:
 software_workloads:
   controllers:
     - nginx_with_cert
+    - ansible_automation_platform_configuration
   centos_nodes:
     - server_customization
 
 post_software_workloads:
   nodes:
     - node1_customization
-  bastions:
-    - vscode-server
 
 post_software_final_workloads:
-  bastions:
-    - showroom
 
 # -------------------------------------------------------------------
 # Common Password
@@ -281,74 +272,55 @@ control_user_password: "{{ common_password }}"
 control_user_private_group: "{{ omit }}"
 # control_user_ssh_config: ./files/rhel_ssh_config.j2
 
-
 # -------------------------------------------------------------------
-# Role: vscode-server
+# Workload: ansible_automation_platform_configuration
 # -------------------------------------------------------------------
-install_vscode_server: true
-vscode_server_install_nginx: true
-vscode_use_automationcontroller_nginx: false
-vscode_server_ansible_become: true
-vscode_user_workspace_path: /home/rhel/workplace
-vscode_server_nginx_https_port: 488
-vscode_server_hostname: "{{ groups['bastions'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}"
-vscode_auth_type: none
-vscode_user_name: "{{ student_name }}"
-vscode_server_default_extensions: []
-vscode_server_extension_urls:
-  - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
-  - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
-  - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
+ansible_automation_platform_configuration_host: "https://{{ groups['controllers'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}"
+ansible_automation_platform_configuration_username: admin
+ansible_automation_platform_configuration_password: "R3dh4t1!"
+ansible_automation_platform_configuration_verify_ssl: true
+ansible_automation_platform_configuration_create_controller_token: false
+ansible_automation_platform_configuration_generate_ocp_token: false
 
-vscode_server_additional_settings: |
-  "files.exclude": {
-    "**/.git": true,
-    "**/.bash*": true,
-    "**/.vim*": true,
-    "**/.ssh": true,
-    "**/.vscode": true,
-    "**/.local": true,
-    "**/.config": true,
-    "**/.ansible": true,
-    "**/.cache": true },
-  "security.workspace.trust.enabled": false
+controller_dependency_check: false
 
-# -------------------------------------------------------------------
-# Role: showroom
-# -------------------------------------------------------------------
-showroom_git_repo: https://github.com/RedHatQuickCourses/rh1-lab20-ansible.git
-# showroom_ui: zero-touch
-# showroom_ansible_runner_image: quay.io/mitsharm/ansible-runner-api
-# showroom_ansible_runner_image_tag: 1.1.0
-showroom_openssh_keypair: provisionkey
-showroom_dnf_packages:
-  - git
-  - podman
-  - python3-devel
-  - systemd-container
-  - unzip
-  - ansible-core
+aap_hostname: "{{ ansible_automation_platform_configuration_host }}"
+aap_username: "{{ ansible_automation_platform_configuration_username }}"
+aap_password: "{{ ansible_automation_platform_configuration_password }}"
+aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
 
-showroom_pip_packages:
-  - podman-compose==1.0.6
+ssh_privatekey: "{{ lookup('file',hostvars.localhost.env_authorized_key_path) }}"
 
-showroom_tab_services:
-  - double_tty
+aap_configuration_dispatcher_roles:
+  - {role: controller_license, var: controller_license, tags: controller_license}
+  - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
+  - {role: gateway_users, var: aap_user_accounts, tags: gateway_users}
+  - {role: controller_credentials, var: controller_credentials, tags: controller_credentials}
 
-showroom_tab_tty1_username: rhel
-showroom_showroom_default_ssh_user: rhel
-showroom_enable_root_ssh: true
-showroom_ssh_method: sshkey
-showroom_ssh_host: host.containers.internal
-showroom_lab_users:
-  - "{{ student_name }}"
-showroom_user_password: "{{ common_password }}"
+controller_license:
+  manifest_url: "https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip"
 
-showroom_tab_double_tty_top_username: "{{ student_name }}"
-showroom_tab_double_tty_bottom_username: "{{ student_name }}"
+gateway_settings:
+  SESSION_COOKIE_AGE: 9000
 
-showroom_ttys_enable_tmux: true
+aap_user_accounts:
+  - username: "lab-user"
+    is_superuser: true
+    password: "{{ common_password }}"
+    email: "lab-user@redhat.com"
+    organizations: "Default"
+    first_name: "lab"
+    last_name: User
 
+controller_credentials:
+  - name: lab-credential
+    description: lab-user credential
+    organization: "Default"
+    credential_type: Machine
+    inputs:
+      username: ec2-user
+      ssh_key_data: "{{ ssh_privatekey }}"
+      become_method: sudo
 # -------------------------------------------------------------------
 # Ansible Module, Collections, and Roles Requirements
 # -------------------------------------------------------------------
@@ -356,11 +328,11 @@ requirements_content:
   roles:
     - name: server_customization
       src: https://github.com/opentraining-labs-customizations/rh1-lab20-eda-server-ar.git
-      version: 1.0.1
+      # version: 1.0.1
 
     - name: node1_customization
       src: https://github.com/opentraining-labs-customizations/rh1-lab20-eda-node1-ar.git
-      version: 1.0.1
+      # version: 1.0.1
 
 # -------------------------------------------------------------------
 # Certs Vars
@@ -377,6 +349,8 @@ __meta__:
     maintainer:
       - name: Ashish Shah
         email: ashah@redhat.com
+      - name: Amrinder Singh
+        email: amrsingh@redhat.com
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   catalog:
@@ -395,5 +369,5 @@ __meta__:
     parameters: []
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:2025-04-14
+      image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.1
       pull: missing
