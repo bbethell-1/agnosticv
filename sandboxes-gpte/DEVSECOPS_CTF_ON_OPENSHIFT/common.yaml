@@ -1,0 +1,566 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/catalog-icon-project-dance.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/aws-6regions.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/rhods_git.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/zerossl.yaml
+#include /includes/secrets/rhods-git-secret.yml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: DevSecOps Validated Framework - Parallel
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+project_tag: "{{ env_type }}-{{ guid }}"
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Cloud Provider
+# -------------------------------------------------------------------
+cloud_provider: ec2
+bastion_instance_type: m5a.2xlarge
+bastion_instance_image: RHEL95GOLD-latest
+
+key_name: opentlc_admin_backdoor
+cloud_tags:
+  env_type: "{{ env_type }}"
+  #guid: "{{ guid }}"
+  #course_name: "{{ course_name | d('unknown') }}"
+  platform: "{{ platform | d('unknown') }}"
+  #purpose: "{{ purpose | d('unknown') }}"
+aws_region: us-east-2
+
+# -------------------------------------------------------------------
+# Security group
+# -------------------------------------------------------------------
+security_groups:
+- name: BastionSG
+  rules:
+  - name: BasSSHPublic
+    description: "SSH public"
+    from_port: 22
+    to_port: 22
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: BasHTTPPublic
+    description: "HTTP public for Let's Encrypt verification"
+    from_port: 80
+    to_port: 80
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: BasHTTPSPublic
+    description: "HTTPS public for Let's Encrypt verification"
+    from_port: 443
+    to_port: 443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+  - name: BasRemoteAppPublic
+    description: "HTTP port to access remote application"
+    from_port: 8500
+    to_port: 8500
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits')
+  }}
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.18"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+master_instance_count: 3
+master_instance_type: m5a.4xlarge
+worker_instance_count: 3
+worker_instance_type: m6a.12xlarge
+
+# -------------------------------------------------
+# Role: common
+# -------------------------------------------------
+install_common: true
+common_packages_el9:
+- at
+- bash-completion
+- bind-utils
+- buildah
+- git
+- httpd-tools
+- nano
+- podman
+- python3
+- python3-pip
+- tmux
+- tree
+- unzip
+- vim-enhanced
+- wget
+- ansible
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+# --- student_name not set -> Requestor User ID is used as student_name
+student_name: lab-user
+# --- student_password not set -> generate random password
+student_password: "{{ common_password }}"
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.18_2025_03_03
+install_ftl: false
+
+# -------------------------------------------------------------------
+# Custom collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  - name: kubernetes.core
+    version: 2.4.0
+  - name: amazon.aws
+    version: 2.3.0
+  - name: community.general
+    version: 6.4.0
+  - name: ansible.posix
+    version: 1.5.1
+  - name: ovirt.ovirt
+    version: 3.1.1
+  - name: awx.awx
+    version: 21.1.0
+  - name: https://github.com/rhpds/lb1153.hacker_lab.git
+    type: git
+    version: main
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- install-command-line-tools
+- ocp4_workload_cert_manager
+- ocp4_workload_rhsso_authentication
+- ocp4_workload_gitea_operator
+- ocp4_workload_openshift_gitops
+- ocp4_workload_openshift_data_foundation
+- ocp4_workload_trusted_artifact_signer
+- ocp4_workload_pipelines
+- ocp4_workload_sonarqube
+- ocp4_workload_rhacs
+- ocp4_workload_trusted_profile_analyzer
+- lb1153.hacker_lab.bootstrap
+- lb1153.hacker_lab.stackrox_customize
+- lb1153.hacker_lab.gitea_customize
+- lb1153.hacker_lab.argo_customize
+- studentvm_java_development
+- ocp4_workload_showroom
+
+# -------------------------------------------------
+# lb1153.hacker_lab.bootstrap
+# -------------------------------------------------
+bootstrap_agnosticg_repo: https://github.com/treddy08/agnosticg.git
+bootstrap_vault_namespace: vault
+bootstrap_external_secrets_version: 0.9.2
+bootstrap_backstage_namespace: backstage
+bootstrap_quay_admin_user: quayadmin
+bootstrap_quay_admin_password: "{{ common_password }}"
+bootstrap_common_password: "{{ common_password }}"
+bootstrap_cosign_password: redhat
+bootstrap_openshift_pipelines_namespace: openshift-pipelines
+bootstrap_trusted_artifact_signer_namespace: trusted-artifact-signer
+bootstrap_cyclonedx_namespace: cyclonedx
+bootstrap_remote_ripper_image: quay.io/rhn-gps-mthirion/ripper:latest
+bootstrap_num_users: "{{ num_users }}"
+bootstrap_user_name_base: user
+
+bootstrap_rhacs_namespace: stackrox
+bootstrap_rhacs_admin_password: "{{ common_password }}"
+
+bootstrap_tpa_namespace: trusted-profile-analyzer
+bootstrap_tpa_oidc_client_id: walker #notsecret
+bootstrap_tpa_oidc_client_secret: 5460cc91-4e20-4edd-881c-b15b169f8a79 #notsecret
+
+# -------------------------------------------------
+# lb1153.hacker_lab.stackrox_customize
+# -------------------------------------------------
+stackrox_customize_stackrox_namespace: stackrox
+stackrox_customize_stackrox_admin: admin
+stackrox_customize_num_users: "{{ num_users }}"
+stackrox_customize_stackrox_admin_password: "{{ common_password }}"
+stackrox_customize_stackrox_user_name_base: user
+
+# -------------------------------------------------
+# lb1153.hacker_lab.gitea_customize
+# -------------------------------------------------
+gitea_customize_lab_challenge_password: Z9YagGvef1716QFZdVff9MF9iOpd5RCS4Ct3AwOzWsp3sesxkYIYl0QtEPv2Zhzd #notsecret
+gitea_customize_gitea_namespace: gitea
+gitea_customize_gitea_admin_user: gitea
+gitea_customize_gitea_admin_password: "{{ common_admin_password }}"
+gitea_customize_gitea_public_repos:
+- name: customers-app
+  url: https://github.com/mthirion/lb1153-customers-app.git
+  per_user: false
+  private: false
+- name: customers-gitops
+  url: https://github.com/mthirion/lb1153-customers-gitops.git
+  per_user: true
+  private: true
+- name: env-gitops
+  url: https://github.com/mthirion/lb1153-env-gitops.git
+  per_user: true
+  private: true
+- name: pipeline-gitops
+  url: https://github.com/mthirion/lb1153-pipeline-gitops.git
+  per_user: true
+  private: true
+- name: leaderboard-gitops
+  url: https://github.com/mthirion/lb1153-leaderboard-gitops.git
+  per_user: false
+  private: true
+gitea_customize_gitea_num_users: "{{ num_users }}"
+gitea_customize_gitea_user_name_base: user
+gitea_customize_gitea_user_password: "{{ common_password }}"
+gitea_customize_student_name: "{{ student_name }}"
+
+# -------------------------------------------------
+# lb1153.hacker_lab.argo_customize
+# -------------------------------------------------
+argo_customize_num_users: "{{ num_users }}"
+argo_customize_gitea_namespace: gitea
+argo_customize_argo_namespace: openshift-gitops
+argo_customize_gitea_admin_user: gitea
+argo_customize_gitea_admin_password: "{{ common_admin_password }}"
+argo_customize_gitea_user_name_base: user
+argo_customize_gitea_user_password: "{{ common_password }}"
+argo_customize_argo_user_name_base: user
+argo_customize_argo_user_password: "{{ common_password }}"
+argo_customize_stackrox_admin_user: admin
+argo_customize_stackrox_admin_password: "{{ common_password }}"
+argo_customize_stackrox_namespace: stackrox
+
+# -------------------------------------------------
+# install-command-line-tools
+# -------------------------------------------------
+install_cli_tools_rosa_cli: false
+install_cli_tools_github_cli: false
+install_cli_tools_tektoncd_cli: false
+install_cli_tools_openshift_cli: false
+install_cli_tools_helm_cli: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.7
+ocp4_workload_gitea_operator_starting_csv: gitea-operator.v2.0.7
+
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.21.11"
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel9/postgresql-13
+ocp4_workload_gitea_operator_postgresql_image_tag: 1-165
+
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: gitea
+ocp4_workload_gitea_operator_admin_password: "{{ common_admin_password }}"
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: "{{ num_users }}"
+ocp4_workload_gitea_operator_generate_user_format: user%d
+ocp4_workload_gitea_operator_user_password: "{{ common_password }}"
+ocp4_workload_gitea_operator_migrate_repositories: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.14
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+ocp4_workload_openshift_gitops_update_route_tls: true
+ocp4_workload_openshift_gitops_resource_customizations: |
+  operators.coreos.com/Subscription:
+    health.lua: |
+      health_status = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          numDegraded = 0
+          numPending = 0
+          msg = ""
+          for i, condition in pairs(obj.status.conditions) do
+            msg = msg .. i .. ": " .. condition.type .. " | " .. condition.status .. "\n"
+            if condition.type == "InstallPlanPending" and condition.status == "True" then
+              numPending = numPending + 1
+            elseif (condition.type == "InstallPlanMissing" and condition.reason ~= "ReferencedInstallPlanNotFound") then
+              numDegraded = numDegraded + 1
+            elseif (condition.type == "CatalogSourcesUnhealthy" or condition.type == "InstallPlanFailed") and condition.status == "True" then
+              numDegraded = numDegraded + 1
+            end
+          end
+          if numDegraded == 0 and numPending == 0 then
+            health_status.status = "Healthy"
+            health_status.message = msg
+            return health_status
+          elseif numPending > 0 and numDegraded == 0 then
+            health_status.status = "Progressing"
+            health_status.message = "An install plan for a subscription is pending installation"
+            return health_status
+          else
+            health_status.status = "Degraded"
+            health_status.message = msg
+            return health_status
+          end
+        end
+      end
+      health_status.status = "Progressing"
+      health_status.message = "An install plan for a subscription is pending installation"
+      return health_status
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_redhat_gitops_gitlab
+# -------------------------------------------------------------------
+ocp4_workload_gitops_gitlab_gitops_repo: https://github.com/treddy08/agnosticg.git
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_trusted_application_pipeline
+# -------------------------------------------------------------------
+ocp4_workload_trusted_application_pipeline_janus_bootstrap_repo: https://github.com/treddy08/janus-idp-bootstrap.git
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_redhat_developer_hub_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_redhat_developer_hub_bootstrap_janus_bootstrap_repo: https://github.com/treddy08/janus-idp-bootstrap.git
+
+# -------------------------------------------------------------------
+# lb1153.hacker_lab.example_role
+# -------------------------------------------------------------------
+example_role_guid: "{{ guid }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_ec2_region: "{{ aws_region }}"
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
+ocp4_workload_cert_manager_channel: stable-v1.15
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_rhsso_authentication
+# -------------------------------------------------------------------
+ocp4_workload_rhsso_authentication_namespace: rhsso
+ocp4_workload_rhsso_authentication_target_namespaces: ["rhsso"]
+ocp4_workload_rhsso_authentication_channel: stable
+ocp4_workload_rhsso_authentication_starting_csv: rhsso-operator.7.6.11-opr-004
+ocp4_workload_rhsso_authentication_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_rhsso_authentication_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_rhsso_authentication_admin_create: true
+ocp4_workload_rhsso_authentication_admin_username: admin
+ocp4_workload_rhsso_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_rhsso_authentication_remove_kubeadmin: true
+
+ocp4_workload_rhsso_authentication_user_count: "{{ num_users }}"
+ocp4_workload_rhsso_authentication_user_name_base: user
+ocp4_workload_rhsso_authentication_user_password: "{{ common_password }}"
+
+ocp4_workload_rhsso_authentication_env_type: "{{ env_type }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_trusted_artifact_signer
+# -------------------------------------------------------------------
+ocp4_workload_trusted_artifact_signer_rhsso_namespace: rhsso
+
+ocp4_workload_trusted_artifact_signer_rhtas_namespace: openshift-operators
+ocp4_workload_trusted_artifact_signer_rhtas_target_namespaces: openshift-operators
+ocp4_workload_trusted_artifact_signer_rhtas_channel: stable-v1.1
+ocp4_workload_trusted_artifact_signer_rhtas_starting_csv: rhtas-operator.v1.1.1
+ocp4_workload_trusted_artifact_signer_rhtas_use_catalog_source: true
+ocp4_workload_trusted_artifact_signer_rhtas_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_trusted_artifact_signer_rhtas_catalogsource_image_tag: v4.17_2025_03_03
+ocp4_workload_trusted_artifact_signer_rhtas_automatic_install_plan_approval: true
+ocp4_workload_trusted_artifact_signer_rhtas_config:
+  resources:
+    limits:
+      memory: 256Mi
+    requests:
+      memory: 128Mi
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacs
+# -------------------------------------------------------------------
+ocp4_workload_rhacs_install_operator_channel: "rhacs-4.6"
+ocp4_workload_rhacs_install_operator_starting_csv: "rhacs-operator.v4.6.4"
+ocp4_workload_rhacs_install_operator_use_catalog_snapshot: false
+ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
+ocp4_workload_rhacs_enable_route_certs: false
+
+# -----------------------------------
+# Quay Operator
+# -----------------------------------
+ocp4_workload_quay_operator_namespace: quay-registry
+ocp4_workload_quay_operator_catalogsource_namespace: quay-registry
+ocp4_workload_quay_operator_channel: stable-3.13
+ocp4_workload_quay_operator_starting_csv: quay-operator.v3.13.4
+ocp4_workload_quay_operator_use_catalog_snapshot: true
+ocp4_workload_quay_operator_catalogsource_name: redhat-operators-snapshot-quay
+ocp4_workload_quay_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_quay_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_quay_operator_registry_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# OpenShift Data Foundations Operator
+# -------------------------------------------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.17
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_old_default_storage_class_name: gp3-csi
+
+ocp4_workload_openshift_data_foundation_catalogsource_setup: true
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
+ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# ---------------------------------------------------------
+# Workload: OpenShift Pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.16
+ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom-devsecops-ctf-openshift.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_only: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_trusted_profile_analyzer
+# -------------------------------------------------------------------
+ocp4_workload_trusted_profile_analyzer_namespace: trusted-profile-analyzer
+ocp4_workload_trusted_profile_analyzer_minio_root_password: "{{ common_password }}"
+ocp4_workload_trusted_profile_analyzer_keycloak_admin_password: "{{ common_password }}"
+ocp4_workload_trusted_profile_analyzer_postgres_password: "{{ common_password }}"
+ocp4_workload_trusted_profile_analyzer_postgres_tpa_password: "{{ common_password }}"
+ocp4_workload_trusted_profile_analyzer_walker_client_secret: 5460cc91-4e20-4edd-881c-b15b169f8a79 #notsecret
+ocp4_workload_trusted_profile_analyzer_testing_user_client_secret: 5460cc91-4e20-4edd-881c-b15b169f8a79 #notsecret
+ocp4_workload_trusted_profile_analyzer_testing_manager_client_secret: 5460cc91-4e20-4edd-881c-b15b169f8a79 #notsecret
+ocp4_workload_trusted_profile_analyzer_guac_password: "{{ common_password }}"
+ocp4_workload_trusted_profile_analyzer_keycloak_realm_admin_password: "{{ common_password }}"
+ocp4_workload_trusted_profile_analyzer_install_repo_name: trustification
+ocp4_workload_trusted_profile_analyzer_install_repo_branch: v1.2.2
+ocp4_workload_trusted_profile_analyzer_install_repo_url: https://github.com/trustification/trustification.git
+ocp4_workload_trusted_profile_analyzer_helm_chart_repo: https://charts.openshift.io/
+ocp4_workload_trusted_profile_analyzer_helm_chart_name: openshift-helm-charts/redhat-trusted-profile-analyzer
+ocp4_workload_trusted_profile_analyzer_helm_chart_version: "0.2.2"
+
+# -------------------------------------------------------------------
+# Workload: studentvm_java_development
+# -------------------------------------------------------------------
+studentvm_java_development_jdk_install: true
+studentvm_java_development_jdk_package: java-21-openjdk-devel
+studentvm_java_development_maven_install: true
+studentvm_java_development_maven_version: '3.8.6'
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 3C82B2EA-11EC-4F92-B1E3-28A0C9D2E156
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    multiuser: true
+    workshopUiDisabled: false
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: >-
+      Unmasking the Attack - A DevSecOps CTF on OpenShift
+    category: Workshops
+    keywords:
+    - devsecops
+    - CTF
+    - hack
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 100
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+      pull: missing
+  owners:
+    maintainer:
+    - email: msnoussi@redhat.com
+      name: Rachid Snoussi
+    sme:
+    - email: treddy@redhat.com
+      name: Tyrell Reddy
+  tower:
+    timeout: 21600
