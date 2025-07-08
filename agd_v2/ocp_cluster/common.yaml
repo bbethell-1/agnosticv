@@ -1,0 +1,167 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog: Red Workshops
+# --- Catalog Item: Red Hat OpenShift Container Platform Cluster (AWS)
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/ocp4-installer-version.yaml
+#include /includes/parameters/ocp4-fips-enable.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-3regions.yaml
+#include /includes/parameters/num-users-salesforce.yaml
+#include /includes/parameters/agnosticd_open_environment.yaml
+#include /includes/parameters/controlplane-count.yaml
+
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/zerossl.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: aws
+cloud_provider_version: main
+config: openshift-cluster
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: main
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+# OpenShift version set from parameter
+ocp4_installer_root_url: https://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+bastion_setup_student_user: true
+bastion_student_user_name: lab-user
+student_sudo: true
+
+# -------------------------------------------------------------------
+# AWS Specific
+# -------------------------------------------------------------------
+control_plane_instance_type_family: m5
+control_plane_instance_type_size: >-
+  {{ '4xlarge' if control_plane_instance_count | int <= 1
+  else '2xlarge' if worker_instance_count | int <= 10
+  else '4xlarge' if worker_instance_count | int <= 20
+  else '8xlarge'
+  }}
+control_plane_instance_type: "{{ control_plane_instance_type_family }}.{{ control_plane_instance_type_size }}"
+
+control_plane_storage_type: >-
+  {{ 'io1' if worker_instance_count | int >= 10
+  else 'gp3' }}
+worker_instance_type: "m5a.4xlarge"
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+
+worker_storage_type: gp3
+bastion_instance_image: RHEL96GOLD-latest
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Workloads to deploy on the cluster (YAML List)
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+- agnosticd.core_workloads.ocp4_workload_cert_manager
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_htpasswd
+# -------------------------------------------------------------------
+ocp4_workload_authentication_htpasswd_admin_user: admin
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+ocp4_workload_authentication_htpasswd_user_base: user
+# Generate user password
+ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+
+ocp4_workload_cert_manager_aws_region: "{{ aws_region }}"
+ocp4_workload_cert_manager_aws_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
+ocp4_workload_cert_manager_aws_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
+
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+ocp4_workload_cert_manager_ignore_errors: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 2a80b893-3380-46db-aeff-44e70f0a6b1f
+  owners:
+    maintainer:
+    - name: Wolfgang Kulhanek
+      email: wkulhane@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-06-24
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Red Hat OpenShift Container Platform Cluster (AWS) - AgdV2
+    category: Workshops
+    keywords:
+    - workshop
+    - openshift
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+      Featured_Score: '71'
+    multiuser: true
+    parameters: []
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
