@@ -1,85 +1,82 @@
----
-# -------------------------------------------------------------------
-# Purpose - Cost tag. One of development, ilt, production, event
-# -------------------------------------------------------------------
 purpose: development
-
-# Important: https://redhat-internal.slack.com/archives/C04MLMA15MX/p1726858533192719
 bastion_instance_image: rhel-9.1
-
-
-# -------------------------------------------------------------------
-# Workloads
-# -------------------------------------------------------------------
-# --- Infra Workloads (YAML List)
 infra_workloads:
-  - ocp4_workload_authentication
-# - ocp4_workload_le_certificates
-  - ocp4_workload_cert_manager
-  - ocp4_workload_external_odf
-  - ocp4_workload_openshift_gitops
-  - ocp4_workload_gitops_generic
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_gitops_generic
-# -------------------------------------------------------------------
-ocp4_workload_gitops_generic_repo: "{{ gitops_repo | default('https://github.com/rbo/ocpmulti-wksp-cnv-gitops.git') }}"
-ocp4_workload_gitops_generic_repo_tag: "{{ gitops_repo_tag | default('main') }}"
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_openshift_gitops
-# -------------------------------------------------------------------
+- ocp4_workload_authentication
+- ocp4_workload_cert_manager
+- ocp4_workload_external_odf
+- ocp4_workload_openshift_gitops
+- ocp4_workload_gitops_generic
+ocp4_workload_gitops_generic_repo: '{{ gitops_repo | default(''https://github.com/rbo/ocpmulti-wksp-cnv-gitops.git'') }}'
+ocp4_workload_gitops_generic_repo_tag: '{{ gitops_repo_tag | default(''main'') }}'
 ocp4_workload_openshift_gitops_channel: latest
-ocp4_workload_openshift_gitops_argo_cr_additional_values: |
-  resourceTrackingMethod: annotation
+ocp4_workload_openshift_gitops_argo_cr_additional_values: 'resourceTrackingMethod: annotation
 
+  '
 ocp4_workload_openshift_gitops_enable_route: true
 ocp4_workload_openshift_gitops_update_route_tls: true
 ocp4_workload_openshift_gitops_rbac_update: true
-ocp4_workload_openshift_gitops_rbac_policy: |
-  g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+ocp4_workload_openshift_gitops_rbac_policy: 'g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+
+  '
 ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
-
-# -------------------------------------------------------------------
-# Babylon meta variables
-# -------------------------------------------------------------------
 __meta__:
   sandbox_api:
     actions:
       destroy:
         catch_all: false
   sandboxes:
-    - kind: OcpSandbox
-      namespace_suffix: ocp4-cluster
-      cloud_selector:
-        cloud: cnv
-        purpose: dev
-        virt: "yes"
+  - kind: OcpSandbox
+    namespace_suffix: ocp4-cluster
+    cloud_selector:
+      cloud: cnv
+      purpose: dev
+      virt: 'yes'
   deployer:
-    # git_tag_prefix: cloud-native-robot
-    #scm_url: https://github.com/rbo/ocpmulti-wksp-cnv-gitops-agnosticd.git
     scm_ref: fixkubevirt
-
-    # scm_ref: agnosticd
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:v0.1.1
       pull: missing
   catalog:
     parameters:
-      - name: gitops_repo
-        description: >-
-          https://github.com/rbo/ocpmulti-wksp-cnv-gitops
-        formLabel: Git Ops Repo
-        required: true
-        openAPIV3Schema:
-          type: string
-          default: https://github.com/rbo/ocpmulti-wksp-cnv-gitops.git
-      - name: gitops_repo_tag
-        description: >-
-          https://github.com/rbo/ocpmulti-wksp-cnv-gitops
-        formLabel: Git Ops Repo Version/tag
-        required: true
-        openAPIV3Schema:
-          type: string
-          default: main
+    - name: gitops_repo
+      description: https://github.com/rbo/ocpmulti-wksp-cnv-gitops
+      formLabel: Git Ops Repo
+      required: true
+      openAPIV3Schema:
+        type: string
+        default: https://github.com/rbo/ocpmulti-wksp-cnv-gitops.git
+    - name: gitops_repo_tag
+      description: https://github.com/rbo/ocpmulti-wksp-cnv-gitops
+      formLabel: Git Ops Repo Version/tag
+      required: true
+      openAPIV3Schema:
+        type: string
+        default: main
+    - name: scm_ref
+      description: AgnosticD SCM Reference - Supports branches, tags, commits, and forks
+      formLabel: AgnosticD SCM Reference (Branch/Tag/Commit/Fork)
+      required: false
+      openAPIV3Schema:
+        type: string
+        default: fixkubevirt
+        description: 'Git reference for AgnosticD deployment. Supports:
+
+          • Branches: "development", "main", "feature-branch"
+
+          • Tags: "v1.0.0", "release-2024.1"
+
+          • Commits: "abc123def456" (full or short hash)
+
+          • Forks: "https://github.com/yourfork/agnosticd.git#branch"
+
+          • Custom repos: "https://gitlab.com/custom/agnosticd.git#main"'
+        examples:
+        - development
+        - main
+        - feature-aws-improvements
+        - v2024.1.0
+        - abc123def456
+        - https://github.com/yourfork/agnosticd.git#feature-branch
+        - https://gitlab.com/custom/agnosticd.git#main
+        pattern: ^(https?://[^\s]+#[^\s]+|[a-zA-Z0-9._/-]+)$

@@ -1,50 +1,28 @@
----
-# -------------------------------------------------------------------
-# Purpose - Cost tag. One of development, ilt, production, event
-# -------------------------------------------------------------------
 purpose: development
 ocp4_workload_showroom_wetty_ssh_bastion_login: true
 ocp4_workload_showroom_terminal_type: wetty
-
 _showroom_user_data:
-  bastion_ssh_command: "ssh {{ ansible_service_account_user_name }}@{{ groups['bastions'][0]  }}"
-  bastion_ssh_user_name: "{{ ansible_service_account_user_name }}"
-  bastion_ssh_password: "{{ ansible_service_account_user_password }}"
-  bastion_public_hostname: "{{ bastion_prefix }}"
+  bastion_ssh_command: ssh {{ ansible_service_account_user_name }}@{{ groups['bastions'][0]  }}
+  bastion_ssh_user_name: '{{ ansible_service_account_user_name }}'
+  bastion_ssh_password: '{{ ansible_service_account_user_password }}'
+  bastion_public_hostname: '{{ bastion_prefix }}'
   environment_variables:
-    guid: "{{ guid }}"
-    domain: "{{ sandbox_openshift_apps_domain }}"
-
+    guid: '{{ guid }}'
+    domain: '{{ sandbox_openshift_apps_domain }}'
 ocp4_workload_showroom_content_image: ghcr.io/agonzalezrh/showroom-content@sha256:6638890a727a4e9411b71c32c296033d0ea6d560df54ff44e01cefc62f1c1aac
-
 instances:
-- name: "{{ bastion_hostname | default('bastion') }}"
-  image: "{{ bastion_instance_image | default(default_instance_image) }}"
+- name: '{{ bastion_hostname | default(''bastion'') }}'
+  image: '{{ bastion_instance_image | default(default_instance_image) }}'
   image_type: registry
   memory: 2G
   cores: 1
   image_size: 20Gi
   tags:
-  - key: "AnsibleGroup"
-    value: "bastions,showroom"
-  - key: "ostype"
-    value: "linux"
-  userdata: |
-      #cloud-config
-      write_files:
-        - path: /root/config.yaml
-          content: |
-            - hosts: localhost
-              gather_facts: false
-              tasks:
-              - name: Configure /etc/motd
-                blockinfile:
-                  path: /etc/motd
-                  content: "welcome to the lab"
-      runcmd:
-        - yum install -y ansible-core
-        - ansible-playbook /root/config.yaml
-
+  - key: AnsibleGroup
+    value: bastions,showroom
+  - key: ostype
+    value: linux
+  userdata: "#cloud-config\nwrite_files:\n  - path: /root/config.yaml\n    content: |\n      - hosts: localhost\n        gather_facts: false\n        tasks:\n        - name: Configure /etc/motd\n          blockinfile:\n            path: /etc/motd\n            content: \"welcome to the lab\"\nruncmd:\n  - yum install -y ansible-core\n  - ansible-playbook /root/config.yaml\n"
   services:
   - name: bastion
     ports:
@@ -59,10 +37,6 @@ instances:
     targetPort: 80
     tls: true
     tls_termination: Edge
-
-# -------------------------------------------------------------------
-# Babylon meta variables
-# -------------------------------------------------------------------
 __meta__:
   sandbox_api:
     actions:
@@ -74,6 +48,35 @@ __meta__:
     cloud_selector:
       cloud: cnv
       purpose: dev
-      virt: "yes"
+      virt: 'yes'
   deployer:
     scm_ref: poc-image-builder
+  catalog:
+    parameters:
+    - name: scm_ref
+      description: AgnosticD SCM Reference - Supports branches, tags, commits, and forks
+      formLabel: AgnosticD SCM Reference (Branch/Tag/Commit/Fork)
+      required: false
+      openAPIV3Schema:
+        type: string
+        default: poc-image-builder
+        description: 'Git reference for AgnosticD deployment. Supports:
+
+          • Branches: "development", "main", "feature-branch"
+
+          • Tags: "v1.0.0", "release-2024.1"
+
+          • Commits: "abc123def456" (full or short hash)
+
+          • Forks: "https://github.com/yourfork/agnosticd.git#branch"
+
+          • Custom repos: "https://gitlab.com/custom/agnosticd.git#main"'
+        examples:
+        - development
+        - main
+        - feature-aws-improvements
+        - v2024.1.0
+        - abc123def456
+        - https://github.com/yourfork/agnosticd.git#feature-branch
+        - https://gitlab.com/custom/agnosticd.git#main
+        pattern: ^(https?://[^\s]+#[^\s]+|[a-zA-Z0-9._/-]+)$
