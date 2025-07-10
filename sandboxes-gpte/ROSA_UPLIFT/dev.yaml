@@ -1,82 +1,105 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog:
+# --- Catalog Item:
+#       OpenShift Virtualization with ROSA: Uplift and Shift
+# -------------------------------------------------------------------
+
+#include /includes/parameters/aws-regions-6.yaml
+
+# -------------------------------------------------------------------
+# Purpose - Cost tag. One of development, ilt, production, event
+# -------------------------------------------------------------------
 purpose: development
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
 infra_workloads:
+#- ocp4_workload_rosa_machinepool
 - ocp4_workload_authentication_rosa
 - ocp4_workload_openshift_data_foundation
 - ocp4_workload_kubevirt
+#- ocp4_workload_mtv # no MTV for large workshops
+#- ocp4_workload_virt_roadshow_vmware # no vmware for large workshops
 - ocp4_workload_openshift_gitops
 - ocp4_workload_ossm
 - ocp4_workload_gitops_bootstrap
 - ocp4_workload_showroom
+
 ocp4_workload_ossm_catalogsource_setup: false
-aws_billing_account_id: 017310218799
+
+# -------------------------------------------------------------------
+# Billing account for ROSA HCP
+# -------------------------------------------------------------------
+aws_billing_account_id: "017310218799"
+
 rosa_deploy: true
 rosa_deploy_hcp: true
-rosa_version_base: openshift-v4.18
-rosa_compute_replicas: '{{ [(num_users | int / 10) | round(0, ''ceil'') | int, 3] | max }}'
-ocp4_workload_rosa_machinepool_replicas: '{{ [(num_users | int / 7) | round(0, ''ceil'') | int, 3] | max }}'
+rosa_version_base: "openshift-v4.18"
+
+rosa_compute_replicas: "{{ [(num_users | int / 10) | round(0, 'ceil') | int, 3] | max }}"
+
+ocp4_workload_rosa_machinepool_replicas: "{{ [(num_users | int / 7) | round(0, 'ceil') | int, 3] | max }}"
 ocp4_workload_rosa_machinepool_instance_types:
-- '{{ metal_type }}'
-metal_type: i3.metal
+- "{{ metal_type }}"
+metal_type: "i3.metal"
+
+# - m5zn.metal
+# - m5n.metal
+# - m5.metal
+# - i3.metal
+# - i3en.metal
+# - i4i.metal
+#
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_data_foundation
+# -------------------------------------------------------------------
 ocp4_workload_openshift_data_foundation_channel: stable-4.17
 ocp4_workload_openshift_data_foundation_catalogsource_setup: false
-ocp4_workload_openshift_data_foundation_catalogsource_image: '{{ ocp4_workload_catalogsource_image }}'
-ocp4_workload_openshift_data_foundation_catalogsource_image_tag: '{{ ocp4_workload_catalogsource_tag }}'
+ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_openshift_data_foundation_update_default_storage_class: true
 ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1200
-ocp4_workload_openshift_data_foundation_add_selector: ''
+# remove to test nested virt
+# ocp4_workload_openshift_data_foundation_add_selector: "beta.kubernetes.io/instance-type={{ metal_type }}"
+ocp4_workload_openshift_data_foundation_add_selector: ""
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_kubevirt
+# -------------------------------------------------------------------
 ocp4_workload_kubevirt_channel: stable
 ocp4_workload_kubevirt_use_catalog_snapshot: false
 ocp4_workload_kubevirt_enabled_nested_kvm: true
 ocp4_workload_kubevirt_workload_tolerations: {}
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/newgoliath/rosa_uplift.git
 ocp4_workload_gitops_bootstrap_repo_revision: dev
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap
-ocp4_workload_gitops_bootstrap_application_health_retries: 360
+ocp4_workload_gitops_bootstrap_application_health_retries: 360 # 30 minutes
 ocp4_workload_gitops_bootstrap_helm_values:
   content:
     repoUrl: https://github.com/rhpds/showroom_rosa_uplift.git
     repoRef: main
   workloads:
     repoUrl: https://github.com/newgoliath/rosa_uplift.git
-    repoRef: '{{ ocp4_workload_gitops_bootstrap_repo_revision }}'
+    repoRef: "{{ ocp4_workload_gitops_bootstrap_repo_revision }}"
   user:
-    count: '{{ ocp4_workload_user_count }}'
-    base: '{{ ocp4_workload_user_base }}'
-    mode: workshop
+    count: "{{ ocp4_workload_user_count }}"
+    base: "{{ ocp4_workload_user_base }}"
+    mode: "workshop"
   istio_cp_namespace: istio-system
   cloud: rosa
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
 __meta__:
   deployer:
     scm_url: https://github.com/redhat-cop/agnosticd.git
     scm_ref: judd-odf-selector-robust
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:v0.1.2
-  catalog:
-    parameters:
-    - name: scm_ref
-      description: AgnosticD SCM Reference - Supports branches, tags, commits, and forks
-      formLabel: AgnosticD SCM Reference (Branch/Tag/Commit/Fork)
-      required: false
-      openAPIV3Schema:
-        type: string
-        default: judd-odf-selector-robust
-        description: 'Git reference for AgnosticD deployment. Supports:
-
-          • Branches: "development", "main", "feature-branch"
-
-          • Tags: "v1.0.0", "release-2024.1"
-
-          • Commits: "abc123def456" (full or short hash)
-
-          • Forks: "https://github.com/yourfork/agnosticd.git#branch"
-
-          • Custom repos: "https://gitlab.com/custom/agnosticd.git#main"'
-        examples:
-        - development
-        - main
-        - feature-aws-improvements
-        - v2024.1.0
-        - abc123def456
-        - https://github.com/yourfork/agnosticd.git#feature-branch
-        - https://gitlab.com/custom/agnosticd.git#main
-        pattern: ^(https?://[^\s]+#[^\s]+|[a-zA-Z0-9._/-]+)$
