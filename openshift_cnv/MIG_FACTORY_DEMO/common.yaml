@@ -2,10 +2,9 @@
 #include /includes/catalog-icon-automation-management.yaml
 #include /includes/lifetime-standard.yaml
 #include /includes/terms-of-service.yaml
-#include /includes/sandbox-api.yaml
 
 #include /includes/parameters/purpose.yaml
-
+#include /includes/sandbox-api.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
 
 # #include /includes/secrets/zerossl.yaml
@@ -14,6 +13,7 @@
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/openshift_assisted_installer.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/openshift_assisted_installer_icr.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: OpenShift Virtualization Migration Factory Demo
@@ -82,7 +82,10 @@ remove_workloads:
 # Workload variables
 # -------------------------------------------------------------------
 ocp4_workload_user_count: 1
-common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits')
+  }}
 
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
 ocp4_workload_catalogsource_tag: v4.17_2024_12_16
@@ -171,6 +174,8 @@ ocp4_workload_virt_roadshow_vmware_num_users: "{{ ocp4_workload_user_count }}"
 ocp4_workload_virt_roadshow_vmware_vcenter_folder: "ocpvirt-{{ guid }}"
 ocp4_workload_virt_roadshow_vmware_enable_mtv: true
 ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
+ocp4_workload_virt_roadshow_vmware_use_pool: true
+# ocp4_workload_virt_roadshow_vmware_vddk_registry: "icr.io/rhdp/vddk:latest" # fails
 
 # -------------------------------------------------------------------
 # ansible_automation_platform_configuration
@@ -180,6 +185,8 @@ ansible_automation_platform_configuration_username: admin
 ansible_automation_platform_configuration_password: "{{ aap_controller_admin_password }}"
 ansible_automation_platform_configuration_verify_ssl: true
 ansible_automation_platform_configuration_create_controller_token: true
+controller_configuration_projects_async_retries: "120"
+controller_configuration_projects_async_delay: "10"
 
 # ------------------------
 # AAP2.5 Dispatcher Role
@@ -478,7 +485,7 @@ controller_templates:
 # ocp4_workload_showroom
 # ------------------------------------------------------
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/mig-factory-demo
-ocp4_workload_showroom_content_git_repo_ref: v1.0.1
+ocp4_workload_showroom_content_git_repo_ref: v1.0.3
 ocp4_workload_showroom_deployment_type: helm
 ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
 ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
