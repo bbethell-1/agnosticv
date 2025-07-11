@@ -14,9 +14,10 @@
 #include /includes/secrets/rosa_token.yaml
 #include /includes/secrets/vmware-ibm-rs-clusters-access.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 
-#TODO: delete this variable when sandbox-api
-vcenter_cluster: vcs-rs-00
+#TODO: there's no sandboxAPI in this config
+vcenter_cluster: vcs-rs-01
 
 # -------------------------------------------------------------------
 # --- Catalog Item: OpenShift Virtualization on ROSA Demo (ROSA)
@@ -25,6 +26,7 @@ vcenter_cluster: vcs-rs-00
 # -------------------------------------------------------------------
 # Top level vars
 # -------------------------------------------------------------------
+cloud_provider: ec2
 env_type: rosa-consolidated
 platform: rhpds
 
@@ -37,15 +39,15 @@ aws_billing_account_id: "017310218799"
 # ROSA
 # -------------------------------------------------------------------
 rosa_deploy: true
-# rosa_deploy_hcp: true
+rosa_deploy_hcp: true
 
 # rosa_version: "4.16.4"
-rosa_version: latest
 rosa_version_base: openshift-v4.17
+rosa_version: latest
 rosa_installer_version: "1.2.42"
 
 rosa_compute_replicas: 3
-rosa_compute_machine_type: m6a.2xlarge
+rosa_compute_machine_type: m6a.4xlarge
 
 rosa_setup_cluster_admin: true
 rosa_setup_cluster_admin_login: true
@@ -56,20 +58,43 @@ rosa_setup_cluster_admin_login: true
 install_student_user: false
 
 # -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+install_common: true
+bastion_instance_image: RHEL93GOLD-latest
+
+
+bastion_remove_insights_motd: true
+bastion_custom_motd: |-
+  ---------------------------------------------------------------------------
+          Welcome to the Virtualization Migration Factory Demo!
+  ---------------------------------------------------------------------------
+
+  By continuing to use this service you agree to use this environment
+  solely for the purposes of completing the steps in the lab guide.
+
+  Any other use is a violation of this service and appropriate action
+  will be taken. If you disagree with these terms you must disconnect now.
+  ----------------------------------------------------------------------------
+
+# -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 infra_workloads:
   - ocp4_workload_rosa_machinepool
   - ocp4_workload_openshift_data_foundation
   - ocp4_workload_kubevirt
-  - ocp4_workload_mtv
-  - ocp4_workload_ansible_automation_platform_25
   - ocp4_workload_rhacm
   - ocp4_workload_acm_multicluster_observability
+  - ocp4_workload_mtv
+  - ocp4_workload_ansible_automation_platform_25
   - ocp4_workload_virt_roadshow_vms
   - ocp4_workload_virt_roadshow_vmware
   - ansible_automation_platform_configuration
   - ocp4_workload_showroom
+
 
 remove_workloads:
   - ocp4_workload_virt_roadshow_vmware
@@ -79,7 +104,10 @@ remove_workloads:
 # -------------------------------------------------------------------
 ocp4_workload_user_count: 1
 ocp4_workload_user_name: user
-ocp4_workload_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+ocp4_workload_user_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits')
+  }}
 
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
 ocp4_workload_catalogsource_tag: v4.17_2024_12_16
@@ -96,7 +124,7 @@ ocp4_workload_rosa_machinepool_instance_types:
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_data_foundation
 # -------------------------------------------------------------------
-ocp4_workload_openshift_data_foundation_channel: stable-4.16
+ocp4_workload_openshift_data_foundation_channel: stable-4.17
 ocp4_workload_openshift_data_foundation_catalogsource_setup: true
 ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
@@ -160,7 +188,9 @@ ocp4_workload_virt_roadshow_vms_roadshow_setup: false
 # ocp4_workload_virt_roadshow_vmware
 # -------------------------------------------------------------------
 ocp4_workload_virt_roadshow_vmware_num_users: "{{ ocp4_workload_user_count }}"
-ocp4_workload_virt_roadshow_vmware_vcenter_folder: "ocpvirt-{{ guid }}"
+ocp4_workload_virt_roadshow_vmware_use_pool: true
+# Not used when using VMware vm pool
+# ocp4_workload_virt_roadshow_vmware_vcenter_folder: "ocpvirt-{{ guid }}"
 ocp4_workload_virt_roadshow_vmware_enable_mtv: true
 ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
 
@@ -452,7 +482,7 @@ controller_templates:
 # ocp4_workload_showroom
 # ------------------------------------------------------
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/mig-factory-demo
-ocp4_workload_showroom_content_git_repo_ref: v1.0.1
+ocp4_workload_showroom_content_git_repo_ref: v1.0.3
 ocp4_workload_showroom_deployment_type: helm
 ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
 ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
