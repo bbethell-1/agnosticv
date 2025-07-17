@@ -7,14 +7,15 @@
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/aws-regions-6.yaml
 
-#include /includes/parameters/enable-lets-encrypt.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
 
 # -------------------------------------------------------------------
-# Private LLM as a Service - A Practical Introduction with OpenShift AI
+# Private LLM as a Service
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
@@ -48,7 +49,7 @@ update_packages: true
 # -------------------------------------------------------------------
 # OpenShift Installer Version
 # -------------------------------------------------------------------
-ocp4_installer_version: "4.18.6"
+ocp4_installer_version: "4.19.3"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 
 # -------------------------------------------------------------------
@@ -82,15 +83,12 @@ infra_workloads:
 # -------------------------------------------------------------------
 ocp4_workload_user_base: user
 ocp4_workload_user_count: 1
+common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_password: "{{ (guid[::-1][:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_username: admin
 
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.18_2025_04_07
-
-# -------------------------------------------------------------------
-# Common passwords
-# -------------------------------------------------------------------
-common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-common_user_password: openshift
+ocp4_workload_catalogsource_tag: v4.19_2025_07_01
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_data_foundation
@@ -106,6 +104,7 @@ ocp4_workload_openshift_data_foundation_new_default_storage_class_name: ocs-stor
 
 ocp4_workload_openshift_data_foundation_ceph_storage_system_deploy_timeout: 1500
 ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1500
+
 # -------------------------------------------------------------------
 # ocp4_workload_machinesets
 # -------------------------------------------------------------------
@@ -131,23 +130,22 @@ ocp4_workload_rhsso_authentication_channel: stable
 ocp4_workload_rhsso_authentication_use_catalog_source: true
 ocp4_workload_rhsso_authentication_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_rhsso_authentication_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
-ocp4_workload_rhsso_authentication_starting_csv: rhsso-operator.7.6.11-opr-005
+ocp4_workload_rhsso_authentication_starting_csv: rhsso-operator.7.6.11-opr-006
 
-ocp4_workload_rhsso_authentication_admin_username: admin
+ocp4_workload_rhsso_authentication_admin_username: "{{ common_admin_username }}"
 ocp4_workload_rhsso_authentication_admin_password: "{{ common_admin_password }}"
 ocp4_workload_rhsso_authentication_user_count: "{{ ocp4_workload_user_count }}"
 ocp4_workload_rhsso_authentication_user_name_base: "{{ ocp4_workload_user_base}}"
 ocp4_workload_rhsso_authentication_user_password: "{{ common_user_password }}"
-ocp4_workload_rhsso_authentication_remove_kubeadmin: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_cert_manager
 # -------------------------------------------------------------------
-ocp4_workload_cert_manager_channel: stable-v1.15
+ocp4_workload_cert_manager_channel: stable-v1.16
 ocp4_workload_cert_manager_use_catalog_snapshot: true
 ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-ocp4_workload_cert_manager_starting_csv: cert-manager-operator.v1.15.1
+ocp4_workload_cert_manager_starting_csv: cert-manager-operator.v1.16.0
 ocp4_workload_cert_manager_install_ingress_certificates: true
 ocp4_workload_cert_manager_install_api_certificates: false
 
@@ -156,7 +154,6 @@ ocp4_workload_cert_manager_install_api_certificates: false
 # Pipelines cannot be on the latest version because 'ClusterTasks' have been removed.
 # -------------------------------------------------------------------
 ocp4_workload_pipelines_channel: pipelines-1.15
-
 ocp4_workload_pipelines_use_catalog_snapshot: true
 ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
@@ -165,32 +162,18 @@ ocp4_workload_pipelines_starting_csv: openshift-pipelines-operator-rh.v1.15.2
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.15
+ocp4_workload_openshift_gitops_channel: gitops-1.16
 ocp4_workload_openshift_gitops_use_catalog_snapshot: true
 ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-ocp4_workload_openshift_gitops_starting_csv: openshift-gitops-operator.v1.15.1
+ocp4_workload_openshift_gitops_starting_csv: openshift-gitops-operator.v1.16.1
 
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_update_route_tls: true
 
-ocp4_workload_openshift_gitops_update_resources: true
-
-ocp4_workload_openshift_gitops_controller_update: true
-ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
-ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
-ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
-ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
-
-ocp4_workload_openshift_gitops_repo_update: true
-ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
-ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
-ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
-ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
-
 ocp4_workload_openshift_gitops_rbac_update: true
 ocp4_workload_openshift_gitops_rbac_policy: |
-  g, {{ ocp4_workload_rhsso_authentication_admin_username }}, role:admin
+  g, {{ common_admin_username }}, role:admin
   g, user1, role:admin
 ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
 
@@ -198,11 +181,11 @@ ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
 # ocp4_workload_nvidia_gpu_setup
 # -------------------------------------------------------------------
 nfd_operator_channel: stable
-nfd_operator_operand_image: "registry.redhat.io/openshift4/ose-node-feature-discovery-rhel9:v4.18.0"
-nfd_operator_starting_csv: nfd.4.18.0-202504151633
+nfd_operator_operand_image: "registry.redhat.io/openshift4/ose-node-feature-discovery-rhel9:v4.19.0"
+nfd_operator_starting_csv: nfd.4.19.0-202507011209
 
-nvidia_gpu_operator_channel: v24.9
-nvidia_gpu_operator_starting_csv: gpu-operator-certified.v24.9.2
+nvidia_gpu_operator_channel: v25.3
+nvidia_gpu_operator_starting_csv: gpu-operator-certified.v25.3.1
 
 # Operator not found in the this catalog snapshot.
 # nfd_operator_use_catalog_snapshot: true
@@ -216,43 +199,27 @@ nvidia_gpu_operator_starting_csv: gpu-operator-certified.v24.9.2
 # nvidia_gpu_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_minio
+# ocp4_workload_minio
 # -------------------------------------------------------------------
-# Latest release is : RELEASE.2023-06-19T19-52-50Z
-# Image from : quay.io/minio/minio
 ocp4_workload_minio_project: ic-shared-minio
-# Port for the LoadBalancer Service
 ocp4_workload_minio_port: 9000
 ocp4_workload_minio_storage_size: "150Gi"
-ocp4_workload_minio_access_key: minio
-ocp4_workload_minio_secret_key: minio123
-# Use current (2024) Minio image:
-#   Setting up Minio is only supported for the new image
+# ocp4_workload_minio_expose_route: false
 ocp4_workload_minio_modern_deployment: true
 ocp4_workload_minio_image: quay.io/minio/minio
 ocp4_workload_minio_image_tag: RELEASE.2025-02-28T09-55-16Z
-# Access Credentials for new Minio image
-# Should be overwritten via Global Variables !!!
 ocp4_workload_minio_root_user: minio
 ocp4_workload_minio_root_password: minio123
+# ocp4_workload_minio_bucket_setup: true
 ocp4_workload_minio_bucket_name:
   - llm-storage
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_s3_model_copy_to_minio
+# ocp4_workload_s3_model_copy_to_minio
 # -------------------------------------------------------------------
 ocp4_workload_s3_model_copy_to_minio_project: "{{ ocp4_workload_minio_project }}"
-
-# Port for the LoadBalancer Service
 ocp4_workload_s3_model_copy_to_minio_port: "{{ ocp4_workload_minio_port }}"
-
-# Access credentials. Not necessary when doing a modern image (set root vars below instead)
-# Should be overwritten via Global Variables !!!
-ocp4_workload_s3_model_copy_to_minio_access_key: "{{ ocp4_workload_minio_access_key }}"
-ocp4_workload_s3_model_copy_to_minio_secret_key: "{{ ocp4_workload_minio_secret_key }}"
-ocp4_workload_s3_model_copy_to_minio_bucket: ""
 ocp4_workload_s3_model_copy_to_minio_endpoint: "http://minio.{{ ocp4_workload_minio_project }}.svc.cluster.local:9000/"
-
 ocp4_workload_s3_model_copy_to_minio_modern_deployment: "{{ ocp4_workload_minio_modern_deployment }}"
 ocp4_workload_s3_model_copy_to_minio_root_user: "{{ ocp4_workload_minio_root_user }}"
 ocp4_workload_s3_model_copy_to_minio_root_password: "{{ ocp4_workload_minio_root_password }}"
@@ -274,7 +241,6 @@ ocp4_workload_s3_model_copy_to_minio_s3_secret_key: !vault |
           3631663265346531653836306564366336376139333663663865
 
 ocp4_workload_s3_model_copy_to_minio_s3_region: "us-east-1"
-ocp4_workload_s3_model_copy_to_minio_s3_endpoint: ""
 ocp4_workload_s3_model_copy_to_minio_s3_bucket: "model-serve"
 ocp4_workload_s3_model_copy_to_minio_s3_folders:
   - ibm-granite
@@ -287,7 +253,7 @@ ocp4_workload_serverless_channel: stable
 ocp4_workload_serverless_use_catalog_snapshot: true
 ocp4_workload_serverless_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_serverless_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-ocp4_workload_serverless_starting_csv: serverless-operator.v1.35.0
+ocp4_workload_serverless_starting_csv: serverless-operator.v1.36.0
 
 ocp4_workload_serverless_install_serving: false
 ocp4_workload_serverless_install_eventing: false
@@ -298,27 +264,22 @@ ocp4_workload_serverless_install_eventing: false
 ocp4_workload_ossm_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_ossm_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
-ocp4_workload_ossm_es_channel: stable
-ocp4_workload_ossm_es_startingcsv: elasticsearch-operator.v5.8.19
-
-ocp4_workload_ossm_jaeger_channel: stable
-ocp4_workload_ossm_jaeger_startingcsv: jaeger-operator.v1.65.0-1
-
-ocp4_workload_ossm_kiali_channel: stable
-ocp4_workload_ossm_kiali_startingcsv: kiali-operator.v2.4.3
+ocp4_workload_ossm_es: false
+ocp4_workload_ossm_jaeger: false
+ocp4_workload_ossm_kiali: false
 
 ocp4_workload_ossm_servicemesh_channel: stable
-ocp4_workload_ossm_servicemesh_startingcsv: servicemeshoperator.v2.6.6
+ocp4_workload_ossm_servicemesh_startingcsv: servicemeshoperator.v2.6.8
 
 # -------------------------------------------------------------------
 # ocp4_workload_authorino
 # -------------------------------------------------------------------
-ocp4_workload_authorino_operator_channel: tech-preview-v1
+ocp4_workload_authorino_operator_channel: stable
 ocp4_workload_authorino_operator_use_catalog_snapshot: true
 ocp4_workload_authorino_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_authorino_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_authorino_operator_catalogsource_name: redhat-operators-snapshot-authorino
-ocp4_workload_authorino_operator_starting_csv: authorino-operator.v1.1.2
+ocp4_workload_authorino_operator_starting_csv: authorino-operator.v1.2.2
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_ai
@@ -327,7 +288,7 @@ ocp4_workload_openshift_ai_channel: stable
 ocp4_workload_openshift_ai_use_catalog_snapshot: true
 ocp4_workload_openshift_ai_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_openshift_ai_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-ocp4_workload_openshift_ai_starting_csv: rhods-operator.2.16.2
+ocp4_workload_openshift_ai_starting_csv: rhods-operator.2.19.0
 
 ocp4_workload_openshift_ai_kserve: Managed
 
@@ -338,32 +299,30 @@ ocp4_workload_web_terminal_channel: fast
 ocp4_workload_web_terminal_use_catalog_snapshot: true
 ocp4_workload_web_terminal_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_web_terminal_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-ocp4_workload_web_terminal_starting_csv: web-terminal.v1.12.1
+ocp4_workload_web_terminal_starting_csv: web-terminal.v1.13.0
 
 # -------------------------------------------------------------------
 # ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/redhat-gpte-devopsautomation/private-summit-llm-aas
-ocp4_workload_gitops_bootstrap_repo_revision: main
-ocp4_workload_gitops_bootstrap_repo_path: bootstrap/helm
+# ocp4_workload_gitops_bootstrap_repo_revision: v1.0.0
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
 
-ocp4_workload_gitops_bootstrap_helm_values:
-  threeScale:
-    repoURL: https://github.com/rhpds/ocp-cluster-addons
-    targetRevision: v1.2.4
-    channel: threescale-2.15
-    startingCSV: 3scale-operator.v0.12.3
-  llmaas:
-    repoURL: https://github.com/redhat-gpte-devopsautomation/private-summit-llm-aas
-    targetRevision: main
-
-ocp4_workload_gitops_bootstrap_health_retries: 2
+# ocp4_workload_gitops_bootstrap_helm_values:
+#   threeScale:
+#     repoURL: https://github.com/rhpds/ocp-cluster-addons
+#     targetRevision: v1.2.4
+#     channel: threescale-2.15
+#     startingCSV: 3scale-operator.v0.12.3
+#   llmaas:
+#     repoURL: https://github.com/redhat-gpte-devopsautomation/private-summit-llm-aas
+#     targetRevision: v1.0.2
 
 # -------------------------------------------------------------------
 # ocp4_workload_showroom
 # -------------------------------------------------------------------
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/private-summit-llmaas-showroom
-ocp4_workload_showroom_content_git_repo_ref: main
+# ocp4_workload_showroom_content_git_repo_ref: v1.0.0
 ocp4_workload_showroom_deployment_type: helm
 ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
 ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
@@ -379,8 +338,7 @@ __meta__:
     namespace: babylon-anarchy-ocp-wksp
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:2025-02-14
-      pull: missing
+      image: quay.io/agnosticd/ee-multicloud:2025-04-14
     actions:
       start:
         disable: true
@@ -405,3 +363,9 @@ __meta__:
       Product_Family: Red_Hat_Cloud
   tower:
     timeout: 21600
+  owners:
+    maintainer:
+      - name: Ritesh Shah
+        email: rshah@redhat.com
+      - name: Juliano Mohr
+        email: juliano@redhat.com
