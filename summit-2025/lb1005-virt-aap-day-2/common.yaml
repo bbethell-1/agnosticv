@@ -1,0 +1,443 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: Red Hat Summit Connect
+# --- Lab 1005: Day 2 operations and automation with OpenShift Virtualization
+# -------------------------------------------------------------------
+
+#include /includes/catalog-icon-automation-management.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/enable-cert-manager.yaml
+
+#include /includes/secrets/letsencrypt_with_zerossl_fallback.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# Top level vars
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+platform: rhpds
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.5
+bastion_cores: 2
+bastion_memory: 4Gi
+
+master_instance_count: 3
+worker_instance_count: 4
+
+ai_control_plane_cores: 16
+ai_control_plane_memory: 64Gi
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.18.8"
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: false
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_cert_manager
+- ocp4_workload_external_odf
+- ocp4_workload_authentication
+- ocp4_workload_openshift_gitops
+- ocp4_workload_kubevirt
+- ocp4_workload_ansible_automation_platform_25
+- ocp4_workload_gitea_operator
+- ocp4_workload_codeserver
+- ocp4_workload_gitops_bootstrap
+- ansible_automation_platform_configuration
+- ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_count: 1
+ocp4_workload_user_base: user
+ocp4_workload_multi_user: false
+
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_admin_password length=12 chars=ascii_letters,digits')
+  }}
+common_user_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_user_password length=12 chars=ascii_letters,digits')
+  }}
+
+common_user_workspace_repo: virt-aap-day2
+# common_user_workspace_revision: summit2025
+common_user_workspace_revision: main
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.18_2025_05_05
+
+# -------------------------------------------------------------------
+# ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1.15
+ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_cert_manager_starting_csv: cert-manager-operator.v1.15.0
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# -------------------------------------------------------------------
+odf_channel: stable-4.18
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ ocp4_workload_user_count }}"
+# required for ansible_automation_platform_configuration oc login
+ocp4_workload_authentication_remove_kubeadmin: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.15
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+# -------------------------------------------------------------------
+# ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+ocp4_workload_kubevirt_use_catalog_snapshot: true
+ocp4_workload_kubevirt_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_kubevirt_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.7
+ocp4_workload_gitea_operator_starting_csv: gitea-operator.v2.0.7
+
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.21.11"
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel9/postgresql-13
+ocp4_workload_gitea_operator_postgresql_image_tag: 1-165
+
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_user_count }}"
+ocp4_workload_gitea_operator_generate_user_format: >-
+  {{ ocp4_workload_user_base + '%d' if ocp4_workload_multi_user else ocp4_workload_user_base + '1' }}
+ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/redhat-gpte-devopsautomation/virt-aap-day2-workspace
+  name: "{{ common_user_workspace_repo }}"
+  private: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_ansible_automation_platform_25
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_admin_password: "{{ common_admin_password }}"
+ocp4_workload_ansible_automation_platform_inject_manifest: true
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+ocp4_workload_ansible_automation_platform_create_eda_rolebinding: true
+ocp4_workload_ansible_automation_platform_ocp_cluster_role: cluster-reader
+
+# --------------------------------------------------------------------
+# ansible_automation_platform_configuration
+# --------------------------------------------------------------------
+ansible_automation_platform_configuration_host: "{{ aap_controller_web_url }}"
+ansible_automation_platform_configuration_username: admin
+ansible_automation_platform_configuration_password: "{{ aap_controller_admin_password }}"
+ansible_automation_platform_configuration_verify_ssl: true
+ansible_automation_platform_configuration_create_controller_token: true
+ansible_automation_platform_configuration_generate_ocp_token: true
+
+controller_dependency_check: false
+
+# --------------------------------------------------------------------
+# ansible_automation_platform_configuration
+# --------------------------------------------------------------------
+aap_hostname: "{{ ansible_automation_platform_configuration_host }}"
+aap_username: "{{ ansible_automation_platform_configuration_username }}"
+aap_password: "{{ ansible_automation_platform_configuration_password }}"
+aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
+
+aap_configuration_dispatcher_roles:
+- role: gateway_settings
+  var: gateway_settings
+  tags: gateway_settings
+- role: controller_credential_types
+  var: controller_credential_types
+  tags: controller_credential_types
+- role: controller_credentials
+  var: controller_credentials
+  tags: controller_credentials
+- role: controller_execution_environments
+  var: controller_execution_environments
+  tags: controller_execution_environments
+- role: controller_projects
+  var: controller_projects
+  tags: controller_projects
+- role: controller_inventories
+  var: controller_inventories
+  tags: controller_inventories
+- role: controller_inventory_sources
+  var: controller_inventory_sources
+  tags: controller_inventory_sources
+- role: controller_job_templates
+  var: controller_templates
+  tags: controller_job_templates
+
+gateway_settings:
+  SESSION_COOKIE_AGE: 9000
+
+controller_projects:
+- name: "Workshop Project"
+  organization: Default
+  scm_type: git
+  scm_url: "{{_ocp4_workload_gitea_operator_gitea_route}}/{{ocp4_workload_user_base}}1/{{common_user_workspace_repo}}.git"
+  scm_branch: "{{ common_user_workspace_revision }}"
+  scm_update_on_launch: true
+  wait: true
+
+controller_execution_environments:
+- name: "Day 2 EE"
+  image: "quay.io/acme_corp/aap-day2-ee:latest"
+  pull: missing
+
+controller_credentials:
+- name: "Vault Credential"
+  description: "Vault Secret Variables"
+  organization: Default
+  credential_type: "Vault"
+  inputs:
+    vault_password: "Day2Ops@OCPVirt"
+- name: "Workshop Credential"
+  description: "VM SSH Key Access Credentials"
+  organization: Default
+  credential_type: "Machine"
+  inputs:
+    username: "rhel"
+    ssh_key_data: |
+      -----BEGIN OPENSSH PRIVATE KEY-----
+      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
+      -----END OPENSSH PRIVATE KEY-----
+  state: present
+- name: "OpenShift Credential"
+  description: "OpenShift API Bearer Token"
+  organization: Default
+  credential_type: "OpenShift or Kubernetes API Bearer Token"
+  inputs:
+    host: "{{ openshift_api_url }}"
+    bearer_token: "{{ openshift_bearer_token }}"
+    verify_ssl: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_codeserver
+# -------------------------------------------------------------------
+ocp4_workload_codeserver_image: quay.io/gpte-devops-automation/codeserver
+ocp4_workload_codeserver_image_tag: v4.95.3-java21
+ocp4_workload_codeserver_init_image: quay.io/gpte-devops-automation/codeserver-init
+ocp4_workload_codeserver_init_image_tag: v4.95.3
+
+ocp4_workload_codeserver_gitea_name: "{{ ocp4_workload_gitea_operator_gitea_hostname }}"
+ocp4_workload_codeserver_gitea_namespace: "{{ ocp4_workload_gitea_operator_project }}"
+
+ocp4_workload_codeserver_multi_user_install: "{{ ocp4_workload_multi_user }}"
+ocp4_workload_codeserver_multi_user_num_users: "{{ ocp4_workload_user_count }}"
+ocp4_workload_codeserver_multi_user_username_base: "{{ ocp4_workload_user_base }}"
+
+ocp4_workload_codeserver_repos_user: "{{ ocp4_workload_user_base + '1' }}"
+
+ocp4_workload_codeserver_password: "{{ common_user_password }}"
+
+ocp4_workload_codeserver_init_request_memory: "512Mi"
+ocp4_workload_codeserver_init_limits_memory: "512Mi"
+ocp4_workload_codeserver_request_memory: "2Gi"
+ocp4_workload_codeserver_limits_memory: "2Gi"
+
+# Repositories to set up in codeserver
+ocp4_workload_codeserver_repos_password: "{{ common_user_password }}"
+ocp4_workload_codeserver_repos:
+- name: "{{ common_user_workspace_repo }}"
+  account: "{{ '' if ocp4_workload_multi_user else ocp4_workload_user_base + '1' }}"
+  branch: "{{ common_user_workspace_revision }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/lb1969-virtday2-gitops.git
+# ocp4_workload_gitops_bootstrap_repo_revision: v1.0.1
+ocp4_workload_gitops_bootstrap_repo_revision: main
+
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+
+vm_ssh_public_key: c3NoLXJzYSBBQUFBQjNOemFDMXljMkVBQUFBREFRQUJBQUFCZ1FEa2kvdjFsc1lrVW5YR3l4aU9SUnB3SVQyQU8wUUhiUXBLMnFXSFpNZmlEQktxTFg3NFhLeHRDNVZkakdQdkYwblRMZHRXZTNPbVhReTJXeDBIMGRoSHRFdHN6bTRMRnhwRUx5elh3MHR2YWppTGJhM24ycmRtdGkrM1krMVlZSUFkVlZTeFhGNVpkTTVmQVZYZXl1MGNISW9BbDJVUUlBVlRib1BHUE1ES1dwb1JTUVpZbHhLV2pFVXFka01BUWhXcnNmaUxvelFpRkZ0L3R0cVFEbGhrNW8wUlVCVXNDL3Y3bVpkOE1CZXlCblJyTitTM2tMT0NicFhtVGRhUnZJWFdYWTFtcllCQ09lOEVPaW1FeER3MWdtS2hEV2F2bVNkd1NZUWZST2R6RUdpYVBNakN1ZitYT05vVUVQaUVkU2c0QXF0M05DaFcxbGJ1aUNHbG13Q083TzI2MjJlaW56MGhrUWI3SGM2RU1HaTJGR1kwbWZqeWxFMHQ4djg0MWF2RWJFczRSTzFFcVlhOFNNV2ZMSnB1bWZnekludGJJNTV4dktmUW8wTnJuV2ZiWklEMFVEWEZtdWRJYmVrYUdkR0wya0Y1aU9LQTVaWjVuMDhpdE1PbUNrb0pSNzRtQTdDbWJpcnM2OG5uK3RZZkRtU3pSUVl1a0RDYUZ5NjVTck09IGp1bGlhbm9AbWFjYm9vay1yaC5sb2NhbA==
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  vms:
+  - name: rhel9-vm1
+    namespace: vms-aap-day2
+    sshPublicKey: "{{ vm_ssh_public_key }}"
+  - name: rhel9-vm2
+    namespace: vms-aap-day2
+    sshPublicKey: "{{ vm_ssh_public_key }}"
+  - name: rhel9-vm3
+    namespace: vms-aap-day2
+    sshPublicKey: "{{ vm_ssh_public_key }}"
+  webterminal:
+    targetRevision: v1.2.1
+
+# ------------------------------------------------------
+# ocp4_workload_showroom
+# ------------------------------------------------------
+# FORKED: ocp4_workload_showroom_content_git_repo: https://github.com/redhat-gpte-devopsautomation/virt-aap-day2-showroom
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom-virt-aap-day-2
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: 1.3.2
+ocp4_workload_showroom_content_only: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 98731B9A-3C50-4CE8-9E34-E0CBC0FFD467
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.1
+      pull: missing
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: OcpSandbox
+    namespace_suffix: ocp4-cluster
+    cloud_selector:
+      cloud: cnv
+      purpose: prod
+      virt: "yes"
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1005: Day 2 Operations and Automation with OpenShift Virtualization"
+    category: Labs
+    multiuser: false
+    keywords:
+    - day2
+    - virt
+    - aap
+    - ocp
+    - virtualization
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+    reportingLabels:
+      assetGroup: Virtualization
+  tower:
+    timeout: 14400
+  owners:
+    maintainer:
+    - name: Mitesh Sharma
+      email: mitsharm@redhat.com
+    - name: Judd Maltin
+      email: judd@redhat.com
+    sme:
+    - name: Judd Maltin
+      email: judd@redhat.com
+    - name: Roger Lopez
+      email: rlopez@redhat.com
+    - name: Alan Cowles
+      email: acowles@redhat.com
+    - name: Mark Schmitt
+      email: mschmitt@redhat.com
+    instructions:
+    - name: Roger Lopez
+      email: rlopez@redhat.com
+    - name: Alan Cowles
+      email: acowles@redhat.com
+    - name: Mark Schmitt
+      email: mschmitt@redhat.com
