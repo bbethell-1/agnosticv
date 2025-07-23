@@ -47,8 +47,8 @@ ssh_publickey: "{{ hostvars.localhost.ssh_provision_pubkey_content }}"
 bastion_student_show_user_info: true
 create_ssh_provision_key_enable_user_info_data: true
 host_ocp4_installer_set_user_data_kubeadmin_password: true
-aws_access_key_id: "{{ aws_credentials.aws_access_key_id }}"
-aws_secret_access_key: "{{ aws_credentials.aws_secret_access_key }}"
+aws_access_key_id: "{{ aws_provision_data.aws_access_key_id }}"
+aws_secret_access_key: "{{ aws_provision_data.aws_secret_access_key }}"
 
 
 # -------------------------------------------------------------------
@@ -183,6 +183,7 @@ eda_decision_environments:
     organization: Default
     image_url: "registry.redhat.io/ansible-automation-platform-25/de-supported-rhel8:latest"
 
+controller_configuration_credentials_secure_logging: false
 controller_credentials:
   - name: Demo Credential
     credential_type: Machine
@@ -268,14 +269,45 @@ __meta__:
       Provider: RHDP
       Product_Family: Red_Hat_Automation
       Featured_Score: '81'
-    parameters: []
+    parameters:
+      - name: aws_open_environment_type
+        formLabel: AWS
+        formGroup: Open Environments
+        openAPIV3Schema:
+          default: true
+          type: boolean
+      - name: azure_open_environment_type
+        formLabel: Azure
+        formGroup: Open Environments
+        openAPIV3Schema:
+          default: false
+          type: boolean
+      - name: ibm_open_environment_type
+        formLabel: IBM
+        formGroup: Open Environments
+        openAPIV3Schema:
+          default: false
+          type: boolean
+  components:
+    - name: aws
+      display_name: AWS Open Environment
+      item: sandboxes-gpte/SANDBOX_OPEN
+      propagate_provision_data:
+        - var: aws_provision_data
+      when: aws_open_environment_type | default('false') | bool
+    - name: azure
+      display_name: Azure Open Environment
+      item: azure_gpte/OPEN_ENVIRONMENT_ARO4_SUB
+      propagate_provision_data:
+        - var: azure_provision_data
+      when: azure_open_environment_type | default('false') | bool
+    - name: ibm
+      display_name: IBM Open Environment
+      item: ibm/SANDBOX_IBM
+      propagate_provision_data:
+        - var: ibm_provision_data
+      when: ibm_open_environment_type | default('false') | bool
   deployer:
     execution_environment:
       image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.1
       pull: always
-  components:
-    - name: aws_sandbox
-      display_name: AWS Credentials
-      item: sandboxes-gpte/SANDBOX_OPEN
-      propagate_provision_data:
-        - var: aws_credentials
