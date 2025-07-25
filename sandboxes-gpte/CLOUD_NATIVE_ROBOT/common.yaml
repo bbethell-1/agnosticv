@@ -61,11 +61,11 @@ infra_workloads:
   - ocp4_workload_cloud_native_robot
 
 ocp4_workload_catalogsource_image: "quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog"
-ocp4_workload_catalogsource_tag: v4.18_2025_03_17
+ocp4_workload_catalogsource_tag: v4.19_2025_07_01
 ocp4_workload_catalogsource_name: "redhat-operators-for-robots"
 
 
-ocp4_installer_version: 4.18.4
+ocp4_installer_version: 4.19.1
 ocp4_installer_url: "https://mirror.openshift.com/pub/openshift-v4/multi/clients/ocp/{{ ocp4_installer_version }}/amd64/openshift-install-linux.tar.gz"
 ocp4_client_url: "https://mirror.openshift.com/pub/openshift-v4/multi/clients/ocp/{{ ocp4_installer_version }}/amd64/openshift-client-linux.tar.gz"
 ocp4_network_type: OVNKubernetes
@@ -94,12 +94,17 @@ ocp4_workload_authentication_remove_kubeadmin: true
 # OpenShift Data Foundations Operator
 # -----------------------------------
 ocp4_workload_openshift_data_foundation_channel: stable-4.18
-ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+ocp4_workload_openshift_data_foundation_catalogsource_setup: true
 ocp4_workload_openshift_data_foundation_catalogsource_name: "{{ ocp4_workload_catalogsource_name }}"
 ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_openshift_data_foundation_ceph_storage_class_name: gp3-csi
 ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 500Gi
+ocp4_workload_openshift_data_foundation_tolerations:
+  - key: nvidia.com/gpu
+    operator: Equal
+    value: "True"
+    effect: NoSchedule
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_ai
@@ -124,7 +129,7 @@ ocp4_workload_openshift_ai_workbenches: "Managed"
 # -------------------------------------------------------------------
 # OpenShift Pipelines
 # -------------------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.17
+ocp4_workload_pipelines_channel: pipelines-1.18
 ocp4_workload_pipelines_use_catalog_snapshot: true
 ocp4_workload_pipelines_catalogsource_name: "{{ ocp4_workload_catalogsource_name }}"
 ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
@@ -133,7 +138,7 @@ ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsou
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.15
+ocp4_workload_openshift_gitops_channel: gitops-1.16
 ocp4_workload_openshift_gitops_use_catalog_snapshot: true
 ocp4_workload_openshift_gitops_catalogsource_name: "{{ ocp4_workload_catalogsource_name }}"
 ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
@@ -275,7 +280,7 @@ ocp4_workload_machinesets_machineset_groups:
 
 # Enable workload as well: ocp4_workload_nvidia_gpu_setup
 nvidia_gpu_operator_namespace: nvidia-gpu-operator
-nvidia_gpu_operator_channel: v24.9
+nvidia_gpu_operator_channel: v25.3
 nvidia_gpu_operator_automatic_install_plan_approval: true
 nvidia_gpu_operator_wait_for_deploy: false
 nvidia_gpu_operator_use_catalog_snapshot: true
@@ -285,7 +290,11 @@ nvidia_gpu_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_imag
 nvidia_gpu_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # Part of nvidia_gpu_operator*
-nfd_operator_starting_csv: ""
+nfd_operator_use_catalog_snapshot: true
+nfd_operator_catalogsource_name: "{{ ocp4_workload_catalogsource_name }}"
+nfd_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+nfd_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+nfd_operator_operand_image: ""
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
@@ -305,17 +314,16 @@ ocp4_workload_cloud_native_robot_infra_repo_tag: "{{ gitops_repo_tag | default('
 # ---------------------------------------------------------
 master_instance_type_family: m5d
 master_instance_type_size: >-
-  {{ 'xlarge' if worker_instance_count|int < 5
-  else '2xlarge' if worker_instance_count|int < 10
+  {{ '2xlarge' if worker_instance_count|int < 10
   else '4xlarge' if worker_instance_count|int < 20
   else '8xlarge'
   }}
 master_instance_type: '{{ master_instance_type_family }}.{{ master_instance_type_size }}'
 master_instance_count: 3
 master_storage_type: >-
-  {{ 'io1' if worker_instance_count|int >= 10
+  {{ 'io1' if worker_instance_count|int >= 5
   else 'gp2' }}
-worker_instance_type: m5.4xlarge
+worker_instance_type: m5.8xlarge
 worker_instance_count: "{{ [(num_users | int / 1.5 ) | round(0, 'ceil') | int, 3] | max  }}"
 worker_storage_type: gp2
 worker_storage_size: 250
