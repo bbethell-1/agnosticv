@@ -1,0 +1,418 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog: Red Workshops
+# --- Catalog Item: Private LLM as a
+#     Service - A Practical Introduction with OpenShift AI
+# -------------------------------------------------------------------
+
+#include /includes/catalog-icon-openshift-data-science.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/aws-sandbox-meta.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-regions-6.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: aws
+cloud_provider_version: main
+config: openshift-cluster
+
+# ===================================================================
+# Additional collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: main
+  # AI OpenShift Workloads
+  - name: https://github.com/agnosticd/ai_workloads.git
+    type: git
+    version: main
+
+# -------------------------------------------------------------------
+# VM configuration
+# -------------------------------------------------------------------
+control_plane_instance_type: c6a.2xlarge
+control_plane_instance_count: 3
+
+worker_instance_type: m6a.4xlarge
+worker_instance_count: 3
+
+bastion_instance_type: t3a.small
+bastion_instance_image: RHEL96GOLD-latest
+
+gpu_instance_type: g6e.2xlarge
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.19.3"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+bastion_setup_student_user: true
+
+# -------------------------------------------------------------------
+# List of workloads to be deployed
+# -------------------------------------------------------------------
+workloads:
+- agnosticd.core_workloads.ocp4_workload_openshift_data_foundation
+- agnosticd.core_workloads.ocp4_workload_machinesets
+- agnosticd.core_workloads.ocp4_workload_cert_manager
+- agnosticd.core_workloads.ocp4_workload_authentication_rhsso
+- agnosticd.core_workloads.ocp4_workload_serverless
+- agnosticd.core_workloads.ocp4_workload_pipelines
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_web_terminal
+- agnosticd.core_workloads.ocp4_workload_minio
+- agnosticd.core_workloads.ocp4_workload_nfd
+- agnosticd.core_workloads.ocp4_workload_authorino
+- agnosticd.core_workloads.ocp4_workload_servicemesh2
+- agnosticd.ai_workloads.ocp4_workload_nvidia_gpu_operator
+- agnosticd.ai_workloads.ocp4_workload_s3_model_copy_to_minio
+- agnosticd.ai_workloads.ocp4_workload_openshift_ai
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.core_workloads.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_base: user
+ocp4_workload_user_count: 1
+common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_password: "{{ (guid[::-1][:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_username: admin
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.19_2025_07_28
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_data_foundation
+# -------------------------------------------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.18
+
+ocp4_workload_openshift_data_foundation_catalogsource_setup: true
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_new_default_storage_class_name: ocs-storagecluster-ceph-rbd
+
+ocp4_workload_openshift_data_foundation_ceph_storage_system_deploy_timeout: 1500
+ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1500
+
+# -------------------------------------------------------------------
+# ocp4_workload_machinesets
+# -------------------------------------------------------------------
+ocp4_workload_machinesets_wait_for_nodes: false
+
+ocp4_workload_machinesets_machineset_groups:
+- name: worker-gpu
+  role: worker-gpu
+  instance_type: "{{ gpu_instance_type }}"
+  autoscale: false
+  total_replicas: 3
+  total_replicas_min: 3
+  total_replicas_max: 3
+  taints:
+  - key: nvidia.com/gpu
+    value: true
+    effect: NoSchedule
+
+# -------------------------------------------------------------------
+# ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1.16
+
+ocp4_workload_cert_manager_use_catalog_snapshot: true
+ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_cert_manager_aws_region: "{{ aws_region }}"
+ocp4_workload_cert_manager_aws_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
+ocp4_workload_cert_manager_aws_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
+
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_authentication_rhsso
+# -------------------------------------------------------------------
+ocp4_workload_authentication_rhsso_channel: stable
+
+ocp4_workload_authentication_rhsso_use_catalog_source: true
+ocp4_workload_authentication_rhsso_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_authentication_rhsso_admin_username: "{{ common_admin_username }}"
+ocp4_workload_authentication_rhsso_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_rhsso_user_count: "{{ ocp4_workload_user_count }}"
+ocp4_workload_authentication_rhsso_user_name_base: "{{ ocp4_workload_user_base}}"
+ocp4_workload_authentication_rhsso_user_password: "{{ common_user_password }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_serverless
+# -------------------------------------------------------------------
+ocp4_workload_serverless_channel: stable
+
+ocp4_workload_serverless_use_catalog_snapshot: true
+ocp4_workload_serverless_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_serverless_install_serving: false
+ocp4_workload_serverless_install_eventing: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_pipelines
+# -------------------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.18
+
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.16
+
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ common_admin_username }}, role:admin
+  g, user1, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+# -------------------------------------------------------------------
+# ocp4_workload_web_terminal
+# -------------------------------------------------------------------
+ocp4_workload_web_terminal_channel: fast
+
+ocp4_workload_web_terminal_use_catalog_snapshot: true
+ocp4_workload_web_terminal_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_minio
+# -------------------------------------------------------------------
+ocp4_workload_minio_project: ic-shared-minio
+ocp4_workload_minio_name: minio
+ocp4_workload_minio_storage_size: 150Gi
+ocp4_workload_minio_image: quay.io/minio/minio
+ocp4_workload_minio_image_tag: RELEASE.2025-02-28T09-55-16Z
+ocp4_workload_minio_root_user: minio
+ocp4_workload_minio_root_password: minio123
+
+# -------------------------------------------------------------------
+# ocp4_workload_nfd
+# -------------------------------------------------------------------
+ocp4_workload_nfd_operator_channel: stable
+
+ocp4_workload_nfd_use_catalog_snapshot: true
+ocp4_workload_nfd_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_nfd_worker_config:
+  core:
+    sleepInterval: 60s
+  sources:
+    pci:
+      deviceClassWhitelist:
+      - "0200"
+      - "03"
+      - "12"
+      deviceLabelFields:
+      - "vendor"
+
+# -------------------------------------------------------------------
+# ocp4_workload_authorino
+# -------------------------------------------------------------------
+ocp4_workload_authorino_operator_channel: stable
+
+ocp4_workload_authorino_operator_use_catalog_snapshot: true
+ocp4_workload_authorino_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_servicemesh2
+# -------------------------------------------------------------------
+ocp4_workload_servicemesh2_servicemesh_channel: stable
+
+ocp4_workload_servicemesh2_catalogsource_setup: true
+ocp4_workload_servicemesh2_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_servicemesh2_es: false
+ocp4_workload_servicemesh2_jaeger: false
+ocp4_workload_servicemesh2_kiali: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_nvidia_gpu_operator
+# -------------------------------------------------------------------
+ocp4_workload_nvidia_gpu_operator_channel: v25.3
+
+ocp4_workload_nvidia_gpu_operator_use_catalog_snapshot: true
+ocp4_workload_nvidia_gpu_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_nvidia_gpu_operator_create_dashboard: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_s3_model_copy_to_minio
+# -------------------------------------------------------------------
+ocp4_workload_s3_model_copy_to_minio_project: "{{ ocp4_workload_minio_project }}"
+ocp4_workload_s3_model_copy_to_minio_name: "{{ ocp4_workload_minio_name }}"
+ocp4_workload_s3_model_copy_to_minio_endpoint: "http://{{ ocp4_workload_minio_name }}.{{ ocp4_workload_minio_project }}.svc.cluster.local:9000/"
+ocp4_workload_s3_model_copy_to_minio_root_user: "{{ ocp4_workload_minio_root_user }}"
+ocp4_workload_s3_model_copy_to_minio_root_password: "{{ ocp4_workload_minio_root_password }}"
+
+ocp4_workload_s3_model_copy_to_minio_s3_access_key: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          37393362653231343836356262616562363137653333373533373966636664333137316132623138
+          6262346238313531656531643030323935393034653961380a323865343931333431646433613637
+          38633263306539346137626639303664336566633339323432386534376239313266386637373939
+          3466363061613963360a656464633563346637313937366431316164636662323865353665633366
+          63303534353532303537343632646566336230353662646664363865373136663461
+ocp4_workload_s3_model_copy_to_minio_s3_secret_key: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          39363536383835326665623462623737396632383134353562613533366366613035353265306466
+          3633323635626130373961373664623363386431636662640a373164616238363632633161326538
+          61366462396231646333626262313064626239356663323736363936656263306266666535623362
+          3162356434396364300a613565313032626462303636306664333738663562333138346630306463
+          39336538353164396163343530353936346234353338363035393662323363373534306231313238
+          3631663265346531653836306564366336376139333663663865
+
+ocp4_workload_s3_model_copy_to_minio_s3_region: us-east-1
+ocp4_workload_s3_model_copy_to_minio_s3_bucket: model-serve
+ocp4_workload_s3_model_copy_to_minio_s3_folders:
+- ibm-granite
+- TinyLlama
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_ai
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_channel: stable
+
+ocp4_workload_openshift_ai_use_catalog_snapshot: true
+ocp4_workload_openshift_ai_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_ai_kserve: Managed
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/redhat-gpte-devopsautomation/private-summit-llm-aas
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  threeScale:
+    repoURL: https://github.com/rhpds/ocp-cluster-addons
+    targetRevision: v1.2.4
+    channel: threescale-2.13
+    startingCSV: 3scale-operator.v0.10.5
+  cmsUpload:
+    repoURL: https://github.com/redhat-gpte-devopsautomation/private-summit-llm-aas
+    targetRevision: main
+  llmaas:
+    repoURL: https://github.com/redhat-gpte-devopsautomation/private-summit-llm-aas
+    targetRevision: main
+  llama:
+    repoURL: https://github.com/rhpds/llama-stack-on-ocp.git
+    targetRevision: main
+  slackMcpSecret:
+    slackBotToken: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          32613136313033353364656431313431356138666363613364366430613532393837383164653135
+          3439663266666333626661366664393637343766323035650a613965653864663232633966666132
+          39303834346565336638656264313161303562303863396466313861623062626533353935653366
+          6331373932626437610a316131323535653338343133323861383965373432366363313036393865
+          38633734363265363232386161316639326137656238396231386237396665363732396431386265
+          31633736336335316334353862663936313535663533653434613333306330656364353766633334
+          366232383837343936326466653764393164
+    slackTeamId: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          33656363663138633866623738633434323661343933313662306434323562663732383034326663
+          3266623261653463626335346238646366353933656664320a396231393135303961323134643831
+          36653730653264333064623861623037383833386562346335333337616431623635363864343964
+          3636633439396465330a666339323733353561633935633861343836666539663532376230316532
+          6137
+    graniteToken: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          32656339353764616534626362303832646332313739633339653232616236396534316537343030
+          3330653462643633306564383265363537373838323536370a663931393231323736633933643639
+          30656539646135643638626135373361393765313330616463396133336130633864303761303738
+          3564353235323832340a373365353063356239313764653364336263613665383365376262616236
+          63306538636663366663353663303362316339656462613235333761316331393561616331323734
+          3366656635333439633638666433363233646565353931303666
+
+ocp4_workload_gitops_bootstrap_health_retries: 2
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_namespace: showroom
+
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/private-summit-llmaas-showroom
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_only: true
+
+# -------------------------------------------------------------------
+# Babylon Meta Variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 80a827b9-d2e2-49f4-bf8d-f3c0a5ff8223
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-06-30
+    actions:
+      start:
+        disable: true
+      stop:
+        disable: true
+  sandbox_api:
+    reservation: pgpu-event
+    actions:
+      start:
+        enable: false
+      stop:
+        enable: false
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Private LLM as a Service - A Practical Introduction with OpenShift AI (Agd V2)"
+    category: Workshops
+    multiuser: false
+    keywords: []
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+  tower:
+    timeout: 21600
+  owners:
+    maintainer:
+    - name: Ritesh Shah
+      email: rshah@redhat.com
+    - name: Juliano Mohr
+      email: juliano@redhat.com
+    - name: Wolfgang Kulhanek
+      email: wkulhane@redhat.com
