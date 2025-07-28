@@ -133,6 +133,29 @@ class BabylonChecker:
         self.component_paths = paths
         self.scm_check_cache = {}
         self.virtualenv_check_cache = {}
+        # --- NEW: Attributes for git refs ---
+        self.git_base_ref = None
+        self.git_head_ref = None
+        self._discover_git_refs()
+
+    # --- NEW: Function to auto-discover git refs from CI environment ---
+    def _discover_git_refs(self):
+        """
+        Automatically determine git base and head refs from CI environment variables.
+        """
+        # GitHub Actions is the primary target
+        if os.environ.get('GITHUB_ACTIONS'):
+            # GITHUB_BASE_REF is the name of the target branch (e.g., 'main')
+            base_ref_name = os.environ.get('GITHUB_BASE_REF')
+            # GITHUB_SHA is the merge commit SHA for the PR
+            head_ref_sha = os.environ.get('GITHUB_SHA')
+            
+            if base_ref_name and head_ref_sha:
+                # We need the full ref name for git diff (e.g., 'origin/main')
+                self.git_base_ref = f"origin/{base_ref_name}"
+                self.git_head_ref = head_ref_sha
+                if self.debug:
+                    print(f"Detected GitHub Actions environment: base={self.git_base_ref}, head={self.git_head_ref}")
 
     def check(self):
         self.load_components()
@@ -144,16 +167,40 @@ class BabylonChecker:
         for check in (
             'asset_uuids',
             'short_names',
+            'forbidden_files', # New check added
         ):
             if self.debug:
                 print(f"Checking {check}: ", end='', flush=True)
             try:
                 getattr(self, f"check_global_{check}")()
             except Exception as exception:
-                print(f"Failed global check {check}: {exception}")
+                print(f"\n\nFailed global check '{check}': {exception}")
                 sys.exit(2)
             if self.debug:
                 print(' PASSED')
+
+    # --- UPDATED: Check function for forbidden files ---
+    def check_global_forbidden_files(self):
+        '''Check for forbidden 'description.html' files in the entire repository.'''
+        
+        # Use git ls-files to list all tracked files in the repository.
+        git_ls_files_command = ['git', 'ls-files']
+        
+        result = subprocess.run(git_ls_files_command, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"Git ls-files failed: {result.stderr}")
+
+        all_files = result.stdout.strip().split('\n')
+        # Only find files that are exactly named 'description.html'
+        html_files = [f for f in all_files if f and os.path.basename(f) == 'description.html']
+
+        if html_files:
+            error_message = (
+                "Found 'description.html' files in the repository. This is not permitted. "
+                "Please use 'description.adoc' for catalog item descriptions.\n"
+                "Forbidden files found:\n" + "\n".join(f"- {f}" for f in html_files)
+            )
+            raise ValueError(error_message)
 
     def check_global_asset_uuids(self):
         '''Check for duplicate asset uuids'''
@@ -213,7 +260,8 @@ class BabylonChecker:
                 getattr(self, f"check_component_{check}")(component)
             except Exception as exception:
                 component.errors.append(str(exception))
-                self.failed_components.append(component)
+                if component not in self.failed_components:
+                    self.failed_components.append(component)
 
         if self.debug:
             if component.errors:
