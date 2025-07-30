@@ -23,17 +23,20 @@
 # Overview
 # -------------------------------------------------------------------
 #
-# This catalog item is a OpenShift Virt BU initiative as a "late in the sales cycle"
-# workshop designed to be used less frequently than the roadshow environment,
-# late in the sales process to clench a deal or answer unanswered questions,
-# or for enablement.
+# This is an OpenShift Virt BU initiative.  It is as a "late in the sales cycle"
+# workshop designed to be used less frequently than the roadshow environment.
+# It will be used late in the sales process to answer unanswered questions,
+# clinch a deal or or for enablement.
 #
 # Includes:
 #   - OpenShift Virtualization
 #   - OpenShift GitOps
-#   - OpenShift Ansible Automation Platform
+#   - Ansible Automation Platform
 #   - Cluster Observability Operator
 #   - Network Observability Operator
+#   - Sample VMs
+#   - Advanced Cluster Management (wip)
+#   - Advanced Cluster Security (soon)
 #
 # Implementation:
 #   This relies on some of the basics from AgonsticD, but the bulk
@@ -42,6 +45,8 @@
 #     - OpenShift Virtualization
 #     - OpenShift GitOps
 #     - Ansible Automation Platform
+#     - Advanced Cluster Management (wip)
+#     - Advanced Cluster Security (soon)
 #   - GitOps installation and configuration of:
 #     - Cluster Observability Operator
 #     - Network Observability Operator
@@ -61,7 +66,7 @@ platform: rhpds
 # -------------------------------------------------------------------
 # CNV Specific
 # -------------------------------------------------------------------
-bastion_instance_image: rhel-9.6
+bastion_instance_image: rhel-9.3
 bastion_cores: 2
 bastion_memory: 4Gi
 
@@ -69,7 +74,29 @@ master_instance_count: 3
 worker_instance_count: 4
 
 ai_control_plane_cores: 16
-ai_control_plane_memory: 64Gi
+ai_control_plane_memory: 16Gi
+
+ai_workers_cores: 16
+# Lab needs 3x32Gi memory
+ai_workers_memory: 32Gi
+
+ai_service_network_cidr: "172.231.0.0/16"
+ai_cluster_network_cidr: "10.232.0.0/14"
+# ai_network_mtu: 8900
+
+ai_workers_extra_disks:
+- metadata:
+    name: "extradiskINSTANCENAME"
+  spec:
+    source:
+      blank: {}
+    pvc:
+      accessModes:
+      - ReadWriteMany
+      volumeMode: Block
+      resources:
+        requests:
+          storage: "20Gi"
 
 # -------------------------------------------------------------------
 # Repos
@@ -78,28 +105,36 @@ repo_method: satellite
 update_packages: true
 
 # -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+
+# -------------------------------------------------------------------
 # OpenShift Version
 # -------------------------------------------------------------------
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-ocp4_installer_version: "4.18.8"
+ocp4_installer_version: "4.18"
 
 # -------------------------------------------------------------------
-# Student User on Bastion
+# Default Networking Stack
 # -------------------------------------------------------------------
-install_student_user: false
+ocp4_network_type: OVNKubernetes
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 infra_workloads:
-- ocp4_workload_cert_manager
 - ocp4_workload_external_odf
 - ocp4_workload_authentication
-- ocp4_workload_web_terminal
+- ocp4_workload_cert_manager
 - ocp4_workload_openshift_gitops
 - ocp4_workload_kubevirt
 - ocp4_workload_rhacm
-- ocp4_workload_rhacm_cloud_credentials
+- ocp4_workload_metallb
+- ocp4_workload_hcp_kubevirt
+- ocp4_workload_lvms
 - ocp4_workload_ansible_automation_platform_25
 - ocp4_workload_gitea_operator
 - ocp4_workload_codeserver
@@ -131,20 +166,6 @@ ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_r
 ocp4_workload_catalogsource_tag: v4.18_2025_05_05
 
 # -------------------------------------------------------------------
-# ocp4_workload_cert_manager
-# -------------------------------------------------------------------
-ocp4_workload_cert_manager_channel: stable-v1.15
-ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-ocp4_workload_cert_manager_starting_csv: cert-manager-operator.v1.15.0
-ocp4_workload_cert_manager_install_ingress_certificates: true
-ocp4_workload_cert_manager_install_api_certificates: false
-ocp4_workload_cert_manager_ec2_region: us-east-2
-ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
-ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
-ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
-
-# -------------------------------------------------------------------
 # Workload: ocp4_workload_external_odf
 # -------------------------------------------------------------------
 odf_channel: stable-4.18
@@ -162,11 +183,19 @@ ocp4_workload_authentication_htpasswd_user_count: "{{ ocp4_workload_user_count }
 ocp4_workload_authentication_remove_kubeadmin: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_web_terminal
+# ocp4_workload_cert_manager
 # -------------------------------------------------------------------
-ocp4_workload_web_terminal_channel: fast
-ocp4_workload_web_terminal_catalogsource_setup: false
-ocp4_workload_web_terminal_configure: false
+ocp4_workload_cert_manager_channel: stable-v1.15
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+# ocp4_workload_cert_manager_starting_csv: cert-manager-operator.v1.15.0
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
@@ -186,22 +215,17 @@ ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
 # ocp4_workload_kubevirt
 # -------------------------------------------------------------------
 ocp4_workload_kubevirt_channel: stable
-ocp4_workload_kubevirt_use_catalog_snapshot: true
+ocp4_workload_kubevirt_use_catalog_snapshot: false
 ocp4_workload_kubevirt_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_kubevirt_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-#
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_rhacm
-# -------------------------------------------------------------------
-ocp4_workload_rhacm_acm_channel: release-2.13
-# ocp4_workload_rhacm_acm_starting_csv: ""
-ocp4_workload_rhacm_use_catalog_snapshot: false
+
+ocp4_workload_kubevirt_boot_sources_shapshot: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_rhacm_cloud_credentials
+# Workload: ocp4_workload_metallb
 # -------------------------------------------------------------------
-ocp4_workload_rhacm_cloud_credentials_kubevirt: true
-ocp4_workload_rhacm_cloud_credentials_kubevirt_secret_name: kubevirt-secret
+ocp4_workload_metallb_enable_ipaddresspool: true
+ocp4_workload_metallb_enable_l2advertisement: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitea_operator
@@ -399,7 +423,7 @@ ocp4_workload_codeserver_repos:
 # -------------------------------------------------------------------
 # ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
-ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ocp-virt-advanced-ops-gitops
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ocp-virt-advanced-ops-gitops.git
 #ocp4_workload_gitops_bootstrap_repo_revision: v1.0.1 <-- This is summit2025 tag
 ocp4_workload_gitops_bootstrap_repo_revision: main
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap
@@ -423,7 +447,8 @@ ocp4_workload_gitops_bootstrap_helm_values:
 # ------------------------------------------------------
 # ocp4_workload_showroom
 # ------------------------------------------------------
-ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ocp-advanced-virt-ops-showroom
+# FORKED: ocp4_workload_showroom_content_git_repo: https://github.com/redhat-gpte-devopsautomation/virt-aap-day2-showroom
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ocp-virt-advanced-ops-showroom
 ocp4_workload_showroom_content_git_repo_ref: main
 ocp4_workload_showroom_deployment_type: helm
 ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
@@ -439,8 +464,8 @@ __meta__:
   anarchy:
     namespace: babylon-anarchy-ocp-wksp
   deployer:
-    scm_ref: aap-day2-1.0.0 # add this to prod
     execution_environment:
+      # image: quay.io/agnosticd/ee-multicloud:2024-08-08
       image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.1
       pull: missing
   sandbox_api:
@@ -457,7 +482,7 @@ __meta__:
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: "Experience OpenShift Virtualization: Advanced Operations and Automation"
-    category: Labs
+    category: Workshops
     multiuser: false
     keywords:
     - day2
@@ -465,6 +490,8 @@ __meta__:
     - aap
     - ocp
     - virtualization
+    - ops
+    - advanced
     labels:
       Provider: RHDP
       Product: Red_Hat_OpenShift_Container_Platform
@@ -477,11 +504,21 @@ __meta__:
     maintainer:
     - name: Judd Maltin
       email: judd@redhat.com
+    - name: Mitesh Sharma
+      email: mitsharm@redhat.com
     sme:
     - name: Judd Maltin
       email: judd@redhat.com
+    - name: Roger Lopez
+      email: rlopez@redhat.com
     - name: Alan Cowles
       email: acowles@redhat.com
+    - name: Mark Schmitt
+      email: mschmitt@redhat.com
     instructions:
+    - name: Roger Lopez
+      email: rlopez@redhat.com
     - name: Alan Cowles
       email: acowles@redhat.com
+    - name: Mark Schmitt
+      email: mschmitt@redhat.com
