@@ -1,0 +1,239 @@
+---
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-regions-2.yaml
+
+#include /includes/secrets/zerossl.yaml
+#include /includes/secrets/demosat-rhel-9-latest-and-aap25.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: RHEL
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ansible-bu-workshop
+cloud_provider: ec2
+
+# -------------------------------------------------------------------
+# Instance Variables
+# -------------------------------------------------------------------
+default_instance_image: RHEL95GOLD-latest
+
+default_instance_type: "m6a.4xlarge"
+default_rootfs_size: 100
+create_ssh_provision_key_enable_user_info_data: true
+# -------------------
+# Security Groups
+# -------------------
+security_groups:
+  - name: BastionSG
+    rules:
+      - name: BastionSSHPorts
+        description: "Bastion ssh"
+        from_port: 22
+        to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: WebSG
+    rules:
+      - name: WebHTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: WebHTTPSPorts
+        description: "HTTPS Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: GiteaHTTPSPorts
+        description: "Gitea HTTPS Public"
+        from_port: 488
+        to_port: 488
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: WebAhttpsSPorts
+        description: "Open HTTPS Public"
+        from_port: 8443
+        to_port: 8443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: MongoDBPorts
+        description: "Open MongoDB Public"
+        from_port: 27017
+        to_port: 27017
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: NodeSG
+    rules:
+      - name: FromNodeSGtcp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: NodeSG
+        rule_type: Ingress
+      - name: FromNodeSGudp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: NodeSG
+        rule_type: Ingress
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: containers.podman
+      version: 1.16.3
+    - name: https://github.com/rhpds/lb2384.rhcl_rhel.git
+      type: git
+
+# -------------------
+# Instances
+# -------------------
+instances:
+  - name: "{{ bastion_instance_name | default('rhel') }}"
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ bastion_instance_image | default(default_instance_image) }}"
+    flavor:
+      ec2: "{{ bastion_instance_type | default(default_instance_type) }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ bastion_rootfs_size | default(default_rootfs_size) }}"
+    security_groups:
+      - BastionSG
+      - DefaultSG
+      - WebSG
+      - NodeSG
+
+
+# -------------------------------------------------------------------
+pre_software_workloads:
+  all:
+    - set-repositories
+    - common
+  bastions:
+    - bastion-lite
+    - control-user
+
+software_workloads:
+  bastions:
+    - lb2384.rhcl_rhel.rhsi_role
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+
+# -------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------
+repo_method: satellite
+use_content_view: true
+
+# -------------------------------------------------
+# Role: common
+# -------------------------------------------------
+install_common: true
+common_packages_el9:
+  - at
+  - bash-completion
+  - bind-utils
+  - buildah
+  - git
+  - httpd-tools
+  - nano
+  - python3
+  - python3-pip
+  - tmux
+  - tree
+  - unzip
+  - vim-enhanced
+  - wget
+  - ansible
+  - podman
+
+# -------------------------------------------------
+# Role: bastion-lite
+# -------------------------------------------------
+install_bastion_lite: true
+
+# -------------------------------------------------
+# Role: control-user
+# -------------------------------------------------
+env_authorized_key: "{{guid}}key"
+install_control_user: true
+student_name: lab-user
+student_password: "{{ common_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ common_password }}"
+control_user_private_group: "{{ omit }}"
+
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: C795BAC5-ED5E-42D4-A11F-DFFB8B649C5C
+  owners:
+    maintainer:
+      - name: Mitesh Sharma
+        email: msharma@redhat.com
+
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    multiuser: false
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "RHEL - Safeguarding Application Connectivity for the Hybrid Cloud"
+    category: Workshops
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHDP
+    keywords:
+      - app
+      - connectivity
+      - rhel
+    reportingLabels:
+      primaryBU: RHEL
+    parameters: []
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.1
+      pull: missing
