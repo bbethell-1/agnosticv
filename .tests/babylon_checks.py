@@ -167,7 +167,8 @@ class BabylonChecker:
         for check in (
             'asset_uuids',
             'short_names',
-            'forbidden_files', # New check added
+            'forbidden_files',
+            'new_folder_naming_convention', # New check added
         ):
             if self.debug:
                 print(f"Checking {check}: ", end='', flush=True)
@@ -243,6 +244,55 @@ class BabylonChecker:
             short_name_to_dir[short_name] = component_dir
             if self.debug:
                 print('.', end='', flush=True)
+
+    def check_global_new_folder_naming_convention(self):
+        '''Check that new subfolders use hyphens (-) instead of underscores (_).'''
+        if not self.git_base_ref or not self.git_head_ref:
+            if self.debug:
+                print("SKIPPED (Git refs not found for PR context)")
+            return
+
+        # Get the list of newly added files between the base and head of the PR.
+        git_diff_command = [
+            'git', 'diff', '--name-only', '--diff-filter=A',
+            f"{self.git_base_ref}...{self.git_head_ref}"
+        ]
+
+        result = subprocess.run(git_diff_command, capture_output=True, text=True)
+
+        # In some CI environments, the base ref might not be fetched (shallow clone).
+        if result.returncode != 0 and 'unknown revision' in result.stderr:
+            if self.debug:
+                print(f"\nWARN: Initial git diff failed. Attempting to fetch base ref '{self.git_base_ref}'.")
+            base_branch_name = self.git_base_ref.split('/')[-1]
+            subprocess.run(['git', 'fetch', 'origin', base_branch_name], check=False, capture_output=True)
+            # Retry the diff
+            result = subprocess.run(git_diff_command, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            raise RuntimeError(f"Git diff command failed to find new files: {result.stderr}")
+
+        new_files = result.stdout.strip().split('\n')
+        invalid_folders = set()
+
+        for file_path in new_files:
+            if not file_path:
+                continue
+
+            dir_path = os.path.dirname(file_path)
+
+            # Check for underscores only in subdirectories.
+            if dir_path and '_' in dir_path:
+                invalid_folders.add(dir_path)
+
+        if invalid_folders:
+            sorted_folders = sorted(list(invalid_folders))
+            error_message = (
+                "Found new folders using underscores ('_'). Please use hyphens ('-') for all new folder names.\n"
+                "Invalid folder paths found:\n" +
+                "\n".join(f"- {folder}" for folder in sorted_folders)
+            )
+            raise ValueError(error_message)
 
     def check_component(self, component):
         '''Check AgnosticV component'''
