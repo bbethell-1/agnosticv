@@ -8,6 +8,7 @@ import re
 import requests
 import time
 import yaml
+import uuid
 
 github_token = os.environ.get('GITHUB_TOKEN')
 
@@ -216,14 +217,20 @@ class BabylonChecker:
         for common_yaml in common_yamls:
             with open(common_yaml) as fh:
                 common = yaml.load(fh, Loader=AgnosticVSafeLoader)
-                uuid = common.get('__meta__', {}).get('asset_uuid')
-                if uuid:
-                    duplicate = uuid_to_path.get(uuid)
+                assetuuid = common.get('__meta__', {}).get('asset_uuid')
+                try:
+                    uuid.UUID(assetuuid)
+                except ValueError:
+                    raise ValueError(
+                        f"{assetuuid} is not in valid uuid format in {common_yaml}"
+                    )
+                if assetuuid:
+                    duplicate = uuid_to_path.get(assetuuid)
                     if duplicate:
                         raise ValueError(
-                            f"{uuid} duplicated in {duplicate} and {common_yaml}"
+                            f"{assetuuid} duplicated in {duplicate} and {common_yaml}"
                         )
-                    uuid_to_path[uuid] = common_yaml
+                    uuid_to_path[assetuuid] = common_yaml
                     if self.debug:
                         print('.', end='', flush=True)
 
