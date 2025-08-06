@@ -1,5 +1,4 @@
 ---
-#include /includes/aws-sandbox-meta.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
 #include /includes/catalog-icon-project-dance.yaml
 #include /includes/terms-of-service.yaml
@@ -11,94 +10,54 @@
 #include /includes/secrets/rhods_git.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/secrets/zerossl.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/sandbox-api.yaml
 
 # -------------------------------------------------------------------
-# --- Catalog Item: Advanced Developer Suite Workshop
+# --- Catalog Item: Red Hat Advanced Developer Suite - Software Supply Chain Workshop
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
-# Mandatory Variables
+# Mandatory vars
 # -------------------------------------------------------------------
 env_type: ocp4-cluster
-software_to_deploy: openshift4
-project_tag: "{{ env_type }}-{{ guid }}"
-
-# -------------------------------------------------------------------
-# Platform
-# -------------------------------------------------------------------
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
 platform: rhpds
 
 # -------------------------------------------------------------------
-# Cloud Provider
+# CNV Specific
 # -------------------------------------------------------------------
-cloud_provider: ec2
-bastion_instance_type: m5.8xlarge
-bastion_instance_image: RHEL95GOLD-latest
+bastion_instance_image: rhel-9.5
+bastion_cores: 2
+bastion_memory: 4Gi
 
-key_name: opentlc_admin_backdoor
-region: us-east-2
-cloud_tags:
-  env_type: "{{ env_type }}"
-  platform: "{{ platform | d('unknown') }}"
-aws_region: us-east-2
+master_instance_count: 3
+worker_instance_count: 4
+
+ai_control_plane_cores: 16
+ai_control_plane_memory: 64Gi
+
+ai_workers_cores: 32
+ai_workers_memory: 128Gi
 
 # -------------------------------------------------------------------
-# Security group
+# Repos
 # -------------------------------------------------------------------
-security_groups:
-  - name: BastionSG
-    rules:
-      - name: BasSSHPublic
-        description: "SSH public"
-        from_port: 22
-        to_port: 22
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-      - name: BasHTTPPublic
-        description: "HTTP public for Let's Encrypt verification"
-        from_port: 80
-        to_port: 80
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-      - name: BasHTTPSPublic
-        description: "HTTPS public for Let's Encrypt verification"
-        from_port: 443
-        to_port: 443
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.18"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 
 # -------------------------------------------------------------------
 # Common Password
 # -------------------------------------------------------------------
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-
-# -------------------------------------------------------------------
-# OpenShift Installer Version
-# -------------------------------------------------------------------
-ocp4_installer_version: "4.18"
-ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-master_instance_count: 3
-master_instance_type: m6a.4xlarge
-master_storage_type: io1
-master_storage_size: 250
-worker_instance_count: 4
-worker_instance_type: m6a.8xlarge
-worker_storage_type: gp3
-worker_storage_size: 250
-
-openshift_machineset_aws_zones:
-  - "{{ instance_zone_a }}"
-  - "{{ instance_zone_b }}"
-  - "{{ instance_zone_c }}"
-
-instance_zone_a: us-east-2a
-instance_zone_b: us-east-2b
-instance_zone_c: us-east-2c
-
-gpu_instance_type: g6.2xlarge
 
 # -------------------------------------------------------------------
 # Workload variables
@@ -107,21 +66,10 @@ ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_r
 ocp4_workload_catalogsource_tag: v4.18_2025_03_03
 
 # -------------------------------------------------------------------
-# Repos
-# -------------------------------------------------------------------
-repo_method: satellite
-
-# Update RHEL to the latest packages (and reboot)
-update_packages: true
-
-# -------------------------------------------------------------------
 # Student User on Bastion
 # -------------------------------------------------------------------
 install_student_user: true
 student_name: lab-user
-# --- student_password not set -> generate random password
-# student_password: ""
-# --- Student is allowed to sudo and switch to root
 student_sudo: true
 
 # -------------------------------------------------
@@ -148,24 +96,6 @@ common_packages_el9:
   - golang
 
 # -------------------------------------------------------------------
-# Customizations to packages and virtualenvs to enable ovirt.ovirt
-# -------------------------------------------------------------------
-# Add prereqs for ovirt-engine-sdk-python Python package
-host_virtualenv_package_prereqs:
-  - gcc
-  - python3
-  - python3-devel
-  - python3-libselinux
-  - python3-pip
-  - libcurl-devel
-  - openssl-devel
-  - libxml2-devel
-
-# Add required Python packages to virtualenv for ovirt.ovirt collection
-host_virtualenv_requirements_override:
-  - ovirt-engine-sdk-python==4.5.0
-  - passlib==1.7.4
-# -------------------------------------------------------------------
 # Other Variables
 # -------------------------------------------------------------------
 
@@ -190,19 +120,16 @@ requirements_content:
       version: 21.1.0
     - name: containers.podman
       version: 1.16.3
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: main
 
 # -------------------------------------------------------------------
 # Other Variables
 # -------------------------------------------------------------------
 
-ocp4_network_type: OVNKubernetes
-
-# Because this environment includes Bare Metal instances wait longer for
-# CSRs to appear
-ocp4_approve_certificate_signing_requests_initial_delay: 240
-ocp4_approve_certificate_signing_requests_recheck_delay: 60
-
 infra_workloads:
+  - ocp4_workload_external_odf
   - ocp4_workload_cert_manager
   - ocp4_workload_kubernetes_image_puller
   - ocp4_workload_rhacm
@@ -215,6 +142,11 @@ infra_workloads:
   - ocp4_workload_rhdh_orchestrator
   - ocp4_workload_advanced_developer_suite
   - ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# ocp4_workload_external_odf
+# -------------------------------------------------------------------
+odf_channel: stable-4.18
 
 # ------------------------------------------------
 # ocp4_workload_gitops_vault
@@ -258,7 +190,7 @@ ocp4_workload_rhdh_orchestrator_workflows:
 # ------------------------------------------------
 ocp4_workload_openshift_devspaces_catalogsource_setup: false
 ocp4_workload_openshift_devspaces_channel: stable
-ocp4_workload_openshift_devspaces_startingcsv: devspacesoperator.v3.21.0
+ocp4_workload_openshift_devspaces_startingcsv: devspacesoperator.v3.22.0
 ocp4_workload_openshift_devspaces_namespace: openshift-devspaces
 
 # ------------------------------------------------
@@ -368,6 +300,8 @@ ocp4_workload_advanced_developer_suite_tssc_tpa_namespace: tssc-tpa
 ocp4_workload_advanced_developer_suite_acs_namespace: tssc-acs
 ocp4_workload_advanced_developer_suite_acs_admin_user: admin
 
+ocp4_workload_advanced_developer_suite_disable_odf: true
+
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
@@ -465,13 +399,17 @@ ocp4_workload_jenkins_volume_size: 20Gi
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager
 # -------------------------------------------------------------------
-ocp4_workload_cert_manager_ec2_region: "{{ aws_region }}"
-ocp4_workload_cert_manager_ec2_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
-ocp4_workload_cert_manager_ec2_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
 ocp4_workload_cert_manager_channel: stable-v1.15
-ocp4_workload_cert_manager_use_catalog_snapshot: false
+ocp4_workload_cert_manager_use_catalog_snapshot: true
+ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_cert_manager_starting_csv: cert-manager-operator.v1.15.0
 ocp4_workload_cert_manager_install_ingress_certificates: true
 ocp4_workload_cert_manager_install_api_certificates: false
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm
@@ -551,7 +489,7 @@ __meta__:
     namespace: babylon-catalog-{{ stage | default('?') }}
     multiuser: true
     workshopUiDisabled: false
-    display_name: Red Hat Advanced Developer Suite Workshop
+    display_name: Red Hat Advanced Developer Suite - Software Supply Chain Workshop
     category: Workshops
     keywords:
       - developer-hub
