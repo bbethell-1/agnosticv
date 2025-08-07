@@ -6,15 +6,14 @@
 
 #include /includes/aws-sandbox-meta.yaml
 #include /includes/catalog-icon-openshift.yaml
-
+#include /includes/terms-of-service.yaml
+#include /includes/runtime-unlimited.yaml
 #include /includes/enterprise-premium-sla.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/student-email.yaml
 #include /includes/parameters/requester_username.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/open-environment-annotation-hidden.yaml
-#include /includes/runtime-unlimited.yaml
-#include /includes/terms-of-service.yaml
 
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
@@ -135,14 +134,13 @@ ocp4_workload_catalogsource_tag: v4.17_2025_01_27
 # Problem is, it's storage.  I need a better storage solution
 ocp4_workload_rosa_machinepool_replicas: "{{ [(num_users | int / 7) | round(0, 'ceil') | int, 3] | max }}"
 
-metal_type: "i3.metal" # kind of baremetal instance to use with this lab.
+# kind of baremetal instance to use with this lab.
 # Other metal instance types that support fast disk IO
 # - i3.metal
 # - i3en.metal
 # - i4i.metal
-
 ocp4_workload_rosa_machinepool_instance_types: # AgD code cannot actually deploy different metal instance types
-- "{{ metal_type }}"
+- "{{ metal_instance_type }}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_authentication_rosa
@@ -155,7 +153,7 @@ ocp4_workload_authentication_rosa_admin_password: openshift@1
 ocp4_workload_authentication_rosa_token: "{{ rosa_token }}"
 ocp4_workload_authentication_rosa_aws_access_key_id: "{{ lookup('env','AWS_ACCESS_KEY_ID') | default(aws_access_key_id, true) | mandatory }}"
 ocp4_workload_authentication_rosa_aws_secret_access_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') | default(aws_secret_access_key, true) | mandatory }}"
-ocp4_workload_authentication_rosa_aws_region: "{{ lookup('env','AWS_DEFAULT_REGION') | default(aws_region, true) | mandatory }}"
+ocp4_workload_authentication_rosa_aws_region: "{{ aws_region }}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_data_foundation
@@ -166,7 +164,7 @@ ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_c
 ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_openshift_data_foundation_update_default_storage_class: true
 ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1200
-ocp4_workload_openshift_data_foundation_add_selector: "beta.kubernetes.io/instance-type={{ metal_type }}"
+ocp4_workload_openshift_data_foundation_add_selector: "beta.kubernetes.io/instance-type={{ metal_instance_type }}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_kubevirt
@@ -378,8 +376,18 @@ __meta__:
         default: 2
         minimum: 1
         maximum: 40
+    - name: metal_instance_type
+      description: Metal Instance Node Type
+      formLabel: Metal Instance Node Type
+      openAPIV3Schema:
+        type: string
+        default: i3.metal
+        enum:
+        - i3.metal
+        - i3en.metal
+        - i4i.metal
     - name: aws_region
-      description: AWS Region to Provision Environment (three global regions).
+      description: AWS Region to Provision Environment (six global regions).
       formLabel: Region
       required: true
       openAPIV3Schema:
@@ -387,7 +395,6 @@ __meta__:
         default: us-east-1
         enum:
         - us-east-1
-
   tower:
     timeout: 18000
   lifespan:
