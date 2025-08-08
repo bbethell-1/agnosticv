@@ -181,7 +181,6 @@ class BabylonChecker:
             if self.debug:
                 print(' PASSED')
 
-    # --- UPDATED: Check function for forbidden files ---
     def check_global_forbidden_files(self):
         '''Check for forbidden 'description.html' files in the entire repository.'''
         
@@ -220,7 +219,7 @@ class BabylonChecker:
                 assetuuid = common.get('__meta__', {}).get('asset_uuid')
                 try:
                     uuid.UUID(assetuuid)
-                except ValueError:
+                except (ValueError, TypeError):
                     raise ValueError(
                         f"{assetuuid} is not in valid uuid format in {common_yaml}"
                     )
@@ -259,38 +258,56 @@ class BabylonChecker:
                 print("SKIPPED (Git refs not found for PR context)")
             return
 
-        # Get the list of newly added files between the base and head of the PR.
-        git_diff_command = [
+        # Get set of directories that already exist in the base branch
+        existing_dirs_cmd = ['git', 'ls-tree', '-r', '-d', '--name-only', self.git_base_ref]
+        result = subprocess.run(existing_dirs_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+             # Fallback for shallow clones: try to fetch the base branch
+            if 'not a valid object name' in result.stderr:
+                if self.debug:
+                    print(f"\nWARN: Initial git ls-tree failed. Attempting to fetch base ref '{self.git_base_ref}'.")
+                base_branch_name = self.git_base_ref.split('/')[-1]
+                subprocess.run(['git', 'fetch', 'origin', base_branch_name, '--depth=1'], check=False, capture_output=True)
+                result = subprocess.run(existing_dirs_cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"Git ls-tree command failed to get existing directories: {result.stderr}")
+        
+        existing_dirs = set(result.stdout.strip().split('\n'))
+
+        # Get the list of directories containing newly added files in the PR
+        new_files_cmd = [
             'git', 'diff', '--name-only', '--diff-filter=A',
             f"{self.git_base_ref}...{self.git_head_ref}"
         ]
-
-        result = subprocess.run(git_diff_command, capture_output=True, text=True)
-
-        # In some CI environments, the base ref might not be fetched (shallow clone).
-        if result.returncode != 0 and 'unknown revision' in result.stderr:
-            if self.debug:
-                print(f"\nWARN: Initial git diff failed. Attempting to fetch base ref '{self.git_base_ref}'.")
-            base_branch_name = self.git_base_ref.split('/')[-1]
-            subprocess.run(['git', 'fetch', 'origin', base_branch_name], check=False, capture_output=True)
-            # Retry the diff
-            result = subprocess.run(git_diff_command, capture_output=True, text=True)
-
+        result = subprocess.run(new_files_cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"Git diff command failed to find new files: {result.stderr}")
 
         new_files = result.stdout.strip().split('\n')
-        invalid_folders = set()
-
+        
+        # Find directories that are genuinely new
+        newly_created_dirs = set()
         for file_path in new_files:
             if not file_path:
                 continue
-
+            
             dir_path = os.path.dirname(file_path)
+            if dir_path and dir_path not in existing_dirs:
+                newly_created_dirs.add(dir_path)
 
-            # Check for underscores only in subdirectories.
-            if dir_path and '_' in dir_path:
-                invalid_folders.add(dir_path)
+        # Check only the newly created directories for underscores
+        invalid_folders = set()
+        for new_dir in newly_created_dirs:
+            if '_' in new_dir:
+                # Check if a parent directory already existed to avoid flagging valid cases
+                parent = os.path.dirname(new_dir)
+                if parent not in existing_dirs and parent != '':
+                     # This logic can be complex, so we simplify:
+                     # Check the final component of the new path.
+                     if '_' in os.path.basename(new_dir):
+                        invalid_folders.add(new_dir)
+                elif '_' in os.path.basename(new_dir):
+                    invalid_folders.add(new_dir)
 
         if invalid_folders:
             sorted_folders = sorted(list(invalid_folders))
