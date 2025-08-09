@@ -13,6 +13,7 @@
 ## include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/demosat-rhel-7-8-and-9-latest.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/registry-redhat.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: Red Hat Discovery SEAPP
@@ -62,6 +63,23 @@ security_groups:
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
+  - name: NodeSG
+    rules:
+      - name: FromNodeSGtcp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: NodeSG
+        rule_type: Ingress
+      - name: FromNodeSGudp
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: NodeSG
+        rule_type: Ingress
+
   - name: WebSG
     rules:
       - name: WebHTTPPorts
@@ -79,21 +97,14 @@ security_groups:
         cidr: "0.0.0.0/0"
         rule_type: Ingress
 
-  - name: NodeSG
+  - name: AapSG
     rules:
-      - name: FromNodeSGtcp
-        description: "Allow everything from HostSG nodes"
-        from_port: 0
-        to_port: 65535
+      - name: WebAAPHTTPSPorts
+        description: "Web AAP HTTPS Public"
+        from_port: 8443
+        to_port: 8443
         protocol: tcp
-        from_group: NodeSG
-        rule_type: Ingress
-      - name: FromNodeSGudp
-        description: "Allow everything from HostSG nodes"
-        from_port: 0
-        to_port: 65535
-        protocol: udp
-        from_group: NodeSG
+        cidr: "0.0.0.0/0"
         rule_type: Ingress
 
   - name: DiscoverySG
@@ -130,8 +141,8 @@ instances:
     security_groups:
       - BastionSG
       - DefaultSG
-      - WebSG
       - NodeSG
+      - WebSG
       - DiscoverySG
 
   - name: "controller"
@@ -153,6 +164,7 @@ instances:
     security_groups:
       - NodeSG
       - WebSG
+      - AapSG
 
   - name: "satellite"
     count: 1
@@ -196,7 +208,6 @@ instances:
       - BastionSG
       - DefaultSG
       - NodeSG
-      - WebSG
 
   - name: "rhel8"
     count: 1
@@ -217,7 +228,6 @@ instances:
       - BastionSG
       - DefaultSG
       - NodeSG
-      - WebSG
 
   - name: "rhel7"
     count: 1
@@ -238,16 +248,15 @@ instances:
       - BastionSG
       - DefaultSG
       - NodeSG
-      - WebSG
 
 # -------------------------------------------------------------------
 # Ansible Module, Collections, and Roles Requirements
 # -------------------------------------------------------------------
-# requirements_content:
-#   collections:
-#     - name: https://github.com/rhpds/lb1152.hol.git
-#       type: git
-#       version: main
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/rh_discovery.seapp.git
+      type: git
+      version: main
 
 # -------------------------------------------------------------------
 # Workloads: Pre/Software/Post
@@ -259,30 +268,28 @@ pre_software_workloads:
     - bastion-lite
   controllers:
     - set-repositories
-  rhel9_nodes:
-    - set-repositories
-  rhel8_nodes:
-    - set-repositories
-  rhel7_nodes:
+  nodes:
     - set-repositories
 
 software_workloads:
   all:
     - control-user
+  bastions:
+    - rh_discovery.seapp.discovery
   controllers:
     - nginx_with_cert
-  # satellites:
-  #   - lb1152.hol.satellite_reconfigure
+  satellites:
+    - rh_discovery.seapp.satellite
 
 post_software_workloads:
   controllers:
     - ansible_automation_platform_configuration
+  nodes:
+    - rh_discovery.seapp.node
 
 post_software_final_workloads:
   localhost:
     - agnosticv-userdata-import
-#   bastions:
-#     - showroom
 
 # -------------------------------------------------------------------
 # Common Password
@@ -317,6 +324,7 @@ common_packages_el9:
   - vim-enhanced
   - wget
   - ansible
+  - discovery-installer
 
 # -------------------------------------------------------------------
 # Role: bastion-lite
@@ -339,6 +347,16 @@ control_user_private_group: "{{ omit }}"
 # -------------------------------------------------------------------
 nginx_with_cert_encrypt_mail: opentlc-admin@opentlc.com
 nginx_with_cert_hostname: "{{ groups['controllers'][0].split('.')[0] }}.{{ guid }}.{{ sandbox_zone }}"
+
+# -------------------------------------------------
+# Role: rh_discovery.seapp.satellite
+# -------------------------------------------------
+rh_discovery_seapp_satellite_user_password: "{{ common_password }}"
+
+# -------------------------------------------------
+# Role: rh_discovery.seapp.node
+# -------------------------------------------------
+rh_discovery_seapp_node_satellite_activation_key: AK_RHEL9
 
 # -------------------------------------------------------------------
 # Role: ansible_automation_platform_configuration
@@ -363,6 +381,9 @@ aap_configuration_dispatcher_roles:
   - {role: controller_license, var: controller_license, tags: controller_license}
   - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
   - {role: gateway_users, var: aap_user_accounts, tags: gateway_users}
+  - {role: controller_credentials, var: controller_credentials, tags: controller_credentials}
+  - {role: controller_inventories, var: controller_inventories, tags: controller_inventories}
+  - {role: controller_hosts, var: controller_hosts, tags: controller_hosts}
 
 controller_license:
   manifest_url: "https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip"
@@ -379,6 +400,38 @@ aap_user_accounts:
     first_name: "lab"
     last_name: User
 
+controller_credentials:
+  - name: lab-credential
+    description: lab-user credential
+    organization: "Default"
+    credential_type: Machine
+    inputs:
+      username: ec2-user
+      ssh_key_data: "{{ ssh_privatekey }}"
+      become_method: sudo
+
+controller_inventories:
+  - name: "lab-inventory"
+    description: "Inventory lab"
+    organization: "Default"
+    prevent_instance_group_fallback: false
+    state: present
+
+controller_hosts:
+  - name: "{{ groups['rhel9_nodes'][0].split('.')[0] }}"
+    inventory: "lab-inventory"
+    variables:
+      ansible_host: "rhel9.example.com"
+  - name: "{{ groups['rhel8_nodes'][0].split('.')[0] }}"
+    inventory: "lab-inventory"
+    variables:
+      ansible_host: "rhel8.example.com"
+  - name: "{{ groups['rhel7_nodes'][0].split('.')[0] }}"
+    inventory: "lab-inventory"
+    variables:
+      ansible_host: "rhel7.example.com"
+
+
 # -------------------------------------------------------------------
 # Role: agnosticv-userdata-import
 # -------------------------------------------------------------------
@@ -386,8 +439,9 @@ agnosticv_importdata:
   guid: "{{ guid }}"
   satellite_url: "https://satellite.{{ guid }}{{ subdomain_base_suffix }}"
   satellite_username: "admin"
-  satellite_password: "on7zAsVAaaQZLoUp"
-
+  satellite_password: "{{ common_password }}"
+  # satellite_password: "on7zAsVAaaQZLoUp"
+  sno_provision_data: "{{ sno_provision_data | default(omit) }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -419,8 +473,21 @@ __meta__:
       Product: Red_Hat_Enterprise_Linux
       Product_Family: Red_Hat_Enterprise_Linux
       Provider: RHDP
-    parameters: []
+    parameters:
+      - name: single_node_openshift
+        formLabel: Single Node OpenShift
+        formGroup: Additional Components
+        openAPIV3Schema:
+          default: true
+          type: boolean
   deployer:
     execution_environment:
       image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.1
       pull: missing
+  components:
+    - name: sno
+      display_name: Single Node OpenShift
+      item: sandboxes-gpte/OCP4_SINGLE_NODE
+      propagate_provision_data:
+        - var: sno_provision_data
+      when: single_node_openshift | default('false') | bool
