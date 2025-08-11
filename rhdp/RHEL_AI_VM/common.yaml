@@ -2,14 +2,15 @@
 #include /includes/aws-sandbox-meta.yaml
 #include /includes/catalog-icon-rhel.yaml
 #include /includes/terms-of-service.yaml
-#include /includes/parameters/purpose.yaml
-#include /includes/parameters/aws-regions-2.yaml
-#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-#include /includes/secrets/s3-rhpds-private-bucket.yaml
-#include /includes/secrets/showroom-shared-cluster1.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
 #include /includes/lifetime-standard.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-regions-gpu.yaml
+
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+#include /includes/secrets/showroom-shared-cluster1.yaml
 
 
 # ---------------------------------------------------------------------
@@ -37,23 +38,6 @@ software_workloads: []
 # --------------------------------------------------------------------
 
 post_software_workloads: []
-
-# -------------------------------------------------------------------
-# Role: s3_asset_injector (Download LLM tar archive and unarchive)
-# -------------------------------------------------------------------
-
-s3_asset_injector_venv_path: /tmp/venv-boto
-s3_asset_injector_bucket: rhdp-private
-s3_asset_injector_path: /ai-assets/etx/rhel-ai-etx-models.tar
-s3_asset_injector_dest: /root/rhel-ai-etx-models.tar
-s3_asset_injector_mode: get
-
-s3_asset_injector_aws_access_key: "{{ s3_aws_access_key }}"
-s3_asset_injector_aws_secret_key: "{{ s3_aws_secret_key }}"
-s3_asset_injector_aws_region: 'us-east-1'
-
-s3_asset_injector_unarchive: true
-s3_asset_injector_unarchive_path: /root
 
 # --------------------------------------------------------------------
 # Repos and packages
@@ -123,7 +107,8 @@ inventory_groups:
 # Role: common
 # -------------------------------------------------------------------
 
-student_name: instruct
+# This generic RHEL AI AMI has been wired up for cloud-user to have the models predownloaded.
+student_name: cloud-user
 student_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
@@ -145,25 +130,20 @@ cloud_tags:
 
 bastion_rootfs_size: 1024
 
-# -------------------------------------------------------------------
-# AMI Config - tmp for RHEL AI Eng CI
-# -------------------------------------------------------------------
-
-aws_ami_region_mapping:
-  us-east-2:
-    RHELAI11: ami-0be2f5c0ca770a10f
-    RHELAI12: ami-0cb37f2a376f6e2c6
-    RHELAI13: ami-0321252272036e699  # Really 1.3.1
-  us-east-1:
-    RHELAI11: ami-01c361feee3767bf8
-    RHELAI12: ami-038a07d686ac3f2dc
-    RHELAI13: ami-05dc5d703f2600daf
+# Even though it will just be RHEL AI 1.5 for now, keep this in case
+# we need to add more images in the future.
+bastion_instance_image_mapping:
+  default: RHELAI15-latest
+  RHEL AI 1.5: RHELAI15-latest
 
 bastion_instance_image: >-
-  {{ "RHELAI11" if bastion_instance_image_param == 'RHEL AI 1.1' else
-     "RHELAI12" if bastion_instance_image_param == 'RHEL AI 1.2' else
-     "RHELAI13"
+  {{
+    bastion_instance_image_mapping[bastion_instance_image_param | default("default")]
+    | default(bastion_instance_image_mapping.default)
   }}
+
+remote_user: cloud-user
+ansible_user: cloud-user
 
 instances:
   - name: bastion
@@ -172,7 +152,7 @@ instances:
     public_dns: true
     dns_loadbalancer: true
     floating_ip: true
-    image: "{{ bastion_instance_image | default(RHELAI13) }}"
+    image: "{{ bastion_instance_image }}"
     flavor:
       ec2: "{{ bastion_instance_type }}"
     tags:
@@ -236,21 +216,15 @@ __meta__:
     maintainer:
       - name: Tony Kay
         email: ankay@redhat.com
-
-  # access_control: TODO: Leave for now, but disable
-  #   allow_groups:
-  #     - rhpds-devs
-  #     - rhpds-devs-ai
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "RHEL AI (GA) VM"
+    display_name: "RHEL AI VM"
     category: Labs
     keywords:
       - rhel
       - ai
-      - instructlab
       - nvidia
     labels:
       Product: Red_Hat_Enterprise_Linux
@@ -272,11 +246,9 @@ __meta__:
         formLabel: RHEL AI Version
         openAPIV3Schema:
           type: string
-          default: RHEL AI 1.3
+          default: RHEL AI 1.5
           enum:
-            - RHEL AI 1.3
-            - RHEL AI 1.2
-            - RHEL AI 1.1
+            - RHEL AI 1.5
     reportingLabels:
       primaryBU: Artificial_Intelligence
   deployer:
