@@ -1,0 +1,479 @@
+---
+#include /includes/catalog-icon-aap.yaml
+
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/zerossl.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+#include /includes/secrets/demosat-rhel-9-10.0-latest.yaml
+#include /includes/secrets/ansible-tower-advanced-24.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog: OpenShift CNV
+# --- Catalog Item: "Product Enablement: Fast-Track Ansible Automation Platform Migration"
+# -------------------------------------------------------------------
+
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+env_type: multi-cloud-base-infra
+cloud_provider: openshift_cnv
+software_to_deploy: none
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}.{{ guid }}{{ subdomain_base_suffix }}"
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+subdomain_base_short: "{{ guid }}"
+subdomain_base_suffix: ".{{ sandbox_openshift_apps_domain }}"
+subdomain_base: "{{ subdomain_base_short }}{{ subdomain_base_suffix }}"
+subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
+ansible_user: cloud-user
+remote_user: cloud-user
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.6
+rhel_instance_image: rhel-9.6
+rootfs_size_rhel: 50Gi
+node_name: node
+pv_size_node: 8Gi
+
+instances:
+  - name: "bastion"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ bastion_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: 100Gi
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+    networks:
+      - default
+    services:
+      - name: bastion
+        ports:
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: bastion-https
+    routes:
+      - name: bastion-https
+        host: bastion
+        service: bastion
+        targetPort: 443
+        tls: true
+
+  - name: "{{ node_name }}"
+    count: 5
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel_instance_image }}"
+    memory: 16G
+    cores: 4
+    image_size: "{{ rootfs_size_rhel }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: node
+        ports:
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: node-https
+    routes:
+      - name: node-https
+        host: node
+        service: node
+        targetPort: 443
+        tls: true
+    disks:
+      - metadata:
+          name: "{{ node_name }}{{ guid }}"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "{{ node_name }}{{ guid }}1"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "{{ node_name }}{{ guid }}2"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "{{ node_name }}{{ guid }}3"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "{{ node_name }}{{ guid }}4"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "{{ node_name }}{{ guid }}5"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+
+  - name: "controllers"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ bastion_instance_image }}"
+    memory: 16G
+    cores: 4
+    image_size: "{{ rootfs_size_rhel }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "controllers"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: controllers
+        ports:
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: controllers-https
+    routes:
+      - name: controllers-https
+        host: controllers
+        service: controllers
+        targetPort: 443
+        tls: true
+
+# -------------------------------------------------------------------
+# inventory_groups (optional but nice to have)
+# -------------------------------------------------------------------
+
+inventory_groups:
+  - controllers
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+requirements_content:
+  roles:
+
+# -------------------------------------------------------------------
+# Infra workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  localhost:
+    - create_ssh_provision_key
+  all:
+    - set_env_authorized_key
+    - set-repositories
+    - bastion-student-user
+
+  bastions:
+    - common
+    - bastion-base
+    - user-create-ansible-service-account
+    - asset_injector
+
+software_workloads:
+
+post_software_final_workloads:
+  localhost:
+    - agnosticv-userdata-import
+
+# -------------------------------------------------------------------
+# Role: set_env_authorized_key
+# -------------------------------------------------------------------
+set_env_authorized_key: true
+env_authorized_key: "{{ guid }}key"
+ansible_ssh_private_key_file: ~/.ssh/{{ env_authorized_key }}.pem
+ansible_service_account_user_ssh_config: ssh_config.j2
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+repo_method: satellite
+use_content_view: true
+
+
+# -------------------------------------------------------------------
+# Role: common
+# -------------------------------------------------------------------
+student_name: lab-user
+student_password: "{{ common_password }}"
+
+agd_install_bastion_base: true
+agd_install_common: true
+agd_bastion_packages:
+  - python3
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - httpd-tools
+  - openldap-clients
+  - podman
+  - tree
+  - runc
+
+# -------------------------------------------------------------------
+# Role: ansible_service_account
+# -------------------------------------------------------------------
+ansible_service_account_user_name: "{{ student_name }}"
+ansible_service_account_user_password: "{{ common_password }}"
+ansible_service_account_user_preferred_python: "3.9"
+
+# -------------------------------------------------------------------
+# asset_injector_assets
+# -------------------------------------------------------------------
+asset_injector_assets:
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
+
+# -------------------------------------------------------------------
+# Role: agnosticv-userdata-import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  guid: "{{ guid }}"
+
+# -------------------------------------------------------------------
+# Role: deploy_automationcontroller
+# -------------------------------------------------------------------
+install_automationcontroller: true
+automationcontroller: "{{ groups['controllers'][0].split('.')[0] }}.{{ subdomain_base }}"
+automationcontroller_database: "{{ groups['controllers'][0].split('.')[0] }}.{{ subdomain_base }}"
+deploy_automationcontroller_admin_password: "{{ common_password }}"
+deploy_automationcontroller_installer_url: "{{ controller_bundle_installer.url }}"
+deploy_automationcontroller_manifest_url: "{{ controller_manifest.url }}"
+
+# -------------------------------------------------------------------
+# Role: automation_platform_loader
+# -------------------------------------------------------------------
+configure_automationcontroller: true
+controller_configuration_job_templates_secure_logging: false
+controller_configuration_credentials_secure_logging: false
+
+aap_auth:
+  controller_host: "{{ groups['controllers'][0].split('.')[0] }}.{{ subdomain_base }}"
+  controller_username: admin
+  controller_password: "{{ common_password }}"
+  controller_verify_ssl: false
+
+controller_configuration_dispatcher_roles:
+  - role: settings
+    var: controller_settings
+    tags: settings
+  - role: credentials
+    var: controller_credentials
+    tags: credentials
+  - role: projects
+    var: controller_projects
+    tags: projects
+  - role: inventories
+    var: controller_inventories
+    tags: inventories
+  - role: hosts
+    var: controller_hosts
+    tags: hosts
+  - role: groups
+    var: controller_groups
+    tags: groups
+  - role: execution_environments
+    var: controller_execution_environments
+    tags: execution_environments
+  - role: job_templates
+    var: controller_templates
+    tags: templates
+
+controller_settings:
+  - name: AWX_COLLECTIONS_ENABLED
+    value: false
+
+controller_credentials:
+  - name: "Migration Credential"
+    organization: Default
+    credential_type: "Machine"
+    inputs:
+      username: "cloud-user"
+      ssh_key_data: "{{ lookup('file', hostvars.localhost.env_authorized_key_path) }}"
+    state: present
+  - name: "registry.redhat.io credential"
+    organization: Default
+    credential_type: "Container Registry"
+    inputs:
+      host: registry.redhat.io
+      username: "{{ registry_username }}"
+      password: "{{ registry_password }}"
+      verify_ssl: true
+    state: present
+
+controller_projects:
+  - name: "Migration"
+    scm_url: "https://github.com/ansible/ansible-tower-samples"
+    organization: Default
+    description: "prescriptive demos from Red Hat"
+    scm_type: git
+    scm_branch: movin_on_up
+    state: present
+  - name: "Demo Project"
+    organization: Default
+    state: absent
+
+controller_inventories:
+  - name: "Migration Inventory"
+    organization: Default
+    state: present
+
+controller_hosts:
+  - name: "node1"
+    inventory: "Migration Inventory"
+    state: present
+    enabled: true
+    variables:
+      ansible_host: "node1"
+
+controller_execution_environments:
+  - name: "Migration execution environment"
+    image: "quay.io/acme_corp/rhel_90_ee:latest"
+    pull: missing
+    state: present
+
+controller_templates:
+  - name: "Migration tempalte"
+    description: "Migration for aap"
+    organization: Default
+    job_type: run
+    inventory: "Migration Inventory"
+    execution_environment: "Migration execution environment"
+    project: Migration
+    playbook: hello_world.yml
+    credentials:
+      - Migration Credential
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 04cd8d3b-fe75-4727-b720-48a755cc9229
+  owners:
+    maintainer:
+      - name: Amrinder Singh
+        email: amrsingh@redhat.com
+    sme:
+      - name: Amrinder Singh
+        email: amrsingh@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Product Enablement: Fast-Track Ansible Automation Platform Migration"
+    category: Labs
+    keywords:
+      - migration aap
+      - ansible automation platform
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Automation
+      Provider: Product_Technical_Learning
+    multiuser: false
+    parameters: []
+    reportingLabels:
+      primaryBU: RHEL
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2025-04-07
+      pull: missing
