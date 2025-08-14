@@ -1,0 +1,226 @@
+---
+#include /includes/catalog-icon-rhde.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/sandbox-api.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: AI/ML Lifecycle at the Edge
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+platform: rhpds
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.6
+bastion_cores: 2
+bastion_memory: 4Gi
+
+master_instance_count: 1
+worker_instance_count: 0
+
+ai_control_plane_cores: 32
+ai_control_plane_memory: 128Gi
+
+# ai_workers_cores: 8
+# ai_workers_memory: 16Gi
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.19"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+
+# -------------------------------------------------------------------
+# Customizations to packages and virtualenvs
+# -------------------------------------------------------------------
+# Custom collections for this environment
+# requirements_content:
+#   collections:
+#     - name: kubernetes.core
+#       version: 2.4.0
+#     - name: amazon.aws
+#       version: 2.3.0
+#     - name: community.general
+#       version: 6.4.0
+#     - name: ansible.posix
+#       version: 1.5.1
+#     - name: community.crypto
+#       version: 2.11.0
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_count: "{{ num_users }}"
+ocp4_workload_user_base: user
+
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.19_2025_08_11
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_authentication
+- ocp4_workload_cert_manager
+- ocp4_workload_external_odf
+- ocp4_workload_openshift_gitops
+# - ocp4_workload_gitops_bootstrap
+- ocp4_workload_kubevirt
+- ocp4_workload_rhacm
+- ocp4_workload_microshift
+
+# -------------------------------------------------------------------
+# ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_count: 1
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+# ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_external_odf
+# -------------------------------------------------------------------
+odf_channel: "stable-{{ ocp4_installer_version }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.17
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+# ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+  g, ssoadmin, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+ocp4_workload_openshift_gitops_kustomize_plugin: false
+# ocp4_workload_openshift_gitops_kustomize_plugin_image: quay.io/devfile/universal-developer-image:ubi8-latest
+# ocp4_workload_openshift_gitops_kustomize_plugin_env:
+# - name: MY_VAR
+#   value: myValue
+
+ocp4_workload_openshift_gitops_resourceTrackingMethod: annotation
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ai-lifecycle-edge-gitops
+ocp4_workload_gitops_bootstrap_repo_revision: microshift
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+
+# -------------------------------------------------------------------
+# ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+
+ocp4_workload_kubevirt_use_catalog_snapshot: false
+# ocp4_workload_kubevirt_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_rhacm
+# -------------------------------------------------------------------
+ocp4_workload_rhacm_acm_channel: "release-2.14"
+
+ocp4_workload_rhacm_use_catalog_snapshot: false
+# ocp4_workload_rhacm_catalog_source_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_microshift
+# -------------------------------------------------------------------
+ocp4_workload_microshift_vm_namespace: microshift-001
+ocp4_workload_microshift_vm_image: https://gpte-public.s3.amazonaws.com/microshift/rhel87-microshift-4-12-6.qcow2
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 51dea29a-cc17-41a0-a9e9-1ed15ccd2124
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-06-30
+  owners:
+    maintainer:
+    - name: Nate Stephany
+      email: nstephan@redhat.com
+    sme:
+    - name: Diego Alvarez
+      email: dialvare@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: AI/ML Lifecycle at the Edge
+    category: Demos
+    keywords:
+    - ai
+    - edge
+    - openshift ai
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_AI
+      Product_Family: Red_Hat_AI
+    parameters: []
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+  sandboxes:
+  - kind: OcpSandbox
+    namespace_suffix: ocp4-cluster
+    cloud_selector:
+      cloud: cnv
+      purpose: prod
+      virt: "yes"
+  tower:
+    timeout: 14400
