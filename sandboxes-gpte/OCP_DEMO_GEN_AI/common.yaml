@@ -53,7 +53,7 @@ ocp4_workload_user_count: 1
 ocp4_workload_multi_user: "{{ true if num_users | int > 1 else false }}"
 
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.18_2025_04_07
+ocp4_workload_catalogsource_tag: v4.18_2025_07_25
 
 # -------------------------------------------------------------------
 # Common Password
@@ -61,6 +61,7 @@ ocp4_workload_catalogsource_tag: v4.18_2025_04_07
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 common_admin_password: "{{ common_password }}"
 common_user_password: "{{ common_password }}"
+common_admin_username: admin
 
 # -------------------------------------------------------------------
 # Security group
@@ -336,88 +337,49 @@ nvidia_gpu_operator_catalog_snapshot_image_tag: ""
 # ------------------------------------------------
 # ocp4_workload_authorino
 # ------------------------------------------------
-ocp4_workload_authorino_operator_channel: tech-preview-v1
+ocp4_workload_authorino_operator_channel: stable
 ocp4_workload_authorino_operator_use_catalog_snapshot: true
 ocp4_workload_authorino_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_authorino_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_authorino_operator_catalogsource_name: redhat-operators-snapshot-authorino
-ocp4_workload_authorino_operator_starting_csv: authorino-operator.v1.1.2
+ocp4_workload_authorino_operator_starting_csv: authorino-operator.v1.2.2
 
-# ---------------------------------------------------------
-# Workload: OpenShift Pipelines
-# ---------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.16
-ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
+# -------------------------------------------------------------------
+# ocp4_workload_pipelines
+# -------------------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.18
 ocp4_workload_pipelines_use_catalog_snapshot: true
 ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_pipelines_starting_csv: openshift-pipelines-operator-rh.v1.18.1
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
 ocp4_workload_openshift_gitops_channel: gitops-1.16
-ocp4_workload_openshift_gitops_setup_cluster_admin: true
-
 ocp4_workload_openshift_gitops_use_catalog_snapshot: true
-ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot-gitops
 ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_openshift_gitops_starting_csv: openshift-gitops-operator.v1.16.2
 
-ocp4_workload_openshift_gitops_update_resources: true
-ocp4_workload_openshift_gitops_controller_update: true
-ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
-ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
-ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
-ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
-
-ocp4_workload_openshift_gitops_repo_update: true
-ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
-ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
-ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
-ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
-
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_update_route_tls: true
-ocp4_workload_openshift_gitops_resource_customizations: |
-  operators.coreos.com/Subscription:
-    health.lua: |
-      health_status = {}
-      if obj.status ~= nil then
-        if obj.status.conditions ~= nil then
-          numDegraded = 0
-          numPending = 0
-          msg = ""
-          for i, condition in pairs(obj.status.conditions) do
-            msg = msg .. i .. ": " .. condition.type .. " | " .. condition.status .. "\n"
-            if condition.type == "InstallPlanPending" and condition.status == "True" then
-              numPending = numPending + 1
-            elseif (condition.type == "InstallPlanMissing" and condition.reason ~= "ReferencedInstallPlanNotFound") then
-              numDegraded = numDegraded + 1
-            elseif (condition.type == "CatalogSourcesUnhealthy" or condition.type == "InstallPlanFailed") and condition.status == "True" then
-              numDegraded = numDegraded + 1
-            end
-          end
-          if numDegraded == 0 and numPending == 0 then
-            health_status.status = "Healthy"
-            health_status.message = msg
-            return health_status
-          elseif numPending > 0 and numDegraded == 0 then
-            health_status.status = "Progressing"
-            health_status.message = "An install plan for a subscription is pending installation"
-            return health_status
-          else
-            health_status.status = "Degraded"
-            health_status.message = msg
-            return health_status
-          end
-        end
-      end
-      health_status.status = "Progressing"
-      health_status.message = "An install plan for a subscription is pending installation"
-      return health_status
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ common_admin_username }}, role:admin
+  g, user1, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_serverless
+# ocp4_workload_serverless
 # -------------------------------------------------------------------
+ocp4_workload_serverless_channel: stable
+ocp4_workload_serverless_use_catalog_snapshot: true
+ocp4_workload_serverless_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_serverless_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_serverless_starting_csv: serverless-operator.v1.36.0
+
 ocp4_workload_serverless_install_serving: false
 ocp4_workload_serverless_install_eventing: false
 
@@ -443,24 +405,19 @@ ocp4_workload_ossm_kiali_startingcsv: ""
 ocp4_workload_ossm_servicemesh_channel: stable
 ocp4_workload_ossm_servicemesh_startingcsv: ""
 
-ocp4_workload_rhsso_starting_csv: rhsso-operator.7.6.3-opr-002
-ocp4_workload_rhsso_authentication_starting_csv: rhsso-operator.7.6.9-opr-001
+ocp4_workload_rhsso_starting_csv: rhsso-operator.7.6.12-opr-001
+ocp4_workload_rhsso_authentication_starting_csv: rhsso-operator.7.6.12-opr-001
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_openshift_ai
+# ocp4_workload_openshift_ai
 # -------------------------------------------------------------------
-ocp4_workload_openshift_ai_automatic_install_plan_approval: false
 ocp4_workload_openshift_ai_channel: stable
-ocp4_workload_openshift_ai_starting_csv: "rhods-operator.2.19.0"
+ocp4_workload_openshift_ai_use_catalog_snapshot: true
+ocp4_workload_openshift_ai_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_ai_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_openshift_ai_starting_csv: rhods-operator.2.22.0
+
 ocp4_workload_openshift_ai_kserve: Managed
-ocp4_workload_openshift_ai_workbenches: Managed
-ocp4_workload_openshift_ai_modelmeshserving: Removed
-ocp4_workload_openshift_ai_kserve_config:
-  managementState: "{{ ocp4_workload_openshift_ai_kserve }}"
-  defaultDeploymentMode: RawDeployment
-  serving:
-    managementState: Removed
-    name: knative-serving
 
 # ocp4_workload_argocd_bootstrap variables #
 ocp4_workload_argocd_bootstrap_repo_list:
