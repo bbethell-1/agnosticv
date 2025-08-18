@@ -1,0 +1,290 @@
+---
+#include /includes/catalog-icon-automation-management.yaml
+
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/purpose.yaml
+
+#include /includes/sandbox-api.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/enable-cert-manager.yaml
+#include /includes/secrets/letsencrypt_with_zerossl_fallback.yaml
+
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: ETX Ansible
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Top level vars
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+platform: rhpds
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.5
+bastion_cores: 2
+bastion_memory: 4Gi
+
+master_instance_count: 3
+worker_instance_count: 4
+
+ai_control_plane_cores: 16
+ai_control_plane_memory: 64Gi
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.19"
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: false
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_cert_manager
+- ocp4_workload_external_odf
+- ocp4_workload_authentication
+- ocp4_workload_openshift_gitops
+- ocp4_workload_ansible_automation_platform_25
+- ocp4_workload_gitea_operator
+- ocp4_workload_codeserver
+- ocp4_workload_gitops_bootstrap
+- ansible_automation_platform_configuration
+- ocp4_workload_devspaces
+- ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_count: 1
+ocp4_workload_user_base: user
+ocp4_workload_multi_user: false
+
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_admin_password length=12 chars=ascii_letters,digits')
+  }}
+common_user_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_user_password length=12 chars=ascii_letters,digits')
+  }}
+
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.19_2025_08_11
+
+# -------------------------------------------------------------------
+# ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1.15
+ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_cert_manager_starting_csv: cert-manager-operator.v1.15.0
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# -------------------------------------------------------------------
+odf_channel: stable-4.18
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ ocp4_workload_user_count }}"
+# required for ansible_automation_platform_configuration oc login
+ocp4_workload_authentication_remove_kubeadmin: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.15
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.0.7
+ocp4_workload_gitea_operator_starting_csv: gitea-operator.v2.0.7
+
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.21.11"
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel9/postgresql-13
+ocp4_workload_gitea_operator_postgresql_image_tag: 1-165
+
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_user_count }}"
+ocp4_workload_gitea_operator_generate_user_format: >-
+  {{ ocp4_workload_user_base + '%d' if ocp4_workload_multi_user else ocp4_workload_user_base + '1' }}
+ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
+ocp4_workload_gitea_operator_migrate_repositories: false
+#ocp4_workload_gitea_operator_repositories_list:
+#- repo: https://github.com/redhat-gpte-devopsautomation/virt-aap-day2-workspace
+#  name: "{{ common_user_workspace_repo }}"
+#  private: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_ansible_automation_platform_25
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_admin_password: "{{ common_admin_password }}"
+ocp4_workload_ansible_automation_platform_inject_manifest: true
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+ocp4_workload_ansible_automation_platform_create_eda_rolebinding: true
+ocp4_workload_ansible_automation_platform_ocp_cluster_role: cluster-reader
+
+# --------------------------------------------------------------------
+# ansible_automation_platform_configuration
+# --------------------------------------------------------------------
+ansible_automation_platform_configuration_host: "{{ aap_controller_web_url }}"
+ansible_automation_platform_configuration_username: admin
+ansible_automation_platform_configuration_password: "{{ aap_controller_admin_password }}"
+ansible_automation_platform_configuration_verify_ssl: true
+ansible_automation_platform_configuration_create_controller_token: true
+ansible_automation_platform_configuration_generate_ocp_token: true
+
+controller_dependency_check: false
+
+# --------------------------------------------------------------------
+# ansible_automation_platform_configuration
+# --------------------------------------------------------------------
+aap_hostname: "{{ ansible_automation_platform_configuration_host }}"
+aap_username: "{{ ansible_automation_platform_configuration_username }}"
+aap_password: "{{ ansible_automation_platform_configuration_password }}"
+aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
+
+aap_configuration_dispatcher_roles:
+- role: gateway_settings
+  var: gateway_settings
+  tags: gateway_settings
+- role: controller_credentials
+  var: controller_credentials
+  tags: controller_credentials
+- role: controller_inventories
+  var: controller_inventories
+  tags: controller_inventories
+
+gateway_settings:
+  SESSION_COOKIE_AGE: 9000
+
+controller_credentials:
+- name: "OpenShift Credential"
+  description: "OpenShift API Bearer Token"
+  organization: Default
+  credential_type: "OpenShift or Kubernetes API Bearer Token"
+  inputs:
+    host: "{{ openshift_api_url }}"
+    bearer_token: "{{ openshift_bearer_token }}"
+    verify_ssl: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_devspaces
+# -------------------------------------------------------------------
+ocp4_workload_devspaces_channel: stable
+ocp4_workload_devspaces_catalogsource_setup: true
+ocp4_workload_devspaces_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_devspaces_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_devspaces_startingcsv: devspacesoperator.v3.21.0
+
+# ------------------------------------------------------
+# ocp4_workload_showroom
+# ------------------------------------------------------
+# FORKED: ocp4_workload_showroom_content_git_repo: https://github.com/redhat-gpte-devopsautomation/virt-aap-day2-showroom
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom-virt-aap-day-2
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: 1.3.2
+ocp4_workload_showroom_content_only: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: d27468f2-1bc9-4281-816f-025e08004243
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.1
+      pull: missing
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: OcpSandbox
+    namespace_suffix: ocp4-cluster
+    cloud_selector:
+      cloud: cnv
+      purpose: prod
+      virt: "yes"
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "ETX Ansible"
+    category: Labs
+    multiuser: false
+    keywords:
+    - etx
+    - aap
+    - ocp
+    - ansible
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Cloud
+  tower:
+    timeout: 14400
+  owners:
+    maintainer:
+    - name: Mitesh Sharma
+      email: mitsharm@redhat.com
+    sme:
+    - name: Andrew Block
+      email: ablock@redhat.com
+    instructions:
+    - name: Andrew Block
+      email: ablock@redhat.com
