@@ -51,7 +51,7 @@ worker_instance_count: 3
 bastion_instance_type: t3a.small
 bastion_instance_image: RHEL96GOLD-latest
 
-gpu_instance_type: "{{ 'g6e.2xlarge' if gpu_size == 'single_gpu_instances' else 'g6.12xlarge' }}"
+gpu_instance_type: "{{ gpu_instance_type_selection }}"
 
 # -------------------------------------------------------------------
 # Repos
@@ -132,9 +132,9 @@ ocp4_workload_machinesets_machineset_groups:
   role: worker-gpu
   instance_type: "{{ gpu_instance_type }}"
   autoscale: false
-  total_replicas: 1
-  total_replicas_min: 1
-  total_replicas_max: 2
+  total_replicas: "{{ gpu_replica_count }}"
+  total_replicas_min: "{{ gpu_replica_count }}"
+  total_replicas_max: "{{ gpu_replica_count }}"
   taints:
   - key: nvidia.com/gpu
     value: true
@@ -384,16 +384,26 @@ __meta__:
       Product: Red_Hat_OpenShift_AI
       Product_Family: Red_Hat_AI
     parameters:
-    - name: gpu_size
-      description: Choose single or multi GPU instances
-      formLabel: GPU Instance Sizes
+    - name: gpu_instance_type_selection
+      description: Choose GPU instance type
+      formLabel: GPU Instance Type
       required: true
       openAPIV3Schema:
         type: string
-        default: single_gpu_instances
+        default: g6e.2xlarge
         enum:
-        - single_gpu_instances
-        - multi_gpu_instances
+        - g6e.2xlarge
+        - g6.12xlarge
+    - name: gpu_replica_count
+      description: Number of GPU nodes to provision
+      formLabel: Number of GPU Nodes
+      required: true
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        enum:
+        - 1
+        - 2
     - name: ocp4_workload_gitops_bootstrap_repo_revision
       description: GitOps Repository Revision
       formLabel: GitOps Repository Revision
