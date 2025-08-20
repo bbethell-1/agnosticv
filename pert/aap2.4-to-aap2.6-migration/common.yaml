@@ -1,0 +1,417 @@
+---
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-aap.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-regions-6.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+
+# ---------------------------------------------------------------------
+# Mandatory Variables
+# ---------------------------------------------------------------------
+
+env_type: base-infra
+cloud_provider: ec2
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# --------------------------------------------------------------------
+# Platform
+# --------------------------------------------------------------------
+
+platform: RHPDS
+
+# --------------------------------------------------------------------
+# Repos and packages
+# --------------------------------------------------------------------
+
+use_content_view: true
+update_packages: true      # Do you want to run a full yum update
+
+agd_bastion_packages:
+
+  - at
+  - bash-completion
+  - bind-utils
+  - git
+  - podman
+  - tmux
+  - vim-enhanced
+  - wget
+  - ansible-core
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+
+repo_method: satellite
+
+# -------------------------------------------------------------------
+# asset_injector_assets
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+
+  - description: AAP2 x86 Installer
+    type: http
+    dest: /home/devops/ansible-automation-platform-containerized-setup-bundle-2.4-x86_64.tar.gz
+    src: >-
+      https://gpte-public.s3.amazonaws.com/aap2/ansible-automation-platform-setup-bundle-2.4-6-x86_64.tar.gz
+    owner: devops
+    group: users
+    mode: u=rw,g=r,o=r
+
+  - description: Inventory - AAP2 infra && app infra
+    type: template
+    src: ./files/hosts_template.j2
+    dest: /home/devops/inventory
+    owner: devops
+    group: users
+    mode: u=rw,g=r,o=r
+
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Adding a patch to the file
+    type: blockinfile
+    path: /home/devops/patch.yml
+    state: present
+    create: true
+    marker: "# {mark} Our custom patch settings via Ansible"
+    block: |
+     # Adding the patch for the installer
+     - name: Install psycopg2 using pip on RHEL
+       hosts: all
+       tasks:
+       - name: Install python3-pip
+         ansible.builtin.dnf:
+           name: python3-pip
+           state: present
+         become: true
+       - name: running the command
+         ansible.builtin.command: python3 -m pip install "psycopg[binary]"
+
+  - description: Run command to patch the installer
+    type: command
+    cmd: 'ansible-playbook /home/devops/patch.yml -i /home/devops/inventory'
+
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
+
+  - description: Update sshd_config for password auth
+    type: lineinfile
+    path: /home/lab-user/.challenge
+    state: present
+    create: true
+    line: "{{ common_password }}"
+
+  - description: Add vim profile
+    type: lineinfile
+    path: /home/lab-user/.vimrc
+    state: present
+    create: true
+    line: "autocmd FileType yaml setlocal ai ts=2 et nu cuc cursorline"
+
+# -------------------------------------------------------------------
+# inventory_groups (optional but nice to have)
+# -------------------------------------------------------------------
+
+inventory_groups:
+  - bastions
+  - aap2
+  - aap_controller
+  - aap_database
+  - aap_hub
+  - aap_eda
+
+# -------------------------------------------------------------------
+# Role: common
+# -------------------------------------------------------------------
+
+student_name: devops
+student_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Role: ansible_service_account
+# -------------------------------------------------------------------
+
+ansible_service_account_user_name: "{{ student_name }}"
+ansible_service_account_user_password: "{{ common_password }}"
+ansible_service_account_user_preferred_python: "3.9"
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+
+rootfs_size_rhel9: 50
+
+cloud_tags:
+  env_type: "{{ env_type }}"
+  platform: "{{ platform | default('unknown') }}"
+
+default_instance_type: t3a.medium
+default_instance_image: RHEL95GOLD-latest
+
+bastion_instance_type: "{{ default_instance_type }}"
+bastion_instance_image: "{{ default_instance_image }}"
+
+aap2_rootfs_size: 200
+aap2_instance_type: t3a.xlarge  # Runs AAP2 Containerized, needs 16GB etc
+aap2_instance_image: "{{ default_instance_image }}"
+
+
+# -------------------------------------------------------------------
+# Multi-Tier App Instance Config
+# -------------------------------------------------------------------
+
+aap_database_instance_type: "{{ default_instance_type }}"
+aap_database_instance_image: "{{ default_instance_image }}"
+
+aap_hub_instance_type: t3a.xlarge
+aap_hub_instance_image: "{{ default_instance_image }}"
+
+aap_controller_instance_type: t3a.xlarge
+aap_controller_instance_image: "{{ default_instance_image }}"
+
+instances:
+
+  - name: bastion
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ bastion_instance_image }}"
+    flavor:
+      ec2: "{{ bastion_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ rootfs_size_bastion | default(50)  }}"
+    security_groups:
+      - BastionSG
+
+
+  - name: aap2
+    count: 1
+    unique: true
+    public_dns: true
+    dns_loadbalancer: true
+    floating_ip: true
+    image: "{{ aap2_instance_image }}"
+    flavor:
+      ec2: "{{ aap2_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "aap2"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    rootfs_size: "{{ rootfs_size_controller | default(50)  }}"
+    security_groups:
+      - BastionSG
+      - AAP2SG
+
+  - name: aap-controller
+    count: 1
+    unique: true
+    public_dns: false
+    image: "{{ aap_controller_instance_image }}"
+    flavor:
+      ec2: "{{ aap_controller_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "aap_controller"
+      - key: "ostype"
+        value: "rhel"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    security_groups:
+      - DefaultSG
+      - HostSG
+
+  - name: aap-database
+    count: 1
+    unique: true
+    public_dns: false
+    image: "{{ aap_database_instance_image }}"
+    flavor:
+      ec2: "{{ aap_database_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "aap_database"
+      - key: "ostype"
+        value: "rhel"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    security_groups:
+      - DefaultSG
+      - HostSG
+
+  - name: aap-hub
+    count: 1
+    unique: true
+    public_dns: false
+    image: "{{ aap_hub_instance_image }}"
+    flavor:
+      ec2: "{{ aap_hub_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "aap_hub"
+      - key: "ostype"
+        value: "rhel"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    security_groups:
+      - DefaultSG
+      - HostSG
+
+  - name: aap-eda
+    count: 1
+    unique: true
+    public_dns: false
+    image: "{{ aap_hub_instance_image }}"
+    flavor:
+      ec2: "{{ aap_hub_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "aap_eda"
+      - key: "ostype"
+        value: "rhel"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ email }}"
+    security_groups:
+      - DefaultSG
+      - HostSG
+
+# -------------------------------------------------------------------
+# Security Group Config
+# -------------------------------------------------------------------
+
+security_groups:
+  - name: BastionSG
+    rules:
+      - name: BasSSHPublic
+        description: "SSH public"
+        from_port: 22
+        to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: HTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: HTTPSPorts
+        description: "HTTP Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: HostSG
+    rules:
+      - name: FromHostSG
+        description: "Allow everything from HostSG nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: -1
+        from_group: HostSG
+        rule_type: Ingress
+
+  - name: AAP2SG
+    rules:
+      - name: AAP2HTTP
+        description: "AAP2 HTTP endpoints for Controller, Hub, EDA"
+        from_port: 80
+        to_port: 83
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: AAP2HTTPS
+        description: "AAP2 HTTPS endpoints for Controller, Hub, EDA"
+        from_port: 443
+        to_port: 446
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: ssh
+        description: "ssh"
+        from_port: 22
+        to_port: 83
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: eb2678e9-1caf-40a0-9751-12334b2dbcf3
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    reportingLabels:
+      primaryBU: Automation
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Product Enablement: Fast-Track Ansible Automation Platform Migration"
+    category: Labs
+    keywords:
+      - migration aap
+      - ansible automation platform
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Automation
+      Provider: Product_Technical_Learning
+    multiuser: false
+    parameters: []
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2025-04-14
+      pull: missing
+  owners:
+    maintainer:
+      - name: Amrinder Singh
+        email: amrsingh@redhat.com
+    sme:
+      - name: Amrinder Singh
+        email: amrsingh@redhat.com
+    instructions:
+      - name: Amrinder Singh
+        email: amrsingh@redhat.com
