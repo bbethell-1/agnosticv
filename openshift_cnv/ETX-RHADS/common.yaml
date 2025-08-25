@@ -42,7 +42,6 @@ student_name: lab-user
 bastion_instance_image: rhel-9.6
 rhel_instance_image: rhel-10.0
 rootfs_size_rhel: 50Gi
-node_name: rhads-node
 pv_size_node: 8Gi
 
 openshift_cnv_legacy_routes: true
@@ -78,81 +77,118 @@ instances:
         targetPort: 443
         tls: true
 
-  - name: "{{ node_name }}"
-    count: 3
+  - name: "rhtas"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel_instance_image }}"
+    memory: 8G
+    cores: 2
+    image_size: 10Gi
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: rhtas-ssh
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: rhtas-ssh
+      - name: rhtas-https
+        ports:
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: rhtas-https
+    routes:
+      - name: rhtas-https
+        host: rhtas
+        service: rhtas-https
+        targetPort: 443
+        tls: true
+
+  - name: "rhtpa"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel_instance_image }}"
+    memory: 48G
+    cores: 24
+    image_size: 100Gi
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel10_nodes"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: rhtpa-ssh
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: rhtpa-ssh
+
+  - name: "utility"
+    count: 1
     unique: true
     public_dns: false
     floating_ip: false
     image: "{{ rhel_instance_image }}"
     memory: 16G
-    cores: 8
-    image_size: "{{ rootfs_size_rhel }}"
+    cores: 4
+    image_size: 50Gi
     tags:
       - key: "AnsibleGroup"
-        value: "rhads_nodes"
+        value: "servers"
       - key: "ostype"
         value: "linux"
     services:
-      - name: node-http
+      - name: utility-ssh
         ports:
-          - port: 80
+          - port: 22
             protocol: TCP
-            targetPort: 80
-            name: node-http
-      - name: node-https
+            targetPort: 22
+            name: utility-ssh
+      - name: utility-https
         ports:
           - port: 443
             protocol: TCP
             targetPort: 443
-            name: node-https
+            name: utility-https
+      - name: utility-http-alt
+        ports:
+          - port: 8080
+            protocol: TCP
+            targetPort: 8080
+            name: utility-http-alt
+      - name: utility-https-alt
+        ports:
+          - port: 8443
+            protocol: TCP
+            targetPort: 8443
+            name: utility-https-alt
+      - name: utility-postgres
+        ports:
+          - port: 5432
+            protocol: TCP
+            targetPort: 5432
+            name: utility-postgres
     routes:
-      - name: node-http
-        host: node
-        service: node-http
-        targetPort: 80
-        tls: false
-      - name: node-https
-        host: node
-        service: node-https
+      - name: utility-https
+        host: utility
+        service: utility-https
         targetPort: 443
         tls: true
-    disks:
-      - metadata:
-          name: "{{ node_name }}{{ guid }}"
-        spec:
-          source:
-            blank: {}
-          pvc:
-            accessModes:
-              - ReadWriteMany
-            volumeMode: Block
-            resources:
-              requests:
-                storage: "{{ pv_size_node }}"
-      - metadata:
-          name: "{{ node_name }}{{ guid }}1"
-        spec:
-          source:
-            blank: {}
-          pvc:
-            accessModes:
-              - ReadWriteMany
-            volumeMode: Block
-            resources:
-              requests:
-                storage: "{{ pv_size_node }}"
-      - metadata:
-          name: "{{ node_name }}{{ guid }}2"
-        spec:
-          source:
-            blank: {}
-          pvc:
-            accessModes:
-              - ReadWriteMany
-            volumeMode: Block
-            resources:
-              requests:
-                storage: "{{ pv_size_node }}"
+      - name: utility-http-alt
+        host: utility-alt
+        service: utility-http-alt
+        targetPort: 8080
+        tls: false
 
 # -------------------------------------------------------------------
 # Common Packages for RHEL 10 nodes
@@ -314,9 +350,9 @@ asset_injector_assets:
 # -------------------------------------------------------------------
 agnosticv_importdata:
   guid: "{{ guid }}"
-  workshop_cockpit_url: "https://rhads-node1.{{ subdomain }}"
-  workshop_cockpit_user_name: "{{ student_name }}"
-  workshop_cockpit_user_password: "{{ common_password }}"
+  # workshop_cockpit_url: "https://rhads-node1.{{ subdomain }}"
+  # workshop_cockpit_user_name: "{{ student_name }}"
+  # workshop_cockpit_user_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
 # Role: showroom
@@ -364,7 +400,7 @@ __meta__:
         virt: "yes"
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "ETX RHADS"
+    display_name: "RHADS RHEL"
     category: Labs
     multiuser: false
     keywords:
