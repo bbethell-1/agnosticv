@@ -189,6 +189,27 @@ ocp4_workload_openshift_gitops_rbac_policy: |
   g, user1, role:admin
 ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
 
+ocp4_workload_openshift_gitops_resource_health:
+  - check: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.modelStatus ~= nil then
+          if obj.status.modelStatus.transitionStatus == "UpToDate" then
+            hs.status = "Healthy"
+            hs.message = obj.status.url
+          else
+            hs.status = "Progressing"
+            hs.message = obj.status.modelStatus.transitionStatus
+          end
+          return hs
+        end
+      end
+      hs.status = "Degraded"
+      hs.message = "Not at latest version, no known status"
+      return hs
+    group: serving.kserve.io
+    kind: InferenceService
+
 # -------------------------------------------------------------------
 # ocp4_workload_nvidia_gpu_setup
 # -------------------------------------------------------------------
