@@ -1,0 +1,93 @@
+---
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/terms-of-service.yaml
+
+# Agnosticd variables
+env_type: ocp-workloads
+cloud_provider: multi
+software_to_deploy: none
+
+infra_workloads:
+- ocp4_workload_authentication
+
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_htpasswd_user_count: 1
+ocp4_workload_authentication_htpasswd_user_name: developer
+ocp4_workload_authentication_admin_user: admin
+
+__meta__:
+  asset_uuid: 11c60af8-1ae5-4e86-bb11-6614b4b0e86e
+  owners:
+    maintainer:
+    - name: Prakhar Srivastava
+      email: prakhar@redhat.com
+    sme:
+    - name: Prakhar Srivastava
+      email: prakhar@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-test
+
+  catalog:
+    display_name: "OCP Pool Test: Getting started"
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    labels:
+      Provider: RHDP
+    parameters:
+    - name: cluster_size
+      description: >-
+        Cluster size configuration that determines the number of control plane and worker nodes.
+        Small (default): 1 control plane, 0 workers (Single Node OpenShift).
+        Medium: 3 control planes, 4 workers.
+        Large: 3 control planes, 8 workers.
+      formLabel: Cluster Size
+      openAPIV3Schema:
+        type: string
+        default: small
+        enum:
+        - small
+        - medium
+        - large
+    - name: ocp4_installer_version
+      description: Version of OpenShift to Install
+      formLabel: OpenShift Version
+      required: false
+      openAPIV3Schema:
+        type: string
+        default: '4.19'
+        enum:
+        - '4.18'
+        - '4.19'
+      # Parameter for openshift cluster
+      components:
+      - name: openshift
+
+  # Components to include in template and catalog item
+  components:
+  - name: openshift
+    display_name: OpenShift Cluster
+    item: openshift_cnv/ocp-cnv-pools/dev
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+
+  # Disable actions on chained config that are handled by base.
+  deployer:
+    actions:
+      destroy:
+        disable: true
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true

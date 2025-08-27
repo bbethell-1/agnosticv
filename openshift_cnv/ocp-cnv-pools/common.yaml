@@ -1,0 +1,151 @@
+---
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# OpenShift GitOps Blank Environment
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Top level vars
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+platform: rhpds
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.5
+bastion_cores: 2
+bastion_memory: 4Gi
+
+# Cluster sizing based on selected size (small/medium/large)
+master_instance_count: "{{ 1 if cluster_size == 'small' else 3 }}"
+worker_instance_count: "{{ 0 if cluster_size == 'small' else (4 if cluster_size == 'medium' else 8) }}"
+
+ai_control_plane_cores: 16
+ai_control_plane_memory: "{{ '64Gi' if cluster_size == 'small' else '32Gi' }}"
+
+ai_workers_cores: 8
+ai_workers_memory: 16Gi
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+# ocp4_installer_version: "4.18"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_cert_manager
+
+
+# -------------------------------------------------------------------
+# ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1.15
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: e0601c90-acf9-4719-aff7-05ecb27fdd92
+  owners:
+    maintainer:
+    - name: Prakhar Srivastava
+      email: prakhar@redhat.com
+    sme:
+    - name: Prakhar Srivastava
+      email: prakhar@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: OcpSandbox
+    namespace_suffix: ocp4-cluster
+    cloud_selector:
+      cloud: cnv
+      purpose: prod
+      virt: "yes"
+  catalog:
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OCP CNV Pools
+    category: Open_Environments
+    multiuser: true
+    keywords:
+    - openshift
+    - gitops
+    - argocd
+    - single-node
+    - sno
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Featured_Score: '71'
+    parameters:
+    - name: cluster_size
+      description: >-
+        Cluster size configuration that determines the number of control plane and worker nodes.
+      formLabel: Cluster Size
+      openAPIV3Schema:
+        type: string
+        default: small
+        enum:
+        - small
+        - medium
+        - large
+    - name: ocp4_installer_version
+      description: OpenShift version to install
+      formLabel: OpenShift Version
+      required: false
+      openAPIV3Schema:
+        type: string
+        default: '4.19'
+        enum:
+        - '4.18'
+        - '4.19'
+      annotation: demo.redhat.com/ocp-version
+      variable: ocp4_installer_version
