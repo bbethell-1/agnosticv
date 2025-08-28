@@ -1,0 +1,75 @@
+---
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/terms-of-service.yaml
+
+# Agnosticd variables
+cloud_provider: test
+env_type: test-empty-config
+
+__meta__:
+  anarchy:
+    namespace: babylon-anarchy-test
+
+  asset_uuid: 9a3f7eef-ffa9-45c5-8352-5c64c3ee2693
+  owners:
+    maintainer:
+    - name: Johnathan Kupferer
+      email: jkupferer@redhat.com
+
+  catalog:
+    display_name: Test Parameter Translation
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    labels:
+      Provider: RHDP
+    parameters:
+    - name: provision_delay
+      formLabel: Provision Delay
+      openAPIV3Schema:
+        type: string
+        default: none
+        enum:
+        - none
+        - short
+        - medium
+        - long
+
+  # Components to include in template and catalog item
+  components:
+  - name: base
+    display_name: Base Empty Config
+    item: tests/TEST_EMPTY_CONFIG
+    # Propagate agnosticd_user_info data set by this component to variables.
+    parameter_values:
+      fail_software: false
+      test_empty_config_host_count: 0
+      test_empty_config_pause_post_software: >-
+        {{(provision_delay != 'none')|bool}}
+      test_empty_config_pause_post_software_seconds: >-
+        {{(
+          15 if provision_delay == 'short' else
+          60 if provision_delay == 'medium' else
+          300 if provision_delay == 'long' else
+          0
+        )|int}}
+    propagate_provision_data:
+    - name: random_string
+      var: base_random_string
+    when: base_component | default('none') == 'test-empty-config'
+
+  # Disable actions on chained config that are handled by base.
+  deployer:
+    actions:
+      destroy:
+        disable: true
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+      pull: missing
