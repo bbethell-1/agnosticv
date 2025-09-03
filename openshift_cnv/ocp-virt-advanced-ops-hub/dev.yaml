@@ -1,8 +1,12 @@
 ---
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
 # -------------------------------------------------------------------
 # Purpose - Cost tag. One of development, ilt, production, event
 # -------------------------------------------------------------------
 purpose: development
+
+software_to_deploy: openshift4_hcp_cnv
 
 # -------------------------------------------------------------------
 # Bastion
@@ -16,11 +20,17 @@ student_sudo: true
 # -------------------------------------------------------------------
 # OpenShift
 # -------------------------------------------------------------------
+ocp4_installer_version: "4.18.22"
 
-ocp4_installer_version: "4.18"
+hcp_control_plane_cores: 32
+hcp_control_plane_memory: '48Gi'
+hcp_workers_memory: 48Gi
+hcp_workers_cores: 24
+
+worker_instance_count: 3
+
 #ai_workers_cores: 24
-ai_workers_memory: 48Gi
-ai_control_plane_memory: 48Gi
+#ai_control_plane_memory: 48Gi
 
 ocp4_workload_lvms_channel: stable-4.18
 ocp4_workload_cert_manager_use_catalog_snapshot: false
@@ -30,15 +40,28 @@ ocp4_workload_rhacm_use_catalog_snapshot: false
 
 ocp4_workload_showroom_content_git_repo_ref: main
 
-ocp4_workload_rhacm_acm_channel: "release-2.13"
+ocp4_workload_rhacm_acm_channel: "release-2.14"
+# 3scale requires RWX storage, so disable it for now.
+ocp4_workload_gitops_bootstrap_helm_values:
+  user:
+    count: "{{ num_users }}"
+  applications:
+    rhacm_config:
+      enabled: true
 
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_rhacm_cloud_credentials
-# -------------------------------------------------------------------
-ocp4_workload_rhacm_cloud_credentials_kubevirt: true
-ocp4_workload_rhacm_cloud_credentials_install_hcp_cli: true
+infra_workloads:
+- ocp4_workload_external_odf
+- ocp4_workload_cert_manager
+- ocp4_workload_openshift_gitops
+- ocp4_workload_gitops_bootstrap
 
-ocp4_pull_secret: "{{ ocp4_ai_pull_secret }}"
+# # -------------------------------------------------------------------
+# # Workload: ocp4_workload_rhacm_cloud_credentials
+# # -------------------------------------------------------------------
+# ocp4_workload_rhacm_cloud_credentials_kubevirt: true
+# ocp4_workload_rhacm_cloud_credentials_install_hcp_cli: true
+#
+# ocp4_pull_secret: "{{ ocp4_ai_pull_secret }}"
 
 # hcp_etcd_storage_class: "hostpath-csi"
 # hcp_disable_storage_class: true
@@ -57,13 +80,18 @@ __meta__:
   sandboxes:
   - kind: OcpSandbox
     namespace_suffix: ocp4-cluster
+    alias: A
+    quota:
+      limits.cpu: "128"
+      requests.cpu: "128"
     cloud_selector:
       cloud: cnv
-      purpose: prod
       virt: "yes"
-    quota:
-      requests.storage: "2000Gi" # 4 * 20Gi:  ~ 80 Gi
-      limits.cpu: "256" # 16 * 3 + 16 * 4 : ~  120 cores
-      requests.cpu: "256"
-      limits.memory: "500Gi" # 48 * 4 + 16 * 3 : ~ 250 Gi
-      requests.memory: "500Gi"
+      hcp: "no"
+  - kind: OcpSandbox
+    var: sandbox_hcp
+    namespace_suffix: ocp4-cluster
+    alias: B
+    cloud_selector:
+      hcp: "yes"
+    cluster_condition: child('A')
