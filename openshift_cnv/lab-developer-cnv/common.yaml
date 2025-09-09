@@ -1,0 +1,132 @@
+---
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+
+env_type: lab-developer-cnv
+cloud_provider: openshift_cnv
+
+# -------------------------------------------------------------------
+# Demo Config
+# -------------------------------------------------------------------
+
+git_config_directory: |-
+  {{ ocp4_workload_showroom_content_git_repo  |
+    replace('.git','/refs/heads/' + ocp4_workload_showroom_content_git_repo_ref + '/config/') |
+    replace('github.com','raw.githubusercontent.com') }}
+
+zero_touch_egress_lockdown_rules: "{{ (lookup('ansible.builtin.url', git_config_directory + 'firewall.yaml', split_lines=False, errors='warn') | default('{}') | from_yaml).egress | default([]) }}"
+zero_touch_ingress_lockdown_rules: "{{ (lookup('ansible.builtin.url', git_config_directory + 'firewall.yaml', split_lines=False, errors='warn') | default('{}') | from_yaml).ingress | default([]) }}"
+containers: "{{ (lookup('ansible.builtin.url', git_config_directory + 'instances.yaml', split_lines=False, errors='warn') | default('[]') | from_yaml).containers | default([]) }}"
+instances: "{{ (lookup('ansible.builtin.url', git_config_directory + 'instances.yaml', split_lines=False, errors='warn') | default('[]') | from_yaml).virtualmachines | default([]) }}"
+networks: "{{ lookup('ansible.builtin.url', git_config_directory + 'networks.yaml', split_lines=False, errors='warn') | default('[]') | from_yaml | default([]) }}"
+#
+# Zero Touch
+#
+
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_antora_playbook: site.yml
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+ocp4_workload_showroom_terminal_type: wetty
+
+ocp4_workload_showroom_zero_touch_bundle: "https://github.com/rhpds/nookbag/releases/download/nookbag-v0.0.5/nookbag-v0.0.5.zip"
+ocp4_workload_showroom_zero_touch_ui_enabled: "true"
+
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: zerotouch
+ocp4_workload_showroom_deployer_chart_version: "1.9.10"
+ocp4_workload_showroom_content_image: quay.io/rhpds/showroom-content:v1.2
+ocp4_workload_showroom_cloud_image: quay.io/rhpds/showroom-cloud:v1
+openshift_cnv_route_remove_x_frame_options_header: true
+ocp4_workload_showroom_terminal_enable: true
+ocp4_workload_showroom_use_sandbox_domain: true
+
+
+bastion_prefix: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}"
+ansible_service_account_user_name: rhel
+ansible_service_account_user_password: "{{ common_password }}"
+_showroom_user_data:
+  bastion_ssh_command: "ssh {{ ansible_service_account_user_name }}@{{ groups['bastions'][0]  }}"
+  bastion_ssh_user_name: "{{ ansible_service_account_user_name }}"
+  bastion_ssh_password: "{{ ansible_service_account_user_password }}"
+  bastion_public_hostname: "{{ bastion_prefix }}"
+  guid: "{{ guid }}"
+  domain: "{{ sandbox_openshift_apps_domain }}"
+  environment_variables:
+    guid: "{{ guid }}"
+    domain: "{{ sandbox_openshift_apps_domain }}"
+
+# -------------------------------------------------------------------
+# Enable or disable DNS availablity on the VPC after the deployment
+# Enable lock_bastion_security_group
+# -------------------------------------------------------------------
+dns_support_state: true
+lock_env_security_groups: true
+
+# -------------------------------------------------------------------
+# Config Pre/Software/Post Workloads
+# -------------------------------------------------------------------
+#software_workloads:
+#  bastions:
+#    - vscode-server
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+#student_name: rhel
+student_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+repo_method: satellite
+use_content_view: true
+install_common: false
+agd_install_common: false
+agd_install_bastion_base: false
+# Only used allow Password authentication on SSH
+zero_touch_rhel_user: true
+
+ansible_user: cloud-user
+remote_user: cloud-user
+
+student_name: rhel
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: d499ee47-5f3c-4e85-a14f-142b20793dfb
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Developer Experience - RHDP
+    category: Workshops
+    keywords:
+      - rhdp
+      - developer-experience
+    parameters:
+      - name: ocp4_workload_showroom_content_git_repo
+        description: Git repo
+        formLabel: Git repo
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: https://github.com/rhpds/zt-networking-basics.git
+      - name: ocp4_workload_showroom_content_git_repo_ref
+        description: Git branch
+        formLabel: Git branch
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: main
+
+  secrets: []
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+      pull: missing
