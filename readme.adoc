@@ -296,8 +296,6 @@ Meta variables are just variables like any other, except they are not used for a
 
 Variables in agnosticv are merged and then passed directly to `ansible-playbook` command.
 
-If you want to change something happening *before* that, for example "specify what secrets to pass to agnosticd", you have to configure your catalog item (or account) using variables from the `agnosticv_meta` dictionary.
-
 The following variables work with the BASH deployment scripts (Located in OPEN_Admin repository).
 
 |=============================================
@@ -397,70 +395,16 @@ If set to `false`, the deletions of sandboxes can be run in parallel.
 | The playbook to use for start / stop / status actions. By default, the one in the config directory is used. If it doesn't exist, then the common link:https://github.com/redhat-cop/agnosticd/blob/development/ansible/lifecycle.yml[`lifecycle.yml`] is used, which just turns on/off the instances.
 | Overwrite
 
-| `deploy_with`
-| String
-| `local`
-| The deployment suite to use. The default is `local`.
-
-`local`: use the `ansible-playbook` command directly from the admin host
-
-`babylon`: Use Babylon. You must set `agnosticv_meta.babylon` to configure it. You must also use the "babylon" virtualenv.
-| Overwrite
-
-| `babylon.kubeconfig`
-| String
-| None
-| The kubeconfig file need to communicate with the Babylon OCP cluster. This file my exist locally on the admin host in `~/secrets/`
-| Overwrite
 |=============================================
-
-.example
-[source,yaml]
-----
-agnosticv_meta:
-  secrets:
-    - gpte
-    - ocp4_special_token
-
-  params_to_variables:
-    user: student_name
-----
 
 === Babylon backend
 
 See reference documentation in the GPTE wiki: https://ipamwiki.opentlc.com/index.php/Babylon_AgnosticV
 
-`agnosticv_meta` variables are not for babylon. But you can use them to tell the deployer script to use Babylon in the background.
-
 The deployer script located on the admin hosts, `ALL_agnosticv.sh` has now the capability to deploy an environment using our link:https://github.com/redhat-cop/babylon[Babylon] clusters.
 Instead of running the `ansible-playbook` locally on the admin host, the script will call Babylon components and let Babylon (down to Ansible Tower) handle the deployment.
 
 In order to do that, there are a few things to add to your catalog item in agnosticv:
-
-. In `agnosticv_meta`, set the following variables:
-+
-[source,yaml]
-----
-agnosticv_meta:
-  # Instead of running ansible-playbook from the admin host,
-  # tell ALL_agnosticv.sh to use babylon to deploy.
-  deploy_with: babylon
-----
-+
-|===========================
-| kubeconfig | cluster
-
-| `babydev.kubeconfig`
-| link:https://github.com/redhat-gpe/babylon-private/tree/master/envs/babydev-ocp[babydev]
-| `babytest.kubeconfig`
-| link:https://github.com/redhat-gpe/babylon-private/tree/master/envs/babytest-ocp[babytest]
-| `ocp-us-east-1.kubeconfig`
-| link:https://github.com/redhat-gpe/babylon-private/tree/master/envs/ocp-us-east-1[ocp-us-east-1]
-| `ocp-us-west-2.kubeconfig`
-| link:https://github.com/redhat-gpe/babylon-private/tree/master/envs/ocp-us-east-1[ocp-us-west-2]
-| `babylon-prod.kubeconfig`
-| Link to current production cluster
-|===========================
 
 . Create `\\__meta__` dictionary containing the information needed by Babylon.
 +
@@ -493,27 +437,6 @@ __meta__:
 . Make sure you set `\\__meta__.catalog`, otherwise, the link:https://github.com/redhat-gpte-devopsautomation/agnosticv-operator[agnosticv-operator] will not pick up the catalog item.
 .. You can test that your catalog item is listed as a catalog item by using the link:https://github.com/redhat-cop/agnosticv/releases/[`agnosticv` CLI]: `agnosticv --list --has \\__meta__.catalog`
 .. You can test the content of your catalog item as follow: `agnosticv --merge path/to/your/catalog/item.yaml`
-. Make sure you pass secrets. The current secrets living in `~/secrets` on the admin hosts were all imported as OpenShift secrets in the `gpte` namespace. So you can use the same name. For example:
-+
-[source,yaml]
-----
-agnosticv_meta:
-  secrets:
-    - gpte
-    - ocp4_token
-----
-+
-Becomes:
-+
-[source,yaml]
-----
-__meta__:
-  secrets:
-    - name: gpte
-      namespace: gpte
-    - name: ocp4_token
-      namespace: gpte
-----
 
 ==== Scheduler ====
 
@@ -532,49 +455,6 @@ __meta__:
 
 When using the scheduler, the name of the secret will be set by the scheduler automatically, depending on the labels passed as `cloud_preference` and `cloud_selector`, so you don't need to set the secret of the cluster.
 For more information about the scheduler, please refer to the documentation in the wiki: https://ipamwiki.opentlc.com/index.php/AgnosticS
-
-==== Parameters passed from Cloudforms (reference only)
-
-Sometimes you want variables to be dynamic, and to come from a dialog in Cloudforms.
-
-In order to pass variables from Cloudforms up to Babylon, you will need to pay attention to the following:
-
-. Make sure the BASH parameter is translated to a variable by the `ALL_agnosticv.sh` script. This is defined by the `agnosticv_meta.params_to_variables` dictionary
-+
-[source,yaml]
-----
-agnosticv_meta:
-  params_to_variables:
-    appversion: ig_version
-----
-. Inform Babylon of all the variables you want to overwrite by using the `\\__meta__.catalog.parameters` list:
-+
-[souce,yaml]
-----
-__meta__:
-  catalog:
-    parameters:
-    - name: cloud_tags
-    - name: course_name
-    - name: email
-    - name: ipa_host_password
-    - name: install_lets_encrypt_certificates
-    - name: osrelease
-    - name: platform
-    - name: aws_region
-    - name: student_name
-    - name: ig_version
-----
-+
-TIP: Remember to use link:https://github.com/redhat-cop/agnosticv/releases/[`agnosticv` CLI] to get all the variables for a catalog item. You can install it on your laptop. It's also installed on admin hosts (prod & dev).
-+
-[WARNING]
-====
-If the variable passed by Cloudforms is not in `\\__meta__.catalog.parameters`, in Babylon, the value for that variable will not be passed to Tower. It will fallback to the value defined in agnostic**v**.
-
-Explanation: Everthing that is in `\\__meta__` is automatically parsed by the link:https://github.com/redhat-gpte-devopsautomation/agnosticv-operator[agnosticv-operator] to generate the AnarchyGovernors objects on the cluster. Those AnarchyGovernors contain the variables. If you want to allow those variables to be overwritten, you have to add them as parameters.
-====
-
 
 == Migrate a catalog item to agnosticv (reference only)
 
