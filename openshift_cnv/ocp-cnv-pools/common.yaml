@@ -3,6 +3,7 @@
 #include /includes/lifetime-standard.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/sandbox-api.yaml
+#include /includes/access-restriction-admins-only.yaml
 
 #include /includes/parameters/purpose.yaml
 
@@ -33,15 +34,21 @@ bastion_instance_image: rhel-9.5
 bastion_cores: 2
 bastion_memory: 4Gi
 
-# Cluster sizing based on selected size (small/medium/large)
-master_instance_count: "{{ 1 if cluster_size == 'small' else 3 }}"
-worker_instance_count: "{{ 0 if cluster_size == 'small' else (4 if cluster_size == 'medium' else 8) }}"
+# -------------------------------------------------------------------
+# Cluster sizing based on selected size (sno/multinode)
+# -------------------------------------------------------------------
+# SNO: 1 master node only
+# Multinode: 1 master + 2 worker nodes (8 cores, 8GB RAM each)
+master_instance_count: "{{ 1 if cluster_size == 'sno' else 1 }}"
+worker_instance_count: "{{ 0 if cluster_size == 'sno' else 2 }}"
 
+# Control plane configuration
 ai_control_plane_cores: 16
-ai_control_plane_memory: "{{ '64Gi' if cluster_size == 'small' else '32Gi' }}"
+ai_control_plane_memory: "{{ '64Gi' if cluster_size == 'sno' else '32Gi' }}"
 
-ai_workers_cores: 8
-ai_workers_memory: 16Gi
+# Worker node configuration (only for multinode)
+ai_workers_cores: "{{ 8 if cluster_size == 'multinode' else 0 }}"
+ai_workers_memory: "{{ '8Gi' if cluster_size == 'multinode' else '0Gi' }}"
 
 # -------------------------------------------------------------------
 # Repos
@@ -142,9 +149,8 @@ __meta__:
         type: string
         default: small
         enum:
-        - small
-        - medium
-        - large
+        - sno
+        - multinode
     - name: ocp4_installer_version
       description: OpenShift version to install
       formLabel: OpenShift Version
