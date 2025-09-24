@@ -107,8 +107,6 @@ worker_storage_size: 1500
 
 rootfs_size_bastion: 2048
 
-gpu_instance_type: g6.2xlarge
-
 # -------------------------------------------------------------------
 # OpenShift Base Domain (use cluster-{{ guid }}.sandboxXXX.opentlc.com
 # instead of cluster-{{ guid }}.{{ guid }}.sandboxXXX.opentlc.com
@@ -190,11 +188,6 @@ requirements_content:
 
 ocp4_network_type: OVNKubernetes
 
-# Because this environment includes Bare Metal instances wait longer for
-# CSRs to appear
-ocp4_approve_certificate_signing_requests_initial_delay: 240
-ocp4_approve_certificate_signing_requests_recheck_delay: 60
-
 # added secrets to access models from S3 bucket
 models_aws_s3_access_key: !vault |
   $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
@@ -247,12 +240,9 @@ infra_workloads:
   - ocp4_workload_authentication # all segments
   - ocp4_workload_cert_manager
   - ocp4_workload_openshift_data_foundation
-#  - ocp4_workload_machinesets
-#  - ocp4_workload_nvidia_gpu_setup
   - ocp4_workload_authorino
   - ocp4_workload_pipelines
   - ocp4_workload_openshift_gitops
-#  - ocp4_workload_gitea_operator
   - ocp4_workload_serverless
   - ocp4_workload_ossm
   - ocp4_workload_openshift_ai
@@ -297,61 +287,6 @@ ocp4_workload_openshift_data_foundation_new_default_storage_class_name: ocs-stor
 
 ocp4_workload_openshift_data_foundation_ceph_storage_system_deploy_timeout: 1500
 ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1500
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_machinesets
-# -------------------------------------------------------------------
-ocp4_workload_machinesets_disable_default_machinesets: false
-ocp4_workload_machinesets_wait_for_nodes: true
-
-# Add a MachineSet for AWS Bare Metal instances
-# To add another group of worker nodes - with autoscaling enabled add
-# the following:
-#
-ocp4_workload_machinesets_machineset_groups:
-  - name: worker-gpu
-    autoscale: true
-    total_replicas: 1
-    total_replicas_min: 1
-    total_replicas_max: 2
-    role: worker-gpu
-    taints:
-      - key: nvidia.com/gpu
-        value: true
-        effect: NoSchedule
-    instance_type: "{{ gpu_instance_type }}"
-    root_volume_size: "2000"
-
-#------------------------------------------------
-# ocp4_workload_nvidia_gpu_setup variables
-# ------------------------------------------------
-ocp4_workload_nvidia_gpu_setup_create_dashboard: true
-
-# ------------------------------------------------
-# Node Feature Discovery Operator
-# ------------------------------------------------
-nfd_operator_namespace: openshift-nfd
-nfd_operator_channel: "stable"
-nfd_operator_automatic_install_plan_approval: true
-nfd_operator_starting_csv: ""
-nfd_operator_wait_for_deploy: true
-nfd_operator_use_catalog_snapshot: false
-nfd_operator_catalogsource_name: ""
-nfd_operator_catalog_snapshot_image: ""
-nfd_operator_catalog_snapshot_image_tag: ""
-nfd_operator_operand_image: "registry.redhat.io/openshift4/ose-node-feature-discovery-rhel9:v4.18"
-
-# ------------------------------------------------
-# NVIDIA GPU Operator
-# ------------------------------------------------
-nvidia_gpu_operator_namespace: nvidia-gpu-operator
-nvidia_gpu_operator_channel: v24.9
-nvidia_gpu_operator_automatic_install_plan_approval: true
-nvidia_gpu_operator_starting_csv: gpu-operator-certified.v24.6.2
-nvidia_gpu_operator_wait_for_deploy: true
-nvidia_gpu_operator_use_catalog_snapshot: false
-nvidia_gpu_operator_catalogsource_name: ""
-nvidia_gpu_operator_catalog_snapshot_image: ""
-nvidia_gpu_operator_catalog_snapshot_image_tag: ""
 
 # ------------------------------------------------
 # ocp4_workload_authorino
@@ -497,55 +432,6 @@ bootstrap_user_name_base: user
 
 # --- Student Workloads (YAML List)
 student_workloads: []
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_gitea_operator
-# -------------------------------------------------------------------
-ocp4_workload_gitea_operator_project: gitea
-ocp4_workload_gitea_operator_catalog_image_tag: v2.0.1
-ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
-
-ocp4_workload_gitea_operator_deploy_gitea_instance: true
-ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: 1.20.0
-ocp4_workload_gitea_operator_name: gitea
-ocp4_workload_gitea_operator_gitea_hostname: gitea
-ocp4_workload_gitea_operator_ssl_route: true
-ocp4_workload_gitea_operator_gitea_image_pull_policy: IfNotPresent
-ocp4_workload_gitea_operator_postgresql_image_pull_policy: IfNotPresent
-ocp4_workload_gitea_operator_webhook_allowed_hosts_list: 'external,private'
-ocp4_workload_gitea_operator_webhook_skip_tls_verify: false
-#install_operator_namespace: gitea-operator
-#install_operator_catalogsource_namespace: gitea-operator
-ocp4_workload_gitea_operator_disable_registration: false
-ocp4_workload_gitea_operator_enable_captcha: false
-ocp4_workload_gitea_operator_allow_create_organization: true
-ocp4_workload_gitea_operator_register_email_confirm: false
-ocp4_workload_gitea_operator_enable_notify_email: false
-ocp4_workload_gitea_operator_mailer_enabled: false
-
-ocp4_workload_gitea_operator_create_admin: true
-ocp4_workload_gitea_operator_admin_user: opentlc-mgr
-ocp4_workload_gitea_operator_admin_email: opentlc-mgr@opentlc.com
-ocp4_workload_gitea_operator_admin_password: openshift
-
-# PVC size for Gitea, empty storage class uses default storage class
-ocp4_workload_gitea_operator_gitea_volume_size: 10Gi
-ocp4_workload_gitea_operator_gitea_volume_storage_class: ''
-
-# PVC size for PostgreSQL, empty storage class uses default storage class
-ocp4_workload_gitea_operator_postgresql_volume_size: 10Gi
-ocp4_workload_gitea_operator_postgresql_volume_storage_class: ''
-
-ocp4_workload_gitea_operator_create_users: true
-ocp4_workload_gitea_operator_user_number: 1
-ocp4_workload_gitea_operator_generate_user_format: lab-user
-ocp4_workload_gitea_operator_user_password: "{{ common_password }}"
-ocp4_workload_gitea_operator_migrate_repositories: true
-ocp4_workload_gitea_operator_repositories_list:
-  - repo: https://github.com/ritzshah/llm-rag-deployment.git
-    name: gen_ai_repo
-    private: false
 
 # -------------------------------------------------------------------
 # Babylon meta variables
