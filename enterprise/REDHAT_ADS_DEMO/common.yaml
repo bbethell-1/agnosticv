@@ -53,7 +53,7 @@ update_packages: true
 # -------------------------------------------------------------------
 # OpenShift Version
 # -------------------------------------------------------------------
-ocp4_installer_version: "4.18"
+ocp4_installer_version: "4.19"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 
 # -------------------------------------------------------------------
@@ -65,7 +65,7 @@ common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 # Workload variables
 # -------------------------------------------------------------------
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.18_2025_03_03
+ocp4_workload_catalogsource_tag: v4.19_2025_09_22
 num_users: 1
 
 # -------------------------------------------------------------------
@@ -141,9 +141,31 @@ infra_workloads:
   - ocp4_workload_openshift_gitops
   - ocp4_workload_openshift_devspaces
   - ocp4_workload_gitops_gitlab
-  - ocp4_workload_rhdh_orchestrator
+  - ocp4_workload_serverless
+  - ocp4_workload_serverless_logic
   - ocp4_workload_advanced_developer_suite
   - ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_serverless
+# -------------------------------------------------------------------
+ocp4_workload_serverless_channel: stable-1.35
+ocp4_workload_serverless_use_catalog_snapshot: true
+ocp4_workload_serverless_starting_csv: serverless-operator.v1.35.0
+ocp4_workload_serverless_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_serverless_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_serverless_install_eventing: false
+ocp4_workload_serverless_install_serving: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_serverless_logic
+# -------------------------------------------------------------------
+ocp4_workload_serverless_logic_use_catalog_snapshot: false
+ocp4_workload_serverless_logic_namespace: openshift-serverless-logic
+ocp4_workload_serverless_logic_channel: alpha
+ocp4_workload_serverless_logic_starting_csv: logic-operator-rhel8.v1.36.0
+ocp4_workload_serverless_logic_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_serverless_logic_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # -----------------------------------
 # Quay Operator
@@ -151,7 +173,7 @@ infra_workloads:
 ocp4_workload_quay_operator_namespace: quay-registry
 ocp4_workload_quay_operator_catalogsource_namespace: quay-registry
 ocp4_workload_quay_operator_channel: stable-3.15
-ocp4_workload_quay_operator_starting_csv: quay-operator.v3.15.1
+ocp4_workload_quay_operator_starting_csv: quay-operator.v3.15.2
 ocp4_workload_quay_operator_use_catalog_snapshot: false
 ocp4_workload_quay_operator_registry_admin_password: "{{ common_password }}"
 
@@ -161,31 +183,11 @@ ocp4_workload_quay_operator_registry_admin_password: "{{ common_password }}"
 odf_channel: stable-4.18
 
 # ------------------------------------------------
-# ocp4_workload_rhdh_orchestrator
-# ------------------------------------------------
-ocp4_workload_rhdh_orchestrator_helm_installer: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-ocp4_workload_rhdh_orchestrator_helm_chart: https://github.com/rhdhorchestrator/orchestrator-helm-chart.git
-ocp4_workload_rhdh_orchestrator_helm_chart_version: orchestrator-k8s-0.3.17
-ocp4_workload_rhdh_orchestrator_sonataflow_pgsql_version: "12.12.10"
-
-ocp4_workload_rhdh_orchestrator_sonataflow_namespace: sonataflow-infra
-ocp4_workload_rhdh_orchestrator_serverless_enabled: true
-
-ocp4_workload_rhdh_orchestrator_rhdh_name: developer-hub
-ocp4_workload_rhdh_orchestrator_rhdh_namespace: tssc-dh
-
-ocp4_workload_rhdh_orchestrator_workflows:
-  repo: https://rhdhorchestrator.io/serverless-workflows-config
-  chart:
-    - name: greeting
-      location: orchestrator-workflows/greeting
-
-# ------------------------------------------------
 # ocp4_workload_openshift_devspaces
 # ------------------------------------------------
 ocp4_workload_openshift_devspaces_catalogsource_setup: false
 ocp4_workload_openshift_devspaces_channel: stable
-ocp4_workload_openshift_devspaces_startingcsv: devspacesoperator.v3.22.0
+ocp4_workload_openshift_devspaces_startingcsv: devspacesoperator.v3.23.0
 ocp4_workload_openshift_devspaces_namespace: openshift-devspaces
 
 # ------------------------------------------------
@@ -230,10 +232,8 @@ ocp4_workload_advanced_developer_suite_dh_orchestrator_plugins_enable:
   - disabled: false
     integrity: sha512-9cXbedr0lC7ns7SNqARrWSQI4JGcZFw5xpfpUzA1tJaMMUjzAdPHTXqljf62/fs4hYBK8TJsWJ2KJkGVMzbrHQ==
     package: '@redhat/backstage-plugin-orchestrator-backend-dynamic@1.7.1'
-    pluginConfig:
-      orchestrator:
-        dataIndexService:
-          url: http://sonataflow-platform-data-index-service.sonataflow-infra
+    dependencies:
+      - ref: sonataflow
   - disabled: false
     integrity: sha512-Cqu9EQwVQ4mpdgWTUA0MW89Gul0IklhvkkqVoO3CloQ1dnAj1XyXikCphzH5TmNDDd9K66dOpaKKCaW9KeJ4WA==
     package: '@redhat/backstage-plugin-orchestrator@1.7.1'
@@ -254,10 +254,9 @@ ocp4_workload_advanced_developer_suite_dh_orchestrator_plugins_enable:
     integrity: sha512-J1sTjA5kj6DphG8D65go9KlpIfKyLN/wq+XlY5Cb5djEo8mvF3wn3Haf60OGFo5cP4OfRSWqFwT7LM5/dNVwAg==
     package: '@redhat/backstage-plugin-scaffolder-backend-module-orchestrator-dynamic@1.7.1'
     pluginConfig:
-      dynamicPlugins:
-        orchestrator:
-          dataIndexService:
-            url: http://sonataflow-platform-data-index-service.sonataflow-infra
+      orchestrator:
+        dataIndexService:
+          url: http://sonataflow-platform-data-index-service
   - disabled: false
     integrity: sha512-0KIXrZoJ+O4xNNzN/zB4+VMuaRPuiUviAmM+fIhTo/P9aLA36F9aIlyMbUbki49uaJ0zd8KXMBvmJSHZNrYkGQ==
     package: '@redhat/backstage-plugin-orchestrator-form-widgets@1.7.1'
@@ -301,6 +300,13 @@ ocp4_workload_advanced_developer_suite_acs_namespace: tssc-acs
 ocp4_workload_advanced_developer_suite_acs_admin_user: admin
 
 ocp4_workload_advanced_developer_suite_disable_odf: true
+
+ocp4_workload_advanced_developer_suite_orchestrator_workflows:
+  repo: https://redhat-ads-tech.github.io/orchestrator-workflows
+  chart:
+    - name: greeting
+      location: orchestrator-workflows/greeting
+      customParameters: "--set-string=persistence.postgresql.secretRef.name=backstage-psql-secret-developer-hub --set-string=persistence.postgresql.serviceRef.name=backstage-psql-developer-hub"
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
@@ -414,7 +420,7 @@ ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm
 # -------------------------------------------------------------------
-ocp4_workload_rhacm_acm_channel: "release-2.12"
+ocp4_workload_rhacm_acm_channel: "release-2.14"
 ocp4_workload_rhacm_use_catalog_snapshot: true
 ocp4_workload_rhacm_catalog_source_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_rhacm_catalog_source_tag: "{{ ocp4_workload_catalogsource_tag }}"
