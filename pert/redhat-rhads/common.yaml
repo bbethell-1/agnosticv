@@ -1,0 +1,600 @@
+---
+#include /enterprise/includes/ansible_control_plane/current_controller.yaml
+#include /includes/catalog-icon-project-dance.yaml
+#include /includes/terms-of-service.yaml
+#include /enterprise/includes/lifetime-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/enterprise-premium-sla.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/rhods_git.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/zerossl.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/sandbox-api.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: Red Hat Advanced Developer Suite - Software Supply Chain Demo
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory vars
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+platform: rhpds
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.5
+bastion_cores: 2
+bastion_memory: 4Gi
+
+master_instance_count: 3
+worker_instance_count: 4
+
+ai_control_plane_cores: 16
+ai_control_plane_memory: 64Gi
+
+ai_workers_cores: 32
+ai_workers_memory: 128Gi
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: false
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.18"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:12] }}"
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.18_2025_07_25
+num_users: 1
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+
+# -------------------------------------------------
+# Role: common
+# -------------------------------------------------
+install_common: true
+common_packages_el9:
+  - at
+  - bash-completion
+  - bind-utils
+  - buildah
+  - git
+  - httpd-tools
+  - nano
+  - podman
+  - python3
+  - python3-pip
+  - tmux
+  - tree
+  - unzip
+  - vim-enhanced
+  - wget
+  - ansible
+  - golang
+
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
+
+install_ftl: false
+
+# -------------------------------------------------------------------
+# Custom collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: kubernetes.core
+      version: 2.4.0
+    - name: amazon.aws
+      version: 2.3.0
+    - name: community.general
+      version: 6.4.0
+    - name: ansible.posix
+      version: 1.5.1
+    - name: ovirt.ovirt
+      version: 3.1.1
+    - name: awx.awx
+      version: 21.1.0
+    - name: containers.podman
+      version: 1.16.3
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: main
+  roles:
+    - name: rhads-2025-customisation
+      src: https://github.com/opentraining-labs-customizations/rhads-2025-customisation.git
+    - name: rhads-setup
+      src: https://github.com/opentraining-labs-customizations/rhads-setup.git
+
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
+
+infra_workloads:
+  - ocp4_workload_external_odf
+  - ocp4_workload_cert_manager
+  - ocp4_workload_data_grid
+  - ocp4_workload_quay_operator
+  #- ocp4_workload_ossm
+  #- ocp4_workload_openshift_ai
+  - ocp4_workload_kubevirt
+  - ocp4_workload_kubernetes_image_puller
+  - ocp4_workload_jenkins
+  - ocp4_workload_openshift_gitops
+  - ocp4_workload_openshift_devspaces
+  - ocp4_workload_gitops_gitlab
+  - ocp4_workload_gitops_vault
+  - ocp4_workload_external_secrets
+  - ocp4_workload_advanced_developer_suite
+  - ocp4_workload_showroom
+  - ocp4_workload_web_terminal
+
+software_workloads_for_bastion:
+  - rhads-setup
+  - rhads-2025-customisation
+
+# -------------------------------------------------------------------
+# ocp4_workload_external_odf
+# -------------------------------------------------------------------
+odf_channel: stable-4.18
+
+# -----------------------------------
+# Quay Operator
+# -----------------------------------
+ocp4_workload_quay_operator_namespace: quay-registry
+ocp4_workload_quay_operator_catalogsource_namespace: quay-registry
+ocp4_workload_quay_operator_channel: stable-3.15
+ocp4_workload_quay_operator_starting_csv: quay-operator.v3.15.1
+ocp4_workload_quay_operator_use_catalog_snapshot: false
+ocp4_workload_quay_operator_registry_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload ocp4_workload_ossm - Service Mesh - MAKE THIS GITOPS
+# -------------------------------------------------------------------
+ocp4_workload_ossm_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_ossm_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# Elasticsearch
+ocp4_workload_ossm_es_channel: stable
+ocp4_workload_ossm_es_startingcsv: ""
+
+# Jaeger
+ocp4_workload_ossm_jaeger_channel: stable
+ocp4_workload_ossm_jaeger_startingcsv: ""
+
+# Kiali
+ocp4_workload_ossm_kiali_channel: stable
+ocp4_workload_ossm_kiali_startingcsv: ""
+
+# Service Mesh
+ocp4_workload_ossm_servicemesh_channel: stable
+ocp4_workload_ossm_servicemesh_startingcsv: ""
+
+# -------------------------------------------------------------------
+# ocp4_workload_data_grid
+# -------------------------------------------------------------------
+ocp4_workload_data_grid_channel: "stable"
+ocp4_workload_data_grid_automatic_install_plan_approval: true
+ocp4_workload_data_grid_starting_csv: "datagrid-operator.v8.5.11"
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+#ocp4_workload_gitops_bootstrap_repo_url: https://github.com/redhat-gpte-devopsautomation/private-llm-aas
+#ocp4_workload_gitops_bootstrap_repo_revision: v2.0.0
+#ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+#ocp4_workload_gitops_bootstrap_helm_values:
+#  users: 1
+#  granite-token: ZGIzNjI4YjQyNDM2NzNlYzkzOTY5OGIyMDU5NjE2MDI=
+#  llama-token: ZTA3ZjU2NjM0NWQ0NWRhMzZlNjdhYjY1MmNkN2EwNGU=
+#  slack-bot-token: eG94Yi04NzIzOTc5NjgyNDU0LTg3MzUwOTEyNDk0OTEtdzFNdmRBNWh4VVpQWHlyMko4N0lJZE9v
+#  slack-team-id: VDA4TTlVVEwyREM=
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_ai
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_channel: stable
+ocp4_workload_openshift_ai_use_catalog_snapshot: true
+ocp4_workload_openshift_ai_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_ai_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_openshift_ai_deploy_dsc: true
+ocp4_workload_openshift_ai_modelmeshserving: Managed
+ocp4_workload_openshift_ai_starting_csv: rhods-operator.2.22.0
+ocp4_workload_openshift_ai_kserve: Managed
+ocp4_workload_openshift_ai_trustyai: Managed
+ocp4_workload_openshift_ai_modelregistry: Managed
+
+# ------------------------------------------------
+# ocp4_workload_gitops_vault
+# ------------------------------------------------
+ocp4_workload_gitops_vault_gitops_repo: https://github.com/redhat-gpte-devopsautomation/agnosticg
+ocp4_workload_gitops_vault_gitops_repo_revision: main
+ocp4_workload_gitops_vault_namespace: vault
+
+# ------------------------------------------------
+# ocp4_workload_external_secrets
+# ------------------------------------------------
+ocp4_workload_external_secrets_namespace: external-secrets
+ocp4_workload_external_secrets_helm_repo: https://charts.external-secrets.io
+ocp4_workload_external_secrets_helm_chart: external-secrets/external-secrets
+ocp4_workload_external_secrets_helm_chart_version: 0.9.2
+ocp4_workload_external_secrets_helm_installer: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+ocp4_workload_external_secrets_vault_namespace: vault
+
+# ------------------------------------------------
+# ocp4_workload_openshift_devspaces
+# ------------------------------------------------
+ocp4_workload_openshift_devspaces_catalogsource_setup: false
+ocp4_workload_openshift_devspaces_channel: stable
+ocp4_workload_openshift_devspaces_startingcsv: devspacesoperator.v3.22.0
+ocp4_workload_openshift_devspaces_namespace: openshift-devspaces
+
+# ------------------------------------------------
+# ocp4_workload_advanced_developer_suite
+# ------------------------------------------------
+ocp4_workload_advanced_developer_suite_tssc_cli_repo: https://github.com/redhat-appstudio/tssc-cli
+ocp4_workload_advanced_developer_suite_tssc_cli_revision: release-1.7
+
+ocp4_workload_advanced_developer_suite_tssc_cli_gitlab_group: rhdh
+ocp4_workload_advanced_developer_suite_gitlab_namespace: gitlab
+
+ocp4_workload_advanced_developer_suite_jenkins_namespace: jenkins
+ocp4_workload_advanced_developer_suite_jenkins_admin_user: admin
+ocp4_workload_advanced_developer_suite_jenkins_admin_password: "{{ common_password }}"
+
+ocp4_workload_advanced_developer_suite_pipelines_namespace: openshift-pipelines
+
+ocp4_workload_advanced_developer_suite_user_base_name: user
+ocp4_workload_advanced_developer_suite_user_password: "{{ common_password }}"
+ocp4_workload_advanced_developer_suite_user_count: "{{ num_users }}"
+ocp4_workload_advanced_developer_suite_admin_user: admin
+ocp4_workload_advanced_developer_suite_admin_password: "{{ common_admin_password }}"
+ocp4_workload_advanced_developer_suite_remove_kubeadmin: true
+
+ocp4_workload_advanced_developer_suite_openshift_keycloak_client_id: idp-4-ocp
+ocp4_workload_advanced_developer_suite_openshift_keycloak_client_secret: "{{ common_password }}"
+
+ocp4_workload_advanced_developer_suite_dh_keycloak_client_id: rhdh
+ocp4_workload_advanced_developer_suite_dh_keycloak_client_secret: "{{ common_password }}"
+ocp4_workload_advanced_developer_suite_dh_dynamic_plugins_enable:
+  - package: ./dynamic-plugins/dist/backstage-community-plugin-catalog-backend-module-keycloak-dynamic
+    disabled: false
+  - package: ./dynamic-plugins/dist/backstage-community-plugin-ocm
+    disabled: false
+  - package: ./dynamic-plugins/dist/backstage-community-plugin-ocm-backend-dynamic
+    disabled: false
+ocp4_workload_advanced_developer_suite_dh_orchestrator_enabled: false
+# ocp4_workload_advanced_developer_suite_dh_orchestrator_plugins_enable:
+#   - disabled: false
+#     integrity: sha512-Kr55YbuVwEADwGef9o9wyimcgHmiwehPeAtVHa9g2RQYoSPEa6BeOlaPzB6W5Ke3M2bN/0j0XXtpLuvrlXQogA==
+#     package: "@redhat/backstage-plugin-orchestrator-backend-dynamic@1.6.0"
+#     pluginConfig:
+#       orchestrator:
+#         dataIndexService:
+#           url: http://sonataflow-platform-data-index-service.sonataflow-infra
+#   - disabled: false
+#     integrity: sha512-fOSJv2PgtD2urKwBM7p9W6gV/0UIHSf4pkZ9V/wQO0eg0Zi5Mys/CL1ba3nO9x9l84MX11UBZ2r7PPVJPrmOtw==
+#     package: "@redhat/backstage-plugin-orchestrator@1.6.0"
+#     pluginConfig:
+#       dynamicPlugins:
+#         frontend:
+#           red-hat-developer-hub.backstage-plugin-orchestrator:
+#             appIcons:
+#               - importName: OrchestratorIcon
+#                 name: orchestratorIcon
+#             dynamicRoutes:
+#               - importName: OrchestratorPage
+#                 menuItem:
+#                   icon: orchestratorIcon
+#                   text: Orchestrator
+#                 path: /orchestrator
+#   - disabled: false
+#     integrity: sha512-Bueeix4661fXEnfJ9y31Yw91LXJgw6hJUG7lPVdESCi9VwBCjDB9Rm8u2yPqP8sriwr0OMtKtqD+Odn3LOPyVw==
+#     package: "@redhat/backstage-plugin-scaffolder-backend-module-orchestrator-dynamic@1.6.0"
+#     pluginConfig:
+#       dynamicPlugins:
+#         orchestrator:
+#           dataIndexService:
+#             url: http://sonataflow-platform-data-index-service.sonataflow-infra
+#   - disabled: false
+#     integrity: sha512-Tqn6HO21Q1TQ7TFUoRhwBVCtSBzbQYz+OaanzzIB0R24O6YtVx3wR7Chtr5TzC05Vz5GkBO1+FZid8BKpqljgA==
+#     package: "@redhat/backstage-plugin-orchestrator-form-widgets@1.6.0"
+#     pluginConfig:
+#       dynamicPlugins:
+#         frontend:
+#           red-hat-developer-hub.backstage-plugin-orchestrator-form-widgets: {}
+#   - disabled: false
+#     package: "./dynamic-plugins/dist/backstage-plugin-notifications"
+#   - disabled: false
+#     package: "./dynamic-plugins/dist/backstage-plugin-signals"
+#   - disabled: false
+#     package: "./dynamic-plugins/dist/backstage-plugin-notifications-backend-dynamic"
+#   - disabled: false
+#     package: "./dynamic-plugins/dist/backstage-plugin-signals-backend-dynamic"
+ocp4_workload_advanced_developer_suite_dh_catalog_locations:
+  repository: tssc-developer-hub-configuration
+  branch: main
+  group: rhdh
+  file: all-locations.yaml
+
+ocp4_workload_advanced_developer_suite_devspaces_namespace: openshift-devspaces
+
+ocp4_workload_advanced_developer_suite_quay_namespace: quay-enterprise
+ocp4_workload_advanced_developer_suite_quay_admin_user: quayadmin
+ocp4_workload_advanced_developer_suite_quay_admin_password: "{{ common_password }}"
+
+ocp4_workload_advanced_developer_suite_nginx_namespace: nginx
+
+ocp4_workload_advanced_developer_suite_tssc_gitops_namespace: tssc-gitops
+
+ocp4_workload_advanced_developer_suite_tssc_ci_namespace: tssc-app-ci
+
+ocp4_workload_advanced_developer_suite_keycloak_namespace: tssc-keycloak
+
+ocp4_workload_advanced_developer_suite_dh_namespace: tssc-dh
+
+ocp4_workload_advanced_developer_suite_tssc_tpa_namespace: tssc-tpa
+
+ocp4_workload_advanced_developer_suite_acs_namespace: tssc-acs
+ocp4_workload_advanced_developer_suite_acs_admin_user: admin
+
+ocp4_workload_advanced_developer_suite_disable_odf: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.15
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalogsource_name: catalog-snapshot-openshift-gitops
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+ocp4_workload_openshift_gitops_update_route_tls: true
+ocp4_workload_openshift_gitops_resource_customizations: |
+  operators.coreos.com/Subscription:
+    health.lua: |
+      health_status = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          numDegraded = 0
+          numPending = 0
+          msg = ""
+          for i, condition in pairs(obj.status.conditions) do
+            msg = msg .. i .. ": " .. condition.type .. " | " .. condition.status .. "\n"
+            if condition.type == "InstallPlanPending" and condition.status == "True" then
+              numPending = numPending + 1
+            elseif (condition.type == "InstallPlanMissing" and condition.reason ~= "ReferencedInstallPlanNotFound") then
+              numDegraded = numDegraded + 1
+            elseif (condition.type == "CatalogSourcesUnhealthy" or condition.type == "InstallPlanFailed") and condition.status == "True" then
+              numDegraded = numDegraded + 1
+            end
+          end
+          if numDegraded == 0 and numPending == 0 then
+            health_status.status = "Healthy"
+            health_status.message = msg
+            return health_status
+          elseif numPending > 0 and numDegraded == 0 then
+            health_status.status = "Progressing"
+            health_status.message = "An install plan for a subscription is pending installation"
+            return health_status
+          else
+            health_status.status = "Degraded"
+            health_status.message = msg
+            return health_status
+          end
+        end
+      end
+      health_status.status = "Progressing"
+      health_status.message = "An install plan for a subscription is pending installation"
+      return health_status
+
+# -------------------------------------------------------------------
+# ocp4_workload_kubernetes_image_puller
+# -------------------------------------------------------------------
+ocp4_workload_kubernetes_image_puller_node_selector: '{"node-role.kubernetes.io/worker": ""}'
+ocp4_workload_kubernetes_image_puller_images:
+  - quay.io/redhat-gpte/jenkins-inbound-agent:jdk21
+  - maven:3.8.5-openjdk-17
+  - docker.io/sonarsource/sonar-scanner-cli:10.0
+  - quay.io/redhat-appstudio/syft:v0.94.0
+  - registry.access.redhat.com/ubi9/python-311:9.5
+  - quay.io/redhat-user-workloads/rhtap-integration-tenant/yq-container/yq:5f8db9e69e824d7859b61f97596c4f3f839d6c9e
+  - quay.io/redhat-appstudio/buildah:v1.31.0@sha256:34f12c7b72ec2c28f1ded0c494b428df4791c909f1f174dd21b8ed6a57cf5ddb
+  - registry.access.redhat.com/ubi8/ubi-minimal
+  - quay.io/redhat-appstudio/appstudio-utils:5bd7d6cb0b17f9f2eab043a8ad16ba3d90551bc2@sha256:8c7fcf86af40c71aeb58e4279625c8308af5144e2f6b8e28b0ec7e795260e5f7
+  - alpine/helm:3.11.1
+  - registry.redhat.io/rhtas/gitsign-rhel9:1.1.0
+  - registry.redhat.io/rhtas/cosign-rhel9:1.1.0
+  - quay.io/devfile/universal-developer-image:ubi8-277c10c
+ocp4_workload_kubernetes_image_puller_instance_namespace: default
+
+# -------------------------------------------------------------------
+# ocp4_workload_jenkins
+# -------------------------------------------------------------------
+ocp4_workload_jenkins_image: registry.redhat.io/ocp-tools-4/jenkins-rhel9
+ocp4_workload_jenkins_tag: v4.17.0-1750853657
+ocp4_workload_jenkins_oauth: false
+ocp4_workload_jenkins_admin_password: "{{ common_password }}"
+ocp4_workload_jenkins_custom_agent: false
+ocp4_workload_jenkins_custom_agent_name: docker
+ocp4_workload_jenkins_volume_size: 20Gi
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1.15
+ocp4_workload_cert_manager_use_catalog_snapshot: true
+ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_cert_manager_starting_csv: cert-manager-operator.v1.15.0
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+
+# -------------------------------------------------------------------
+# GitLab
+# -------------------------------------------------------------------
+ocp4_workload_gitops_gitlab_gitops_type: argocd
+ocp4_workload_gitops_gitlab_config_email_display_name: Janus Admin
+ocp4_workload_gitops_gitlab_config_email_reply_to: "noreply@redhat.com"
+ocp4_workload_gitops_gitlab_config_smtp_enabled: "false"
+ocp4_workload_gitops_gitlab_config_smtp_domain: "example.com"
+ocp4_workload_gitops_gitlab_config_smtp_port: "587"
+ocp4_workload_gitops_gitlab_config_smtp_user: "gitlab"
+ocp4_workload_gitops_gitlab_config_smtp_password: "gitlab"
+ocp4_workload_gitops_gitlab_config_ssh_port: "22"
+ocp4_workload_gitops_gitlab_config_rootPassword: "{{ common_password }}"
+ocp4_workload_gitops_gitlab_config_https: "true"
+ocp4_workload_gitops_gitlab_config_root_email: "root@demo.redhat.com"
+ocp4_workload_gitops_gitlab_config_keybase_db: "0123456789"
+ocp4_workload_gitops_gitlab_config_keybase_otp: "0123456789"
+ocp4_workload_gitops_gitlab_config_keybase_secret: "0123456789"
+
+ocp4_workload_gitops_gitlab_db_user_name: gitlab
+ocp4_workload_gitops_gitlab_db_password: passw0rd
+ocp4_workload_gitops_gitlab_db_name: gitlab_production
+
+ocp4_workload_gitops_gitlab_gitops_repo: https://github.com/redhat-gpte-devopsautomation/agnosticg.git
+
+ocp4_workload_gitops_gitlab_import_repos:
+  - name: rhdh
+    repo:
+      - name: tssc-developer-hub-configuration
+        url: https://github.com/opentraining-labs-customizations/tssc-developer-hub-configuration.git
+      - name: tssc-sample-pipelines
+        url: https://github.com/opentraining-labs-customizations/tssc-sample-pipelines.git
+      - name: tssc-sample-jenkins
+        url: https://github.com/opentraining-labs-customizations/tssc-sample-jenkins.git
+      - name: rhads-enablement-l3-st-self-service
+        url: https://github.com/redhat-ads-tech/rhads-enablement-l3-st-self-service.git
+      - name: module-2-assets
+        url: https://github.com/redhat-ads-tech/module-2-assets.git
+
+ocp4_workload_gitops_gitlab_users_base: user
+ocp4_workload_gitops_gitlab_users_count: "{{ num_users | default(1) }}"
+ocp4_workload_gitops_gitlab_users_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/redhat-ads-tech/rhads-enablement-l3.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_only: true
+
+# -------------------------------------------------------------------
+# Passthrough variables
+# -------------------------------------------------------------------
+ocp4_workload_showroom_passthrough_user_data: true
+agnosticd_passthrough_user_data:
+  openshift_cluster_ingress_domain: "{{ openshift_cluster_ingress_domain }}"
+  openshift_console_url: "{{ openshift_console_url }}"
+  openshift_user_password: "{{ common_password }}"
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# -------------------------------------------------------------------
+## Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: 2c5600c2-c8c9-40cb-a657-89b14869d64e
+  owners:
+    maintainer:
+      - name: Yogita Soni
+        email: ysoni@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    multiuser: false
+    workshopUiDisabled: true
+    display_name: "Red Hat Advanced Developer Suite - Technical Enablement Level 3"
+    category: Demos
+    keywords:
+      - developer-hub
+      - gitops
+      - openshift
+      - backstage
+      - ads
+      - tap
+      - trusted-application-pipeline
+      - tas
+      - tssc
+      - trusted
+      - sigstore
+      - advanced-developer-suite
+      - tpa
+      - tas
+      - trusted
+      - ADS
+    parameters: []
+    labels:
+      Base_Component: 'False'
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+      Featured_Score: '81'
+    reportingLabels:
+      primaryBU: Application_Developer
+      secondaryBU: Hybrid_Platforms
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2025-04-14
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+  tower:
+    timeout: 21600
