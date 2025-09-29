@@ -23,9 +23,15 @@
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-cloud_provider: openshift_cnv
-cloud_provider_version: main
-config: openshift-cluster
+# Agnosticdv2 variables
+config: openshift-workloads
+cloud_provider: none
+software_to_deploy: none
+openshift_cnv_scale_cluster: true
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
 num_users: 1
 
 # -------------------------------------------------------------------
@@ -35,11 +41,7 @@ bastion_instance_image: rhel-9.5
 bastion_cores: 2
 bastion_memory: 4Gi
 
-master_instance_count: 3
 worker_instance_count: 3
-
-ai_control_plane_cores: 16
-ai_control_plane_memory: 64Gi
 
 ai_workers_cores: 32
 ai_workers_memory: 128Gi
@@ -120,8 +122,6 @@ requirements_content:
 # Workloads
 # -------------------------------------------------------------------
 workloads:
-  - agnosticd.core_workloads.ocp4_workload_external_odf
-  - agnosticd.core_workloads.ocp4_workload_cert_manager
   - agnosticd.core_workloads.ocp4_workload_authentication_rhsso
   - rhpds.ads.ocp4_workload_kubernetes_image_puller
   - agnosticd.core_workloads.ocp4_workload_rhacm
@@ -180,17 +180,6 @@ ocp4_workload_authentication_rhsso_user_password: "{{ common_password }}"
 ocp4_workload_authentication_rhsso_env_type: "{{ env_type }}"
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_cert_manager
-# -------------------------------------------------------------------
-ocp4_workload_cert_manager_channel: stable-v1
-ocp4_workload_cert_manager_cloud_provider: aws
-ocp4_workload_cert_manager_aws_region: us-east-2
-ocp4_workload_cert_manager_aws_access_key_id: "{{ route53_aws_access_key_id }}"
-ocp4_workload_cert_manager_aws_secret_access_key: "{{ route53_aws_secret_access_key }}"
-ocp4_workload_cert_manager_aws_hostedzoneid: "{{ route53_aws_zone_id }}"
-ocp4_workload_cert_manager_use_catalog_snapshot: false
-
-# -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm
 # -------------------------------------------------------------------
 ocp4_workload_rhacm_acm_channel: "release-2.14"
@@ -210,11 +199,6 @@ ocp4_workload_quay_operator_use_catalog_snapshot: true
 ocp4_workload_quay_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_quay_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_quay_operator_registry_admin_password: "{{ common_password }}"
-
-# -------------------------------------------------------------------
-# ocp4_workload_external_odf
-# -------------------------------------------------------------------
-odf_channel: stable-4.18
 
 # ---------------------------------------------------------
 # Workload: OpenShift Pipelines
@@ -385,6 +369,25 @@ __meta__:
 
   anarchy:
     namespace: babylon-anarchy-enterprise
+  components:
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools/prod
+      parameter_values:
+        cluster_size: multinode
+        host_ocp4_installer_version: "4.19"
+      # Propagate agnosticd_user_info data set by this component to variables.
+      propagate_provision_data:
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: openshift_api_url
+          var: openshift_api_url
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: Red Hat Developer Hub Demo (CNV)
@@ -433,7 +436,7 @@ __meta__:
         virt: "yes"
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2
-    scm_ref: main
+    scm_ref: agonzalezrh-patch-1
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:chained-2025-06-30
       pull: missing
