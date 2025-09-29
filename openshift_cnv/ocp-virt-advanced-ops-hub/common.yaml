@@ -14,6 +14,10 @@
 #include /includes/secrets/openshift_assisted_installer.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/runtime-unlimited.yaml
+
 # -------------------------------------------------------------------
 # --- Catalog Item:
 #            Experience OpenShift Virtualization:
@@ -54,9 +58,9 @@ worker_instance_count: 3
 ai_control_plane_cores: 32
 ai_control_plane_memory: 32Gi
 
-ai_workers_cores: 16
+ai_workers_cores: 24
 # Lab needs 3x32Gi memory
-ai_workers_memory: 32Gi
+ai_workers_memory: 48Gi
 
 ai_service_network_cidr: "172.231.0.0/16"
 ai_cluster_network_cidr: "10.232.0.0/14"
@@ -105,18 +109,15 @@ ocp4_network_type: OVNKubernetes
 # -------------------------------------------------------------------
 infra_workloads:
 - ocp4_workload_external_odf
-- ocp4_workload_authentication
 - ocp4_workload_cert_manager
+- ocp4_workload_authentication
 - ocp4_workload_openshift_gitops
 - ocp4_workload_gitops_bootstrap
-#- ocp4_workload_rhacm
-#- ocp4_workload_acm_multicluster_observability
-#- ocp4_workload_showroom
 
 # -------------------------------------------------------------------
 # Workload variables
 # -------------------------------------------------------------------
-ocp4_workload_user_count: 1
+ocp4_workload_user_count: "{{ num_users }}"
 ocp4_workload_user_base: user
 ocp4_workload_multi_user: false
 
@@ -167,13 +168,13 @@ ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm
 # -------------------------------------------------------------------
-ocp4_workload_rhacm_acm_channel: "release-2.13"
+ocp4_workload_rhacm_acm_channel: "release-2.14"
 #ocp4_workload_rhacm_acm_starting_csv: ""
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.15
+ocp4_workload_openshift_gitops_channel: gitops-1.16
 ocp4_workload_openshift_gitops_use_catalog_snapshot: true
 ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
@@ -193,6 +194,12 @@ ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ocp-virt-advan
 #ocp4_workload_gitops_bootstrap_repo_revision: v1.0.1 <-- This is summit2025 tag
 ocp4_workload_gitops_bootstrap_repo_revision: main
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+ocp4_workload_gitops_bootstrap_helm_values:
+  user:
+    count: "{{ num_users }}"
+  applications:
+    rhacm_config:
+      enabled: true
 
 # ------------------------------------------------------
 # ocp4_workload_showroom
