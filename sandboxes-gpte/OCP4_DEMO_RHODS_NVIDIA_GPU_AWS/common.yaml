@@ -1,17 +1,20 @@
 ---
 #include /includes/aws-sandbox-meta.yaml
-#include /includes/parameters/cert-manager-vars.yaml
-#include /includes/parameters/enable-cert-manager.yaml
-#include /includes/secrets/letsencrypt_with_zerossl_fallback.yaml
 #include /includes/catalog-icon-openshift.yaml
-#include /includes/parameters/salesforce-id.yaml
-#include /includes/parameters/purpose.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/lifetime-standard.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/cert-manager-vars.yaml
+#include /includes/parameters/enable-cert-manager.yaml
+#include /includes/parameters/enable-cert-manager-api.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
 #include /includes/parameters/aws-regions-gpu-us.yaml
 #include /includes/parameters/agnosticd_open_environment.yaml
+
+#include /includes/secrets/letsencrypt_with_zerossl_fallback.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/ansible_control_plane/current_controller.yaml
 #include /includes/secrets/demosat-rhel-9-lab.yaml
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/rhods-git-secret.yml
@@ -20,7 +23,6 @@
 # --- Catalog: Development
 # --- Catalog Item: Workshop with RHODS on OCP on AWS
 # -------------------------------------------------------------------
-# Workshop with RHODS on OCP on AWS
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -126,10 +128,6 @@ requirements_content:
     - name: community.okd
       version: 2.3.0
 
-# Workload variables #
-# ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-# ocp4_workload_catalogsource_tag: v4.18_2025_04_21
-
 # -------------------------------------------------------------------
 # Common Password
 # -------------------------------------------------------------------
@@ -151,7 +149,7 @@ infra_workloads:
   - ocp4_workload_ossm
   # - ocp4_workload_gitea_operator
   - ocp4_workload_openshift_ai
-  # - ocp4_workload_web_terminal
+  - ocp4_workload_web_terminal
 
 # -------------------------------------------------------------------
 # ocp4_workload_machinesets
@@ -183,6 +181,14 @@ ocp4_workload_authentication_htpasswd_user_base: user
 ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
 ocp4_workload_authentication_htpasswd_user_count: "{{ user_count | default(num_users) | default('5') | int }}"
 ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
 
 # ------------------------------------------------
 # Node Feature Discovery Operator
@@ -369,23 +375,6 @@ ocp4_workload_openshift_ai_automatic_install_plan_approval: true
 ocp4_workload_openshift_ai_use_catalog_snapshot: false
 ocp4_workload_openshift_ai_kserve: Managed
 
-# -------------------------------------------------------------------
-# For ocp4_workload_le_certificates
-# -------------------------------------------------------------------
-# Install certificates for Ingress Controllers
-ocp4_workload_le_certificates_install_certificates: true
-# Install certificates for API Endpoint
-ocp4_workload_le_certificates_install_api: true
-# Option allow continue without certificates on failure
-ocp4_workload_le_certificates_failure_is_fatal: true
-# It takes about 4 minutes per API Server to
-# restart with certificates (due to AWS
-# Load Balancer). Therefore sleep
-# 12 minutes by default to give the kube-apiserver
-# cluster operator enough time to progress.
-# Wait time may be extended if it's needed
-ocp4_workload_le_certificates_wait_after_cert_setup: 15
-
 # --- Student Workloads (YAML List)
 student_workloads: []
 
@@ -398,7 +387,6 @@ __meta__:
     maintainer:
       - name: Ritesh Shah
         email: rshah@redhat.com
-
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   deployer:
@@ -411,13 +399,10 @@ __meta__:
       RHOAI on OCP on AWS with NVIDIA GPUs
     category: Demos
     keywords:
-      - datascience
-      - rhods
       - openshiftai
       - ai
       - gpu
       - rhoai
-      - rhai
     multiuser: false
     parameters:
       - name: num_users
