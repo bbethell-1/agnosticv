@@ -1,0 +1,369 @@
+---
+#include /includes/catalog-icon-azure.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/azure-region2.yaml
+#include /includes/parameters/open-environment-annotation-hidden.yaml
+#include /includes/parameters/requester_username.yaml
+#include /includes/parameters/student-email.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/azure_redhat0.yaml
+#include /includes/runtime-unlimited.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/secrets/vmware-ibm-rs-clusters-access.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog: Red Hat Open Environments
+# --- Catalog Item: Azure with ARO Open Environment
+# -------------------------------------------------------------------
+
+platform: RHPDS
+
+env_type: open-environment-azure-subscription
+
+agnosticd_open_environment: true
+
+cloud_provider: azure
+
+# Azure pool to use
+az_pool_id: "01"
+# Enable ARO installation functions
+azure_deploy_bastion: true
+rhel_sku: "9_6"
+install_aro: true
+az_aro_version: 4.17.27
+aro_install_helm: true
+
+bastion_remove_insights_motd: true
+bastion_custom_motd: |-
+  ---------------------------------------------------------------------------
+          Welcome to the Experience OpenShift Virtualization Roadshow
+                with Azure Red Hat OpenShift!
+  ---------------------------------------------------------------------------
+
+  By continuing to use this service you agree to use this environment
+  solely for the purposes of completing the steps in the lab guide.
+
+  Any other use is a violation of this service and appropriate action
+  will be taken. If you disagree with these terms you must disconnect now.
+  ----------------------------------------------------------------------------
+
+infra_workloads:
+  - ocp4_workload_aro_upgrade
+  - ocp4_workload_authentication
+  - ocp4_workload_openshift_data_foundation
+  - ocp4_workload_openshift_gitops
+  - ocp4_workload_web_terminal
+  - ocp4_workload_kubevirt
+  - ocp4_workload_mtv
+  - ocp4_workload_oadp_gitops
+  - ocp4_workload_aro_machinesets
+  - ocp4_workload_nmstate
+  - ocp4_workload_virt_roadshow_vms
+  - ocp4_workload_virt_roadshow_vmware
+  - ocp4_workload_virt_roadshow_multi_user
+  - ocp4_workload_virt_network_config
+  - ocp4_workload_showroom
+
+# --- Workloads that have removal logic implemented that needs to be run (YAML List)
+remove_workloads:
+  - ocp4_workload_virt_roadshow_vmware
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.19_2025_03_03
+install_ftl: false
+ocp4_workload_user_count: "{{ num_users | int }}"
+ocp4_workload_user_base: user
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_admin_password length=12 chars=ascii_letters,digits')
+  }}
+common_user_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_user_password length=12 chars=ascii_letters,digits')
+  }}
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_aro_upgrade
+# -------------------------------------------------------------------
+ocp4_workload_aro_upgrade_target_version: "4.18.23"
+ocp4_workload_aro_upgrade_channel: "stable-4.18"
+
+# -------------------------------------------------------------------
+# Role: open-env-azure-install-aro
+# -------------------------------------------------------------------
+open_env_azure_install_aro_master_vm_size: "Standard_D8s_v3"
+open_env_azure_install_aro_worker_count: 3
+open_env_azure_install_aro_worker_vm_size: "Standard_D16s_v3"
+open_env_azure_install_aro_worker_vm_disk_size: 128
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: "{{ ocp4_workload_user_base }}"
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ ocp4_workload_user_count | default('1') | int }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
+
+# -----------------------------------
+# OpenShift Data Foundations Operator
+# -----------------------------------
+ocp4_workload_openshift_data_foundation_channel: stable-4.18
+ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
+ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_openshift_data_foundation_ceph_storage_class_name: managed-csi
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 500Gi
+ocp4_workload_openshift_data_foundation_ceph_storage_system_deploy_timeout: 1500
+ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1500
+
+# Install Ceph Toolbox
+ocp4_workload_openshift_data_foundation_install_toolbox: false
+
+# --------------------------------
+# Storage Classes
+# --------------------------------
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_new_default_storage_class_name: ocs-storagecluster-ceph-rbd
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.16
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+ocp4_workload_openshift_gitops_update_route_tls: false
+ocp4_workload_openshift_gitops_resource_customizations: |
+  operators.coreos.com/Subscription:
+    health.lua: |
+      health_status = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          numDegraded = 0
+          numPending = 0
+          msg = ""
+          for i, condition in pairs(obj.status.conditions) do
+            msg = msg .. i .. ": " .. condition.type .. " | " .. condition.status .. "\n"
+            if condition.type == "InstallPlanPending" and condition.status == "True" then
+              numPending = numPending + 1
+            elseif (condition.type == "InstallPlanMissing" and condition.reason ~= "ReferencedInstallPlanNotFound") then
+              numDegraded = numDegraded + 1
+            elseif (condition.type == "CatalogSourcesUnhealthy" or condition.type == "InstallPlanFailed") and condition.status == "True" then
+              numDegraded = numDegraded + 1
+            end
+          end
+          if numDegraded == 0 and numPending == 0 then
+            health_status.status = "Healthy"
+            health_status.message = msg
+            return health_status
+          elseif numPending > 0 and numDegraded == 0 then
+            health_status.status = "Progressing"
+            health_status.message = "An install plan for a subscription is pending installation"
+            return health_status
+          else
+            health_status.status = "Degraded"
+            health_status.message = msg
+            return health_status
+          end
+        end
+      end
+      health_status.status = "Progressing"
+      health_status.message = "An install plan for a subscription is pending installation"
+      return health_status
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+# Use PVCs for KubeVirt boot images
+ocp4_workload_kubevirt_boot_sources_shapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_mtv
+# -------------------------------------------------------------------
+ocp4_workload_mtv_channel: release-v2.8
+# ocp4_workload_mtv_starting_csv: "mtv-operator.v2.8.5"
+ocp4_workload_mtv_max_vm_inflight: "{{ [(num_users | int * 3) | int, 40] | min }}"
+ocp4_workload_mtv_forklift_controller_container_limits_cpu: "{{ [(num_users | int * 100) | int, 1000] | max }}m"
+ocp4_workload_mtv_forklift_controller_container_limits_memory: "{{ [(num_users | int * 400) | int, 2000] | max }}Mi"
+
+# -------------------------------------------------------------------
+# ocp4_workload_oadp_gitops
+# -------------------------------------------------------------------
+ocp4_workload_oadp_gitops_channel: stable-1.4
+ocp4_workload_oadp_gitops_use_catalog_snapshot: false
+
+# Multi User
+ocp4_workload_oadp_gitops_multi_user: true
+ocp4_workload_oadp_gitops_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+ocp4_workload_oadp_gitops_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_oadp_gitops_namespace_base: oadp
+ocp4_workload_oadp_gitops_configure_dpa: true
+ocp4_workload_oadp_gitops_storage: odf
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_roadshow_vms
+# -------------------------------------------------------------------
+ocp4_workload_virt_roadshow_vms_num_users: "{{ num_users | int }}"
+ocp4_workload_virt_roadshow_vms_base_namespace: vmimported-
+ocp4_workload_virt_roadshow_vms_userbase: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_virt_roadshow_vms_start_vms: false
+# Roadshow Setup
+# When set to true (default) then the application made up from the VMs will not
+# work until instructions are followed.
+# When false the application will work out of the box without changes
+ocp4_workload_virt_roadshow_vms_roadshow_setup: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_network_config
+# -------------------------------------------------------------------
+ocp4_workload_virt_network_config_multi_user: true
+ocp4_workload_virt_network_config_networks: "{{ ai_attach_workers_networks | default([]) }}"
+ocp4_workload_virt_network_config_bridge_type: linux-bridge
+ocp4_workload_virt_network_config_bridge_name: br-flat
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_virt_roadshow_vmware
+# -------------------------------------------------------------------
+vcenter_cluster: vcs-rs-00
+ocp4_workload_virt_roadshow_vmware_use_pool: true
+ocp4_workload_virt_roadshow_vmware_vddk_registry: "icr.io/rhdp/vddk:latest"
+ocp4_workload_virt_roadshow_vmware_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
+ocp4_workload_virt_roadshow_vmware_enable_mtv: true
+ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
+ocp4_workload_virt_roadshow_virtualenv_location: /opt/virtualenvs/azure
+
+# For multiple users
+ocp4_workload_virt_roadshow_vmware_vcenter_folder_base: "ocpvirt-{{ guid }}-{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_virt_roadshow_vmware_vcenter_user_base: "ocpvirt-{{ guid }}-{{ ocp4_workload_authentication_htpasswd_user_base }}"
+
+# User base for OCP Authentication (to assign vCenter users to OCP users in agnosticd_user_info)
+ocp4_workload_virt_roadshow_auth_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+
+# MTV Namespace base to use for multi user.
+# For single user the namespace is always `openshift-mtv`
+ocp4_workload_virt_roadshow_vmware_mtv_namespace_base: "mtv-{{ ocp4_workload_virt_roadshow_auth_user_base }}"
+ocp4_workload_virt_roadshow_vsphere_ignore_pip_check: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_virt_roadshow_multi_user
+# -------------------------------------------------------------------
+# In the future once bug https://issues.redhat.com/browse/CNV-38284 is in the product
+# the namespace will need to change to openshift-cnv
+ocp4_workload_virt_roadshow_multi_user_configmap_namespace: openshift-cnv
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/aro-virt-roadshow-showroom.git
+ocp4_workload_showroom_content_git_repo_ref: main
+
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_content_only: true
+
+ocp4_workload_showroom_zero_touch_bundle: "https://github.com/rhpds/nookbag/releases/download/nookbag-v0.0.5/nookbag-v0.0.5.zip"
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_version: "1.3.4"
+ocp4_workload_showroom_content_image: quay.io/rhpds/showroom-content:v1.2
+ocp4_workload_showroom_zero_touch_ui_enabled: "true"
+ocp4_workload_showroom_content_antora_playbook: default-site.yml
+ocp4_workload_showroom_wetty_ssh_bastion_login: "true"
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: feacf747-b6b3-4a3a-ada4-d44e6654573b
+  owners:
+    maintainer:
+      - name: Judd Maltin
+        email: jmaltin@redhat.com
+    sme:
+      - name: Judd Maltin
+        email: jmaltin@redhat.com
+    instructions:
+      - name: Judd Maltin
+        email: jmaltin@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-azure-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Experience OpenShift Virtualization with Azure Red Hat OpenShift"
+    category: Workshops
+    keywords: []
+    labels:
+      Product_Family: Red_Hat_Cloud
+      Product: Microsoft_Azure_Red_Hat_OpenShift
+      Provider: RHDP
+    parameters:
+      - description: Include Arc Content
+        formGroup: Features
+        formLabel: Include Arc Content - INTERNAL use only
+        name: include_arc_content
+        openAPIV3Schema:
+          default: false
+          type: boolean
+      - name: num_users
+        description: >-
+          Number of users to provision within the cluster.
+        formLabel: OpenShift User Count
+        openAPIV3Schema:
+          type: integer
+          default: 2
+          minimum: 1
+          maximum: 40
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+  deployer:
+    actions:
+      start:
+        disable: true
+      stop:
+        disable: true
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+      pull: missing
+  tower:
+    timeout: 21600
+
+# x64             RHEL                       RedHat          9_5                                       RedHat:RHEL:9_5:9.5.2025052607
+#                 9.5.2025052607
+# x64             RHEL                       RedHat          9_6                                       RedHat:RHEL:9_6:9.6.2025051906
+#                 9.6.2025051906
+# x64             RHEL                       RedHat          9_6                                       RedHat:RHEL:9_6:9.6.2025063011
+#                 9.6.2025063011
+# x64             RHEL                       RedHat          9_6                                       RedHat:RHEL:9_6:9.6.2025073003
+#                 9.6.2025073003
+# x64             RHEL                       RedHat          9_6                                       RedHat:RHEL:9_6:9.6.2025091721
+#                 9.6.2025091721
