@@ -154,34 +154,55 @@ agp_devspaces_operator_catalog_image: 'quay.io/gpte-devops-automation/olm_snapsh
 agp_devspaces_operator_catalog_image_tag: 'v4.19_2025_09_22'
 agp_devspaces_operator_devspaces_starting_csv: 'devspacesoperator.v3.23.0'
 agp_devspaces_operator_devworkspace_starting_csv: 'devworkspace-operator.v0.36.0'
+
 ## CheCluster Spec
 agp_devspaces_che_cluster_spec:
   components:
     cheServer:
       debug: false
       logLevel: INFO
+    dashboard:
+      logLevel: ERROR
+    devWorkspace: {}
+    devfileRegistry:
+      disableInternalRegistry: true
+    imagePuller:
+      enable: false
+      spec: {}
     metrics:
       enable: true
     pluginRegistry:
-      openVSXURL: https://open-vsx.org
-    devfileRegistry:
-      disableInternalRegistry: true
+      openVSXURL: "https://open-vsx.org"
   containerRegistry: {}
   devEnvironments:
     startTimeoutSeconds: 1000
+    security: {}
     secondsOfRunBeforeIdling: -1
     maxNumberOfWorkspacesPerUser: -1
-    maxNumberOfRunningWorkspacesPerUser: 5
     containerBuildConfiguration:
       openShiftSecurityContextConstraint: nested-podman-scc
     disableContainerBuildCapabilities: false
+    ignoredUnrecoverableEvents:
+    - FailedScheduling
+    defaultEditor: che-incubator/che-code/latest
+    maxNumberOfRunningWorkspacesPerUser: 5
     defaultComponents:
-    - name: dev-tools
+    - attributes:
+        container-overrides:
+          securityContext:
+            procMount: Unmasked
+        pod-overrides:
+          metadata:
+            annotations:
+              io.kubernetes.cri-o.Devices: "/dev/fuse,/dev/net/tun"
+          spec:
+            hostUsers: false
       container:
-        image: quay.io/cgruver0/che/dev-tools:latest
+        image: "quay.io/cgruver0/che/dev-tools:latest"
         memoryLimit: 6Gi
         mountSources: true
-    defaultEditor: che-incubator/che-code/latest
+        sourceMapping: /projects
+      name: dev-tools
     defaultNamespace:
       autoProvision: true
       template: <username>-devspaces
@@ -189,7 +210,13 @@ agp_devspaces_che_cluster_spec:
     storage:
       pvcStrategy: per-workspace
   gitServices: {}
-  networking: {}
+  networking:
+    auth:
+      gateway:
+        configLabels:
+          app: che
+          component: che-gateway-config
+
 # Custom nested podman SCC configuration
 agp_devspaces_custom_nested_podman_scc:
   apiVersion: security.openshift.io/v1
