@@ -26,12 +26,11 @@ env_type: ocp4-cluster
 software_to_deploy: openshift4_assisted
 cloud_provider: openshift_cnv
 platform: rhpds
-num_users: 1
 # -------------------------------------------------------------------
 # OpenShift Version
 # -------------------------------------------------------------------
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-ocp4_installer_version: "4.18"
+ocp4_installer_version: "4.19"
 
 # -------------------------------------------------------------------
 # Repos
@@ -54,15 +53,31 @@ student_sudo: true
 # -------------------------------------------------------------------
 # CNV Specific
 # -------------------------------------------------------------------
-bastion_instance_image: rhel-9.5
+bastion_instance_image: rhel-9.6
 bastion_cores: 2
-bastion_memory: 4Gi
+bastion_memory: 6Gi
+
+ai_control_plane_cores: >-
+  {{ 16 if worker_instance_count|int <= 10
+  else 32 if worker_instance_count|int <= 20
+  else 64
+  }}
+ai_control_plane_memory: >-
+  {{ '32Gi' if worker_instance_count|int <= 10
+  else '64Gi' if worker_instance_count|int <= 20
+  else '128Gi'
+  }}
 
 master_instance_count: 3
-worker_instance_count: 2
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
 
-ai_control_plane_cores: 16
-ai_control_plane_memory: 32Gi
+ai_workers_cores: 16
+# WK: Hardcoding memory - seems wrong to calculate both number of workers and then adjust the memory as well
+# ai_workers_memory: '64Gi'
+ai_workers_memory: >-
+  {{ '32Gi' if num_users|int <= 10
+  else '64Gi'
+  }}
 
 # -------------------------------------------------------------------
 # Workloads
@@ -126,8 +141,7 @@ requirements_content:
   roles:
   - name: rh1_2025_ocpvirt_ar
     src: https://github.com/opentraining-labs-customizations/rh1-2025-ocpvirt-ar.git
-    #version: v1.2.8
-
+    version: main
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_external_odf
@@ -150,7 +164,7 @@ ocp4_workload_authentication_enable_user_info_data: true
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager
 # -------------------------------------------------------------------
-ocp4_workload_cert_manager_channel: stable-v1.15
+ocp4_workload_cert_manager_channel: stable-v1.17
 ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_cert_manager_starting_csv: cert-manager-operator.v1.15.0
@@ -165,7 +179,7 @@ ocp4_workload_cert_manager_ignore_errors: true
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.13
+ocp4_workload_openshift_gitops_channel: gitops-1.17
 ocp4_workload_openshift_gitops_use_catalog_snapshot: false
 
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
@@ -260,6 +274,9 @@ __meta__:
     maintainer:
     - name: Sarvesh Pandit
       email: sapandit@redhat.com
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
   catalog:
     reportingLabels:
       primaryBU: Hybrid_Platforms
@@ -277,8 +294,19 @@ __meta__:
       Provider: Product_Technical_Learning
     multiuser: false
     workshopLabUiRedirect: true
-    parameters: []
-  deployer:
-    execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:2025-04-14
-      pull: missing
+    parameters:
+    - name: num_users
+      description: >-
+        This specifies the number of individual users to provision within EACH OpenShift cluster you deploy.
+        Each cluster supports a maximum of 20 users.
+
+        **Advisory**: If you have "Enable workshop use" toggled on, we strongly recommend
+        setting this to 20 for optimal resource utilization.
+      # The label now specifies that the recommendation is for workshops
+      formLabel: 'OpenShift User Count (Workshop Recommended: 20)'
+      openAPIV3Schema:
+        type: integer
+        # Default to the recommended value for the most common use case
+        default: 2
+        minimum: 2
+        maximum: 20
