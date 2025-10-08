@@ -1,0 +1,140 @@
+---
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+# Agnosticd variables
+env_type: ocp-workloads
+cloud_provider: none
+software_to_deploy: none
+openshift_cnv_scale_cluster: false
+
+infra_workloads:
+  - ocp4_workload_authentication
+#  - ocp4_workload_rhsso_authentication
+#
+  - ocp4_workload_showroom_ocp_integration
+  - ocp4_workload_showroom
+
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_htpasswd_user_count: 1
+ocp4_workload_authentication_htpasswd_user_name: developer
+ocp4_workload_authentication_admin_user: admin
+instances: []
+
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_base: user
+ocp4_workload_user_count: "{{ (num_users | default('2')) | int }}"
+common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_password: "{{ (guid[::-1][:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_username: admin
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.19_2025_07_01
+
+# -------------------------------------------------------------------
+# ocp4_workload_rhsso_authentication
+# -------------------------------------------------------------------
+ocp4_workload_rhsso_authentication_channel: stable
+ocp4_workload_rhsso_authentication_use_catalog_source: true
+ocp4_workload_rhsso_authentication_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_rhsso_authentication_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_rhsso_authentication_starting_csv: rhsso-operator.7.6.11-opr-006
+
+ocp4_workload_rhsso_authentication_admin_username: "{{ common_admin_username }}"
+ocp4_workload_rhsso_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_rhsso_authentication_user_count: "{{ ocp4_workload_user_count }}"
+ocp4_workload_rhsso_authentication_user_name_base: "{{ ocp4_workload_user_base}}"
+ocp4_workload_rhsso_authentication_user_password: "{{ common_user_password }}"
+
+__meta__:
+  asset_uuid: c7f3c9da-e721-4234-a88a-b40e032dc333
+  owners:
+    maintainer:
+      - name: Alberto Gonzalez
+        email: josegonz@redhat.com
+
+
+  anarchy:
+    namespace: babylon-anarchy-test
+
+  catalog:
+    display_name: Showroom with OCP
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    labels:
+      Provider: RHDP
+    parameters:
+      - name: cluster_size
+        description: cluster size
+        formLabel: cluster size
+        openAPIV3Schema:
+          type: string
+          default: sno
+          enum:
+            - 'sno'
+            - 'multinode'
+        components:
+          - name: all
+
+      - name: host_ocp4_installer_version
+        description: OpenShift version to install
+        formLabel: OpenShift Version
+        required: false
+        openAPIV3Schema:
+          type: string
+          default: '4.18'
+          enum:
+            - '4.18'
+            - '4.19'
+        components:
+          - name: all
+
+      - name: ocp4_fips_enable
+        description: fips
+        formLabel: fips
+        required: false
+        openAPIV3Schema:
+          type: boolean
+          default: false
+        components:
+          - name: all
+
+  # Components to include in template and catalog item
+  components:
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools/dev
+      propagate_provision_data:
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: sandbox_openshift_apps_domain
+          var: sandbox_openshift_apps_domain
+        - name: openshift_cluster_admin_token
+          var: openshift_api_key
+        - name: openshift_api_url
+          var: openshift_api_url
+  # Disable actions on chained config that are handled by base.
+  deployer:
+    actions:
+      destroy:
+        disable: true
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
