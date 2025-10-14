@@ -10,6 +10,7 @@
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/secrets/s3-rhpds-private-bucket.yaml
 #include /includes/secrets/demosat-rhel-9-10.0-latest.yaml
+#include /includes/secrets/registry-redhat.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: ETX RHADS (Red Hat Advanced Developer Suite)
@@ -44,7 +45,7 @@ rhel_instance_image: rhel-10.0
 rootfs_size_rhel: 50Gi
 pv_size_node: 8Gi
 openshift_cnv_legacy_routes: true
-
+showroom_tls_provider: none
 instances:
   - name: "bastion"
     count: 1
@@ -75,10 +76,12 @@ instances:
             name: bastion-http
     routes:
       - name: bastion-https
-        host: bastion
+        host: "bastion"
+        legacy: false
         service: bastion
-        targetPort: 443
+        targetPort: 80
         tls: true
+        tls_termination: Edge
       - name: rhtpa-80
         host: rhtpa
         service: bastion
@@ -366,13 +369,58 @@ pre_software_workloads:
     - bastion-base
     - user-create-ansible-service-account
     - asset_injector
+    - rhads.rhel.certbot
     - rhads.rhel.execution_environment
+
+post_software_workloads:
+  servers:
+    - rhads.rhel.utility
 
 post_software_final_workloads:
   localhost:
     - agnosticv-userdata-import
   bastions:
     - showroom
+
+# -------------------------------------------------------------------
+# Role: rhads.rhel.certbot
+# -------------------------------------------------------------------
+rhads_rhel_certbot_certificates:
+  -
+    - rhtpa.{{ guid }}.{{ sandbox_openshift_apps_domain }}
+  -
+    - rhbk.{{ guid }}.{{ sandbox_openshift_apps_domain }}
+  -
+    - rhtas.{{ guid }}.{{ sandbox_openshift_apps_domain }}
+    - cli-server.{{ guid }}.{{ sandbox_openshift_apps_domain }}
+    - fulcio.{{ guid }}.{{ sandbox_openshift_apps_domain }}
+    - rekor.{{ guid }}.{{ sandbox_openshift_apps_domain }}
+    - rekor-search.{{ guid }}.{{ sandbox_openshift_apps_domain }}
+    - tsa.{{ guid }}.{{ sandbox_openshift_apps_domain }}
+    - tuf.{{ guid }}.{{ sandbox_openshift_apps_domain }}
+
+
+# -------------------------------------------------------------------
+# Role: rhads.rhel.utility
+# -------------------------------------------------------------------
+utility_rhbk_src_pem_cert: "/tmp/rhbk.{{ guid }}.{{ sandbox_openshift_apps_domain }}fullchain.pem"
+utility_rhbk_src_pem_key: "/tmp/rhbk.{{ guid }}.{{ sandbox_openshift_apps_domain }}privkey.pem"
+utility_base_hostname: "{{ guid }}.{{ sandbox_openshift_apps_domain }}"
+
+utility_rhbk_admin_user: admin
+utility_rhbk_admin_password: "{{ common_password }}"
+utility_rhbk_setup_rhtas_user1_username: chris
+utility_rhbk_setup_rhtas_user1_password: "{{ common_password }}"
+utility_rhbk_setup_rhtas_user2_username: mary
+utility_rhbk_setup_rhtas_user2_password: "{{ common_password }}"
+utility_rhbk_setup_rhpta_password: "{{ common_password }}"
+utility_rhbk_setup_rhpta_client_cli_secret: "{{ common_password }}"
+utility_rhbk_setup_rhpta_client_testing_manager_secret: "{{ common_password }}"
+utility_rhbk_setup_rhpta_client_testing_user_secret: "{{ common_password }}"
+utility_rhbk_quadlet_postgresql_rhtas_password: "{{ common_password }}"
+utility_rhbk_quadlet_postgresql_rhtas_admin_password: "{{ common_password }}"
+utility_rhbk_quadlet_postgresql_rhtpa_admin_password: "{{ common_password }}"
+utility_rhbk_quadlet_postgresql_rhbk_admin_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
 # Role: set_env_authorized_key
@@ -459,14 +507,26 @@ rhads_rhel_execution_environment_image_tag: "2.1.0"
 # -------------------------------------------------------------------
 agnosticv_importdata:
   guid: "{{ guid }}"
-  # workshop_cockpit_url: "https://rhads-node1.{{ subdomain }}"
-  # workshop_cockpit_user_name: "{{ student_name }}"
-  # workshop_cockpit_user_password: "{{ common_password }}"
+  base_hostname: "{{ utility_base_hostname }}"
+  rhbk_admin_username: "{{ utility_rhbk_admin_user }}"
+  rhbk_admin_password: "{{ utility_rhbk_admin_password }}"
+  rhtas_user: "{{ utility_rhbk_admin_user }}"
+  rhtas_user_password: "{{ utility_rhbk_admin_password }}"
+  rhtas_user1_username: "{{ utility_rhbk_setup_rhtas_user1_username }}"
+  rhtas_user1_password: "{{ utility_rhbk_setup_rhtas_user1_password }}"
+  rhtas_user2_username: "{{ utility_rhbk_setup_rhtas_user2_username }}"
+  rhtas_user2_password: "{{ utility_rhbk_setup_rhtas_user2_password }}"
+  common_password: "{{ common_password }}"
+  tpa_single_node_pg_admin: postgres
+  tpa_single_node_pg_admin_passwd: "{{ common_password }}"
+  tpa_single_node_pg_user: rhtpa
+  tpa_single_node_pg_user_passwd: "{{ common_password }}"
 
 # -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
-showroom_git_repo: "https://github.com/rhpds/showroom-rhaiis-rhel-demo"
+# showroom_git_repo: "https://github.com/rhpds/showroom-rhaiis-rhel-demo"
+showroom_git_repo: "https://github.com/redhat-ads-tech/rhads-enablement-l3-rhel"
 showroom_git_ref: main
 showroom_user: showroom
 showroom_ui: default
@@ -483,6 +543,7 @@ showroom_lab_users:
 
 showroom_ssh_host: "{{ openshift_cnv_ssh_address }}"
 showroom_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+showroom_host: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ guid }}{{ subdomain_base_suffix }}"
 showroom_ssh_username: "{{ student_name }}"
 
 # -------------------------------------------------------------------
@@ -509,7 +570,7 @@ __meta__:
         virt: "yes"
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "RHADS RHEL"
+    display_name: "Red Hat Advanced Developer Suite on RHEL - Technical Enablement Level 3"
     category: Labs
     multiuser: false
     keywords:
