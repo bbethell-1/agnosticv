@@ -44,6 +44,7 @@ rhel_instance_image: rhel-10.0
 rootfs_size_rhel: 50Gi
 node_name: node
 pv_size_node: 4Gi
+showroom_tls_provider: none
 
 openshift_cnv_legacy_routes: true
 
@@ -65,18 +66,24 @@ instances:
     networks:
       - default
     services:
-      - name: bastion-https
+      - name: bastion
         ports:
           - port: 443
             protocol: TCP
             targetPort: 443
             name: bastion-https
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: bastion-http
     routes:
       - name: bastion-https
-        host: bastion
-        service: bastion-https
-        targetPort: 443
+        host: "bastion"
+        legacy: false
+        service: bastion
+        targetPort: 80
         tls: true
+        tls_termination: Edge
 
   - name: "{{ node_name }}"
     count: 2
@@ -447,7 +454,7 @@ showroom_lab_users:
 showroom_ssh_host: "{{ openshift_cnv_ssh_address }}"
 showroom_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
 showroom_ssh_username: "{{ student_name }}"
-
+showroom_host: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ guid }}{{ subdomain_base_suffix }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
