@@ -1,0 +1,250 @@
+---
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/lifetime-standard.yaml
+
+#include /includes/parameters/purpose.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: base-infra
+cloud_provider: openshift_cnv
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/user_password length=12 chars=ascii_letters,digits')
+  }}
+
+subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+bastion_public_hostname: "rhel9.{{ guid }}.{{ subdomain_base_suffix }}"
+
+# -------------------------------------------------------------------
+# inventory_groups (optional but nice to have)
+# -------------------------------------------------------------------
+
+inventory_groups:
+  - bastions
+
+# -------------------------------------------------------------------
+# Role: ansible_service_account
+# -------------------------------------------------------------------
+
+ansible_service_account_user_name: "{{ student_name }}"
+ansible_service_account_user_password: "{{ common_password }}"
+ansible_service_account_user_preferred_python: "3.9"
+
+# -------------------------------------------------------------------
+# Infra workloads
+# -------------------------------------------------------------------
+software_workloads:
+  bastions:
+    - asset_injector
+    - rh1_2025_must_gather
+
+must_gather_install_tools: true
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+
+requirements_content:
+  roles:
+    - name: rh1_2025_must_gather
+      src: https://github.com/rhpds/rh1-2025-must-gather.git
+      version: v1.0.5
+
+# -------------------------------------------------------------------
+# asset_injector_assets
+# -------------------------------------------------------------------
+
+asset_injector_assets:
+
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
+
+  - description: Download must-gather archive
+    type: http
+    dest: /home/lab-user/rh1-lab16-must-gather.zip
+    src: https://d18h2xbjo1t4w8.cloudfront.net/must_gather_lab/rh1-lab16-must-gather.zip
+    url_username: "{{ s3_rhpds_private_username }}"
+    url_password: "{{ s3_rhpds_private_password }}"
+    owner: lab-user
+    group: users
+    mode: u=rw,g=r,o=r
+
+  - description: Unarchive must-gather file
+    type: unarchive
+    src: /home/lab-user/rh1-lab16-must-gather.zip
+    dest: /home/lab-user
+    remote_src: true
+
+  - description: Change ownership of Module directories
+    type: command
+    cmd: 'chown -R lab-user:users /home/lab-user/'
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+rhel_instance_image: rhel-9.6
+rootfs_size_rhel: "200Gi"
+
+instances:
+  - name: "rhel9"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel_instance_image }}"
+    memory: 8Gi
+    image_size: "{{ rootfs_size_rhel }}"
+    cores: 4
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+    networks:
+      - default
+    services:
+      - name: rhel9
+        ports:
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: rhel9-https
+    routes:
+      - name: rhel9-https
+        host: rhel9
+        service: rhel9
+        targetPort: 443
+        tls: true
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+repo_method: satellite
+use_content_view: true
+
+# -------------------------------------------------------------------
+# Role: common
+# -------------------------------------------------------------------
+student_name: lab-user
+student_password: "{{ common_password }}"
+
+agd_install_bastion_base: true
+agd_install_common: true
+agd_bastion_packages:
+  - python3
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - httpd-tools
+  - openldap-clients
+  - podman
+  - tree
+  - runc
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+showroom_git_repo: "https://github.com/rhpds/ocp-adv-troubleshooting-showroom.git"
+showroom_user: showroom
+showroom_ui: default
+showroom_user_password: "{{ common_password }}"
+showroom_ssh_method: sshkey
+showroom_tab_services:
+  - double_tty
+
+showroom_tab_double_tty_top_username: "{{ student_name }}"
+showroom_tab_double_tty_bottom_username: "{{ student_name }}"
+showroom_ttys_enable_tmux: false
+showroom_lab_users:
+  - "{{ student_name }}"
+
+showroom_ssh_username: "{{ student_name }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 94ed4a9c-6153-4ac1-9429-1a41d7e244b3
+  owners:
+    maintainer:
+      - name: Judd Maltin
+        email: jmaltin@redhat.com
+      - name: Sarvesh Pandit
+        email: sapandit@redhat.com
+    instructions:
+      - name: Judd Maltin
+        email: jmaltin@redhat.com
+      - name: Matt Robson
+        email: mrobson@redhat.com
+      - name: Morgan Peterman
+        email: mpeterma@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1034: Beyond the Basics: Advanced OpenShift Troubleshooting Techniques"
+    category: Red_Hat_One_2026
+    keywords:
+      - openshift
+      - troubleshooting
+      - mustgather
+      - ovn
+      - lb1034
+      - '2026'
+      - rh1
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+    parameters: []
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2025-09-10
+      pull: missing
