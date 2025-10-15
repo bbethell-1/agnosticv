@@ -325,6 +325,7 @@ class BabylonChecker:
             'aws_sandbox',
             'catalog',
             'deployer_scm',
+            'deployer_scm_ref_forbidden_prod_values',
             'deployer_virtualenv',
             'execution_environment',
             'name',
@@ -393,6 +394,28 @@ class BabylonChecker:
         else:
             self.check_component_scm_ref(component)
 
+    def check_component_deployer_scm_ref_forbidden_prod_values(self, component):
+        '''Ensure scm_ref is not set to forbidden values like "development"'''
+        deployer_meta = component.definition.get('__meta__', {}).get('deployer')
+        if not deployer_meta:
+            return
+        
+        scm_ref = deployer_meta.get('scm_ref')
+        if not scm_ref:
+            return
+        
+        if not component.is_prod:
+            return
+
+        # List of forbidden scm_ref values
+        forbidden_values = ['development']
+        
+        if scm_ref in forbidden_values:
+            raise ValueError(
+                f"scm_ref cannot be '{scm_ref}'. "
+                "Please use a specific version tag (e.g., 'my-tag-1.0.1') or branch name."
+            )
+
     def check_component_deployer_virtualenv(self, component):
         virtualenv = component.definition.get('__meta__', {}).get('deployer', {}).get('virtualenv')
         if not virtualenv:
@@ -450,6 +473,7 @@ class BabylonChecker:
                 repo=match.group(2),
                 ref=scm_ref,
             )
+            
     def check_component_secrets(self, component):
         """Ensure that secrets are not added under __meta__."""
         # Debug print to inspect the structure
