@@ -17,7 +17,7 @@
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 # -------------------------------------------------------------------
 # --- Catalog: Workshops
-# --- Catalog Item: OCP4 TL500 Workshop
+# --- Catalog Item: OCP4 AI501 Workshop
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
@@ -25,6 +25,10 @@
 # -------------------------------------------------------------------
 env_type: ocp4-cluster
 software_to_deploy: openshift4
+project_tag: "{{ env_type }}-{{ guid }}"
+cloud_provider: ec2
+
+aws_region: us-east-2
 # -------------------------------------------------------------------
 # Platform
 # -------------------------------------------------------------------
@@ -42,6 +46,8 @@ ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 infra_workloads:
   - ocp4_workload_authentication
   - ocp4_workload_cert_manager
+  - ocp4_workload_machinesets
+  - ocp4_workload_nvidia_gpu_setup
   - ocp4_workload_ai501
 
 # -------------------------------------------------------------------
@@ -58,7 +64,17 @@ master_instance_count: 3
 worker_instance_type: m6a.4xlarge
 worker_instance_count: "{{ [(num_users | int / 3.0) | round(0, 'ceil') | int, 3] | max }}"
 bastion_instance_type: t3.medium
-bastion_instance_image: RHEL84GOLD-latest
+bastion_instance_image: RHEL95GOLD-latest
+openshift_machineset_aws_zones:
+  - "{{ instance_zone_a }}"
+  - "{{ instance_zone_b }}"
+  - "{{ instance_zone_c }}"
+
+instance_zone_a: us-east-2a
+instance_zone_b: us-east-2b
+instance_zone_c: us-east-2c
+
+gpu_instance_type: g4dn.2xlarge
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -71,6 +87,57 @@ ocp4_workload_authentication_htpasswd_admin_password: r3dh4t1!
 ocp4_workload_authentication_htpasswd_user_count: 0
 ocp4_workload_authentication_remove_kubeadmin: true
 install_lets_encrypt_certificates: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_machinesets
+# -------------------------------------------------------------------
+ocp4_workload_machinesets_disable_default_machinesets: false
+ocp4_workload_machinesets_wait_for_nodes: false
+
+# Add a MachineSet for AWS Bare Metal instances
+# To add another group of worker nodes - with autoscaling enabled add
+# the following:
+#
+ocp4_workload_machinesets_machineset_groups:
+  - name: worker-gpu
+    autoscale: true
+    total_replicas: 3
+    total_replicas_min: 3
+    total_replicas_max: 5
+    role: worker-gpu
+    taints:
+      - key: nvidia.com/gpu
+        value: true
+        effect: NoSchedule
+    instance_type: "{{ gpu_instance_type }}"
+
+
+# ------------------------------------------------
+# Node Feature Discovery Operator
+# ------------------------------------------------
+nfd_operator_namespace: openshift-nfd
+nfd_operator_channel: "stable"
+nfd_operator_automatic_install_plan_approval: true
+nfd_operator_starting_csv: ""
+nfd_operator_wait_for_deploy: true
+nfd_operator_use_catalog_snapshot: false
+nfd_operator_catalogsource_name: ""
+nfd_operator_catalog_snapshot_image: ""
+nfd_operator_catalog_snapshot_image_tag: ""
+nfd_operator_operand_image: "registry.redhat.io/openshift4/ose-node-feature-discovery-rhel9:v4.18"
+
+# ------------------------------------------------
+# NVIDIA GPU Operator
+# ------------------------------------------------
+nvidia_gpu_operator_namespace: nvidia-gpu-operator
+nvidia_gpu_operator_channel: stable
+nvidia_gpu_operator_automatic_install_plan_approval: true
+nvidia_gpu_operator_starting_csv: gpu-operator-certified.v25.3.0
+nvidia_gpu_operator_wait_for_deploy: true
+nvidia_gpu_operator_use_catalog_snapshot: false
+nvidia_gpu_operator_catalogsource_name: ""
+nvidia_gpu_operator_catalog_snapshot_image: ""
+nvidia_gpu_operator_catalog_snapshot_image_tag: ""
 
 # -------------------------------------------------------------------
 # Babylon meta variables
