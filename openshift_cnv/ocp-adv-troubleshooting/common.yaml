@@ -50,10 +50,7 @@ ansible_service_account_user_preferred_python: "3.9"
 # -------------------------------------------------------------------
 software_workloads:
   bastions:
-    - asset_injector
-    - rh1_2025_must_gather
-
-must_gather_install_tools: true
+    - rhpds.ocp_adv_troubleshooting
 
 # -------------------------------------------------------------------
 # Ansible Module, Collections, and Roles Requirements
@@ -61,65 +58,17 @@ must_gather_install_tools: true
 
 requirements_content:
   roles:
-    - name: rh1_2025_must_gather
-      src: https://github.com/rhpds/rh1-2025-must-gather.git
-      version: v1.0.5
-
-# -------------------------------------------------------------------
-# asset_injector_assets
-# -------------------------------------------------------------------
-
-asset_injector_assets:
-
-  - description: Remove 50-cloud-init.conf, ssh issue
-    type: remove
-    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
-
-  - description: Remove 50-redhat.conf, ssh issue
-    type: remove
-    path: /etc/ssh/sshd_config.d/50-redhat.conf
-
-  - description: Update sshd_config for password auth
-    type: blockinfile
-    path: /etc/ssh/sshd_config
-    state: present
-    marker: "# {mark} Our custom SSH settings via Ansible"
-    block: |
-      # Our custom SSH settings via Ansible
-      ChallengeResponseAuthentication no
-      PasswordAuthentication yes
-      UsePAM yes
-
-  - description: Restart sshd to pick up new password support configuration
-    type: service
-    name: sshd
-    state: restarted
-
-  - description: Download must-gather archive
-    type: http
-    dest: /home/lab-user/rh1-lab16-must-gather.zip
-    src: https://d18h2xbjo1t4w8.cloudfront.net/must_gather_lab/rh1-lab16-must-gather.zip
-    url_username: "{{ s3_rhpds_private_username }}"
-    url_password: "{{ s3_rhpds_private_password }}"
-    owner: lab-user
-    group: users
-    mode: u=rw,g=r,o=r
-
-  - description: Unarchive must-gather file
-    type: unarchive
-    src: /home/lab-user/rh1-lab16-must-gather.zip
-    dest: /home/lab-user
-    remote_src: true
-
-  - description: Change ownership of Module directories
-    type: command
-    cmd: 'chown -R lab-user:users /home/lab-user/'
+    - name: rhpds.ocp_adv_troubleshooting
+      src: https://github.com/rhpds/ocp-adv-troubleshooting-collection.git
+      #version: v1.0.5
 
 # -------------------------------------------------------------------
 # Instance Config
 # -------------------------------------------------------------------
 rhel_instance_image: rhel-9.6
 rootfs_size_rhel: "200Gi"
+
+openshift_cnv_legacy_routes: true
 
 instances:
   - name: "rhel9"
@@ -139,18 +88,24 @@ instances:
     networks:
       - default
     services:
-      - name: rhel9
+      - name: bastion
         ports:
           - port: 443
             protocol: TCP
             targetPort: 443
-            name: rhel9-https
+            name: bastion-https
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: bastion-http
     routes:
-      - name: rhel9-https
-        host: rhel9
-        service: rhel9
-        targetPort: 443
+      - name: bastion-https
+        host: "bastion"
+        legacy: false
+        service: bastion
+        targetPort: 80
         tls: true
+        tls_termination: Edge
 
 # -------------------------------------------------------------------
 # Role: set-repositories
@@ -186,8 +141,10 @@ agd_bastion_packages:
 # Role: showroom
 # -------------------------------------------------------------------
 showroom_git_repo: "https://github.com/rhpds/ocp-adv-troubleshooting-showroom.git"
+showroom_git_ref: main
 showroom_user: showroom
 showroom_ui: default
+# showroom_ui_zero_bundle: https://github.com/rhpds/nookbag/releases/download/nookbag-v0.0.5/nookbag-v0.0.5.zip
 showroom_user_password: "{{ common_password }}"
 showroom_ssh_method: sshkey
 showroom_tab_services:
@@ -199,7 +156,12 @@ showroom_ttys_enable_tmux: false
 showroom_lab_users:
   - "{{ student_name }}"
 
+showroom_ssh_host: "{{ openshift_cnv_ssh_address }}"
+showroom_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
 showroom_ssh_username: "{{ student_name }}"
+showroom_host: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ guid }}{{ subdomain_base_suffix }}"
+
+showroom_tls_provider: none
 
 # -------------------------------------------------------------------
 # Babylon meta variables
