@@ -106,6 +106,11 @@ class BabylonComponent:
             r'\.(yaml|yml|json)$', '', path.lower().replace("/", ".").replace('_', '-')
         )
         self.path = path
+
+        # DEBUG: Print path and parsed name
+        print(f"DEBUG: path='{path}'")
+        print(f"DEBUG: self.name='{self.name}'")
+    
         (self.account, self.short_name, self.stage) = self.name.split('.')
 
     def __str__(self):
