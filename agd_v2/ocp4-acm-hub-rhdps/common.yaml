@@ -18,6 +18,13 @@ clusters:
     api_url: "{{ openshift_api_url }}"
     api_token: "{{ openshift_api_key }}"
 
+# ===================================================================
+# Bastion configuration - map variables for infra_add_bastion role
+# ===================================================================
+bastion_ansible_host: "{{ bastion_ansible_host | default('') }}"
+bastion_ansible_user: "{{ bastion_ansible_user | default('') }}"
+bastion_ansible_ssh_pass: "{{ bastion_ansible_ssh_pass | default('') }}"
+bastion_ansible_port: "{{ bastion_ansible_port | default(omit) }}"
 
 # ===================================================================
 # Additional Collections & roles to be installed for this config
@@ -26,6 +33,10 @@ requirements_content:
   collections:
   # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: main
+  # For asset_injector role
+  - name: https://github.com/agnosticd/cloud_vm_workloads.git
     type: git
     version: main
 
@@ -37,12 +48,24 @@ workloads:
 - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
 - agnosticd.core_workloads.ocp4_workload_rhacm
 - agnosticd.core_workloads.ocp4_workload_showroom
+- name: agnosticd.cloud_vm_workloads.asset_injector
+  delegate_to: bastion
 
 # -------------------------------------------------------------------
 # Workload variables
 # -------------------------------------------------------------------
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
 ocp4_workload_catalogsource_tag: v4.19_2025_07_01
+
+# -------------------------------------------------------------------
+# Workload: asset_injector (install awscli on bastion)
+# -------------------------------------------------------------------
+asset_injector_assets:
+- type: dnf
+  name: python3-pip
+  state: present
+- type: command
+  cmd: pip3 install awscli
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication_htpasswd
@@ -139,6 +162,15 @@ __meta__:
       var: openshift_api_url
     - name: openshift_cluster_admin_token
       var: openshift_api_key
+    # Propagate bastion data for infra_add_bastion role
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
   - name: aws
     display_name: AWS Open Environment
     item: sandboxes-gpte/SANDBOX_OPEN
