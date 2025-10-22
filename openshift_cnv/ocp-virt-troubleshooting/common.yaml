@@ -1,0 +1,330 @@
+---
+# Notes:
+#
+# This catalog item was copied from /pert/ocp-virt-troubleshooting-cnv/common.yaml
+#
+# It creates an RHDP-owned ocp-virt troubleshooting prod catalog item.
+#
+# The workshop is a single tenant OCP Virt cluster running on CNV.
+#
+# RH1 2026 title that exists now will be changed back to "OpenShift Virtualization Troubleshooting Virtual Machines"
+#    display_name: "LB1387: OpenShift Virtualization Capabilities: Applying the Rosetta Stone"
+#
+# Instructions will be forked and updated heavily by the RH1 team.
+#
+# -------------------------------------------------------------------
+# AgnosticV Includes
+# -------------------------------------------------------------------
+
+#include /includes/catalog-icon-virtualization.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/showroom-ocp-defaults.yaml
+
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/zerossl.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+platform: rhpds
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.19"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.6
+bastion_cores: 2
+bastion_memory: 6Gi
+
+ai_control_plane_cores: >-
+  {{ 16 if worker_instance_count|int <= 10
+  else 32 if worker_instance_count|int <= 20
+  else 64
+  }}
+ai_control_plane_memory: >-
+  {{ '32Gi' if worker_instance_count|int <= 10
+  else '64Gi' if worker_instance_count|int <= 20
+  else '128Gi'
+  }}
+
+master_instance_count: 3
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
+
+ai_workers_cores: 16
+# WK: Hardcoding memory - seems wrong to calculate both number of workers and then adjust the memory as well
+# ai_workers_memory: '64Gi'
+ai_workers_memory: >-
+  {{ '32Gi' if num_users|int <= 10
+  else '64Gi'
+  }}
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+- ocp4_workload_cert_manager
+- ocp4_workload_external_odf
+- ocp4_workload_authentication
+- ocp4_workload_openshift_gitops
+- ocp4_workload_kubevirt
+- ocp4_workload_web_terminal
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocpvirt_configure: true
+ocp4_workload_kubevirt_install_virtctl: true
+
+ocp4_workload_user_count: 1
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_admin_password length=12 chars=ascii_letters,digits')
+  }}
+common_user_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_user_password length=12 chars=ascii_letters,digits')
+  }}
+openshift_cluster_admin_username: "{{ ocp4_workload_authentication_admin_user }}"
+openshift_cluster_admin_password: "{{ ocp4_workload_authentication_htpasswd_admin_password }}"
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+
+requirements_content:
+  collections:
+  - name: amazon.aws
+    version: 8.2.0
+  - name: ansible.posix
+    version: 1.6.0
+  - name: ansible.utils
+    version: 5.1.0
+  - name: awx.awx
+    version: 24.6.0
+  - name: community.general
+    version: 9.5.0
+  - name: infra.controller_configuration
+    version: 2.11.0
+  - name: kubernetes.core
+    version: 5.0.0
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.1
+  - name: kubevirt.core
+    version: 2.1.0
+  - name: community.okd
+    version: 4.0.0
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# -------------------------------------------------------------------
+odf_channel: stable-4.18
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1.17
+ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_cert_manager_starting_csv: cert-manager-operator.v1.15.0
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+ocp4_workload_cert_manager_ignore_errors: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.17
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+ocp4_workload_openshift_gitops_update_route_tls: false
+ocp4_workload_openshift_gitops_resource_customizations: |
+  operators.coreos.com/Subscription:
+    health.lua: |
+      health_status = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          numDegraded = 0
+          numPending = 0
+          msg = ""
+          for i, condition in pairs(obj.status.conditions) do
+            msg = msg .. i .. ": " .. condition.type .. " | " .. condition.status .. "\n"
+            if condition.type == "InstallPlanPending" and condition.status == "True" then
+              numPending = numPending + 1
+            elseif (condition.type == "InstallPlanMissing" and condition.reason ~= "ReferencedInstallPlanNotFound") then
+              numDegraded = numDegraded + 1
+            elseif (condition.type == "CatalogSourcesUnhealthy" or condition.type == "InstallPlanFailed") and condition.status == "True" then
+              numDegraded = numDegraded + 1
+            end
+          end
+          if numDegraded == 0 and numPending == 0 then
+            health_status.status = "Healthy"
+            health_status.message = msg
+            return health_status
+          elseif numPending > 0 and numDegraded == 0 then
+            health_status.status = "Progressing"
+            health_status.message = "An install plan for a subscription is pending installation"
+            return health_status
+          else
+            health_status.status = "Degraded"
+            health_status.message = msg
+            return health_status
+          end
+        end
+      end
+      health_status.status = "Progressing"
+      health_status.message = "An install plan for a subscription is pending installation"
+      return health_status
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_web_terminal
+# -------------------------------------------------------------------
+ocp4_workload_web_terminal_channel: fast
+ocp4_workload_web_terminal_catalogsource_setup: false
+ocp4_workload_web_terminal_configure: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_kubevirt
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+ocp4_workload_kubevirt_use_catalog_snapshot: false
+
+# ------------------------------------------------------
+# ocp4_workload_showroom
+# ------------------------------------------------------
+ocp4_workload_showroom_name: showroom
+ocp4_workload_showroom_namespace: showroom
+ocp4_workload_showroom_content_only: false
+
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+# TODO: Convert to non-Showroom and rename
+ocp4_workload_showroom_content_git_repo: https://github.com/RedHatQuickCourses/rh1-lab17-ocpvirt
+ocp4_workload_showroom_content_git_repo_ref: main
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 02dd78a6-a2d3-474c-b98a-7251b27ea54a
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  owners:
+    maintainer:
+    - name: Judd Maltin
+      email: jmaltin@redhat.com
+    instructions:
+    - name: Matt Robson
+      email: mrobson@redhat.com
+    - name: Matthew Secaur
+      email: masecaur@redhat.com
+    - name: Brandon Smitley
+      email: bsmitley@redhat.com
+    - name: Mickael Mayeras
+      email: mmayeras@redhat.com
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+  catalog:
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1387: OpenShift Virtualization Capabilities: Applying the Rosetta Stone"
+    category: Red_Hat_One_2026
+    keywords:
+    - openshift
+    - ocp
+    - virtualization
+    - troubleshooting
+    - rh12026
+    labels:
+      Product: Red_Hat_OpenShift_Virtualization
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    multiuser: false
+    workshopLabUiRedirect: true
+    parameters:
+    - name: num_users
+      description: >-
+        This specifies the number of individual users to provision within EACH OpenShift cluster you deploy.
+        Each cluster supports a maximum of 20 users.
+
+        **Advisory**: If you have "Enable workshop use" toggled on, we strongly recommend
+        setting this to 20 for optimal resource utilization.
+      # The label now specifies that the recommendation is for workshops
+      formLabel: 'OpenShift User Count (Workshop Recommended: 20)'
+      openAPIV3Schema:
+        type: integer
+        # Default to the recommended value for the most common use case
+        default: 2
+        minimum: 2
+        maximum: 20
