@@ -103,6 +103,13 @@ instances:
         value: "linux"
     networks:
       - default
+    services:
+      - name: registry
+        ports:
+          - port: 5000
+            protocol: TCP
+            targetPort: 5000
+            name: registry-http
   - name: target
     count: 1
     unique: true
@@ -195,12 +202,35 @@ bastion_asset_injector_assets:
           User {{ ansible_user }}
           StrictHostKeyChecking no
           UserKnownHostsFile /dev/null
+  - description: Allow insecure access to registry
+    type: content
+    dest: /etc/containers/registries.conf.d/insecure-registry.conf
+    owner: "root"
+    group: "root"
+    mode: "0600"
+    content: |
+      [[registry]]
+      location = "registry:5000"
+      insecure = true
 
-# Set asset_injector_assets based on group membership
+target_asset_injector_assets:
+  - description: Allow insecure access to registry
+    type: content
+    dest: /etc/containers/registries.conf.d/insecure-registry.conf
+    owner: "root"
+    group: "root"
+    mode: "0600"
+    content: |
+      [[registry]]
+      location = "registry:5000"
+      insecure = true
+
 asset_injector_assets: >-
   {{
     bastion_asset_injector_assets
     if 'bastions' in group_names else
+    target_asset_injector_assets
+    if 'targets' in group_names else
     []
   }}
 
@@ -212,7 +242,7 @@ requirements_content:
     - name: https://github.com/agnosticd/cloud_vm_workloads.git
       type: git
       version: main
-    - name: https://github.com/rhpds/lb1353.edge_rhim_microshift
+    - name: https://github.com/rhpds/rhpds.edge_rhim_microshift
       type: git
       version: main
 
@@ -246,13 +276,7 @@ software_workloads:
 post_software_workloads:
   bastions:
     - agnosticd.cloud_vm_workloads.asset_injector
-    - lb1353.edge_rhim_microshift.registry
-
-# -------------------------------------------------------------------
-# lb1353.edge_rhim_microshift.registry variables
-# -------------------------------------------------------------------
-certbot_cert_manager_provider: letsencrypt
-lb1353_registry_hostname: "registry.{{ cluster_dns_zone }}"
+    - rhpds.edge_rhim_microshift.registry
 
 # -------------------------------------------------------------------
 # Babylon meta variables
