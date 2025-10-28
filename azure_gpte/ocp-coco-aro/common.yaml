@@ -1,0 +1,337 @@
+---
+#include /includes/catalog-icon-azure.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/azure-aro-version.yaml
+#include /includes/parameters/open-environment-annotation-hidden.yaml
+#include /includes/parameters/requester_username.yaml
+#include /includes/parameters/student-email.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/azure_redhat0.yaml
+#include /includes/runtime-unlimited.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: Confidential Containers on Redhat OCP & MS Azure
+# -------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: open-environment-azure-subscription
+agnosticd_open_environment: true
+cloud_provider: azure
+
+# Azure pool to use
+az_pool_id: "01"
+azure_region: centralus
+
+# Enable ARO installation functions
+install_aro: true
+project_tag: "{{ env_type }}-{{ guid }}"
+
+# ------------------------------------------------------
+# Azure Properties
+# ------------------------------------------------------
+azure_deploy_bastion: true
+# Get latest versions using
+#   az aro get-versions --location eastus -o table
+aro_install_helm: true
+rhel_sku: "9_3"
+
+# Extra packages to install
+common_extra_packages:
+  - java-17-openjdk-devel
+  - tzdata-java
+  - maven
+  - postgresql
+  - httpd-tools
+
+bastion_remove_insights_motd: true
+bastion_custom_motd: |-
+  ---------------------------------------------------------------------------
+          Welcome to the Azure Red Hat OpenShift Workshop!
+  ---------------------------------------------------------------------------
+
+  By continuing to use this service you agree to use this environment
+  solely for the purposes of completing the steps in the lab guide.
+
+  Any other use is a violation of this service and appropriate action
+  will be taken. If you disagree with these terms you must disconnect now.
+  ----------------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Enable if the item is being deployed to a sandbox account
+# and you want credentials provided to the user
+# -------------------------------------------------------------------
+sandbox_student_user: true
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# Workload variables #
+ocp4_workload_user_base: user
+ocp4_workload_user_count: "{{ num_users }}"
+ocp4_workload_multi_user: "{{ true if num_users | int > 1 else false }}"
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.17_2025_07_07
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: openshift
+common_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------
+# ARO version
+# -------------------------------------------------------------
+az_aro_version: 4.17.27
+# -------------------------------------------------------------
+# Master vm size
+# -------------------------------------------------------------
+open_env_azure_install_aro_master_vm_size: "Standard_D32s_v4"
+# -------------------------------------------------------------
+# Worker Counts, Disk size and Vm size
+# -------------------------------------------------------------
+#open_env_azure_install_aro_worker_count: 4
+#open_env_azure_install_aro_worker_count: "{{ [((num_users | int * 0.3) | round(0, 'ceil') | int) + 4, 5] | max }}"
+#open_env_azure_install_aro_worker_vm_disk_size: 512
+#open_env_azure_install_aro_worker_vm_size: "Standard_D16s_v3"
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+# --- student_name not set -> Requestor User ID is used as student_name
+student_name: lab-user
+# --- student_password not set -> generate random password
+# student_password: "{{ common_password }}"
+# --- Student is allowed to sudo and switch to root
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
+# Show kubeadmin password
+ocp4_cluster_show_access_user_info: true
+install_ftl: false
+ocp4_workload_showroom_content_only: true
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+  - ocp4_workload_authentication # all segments
+  - ocp4_workload_nvidia_gpu_setup
+  - ocp4_workload_pipelines
+  - ocp4_workload_openshift_gitops
+  - ocp4_workload_serverless
+  - ocp4_workload_ossm
+  - ocp4_workload_web_terminal
+  - ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: "{{ ocp4_workload_user_base }}"
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ ocp4_workload_user_count }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
+
+# ------------------------------------------------
+# Node Feature Discovery Operator
+# ------------------------------------------------
+nfd_operator_namespace: openshift-nfd
+nfd_operator_channel: "stable"
+nfd_operator_automatic_install_plan_approval: true
+nfd_operator_starting_csv: "nfd.4.18.0-202504151633"
+nfd_operator_wait_for_deploy: true
+nfd_operator_use_catalog_snapshot: false
+nfd_operator_catalogsource_name: ""
+nfd_operator_catalog_snapshot_image: ""
+nfd_operator_catalog_snapshot_image_tag: ""
+
+# ------------------------------------------------
+# NVIDIA GPU Operator
+# ------------------------------------------------
+nvidia_gpu_operator_namespace: nvidia-gpu-operator
+nvidia_gpu_operator_channel: stable
+nvidia_gpu_operator_automatic_install_plan_approval: true
+nvidia_gpu_operator_starting_csv: gpu-operator-certified.v24.6.1
+nvidia_gpu_operator_wait_for_deploy: true
+nvidia_gpu_operator_use_catalog_snapshot: false
+nvidia_gpu_operator_catalogsource_name: ""
+nvidia_gpu_operator_catalog_snapshot_image: ""
+nvidia_gpu_operator_catalog_snapshot_image_tag: ""
+
+# -------------------------------------------------------------------
+# Workload ocp4_workload_ossm - Service Mesh
+# -------------------------------------------------------------------
+ocp4_workload_ossm_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_ossm_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# Elasticsearch
+ocp4_workload_ossm_es_channel: stable
+ocp4_workload_ossm_es_startingcsv: ""
+
+# Jaeger
+ocp4_workload_ossm_jaeger_channel: stable
+ocp4_workload_ossm_jaeger_startingcsv: ""
+
+# Kiali
+ocp4_workload_ossm_kiali_channel: stable
+ocp4_workload_ossm_kiali_startingcsv: ""
+
+# Service Mesh
+ocp4_workload_ossm_servicemesh_channel: stable
+ocp4_workload_ossm_servicemesh_startingcsv: ""
+
+ocp4_workload_rhsso_starting_csv: rhsso-operator.7.6.9-opr-001
+
+# ---------------------------------------------------------
+# Workload: ocp4_workload_pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.14
+
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.11
+
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+ocp4_workload_openshift_gitops_ignore_differences: |
+  resourceIdentifiers:
+  - group: jaegertracing.io
+    kind: Jaeger
+    customization:
+      jsonPointers:
+      - /spec/strategy
+  - group: apps
+    kind: Deployment
+    customization:
+      jqPathExpressions:
+      - .spec.template.spec.containers[] | select(.name == "redis")
+
+# -------------------------------------------------------------------
+# Role: ocp4_workload_showroom
+# -------------------------------------------------------------------
+
+agnosticd_passthrough_user_data: |
+  {{ {}
+   | combine({
+      "azure_ai_info_url": azure_ai_info_url
+   } if azure_ai_info_url else {})
+  }}
+
+ocp4_workload_showroom_passthrough_user_data: true
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_content_git_repo: >-
+  https://github.com/rh-mobb/parasol-insurance.git #To be updated to the actual repo later
+ocp4_workload_showroom_content_git_repo_ref: dev
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_serverless
+# -------------------------------------------------------------------
+
+# ocp4_workload_serverless_channel: stable
+ocp4_workload_serverless_install_eventing: false
+ocp4_workload_serverless_install_serving: false
+# ocp4_workload_serverless_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: c0ce8b82-b3d5-11f0-a1cc-8b99fb9e8578
+  owners:
+    maintainer:
+      - name: Ritesh Shah
+        email: rshah@redhat.com
+    sme:
+      - name: Uday Shankar AD
+        email: uad@redhat.com
+    instructions:
+      - name: Uday Shankar AD
+        email: uad@redhat.com
+      - name: Ricardo Garcia Cavero
+        email: rgarcia@redhat.com
+  deployer:
+    actions:
+      start:
+        disable: true
+      stop:
+        disable: true
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Confidential Containers on Redhat OCP & MS Azure
+    category: Workshops
+    keywords: []
+    multiuser: true
+    parameters:
+      - name: num_users
+        description: >-
+          Number of users to provision within the cluster.
+        formLabel: OpenShift User Count
+        openAPIV3Schema:
+          type: integer
+          default: 1
+          minimum: 1
+      - name: azure_ai_info_url
+        description: >-
+          URL where environment settings for Azure AI can be found
+        formLabel: Azure AI Info URL
+        openAPIV3Schema:
+          type: string
+          pattern: ^https?:\/\/.+$
+    labels:
+      Product: Red_Hat_OpenShift_AI
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Hybrid_Platforms_BU
+  secrets:
+    - namespace: gpte
+      name: rhods-git-secret
