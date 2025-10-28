@@ -13,12 +13,13 @@
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/secrets/azure_redhat0.yaml
 #include /includes/runtime-unlimited.yaml
+#include /includes/access-restriction-rh1-2026-devs.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: Confidential Containers on Redhat OCP & MS Azure
 # -------------------------------------------------------------------
 # -------------------------------------------------------------------
-# Mandatory Variables
+# Mandatory Variables for this Catalog Item
 # -------------------------------------------------------------------
 env_type: open-environment-azure-subscription
 agnosticd_open_environment: true
@@ -26,7 +27,7 @@ cloud_provider: azure
 
 # Azure pool to use
 az_pool_id: "01"
-azure_region: centralus
+#azure_region: eastus
 
 # Enable ARO installation functions
 install_aro: true
@@ -91,17 +92,6 @@ common_admin_password: "{{ common_password }}"
 # ARO version
 # -------------------------------------------------------------
 az_aro_version: 4.17.27
-# -------------------------------------------------------------
-# Master vm size
-# -------------------------------------------------------------
-open_env_azure_install_aro_master_vm_size: "Standard_D32s_v4"
-# -------------------------------------------------------------
-# Worker Counts, Disk size and Vm size
-# -------------------------------------------------------------
-#open_env_azure_install_aro_worker_count: 4
-#open_env_azure_install_aro_worker_count: "{{ [((num_users | int * 0.3) | round(0, 'ceil') | int) + 4, 5] | max }}"
-#open_env_azure_install_aro_worker_vm_disk_size: 512
-#open_env_azure_install_aro_worker_vm_size: "Standard_D16s_v3"
 
 # -------------------------------------------------------------------
 # Student User on Bastion
@@ -295,43 +285,56 @@ __meta__:
         email: uad@redhat.com
       - name: Ricardo Garcia Cavero
         email: rgarcia@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-azure-gpte
+  catalog:
+    parameters:
+      - name: azure_region
+        description: Azure Region to Provision Environment
+        formLabel: Region
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: centralus
+          enum:
+            - centralus
+            - eastus
+            - northcentralus
+            - westcentralus
+      - name: open_env_azure_install_aro_master_vm_size
+        description: Azure Master VM Size
+        formLabel: Region
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: Standard_D8s_v5
+          enum:
+            - Standard_D8s_v3
+            - Standard_D8s_v5
+            - Standard_D8s_v6
+      - name: open_env_azure_install_aro_worker_vm_size
+        description: Azure Worker VM Size
+        formLabel: Region
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: Standard_D4s_v5
+          enum:
+            - Standard_D4s_v3
+            - Standard_D4s_v5
+            - Standard_D4s_v6
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Understanding Confidential Containers - Workshop on ARO
+    category: Labs
+    keywords: []
+    labels:
+      Product_Family: Red_Hat_Cloud
+      Product: Microsoft_Azure_Red_Hat_OpenShift
+      Provider: RHDP
+      SLA: Community
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
   deployer:
-    actions:
-      start:
-        disable: true
-      stop:
-        disable: true
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:v0.1.2
       pull: missing
-  catalog:
-    namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: Confidential Containers on Redhat OCP & MS Azure
-    category: Workshops
-    keywords: []
-    multiuser: true
-    parameters:
-      - name: num_users
-        description: >-
-          Number of users to provision within the cluster.
-        formLabel: OpenShift User Count
-        openAPIV3Schema:
-          type: integer
-          default: 1
-          minimum: 1
-      - name: azure_ai_info_url
-        description: >-
-          URL where environment settings for Azure AI can be found
-        formLabel: Azure AI Info URL
-        openAPIV3Schema:
-          type: string
-          pattern: ^https?:\/\/.+$
-    labels:
-      Product: Red_Hat_OpenShift_AI
-      Product_Family: Red_Hat_Cloud
-      Provider: RHDP
-    reportingLabels:
-      primaryBU: Hybrid_Platforms_BU
-  secrets:
-    - namespace: gpte
-      name: rhods-git-secret
