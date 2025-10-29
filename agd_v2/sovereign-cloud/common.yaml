@@ -1,0 +1,315 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog: Red Workshops
+# --- Catalog Item: Red Hat OpenShift Container Platform
+#                   Cluster (CNV) - AgdV2
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV Includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/babylon-anarchy-sandbox.yaml
+
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/zerossl.yaml
+
+#include /includes/parameters/cert-manager-vars.yaml
+#include /includes/secrets/letsencrypt_with_zerossl_fallback.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# Repository Tag
+# Tag for all repositories that are used in this config.
+# ===================================================================
+tag: main
+# -------------------------------------------------------------------
+cloud_provider: openshift_cnv
+cloud_provider_version: main
+config: openshift-cluster
+
+# AWS Region to deploy the managed cluster into
+aws_region: us-east-2
+# ===================================================================
+# End Mandatory Variables
+# ===================================================================
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # Assisted Installer Collection
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.8
+
+  # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+bastion_setup_student_user: true
+bastion_student_user_name: student
+bastion_student_sudo: true
+bastion_student_user_password: "{{ common_password }}"
+
+# Enable if the item is being deployed to a sandbox account
+# and you want credentials provided to the user
+sandbox_student_user: true
+
+# ===================================================================
+# OpenShift cluster specific settings
+#     See ansible/configs/openshift-cluster/default_vars.yml
+#     and ansible/configs/{{ cloud_provider }}/default_vars for
+#     available variables
+# ===================================================================
+cluster_name: hub
+host_ocp4_installer_version: "4.20"
+host_ocp4_deploy_installation_method: openshift_assisted
+
+# Save kubeadmin password in user data - only necessary if
+# no authentication is set up for the cluster
+host_ocp4_installer_set_user_data_kubeadmin_password: true
+
+openshift_cluster_admin_service_account_enable: true
+openshift_cluster_ingress_controller_allow_wildcards: true
+
+ai_service_network_cidr: "172.231.0.0/16"
+ai_cluster_network_cidr: "10.232.0.0/14"
+ai_network_mtu: 8900
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+- agnosticd.core_workloads.ocp4_workload_external_odf
+- agnosticd.core_workloads.ocp4_workload_cert_manager
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_pipelines
+# - agnosticd.core_workloads.ocp4_workload_rhacs
+- agnosticd.core_workloads.ocp4_workload_rhacm
+# - agnosticd.core_workloads.ocp4_workload_rhacm_cloud_credentials
+# - agnosticd.core_workloads.ocp4_workload_rhacm_hypershift
+# - agnosticd.core_workloads.ocp4_workload_quay_operator
+# - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# - agnosticd.core_workloads.ocp4_workload_showroom
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# -------------------------------------------------------------------
+ocp4_workload_external_odf_channel: stable-4.19
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1
+ocp4_workload_cert_manager_cloud_provider: aws
+
+# Values from /includes/secrets/dynamic-aws-dns.yaml
+# cluster_dns_zone: dynamic.redhatworkshops.io
+# route53_aws_zone_id:
+# route53_aws_access_key_id:
+# route53_aws_secret_access_key:
+ocp4_workload_cert_manager_aws_region: us-east-2
+ocp4_workload_cert_manager_aws_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_aws_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_aws_hostedzoneid: "{{ route53_aws_zone_id }}"
+
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_virtualization
+# -------------------------------------------------------------------
+ocp4_workload_openshift_virtualization_channel: stable
+ocp4_workload_openshift_virtualization_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.18
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: false
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_pipelines
+# -------------------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.17
+ocp4_workload_pipelines_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacs
+# -------------------------------------------------------------------
+ocp4_workload_rhacs_install_operator_channel: rhacs-4.8
+ocp4_workload_rhacs_install_operator_namespace: rhacs-operator
+ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
+ocp4_workload_rhacs_enable_central_scanner_v4: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacm
+# -------------------------------------------------------------------
+ocp4_workload_rhacm_acm_channel: release-2.14
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacm_cloud_credentials
+# -------------------------------------------------------------------
+ocp4_workload_rhacm_cloud_credentials_kubevirt: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacm_hypershift
+# -------------------------------------------------------------------
+ocp4_workocp4_workload_rhacm_hypershift_s3_bucket_region: "{{ aws_region }}"
+
+ocp4_workload_rhacm_hypershift_deploy_clusters:
+- name: development
+  infra_id: "dev-{{ guid }}"
+  ocp_release: 4.19.17
+  region: "{{ aws_region }}"
+  zones:
+  - "{{ aws_region }}a"
+  control_plane_availability: SingleReplica
+  infra_availability: SingleReplica
+  etcd_storage_class: gp3-csi
+  nodepool_replicas: 1
+  worker_instance_type: m6a.2xlarge
+  root_volume_type: gp3
+  root_volume_size: 120
+  labels:
+    rhdp_type: sandbox
+    rhdp_usage: development
+    guid: "{{ guid }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_quay_operator
+# -------------------------------------------------------------------
+ocp4_workload_quay_operator_channel: stable-3.15
+ocp4_workload_quay_operator_registry_namespace: quay
+ocp4_workload_quay_operator_registry_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/opp-gitops.git
+ocp4_workload_gitops_bootstrap_repo_revision: v1.3.0
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+ocp4_workload_gitops_bootstrap_helm_values:
+  compliance:
+    repoURL: https://github.com/rhpds/ocp-cluster-addons.git
+    path: compliance
+    targetRevision: main
+    namespace: openshift-compliance
+    startingCSV: compliance-operator.v1.7.1
+    channel: stable
+    config:
+      nodeSelector:
+        node-role.kubernetes.io/worker: ""
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom-opp.git
+ocp4_workload_showroom_content_git_repo_ref: main
+
+ocp4_workload_showroom_content_only: false
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 62028e9a-856e-4cb3-960e-1b17574001f3
+  catalog:
+    display_name: "Sovereign Cloud"
+    category: Red_Hat_One_2026
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    multiuser: false
+    keywords:
+    - workshop
+    - openshift
+    - ocp
+    - rhacm
+    - rhacs
+    - quay
+    - admin
+    - storage
+    - ocpplus
+    - opp
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      pull: missing
+  owners:
+    maintainer:
+    - name: Wolfgang Kulhanek
+      email: wkulhane@redhat.com
+    sme:
+    - name: Michael Foster
+      email: mfoster@redhat.com
+    - name: Jimmy Alvarez
+      email: jialvare@redhat.com
+    instructions:
+    - name: Michael Foster
+      email: mfoster@redhat.com
+    - name: Jimmy Alvarez
+      email: jialvare@redhat.com
+  sandboxes:
+  - kind: AwsSandbox
+  - kind: OcpSandbox
+    namespace_suffix: ocp4-cluster
+    cloud_selector:
+      cloud: cnv
+      purpose: prod
+      virt: "yes"
+    quota:
+      limits.cpu: "256"
+      requests.cpu: "256"
+      limits.memory: "500Gi"
+      requests.memory: "500Gi"
+      requests.storage: "2000Gi"
+  components:
+  - name: aws
+    display_name: AWS Open Environment
+    item: sandboxes-gpte/SANDBOX_OPEN
+    propagate_provision_data:
+    - var: aws_provision_data
