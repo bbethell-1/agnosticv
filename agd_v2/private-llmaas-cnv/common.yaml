@@ -1,0 +1,480 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: Private LLM as a Service (On CNV)
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift-data-science.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/ocp4-fips-enable.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/secrets/zerossl.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables - AgnosticV2 Pattern
+# -------------------------------------------------------------------
+# Agnosticdv2 variables
+config: openshift-workloads
+cloud_provider: none
+software_to_deploy: none
+openshift_cnv_scale_cluster: true
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+    # Assisted Installer Collection
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: v0.0.8
+
+    # Core OpenShift Workloads
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: main
+
+    # Core Openshift AI Collection
+    - name: https://github.com/agnosticd/ai_workloads.git
+      type: git
+      version: main
+
+    # Original Gen AI collection
+    - name: https://github.com/rhpds/lb1942.instruct_docling_lab.git
+      type: git
+      version: main
+
+# worker count for Auto-scaling
+worker_instance_count: 4
+ai_workers_cores: 16
+ai_workers_memory: 64Gi
+
+# -------------------------------------------------------------------
+# Common Password (from original gen_ai)
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_password: "{{ common_password }}"
+common_user_password: "{{ common_password }}"
+common_admin_username: admin
+
+# -------------------------------------------------------------------
+# Workload configuration
+# -------------------------------------------------------------------
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.18_2025_07_25
+
+# User configuration
+ocp4_workload_user_base: user
+ocp4_workload_user_count: "{{ num_users | default('5') | int }}"
+ocp4_workload_multi_user: true
+
+# Show kubeadmin password
+ocp4_cluster_show_access_user_info: true
+
+# OpenShift network type
+ocp4_network_type: OVNKubernetes
+
+# Gen AI secrets (copied from original)
+models_aws_s3_access_key: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  37393362653231343836356262616562363137653333373533373966636664333137316132623138
+  6262346238313531656531643030323935393034653961380a323865343931333431646433613637
+  38633263306539346137626639303664336566633339323432386534376239313266386637373939
+  3466363061613963360a656464633563346637313937366431316164636662323865353665633366
+  63303534353532303537343632646566336230353662646664363865373136663461
+
+models_aws_s3_secret_key: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  39363536383835326665623462623737396632383134353562613533366366613035353265306466
+  3633323635626130373961373664623363386431636662640a373164616238363632633161326538
+  61366462396231646333626262313064626239356663323736363936656263306266666535623362
+  3162356434396364300a613565313032626462303636306664333738663562333138346630306463
+  39336538353164396163343530353936346234353338363035393662323363373534306231313238
+  3631663265346531653836306564366336376139333663663865
+
+granite_bearerToken: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  65393934643033356338633061303661613031626239313936346566333138633636333939626136
+  3633343431313234356638366439386431303933333135660a393637333935343731613965386135
+  37333234306165623931336538393738373236313232386236363861623338613766343233653066
+  6264636664333535390a623634306632323633623535303137336433613035336532666331333566
+  37656634363537646531343866316638383966346639383064616130636336343161373235313435
+  3335383735386539633161633135353263326635323131343735
+
+llamacode7b: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  63666339313030313533306637626131383735326137333962663262373936613339363064353736
+  6166383730336264643238623537323639633935303361370a356634623062313037323662386464
+  38313031613330313732663164343233663535633134646639366231653733663062343531323363
+  6531356636316261660a316434333131393331363764373632333763363139393266333534613233
+  36633434386333666563656162653733393264323536336231326534396536323436613036356163
+  6236346233333032316264613665626439373262383132613361
+
+granite_bearerToken_8b_code_instruct_128k: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  31666137383834303933366438636365656234383263323561646132613261336136316338623732
+  6237643130393863633830663331333265336364346265390a393532643132353331643231653865
+  34353738613065396464626262343130633835373333336264396166343439643566386433363136
+  3964656364323665360a653166613934323936333339663934396235313033326332363237663962
+  64653465306335613664386134633661343832333561323066363062386462643237613138643437
+  3464666530623637396663666137376439343265656138343161
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_authentication_rhsso
+  - agnosticd.core_workloads.ocp4_workload_authorino
+  - agnosticd.core_workloads.ocp4_workload_pipelines
+  - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  - agnosticd.core_workloads.ocp4_workload_serverless
+  - agnosticd.core_workloads.ocp4_workload_servicemesh2
+  - agnosticd.ai_workloads.ocp4_workload_openshift_ai
+  - agnosticd.core_workloads.ocp4_workload_devspaces
+  - agnosticd.core_workloads.ocp4_workload_showroom
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.core_workloads.ocp4_workload_web_terminal
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_rhsso
+# -------------------------------------------------------------------
+ocp4_workload_authentication_rhsso_namespace: rhsso
+ocp4_workload_authentication_rhsso_target_namespaces: ["rhsso"]
+ocp4_workload_authentication_rhsso_channel: stable
+ocp4_workload_authentication_rhsso_starting_csv: ""
+# ocp4_workload_authentication_rhsso_starting_csv: rhsso-operator.7.6.3-opr-002
+ocp4_workload_authentication_rhsso_automatic_install_plan_approval: true
+ocp4_workload_authentication_rhsso_use_catalog_source: false
+ocp4_workload_authentication_rhsso_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_authentication_rhsso_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_authentication_rhsso_admin_create: true
+ocp4_workload_authentication_rhsso_admin_username: admin
+# Empty password will be generated by the workload
+ocp4_workload_authentication_rhsso_admin_password: ""
+# Length of the admin password if generated
+ocp4_workload_authentication_rhsso_admin_password_length: 12
+
+ocp4_workload_authentication_rhsso_user_count: "{{ num_users | default(0) }}"
+# User name for single user deployment
+ocp4_workload_authentication_rhsso_user_name: student
+# Base user name for multi-user deployment
+ocp4_workload_authentication_rhsso_user_name_base: user
+# Empty password will be generated by the workload
+ocp4_workload_authentication_rhsso_user_password: ""
+
+# -------------------------------------------------------------------
+# ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1.16
+ocp4_workload_cert_manager_use_catalog_snapshot: true
+ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_cert_manager_starting_csv: ""
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authorino
+# -------------------------------------------------------------------
+ocp4_workload_authorino_operator_channel: stable
+ocp4_workload_authorino_operator_use_catalog_snapshot: true
+ocp4_workload_authorino_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_authorino_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_authorino_operator_catalogsource_name: redhat-operators-snapshot-authorino
+ocp4_workload_authorino_operator_starting_csv: authorino-operator.v1.2.2
+ocp4_workload_authorino_operator_automatic_install_plan_approval: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_pipelines
+# -------------------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.18
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_pipelines_starting_csv: openshift-pipelines-operator-rh.v1.18.1
+ocp4_workload_pipelines_automatic_install_plan_approval: false
+ocp4_workload_pipelines_install_cli_tools: false
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.16
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_openshift_gitops_starting_csv: openshift-gitops-operator.v1.16.2
+ocp4_workload_openshift_gitops_automatic_install_plan_approval: false
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: 250m
+ocp4_workload_openshift_gitops_controller_requests_memory: 2Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "2"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ common_admin_username }}, role:admin
+  g, user1, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+# -------------------------------------------------------------------
+# ocp4_workload_serverless
+# -------------------------------------------------------------------
+ocp4_workload_serverless_channel: stable
+ocp4_workload_serverless_use_catalog_snapshot: true
+ocp4_workload_serverless_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_serverless_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_serverless_starting_csv: serverless-operator.v1.36.0
+ocp4_workload_serverless_automatic_install_plan_approval: false
+
+ocp4_workload_serverless_install_serving: false
+ocp4_workload_serverless_install_eventing: false
+
+# -------------------------------------------------------------------
+# Workload ocp4_workload_servicemesh2 - Service Mesh v2
+# -------------------------------------------------------------------
+ocp4_workload_servicemesh2_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_servicemesh2_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_servicemesh2_use_catalog_snapshot: true
+
+
+# Elasticsearch
+ocp4_workload_servicemesh2_es_channel: stable
+ocp4_workload_servicemesh2_es_startingcsv: ""
+
+# Jaeger
+ocp4_workload_servicemesh2_jaeger_channel: stable
+ocp4_workload_servicemesh2_jaeger_startingcsv: ""
+
+# Kiali
+ocp4_workload_servicemesh2_kiali_channel: stable
+ocp4_workload_servicemesh2_kiali_startingcsv: ""
+
+# Service Mesh
+ocp4_workload_servicemesh2_servicemesh_channel: stable
+ocp4_workload_servicemesh2_servicemesh_startingcsv: ""
+
+# -------------------------------------------------------------------
+# OpenShift AI Workload - TODO: Need to add proper collection for this
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_channel: stable
+ocp4_workload_openshift_ai_use_catalog_snapshot: true
+ocp4_workload_openshift_ai_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_ai_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_openshift_ai_starting_csv: rhods-operator.2.22.0
+ocp4_workload_openshift_ai_automatic_install_plan_approval: false
+
+ocp4_workload_openshift_ai_kserve: Managed
+
+# -------------------------------------------------------------------
+# ocp4_workload_devspaces
+# -------------------------------------------------------------------
+ocp4_workload_devspaces_channel: stable
+ocp4_workload_devspaces_catalogsource_setup: true
+ocp4_workload_devspaces_catalogsource_name: devspaces-catalogsource
+ocp4_workload_devspaces_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_devspaces_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_devspaces_startingcsv: ""
+ocp4_workload_devspaces_namespace: openshift-devspaces
+ocp4_workload_devspaces_user_base: "{{ ocp4_workload_user_base }}"
+ocp4_workload_devspaces_user_count: "{{ ocp4_workload_user_count }}"
+ocp4_workload_devspaces_devworkspace: true
+ocp4_workload_devspaces_devworkspace_name: llmaas
+ocp4_workload_devspaces_devworkspace_namespace: devworkspaces
+ocp4_workload_devspaces_devworkspace_username: user1
+ocp4_workload_devspaces_devworkspace_project: llama-stack-on-ocp
+ocp4_workload_devspaces_devworkspace_git_repo: https://github.com/taylorjordanNC/coding-exercises
+# FIXME create revision tag
+ocp4_workload_devspaces_devworkspace_git_revision: main
+ocp4_workload_devspaces_devworkspace_components:
+  - name: tooling
+    container:
+      image: registry.redhat.io/devspaces/udi-rhel9:3.21
+ocp4_workload_devspaces_devworkspace_devfile: >-
+  http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
+
+# -------------------------------------------------------------------
+# Role: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/private-summit-llmaas-showroom
+ocp4_workload_showroom_content_git_repo_ref: v1.1.1
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: 1.3.4
+ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2025-07-29
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/redhat-gpte-devopsautomation/private-llm-aas
+ocp4_workload_gitops_bootstrap_repo_revision: v2.0.1
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  user:
+    count: "{{ ocp4_workload_user_count }}"
+    prefix: "{{ ocp4_workload_user_base }}"
+  workspace: ""
+  threeScale:
+    repoURL: https://github.com/rhpds/ocp-cluster-addons
+    targetRevision: v1.3.0
+    channel: threescale-2.15
+    startingCSV: 3scale-operator.v0.12.3
+  cmsUpload:
+    repoURL: https://github.com/redhat-gpte-devopsautomation/private-llm-aas
+    targetRevision: v2.0.1
+  llmaas:
+    repoURL: https://github.com/redhat-gpte-devopsautomation/private-llm-aas
+    targetRevision: v2.0.1
+  llamaStack:
+    repoURL: https://github.com/redhat-gpte-devopsautomation/private-llm-aas
+    targetRevision: v2.0.1
+  slackMcpSecret:
+    slackBotToken: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          62363230306465333938333130666363303938343561363165376135356236353133323932386161
+          3233666266323737353762656564376239316238383830610a346537616639363636646637323134
+          34373632323631653537653438663266303739343936646261666363363431366431316133376564
+          6235313061656463630a663634383261306466326638633237623933306465333036656631326662
+          39383434396236376261666161393036663764646238663661356437636238633961326166303034
+          32356133616136396638363663323366336465366532303039353064316239633362616661636466
+          646133316634366263373039356332303666
+    slackTeamId: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          39613930383639643837613930653164636563333233653030363037653365616532616234643265
+          3930326138346662366261656531303662383639666463340a633733393362323931356461376632
+          34633562323937303164633562363935373233303432626639623264613761353633356465316634
+          6336626666383437370a633137366531366361336636383234303732313562303430353264383132
+          6436
+    graniteToken: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          32656339353764616534626362303832646332313739633339653232616236396534316537343030
+          3330653462643633306564383265363537373838323536370a663931393231323736633933643639
+          30656539646135643638626135373361393765313330616463396133336130633864303761303738
+          3564353235323832340a373365353063356239313764653364336263613665383365376262616236
+          63306538636663366663353663303362316339656462613235333761316331393561616331323734
+          3366656635333439633638666433363233646565353931303666
+    llamaToken: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          62343737623935643866353733336135396634356564303833626339623365393261306261333637
+          3833346361386437363664336331303866643931373932620a316665316164663938326661373735
+          35373961323031303133653466643265333862316632613733366538326565373938386237343062
+          3733616633343361310a363564656261316634636534663561393233623966363036376131316131
+          36613630386334363864323064383739613332393164633362353565663464316533333331633332
+          3561333633383530396433333231306530633065316163393238
+
+ocp4_workload_gitops_bootstrap_health_retries: 2
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: 10B38B97-1719-4FD8-9E37-B752CDFB2F25
+  owners:
+    maintainer:
+      - name: Ritesh Shah
+        email: rshah@redhat.com
+      - name: Taylor Smith
+        email: tsmith@redhat.com
+    instructions:
+      - name: Ritesh Shah
+        email: rshah@redhat.com
+      - name: Taylor Smith
+        email: tsmith@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  # Components to include in template and catalog item
+  components:
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools/prod
+      parameter_values:
+        cluster_size: multinode
+        host_ocp4_installer_version: "4.18"
+      # Propagate agnosticd_user_info data set by this component to variables.
+      propagate_provision_data:
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: openshift_api_url
+          var: openshift_api_url
+
+  # Disable actions on chained config that are handled by base.
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      pull: missing
+    actions:
+      destroy:
+        disable: true
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    multiuser: true
+    workshopUiDisabled: false
+    display_name: "Private LLM as a Service - A Practical Introduction with OpenShift AI - on CNV"
+    category: Workshops
+    keywords:
+      - openshift
+      - agentic
+      - ai
+      - llamastack
+    parameters:
+      - name: num_users
+        description: >-
+          Number of users to provision within the environment.
+        formLabel: User Count
+        openAPIV3Schema:
+          type: integer
+          default: 5
+          minimum: 5
+          maximum: 60
+    labels:
+      Base_Component: 'False'
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Red_Hat_AI_BU
+  tower:
+    timeout: 21600
