@@ -1,19 +1,57 @@
 ---
+# ===================================================================
+# THIS CATALOG USES AGNOSTICD V2
+# ===================================================================
+# AgnosticD v2 is the new automation framework for RHDP
+# Repository: https://github.com/agnosticd/
+# Key differences from AgDv1:
+#   - Uses 'config' instead of 'env_type'
+#   - Workloads use FQCN format (agnosticd.collection.role_name)
+#   - Workloads defined in 'workloads' list (not 'infra_workloads')
+#   - Collections from agnosticd org: core_workloads, ai_workloads
+#   - New execution environment image
+#   - AgDv2-specific variable mappings via includes
+# ===================================================================
+
+# -------------------------------------------------------------------
+# AgnosticV Includes
+# -------------------------------------------------------------------
+
+# AgDv2 Variable Mapping (Wolfgang's include - maps AgDv1 vars to AgDv2)
+# This include provides:
+#   - platform: RHPDS
+#   - env_type: "{{ config }}"
+#   - base_domain: "{{ sandbox_zone }}"
+#   - Satellite and ODF configurations
+#include /includes/agd-v2-mapping.yaml
+
+# AWS Sandbox Configuration
 #include /includes/aws-sandbox-meta.yaml
+
+# Catalog Metadata
 #include /includes/catalog-icon-openshift-data-science.yaml
+
+# Common Parameters
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/lifetime-standard.yaml
-#include /includes/parameters/agnosticd_open_environment.yaml
+
+# Ansible Control Plane
 #include /includes/ansible_control_plane/current_controller.yaml
+
+# Secrets
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
 #include /includes/secrets/demosat-rhel-9-lab.yaml
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/rhods-git-secret.yml
+#include /includes/secrets/zerossl.yaml
+
+# Certificate Manager Parameters
 #include /includes/parameters/cert-manager-vars.yaml
 #include /includes/parameters/enable-cert-manager.yaml
-#include /includes/secrets/zerossl.yaml
+
+# AWS Region Configuration
 #include /includes/parameters/aws-region-fallback.yaml
 
 # -------------------------------------------------------------------
@@ -21,26 +59,34 @@
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
-# Mandatory Variables
+# Mandatory Variables (AgDv2)
 # -------------------------------------------------------------------
-env_type: ocp4-cluster
-software_to_deploy: openshift4
-project_tag: "{{ env_type }}-{{ guid }}"
+# AgDv2 uses 'config' instead of 'env_type'
+config: openshift-cluster
+# software_to_deploy is not needed in AgDv2 (determined by config)
+# project_tag automatically uses config in AgDv2
+project_tag: "{{ config }}-{{ guid }}"
 
 # -------------------------------------------------------------------
 # Enable if the item is being deployed to a sandbox account
 # and you want credentials provided to the user
 # -------------------------------------------------------------------
 sandbox_student_user: true
+
 # -------------------------------------------------------------------
-# Platform
+# Platform (AgDv2 uses uppercase RHPDS)
 # -------------------------------------------------------------------
-platform: rhpds
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Cloud Provider Configuration (AgDv2)
+# -------------------------------------------------------------------
+cloud_provider: aws
+cloud_provider_version: main
 
 # -------------------------------------------------------------------
 # VM configuration
 # -------------------------------------------------------------------
-cloud_provider: ec2
 bastion_instance_type: t3a.medium
 #bastion_instance_image: RHEL84GOLD-latest
 bastion_instance_image: RHEL94GOLD-latest
@@ -91,14 +137,22 @@ security_groups:
         rule_type: Ingress
 
 # -------------------------------------------------------------------
-# OpenShift Installer Version
+# OpenShift Installer Version (AgDv2)
 # -------------------------------------------------------------------
-ocp4_installer_version: "4.18.24"
-ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-master_instance_count: 1
-master_instance_type: g6.12xlarge
-master_storage_type: io1
-master_storage_size: 1550
+# AgDv2 uses host_ocp4_installer_version not ocp4_installer_version
+host_ocp4_installer_version: "4.18.24"
+host_ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# OpenShift Cluster Sizing (AgDv2)
+# -------------------------------------------------------------------
+# AgDv2 uses control_plane_* not master_*
+control_plane_instance_count: 1
+control_plane_instance_type: g6.12xlarge
+control_plane_storage_type: io1
+control_plane_storage_size: 1550
+
+# Worker nodes
 worker_instance_count: 0
 #worker_instance_type: m6a.8xlarge
 #worker_storage_type: gp3
@@ -121,34 +175,13 @@ repo_method: satellite
 update_packages: true
 
 # -------------------------------------------------------------------
-# Student User on Bastion
+# Student User on Bastion (AgDv2)
 # -------------------------------------------------------------------
-install_student_user: true
-# --- student_name not set -> Requestor User ID is used as student_name
-student_name: lab-user
-# --- student_password not set -> generate random password
-student_password: "{{ common_password }}"
-# --- Student is allowed to sudo and switch to root
+# AgDv2 uses bastion_setup_student_user not install_student_user
+bastion_setup_student_user: true
+bastion_student_user_name: lab-user
+# Password generation handled automatically
 student_sudo: true
-
-# -------------------------------------------------------------------
-# Customizations to packages and virtualenvs to enable ovirt.ovirt
-# -------------------------------------------------------------------
-# Add prereqs for ovirt-engine-sdk-python Python package
-host_virtualenv_package_prereqs:
-  - gcc
-  - python3
-  - python3-devel
-  - python3-libselinux
-  - python3-pip
-  - libcurl-devel
-  - openssl-devel
-  - libxml2-devel
-
-# Add required Python packages to virtualenv for ovirt.ovirt collection
-host_virtualenv_requirements_override:
-  - ovirt-engine-sdk-python==4.5.0
-  - passlib==1.7.4
 
 # -------------------------------------------------------------------
 # Other Variables
@@ -160,23 +193,31 @@ host_virtualenv_requirements_override:
 ocp4_cluster_show_access_user_info: true
 install_ftl: false
 
-# -------------------------------------------------------------------
-# Custom collections for this environment
-# -------------------------------------------------------------------
+# ===================================================================
+# AgDv2 Collections & Requirements
+# ===================================================================
+# AgDv2 requires collections from the agnosticd GitHub organization
+# All workloads use FQCN format: agnosticd.collection_name.role_name
+# ===================================================================
 requirements_content:
   collections:
-    - name: kubernetes.core
-      version: 2.4.0
-    - name: amazon.aws
-      version: 2.3.0
-    - name: community.general
-      version: 6.4.0
-    - name: ansible.posix
-      version: 1.5.1
-    - name: ovirt.ovirt
-      version: 3.1.1
-    - name: awx.awx
-      version: 21.1.0
+    # -------------------------------------------------------------------
+    # AgDv2 Core Collections (REQUIRED for AgDv2)
+    # -------------------------------------------------------------------
+    # Core OpenShift workloads: authentication, cert-manager, gitops, etc.
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: main
+
+    # AI workloads: NVIDIA GPU, OpenShift AI, OLS, Model copy
+    - name: https://github.com/agnosticd/ai_workloads.git
+      type: git
+      version: main
+
+    # -------------------------------------------------------------------
+    # Lab-specific Collections
+    # -------------------------------------------------------------------
+    # llm-d lab specific workload
     - name: https://github.com/rhpds/lb1942.instruct_docling_lab.git
       type: git
       version: main
@@ -186,60 +227,80 @@ requirements_content:
 # -------------------------------------------------------------------
 ocp4_network_type: OVNKubernetes
 
-# -------------------------------------------------------------------
-# Workloads
-# -------------------------------------------------------------------
-infra_workloads:
-  - ocp4_workload_authentication # all segments
-  - ocp4_workload_cert_manager
-  - ocp4_workload_authorino
-  - ocp4_workload_pipelines
-  - ocp4_workload_openshift_gitops
-  - ocp4_workload_nvidia_gpu_setup
-  - ocp4_workload_serverless
-  - ocp4_workload_ossm
-  - ocp4_workload_openshift_ai
-#  - ocp4_workload_gitops_bootstrap
-  - ocp4_workload_showroom
-  - ocp4_workload_web_terminal
+# ===================================================================
+# Workloads (AgDv2 Format with FQCN)
+# ===================================================================
+# AgDv2 uses 'workloads' list (not 'infra_workloads')
+# All workloads must use FQCN: agnosticd.collection_name.role_name
+# Collections:
+#   - agnosticd.core_workloads = Core OpenShift workloads
+#   - agnosticd.ai_workloads = AI/GPU workloads (NVIDIA, OpenShift AI)
+# ===================================================================
+workloads:
+  # Authentication (htpasswd) - creates admin and users
+  - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+
+  # Cert Manager - manages TLS certificates
+  - agnosticd.core_workloads.ocp4_workload_cert_manager
+
+  # Authorino - API authorization
+  - agnosticd.core_workloads.ocp4_workload_authorino
+
+  # OpenShift Pipelines (Tekton)
+  - agnosticd.core_workloads.ocp4_workload_pipelines
+
+  # OpenShift GitOps (Argo CD)
+  - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+
+  # Node Feature Discovery (NFD) - prerequisite for NVIDIA GPU Operator
+  - agnosticd.core_workloads.ocp4_workload_nfd
+
+  # NVIDIA GPU Operator (from ai_workloads collection)
+  - agnosticd.ai_workloads.ocp4_workload_nvidia_gpu_operator
+
+  # OpenShift Serverless (Knative)
+  - agnosticd.core_workloads.ocp4_workload_serverless
+
+  # Service Mesh 2 (includes Elasticsearch, Jaeger, Kiali)
+  - agnosticd.core_workloads.ocp4_workload_servicemesh2
+
+  # OpenShift AI / RHOAI (from ai_workloads collection)
+  - agnosticd.ai_workloads.ocp4_workload_openshift_ai
+
+  # GitOps Bootstrap (optional - commented out)
+  # - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+
+  # Showroom - workshop UI
+  - agnosticd.core_workloads.ocp4_workload_showroom
+
+  # Web Terminal
+  - agnosticd.core_workloads.ocp4_workload_web_terminal
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication
+# Workload: ocp4_workload_authentication_htpasswd (AgDv2)
 # -------------------------------------------------------------------
-ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_admin_user: admin
+# Changed from ocp4_workload_authentication to ocp4_workload_authentication_htpasswd
+# All variables now use authentication_htpasswd prefix
+# -------------------------------------------------------------------
+ocp4_workload_authentication_htpasswd_admin_user: admin
 ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
 ocp4_workload_authentication_htpasswd_user_base: "{{ ocp4_workload_user_base }}"
 ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
 ocp4_workload_authentication_htpasswd_user_count: "{{ ocp4_workload_user_count }}"
-ocp4_workload_authentication_remove_kubeadmin: true
-ocp4_workload_authentication_enable_user_info_data: true
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+# Note: enable_user_info_data may not be available in AgDv2 version - verify if needed
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_cert_manager
+# Workload: ocp4_workload_cert_manager (AgDv2)
 # -------------------------------------------------------------------
-ocp4_workload_cert_manager_ec2_region: "{{ aws_region }}"
-ocp4_workload_cert_manager_ec2_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
-ocp4_workload_cert_manager_ec2_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
-ocp4_workload_cert_manager_channel: stable-v1.15
+# AgDv2 uses aws_* not ec2_* for cert-manager variables
+ocp4_workload_cert_manager_aws_region: "{{ aws_region }}"
+ocp4_workload_cert_manager_aws_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
+ocp4_workload_cert_manager_aws_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
+ocp4_workload_cert_manager_channel: stable-v1
 ocp4_workload_cert_manager_use_catalog_snapshot: false
 ocp4_workload_cert_manager_install_ingress_certificates: true
 ocp4_workload_cert_manager_install_api_certificates: false
-
-# -----------------------------------
-# OpenShift Data Foundations Operator
-# -----------------------------------
-ocp4_workload_openshift_data_foundation_channel: stable-4.18
-ocp4_workload_openshift_data_foundation_catalogsource_setup: true
-ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
-ocp4_workload_openshift_data_foundation_update_default_storage_class: true
-ocp4_workload_openshift_data_foundation_new_default_storage_class_name: ocs-storagecluster-ceph-rbd
-
-ocp4_workload_openshift_data_foundation_ceph_storage_system_deploy_timeout: 1500
-ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1500
 
 # ------------------------------------------------
 # ocp4_workload_authorino
@@ -250,6 +311,7 @@ ocp4_workload_authorino_operator_catalog_snapshot_image: "{{ ocp4_workload_catal
 ocp4_workload_authorino_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_authorino_operator_catalogsource_name: redhat-operators-snapshot-authorino
 ocp4_workload_authorino_operator_starting_csv: authorino-operator.v1.2.2
+ocp4_workload_authorino_operator_automatic_install_plan_approval: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_pipelines
@@ -259,6 +321,7 @@ ocp4_workload_pipelines_use_catalog_snapshot: true
 ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_pipelines_starting_csv: openshift-pipelines-operator-rh.v1.18.1
+ocp4_workload_pipelines_automatic_install_plan_approval: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
@@ -268,6 +331,7 @@ ocp4_workload_openshift_gitops_use_catalog_snapshot: true
 ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_openshift_gitops_starting_csv: openshift-gitops-operator.v1.16.2
+ocp4_workload_openshift_gitops_automatic_install_plan_approval: false
 
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_update_route_tls: true
@@ -290,11 +354,13 @@ ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
 nfd_operator_channel: stable
 nfd_operator_operand_image: "registry.redhat.io/openshift4/ose-node-feature-discovery-rhel9:v4.18.0"
 nfd_operator_starting_csv: nfd.4.18.0-202507211933
+nfd_operator_automatic_install_plan_approval: false
 # nfd_operator_operand_image: "registry.redhat.io/openshift4/ose-node-feature-discovery-rhel9:v4.19.0"
 # nfd_operator_starting_csv: nfd.4.19.0-202507011209
 
 nvidia_gpu_operator_channel: v25.3
 nvidia_gpu_operator_starting_csv: gpu-operator-certified.v25.3.1
+nvidia_gpu_operator_automatic_install_plan_approval: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_serverless
@@ -304,34 +370,49 @@ ocp4_workload_serverless_use_catalog_snapshot: true
 ocp4_workload_serverless_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_serverless_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_serverless_starting_csv: serverless-operator.v1.36.0
+ocp4_workload_serverless_automatic_install_plan_approval: false
 
 ocp4_workload_serverless_install_serving: false
 ocp4_workload_serverless_install_eventing: false
 
 # -------------------------------------------------------------------
-# Workload ocp4_workload_ossm - Service Mesh
+# Workload: ocp4_workload_servicemesh2 (AgDv2)
 # -------------------------------------------------------------------
-ocp4_workload_ossm_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_ossm_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+# Changed from ocp4_workload_ossm to ocp4_workload_servicemesh2
+# Service Mesh 2 includes: Elasticsearch, Jaeger, Kiali operators
+# All variables now use servicemesh2 prefix
+# -------------------------------------------------------------------
+ocp4_workload_servicemesh2_catalogsource_setup: true
+ocp4_workload_servicemesh2_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_servicemesh2_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # Elasticsearch
-ocp4_workload_ossm_es_channel: stable
-ocp4_workload_ossm_es_startingcsv: ""
+ocp4_workload_servicemesh2_es: true
+ocp4_workload_servicemesh2_es_channel: stable
+ocp4_workload_servicemesh2_es_startingcsv: ""
+ocp4_workload_servicemesh2_es_automatic_install_plan_approval: true
 
 # Jaeger
-ocp4_workload_ossm_jaeger_channel: stable
-ocp4_workload_ossm_jaeger_startingcsv: ""
+ocp4_workload_servicemesh2_jaeger: true
+ocp4_workload_servicemesh2_jaeger_channel: stable
+ocp4_workload_servicemesh2_jaeger_startingcsv: ""
+ocp4_workload_servicemesh2_jaeger_automatic_install_plan_approval: true
 
 # Kiali
-ocp4_workload_ossm_kiali_channel: stable
-ocp4_workload_ossm_kiali_startingcsv: ""
+ocp4_workload_servicemesh2_kiali: true
+ocp4_workload_servicemesh2_kiali_channel: stable
+ocp4_workload_servicemesh2_kiali_startingcsv: ""
+ocp4_workload_servicemesh2_kiali_automatic_install_plan_approval: true
 
 # Service Mesh
-ocp4_workload_ossm_servicemesh_channel: stable
-ocp4_workload_ossm_servicemesh_startingcsv: ""
+ocp4_workload_servicemesh2_servicemesh_channel: stable
+ocp4_workload_servicemesh2_servicemesh_startingcsv: ""
+ocp4_workload_servicemesh2_servicemesh_automatic_install_plan_approval: true
 
 ocp4_workload_rhsso_starting_csv: rhsso-operator.7.6.12-opr-001
+ocp4_workload_rhsso_automatic_install_plan_approval: false
 ocp4_workload_rhsso_authentication_starting_csv: rhsso-operator.7.6.12-opr-001
+ocp4_workload_rhsso_authentication_automatic_install_plan_approval: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_ai
@@ -341,6 +422,7 @@ ocp4_workload_openshift_ai_use_catalog_snapshot: true
 ocp4_workload_openshift_ai_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_openshift_ai_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_openshift_ai_starting_csv: rhods-operator.2.22.0
+ocp4_workload_openshift_ai_automatic_install_plan_approval: false
 
 ocp4_workload_openshift_ai_kserve: Managed
 
@@ -396,8 +478,17 @@ __meta__:
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
   deployer:
+    # -------------------------------------------------------------------
+    # AgDv2 Deployer Configuration
+    # -------------------------------------------------------------------
+    # Changed from AgDv1 to AgDv2
+    # SCM points to agnosticd-v2 repository
+    # Execution environment updated to latest chained image
+    # -------------------------------------------------------------------
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
       pull: missing
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
