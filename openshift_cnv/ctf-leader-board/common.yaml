@@ -1,0 +1,678 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog: ctf-leader-board
+# --- Catalog Item: CTF Leader Board
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-9-10.0-latest.yaml
+#include /includes/secrets/zerossl.yaml
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+cloud_provider: openshift_cnv
+cloud_provider_version: main
+config: cloud-vms-base
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+# ------------------------
+# Subdomain configuration
+# ------------------------
+subdomain_base_short: "{{ guid }}"
+subdomain_base_suffix: ".{{ sandbox_openshift_apps_domain }}"
+subdomain_base: "{{ subdomain_base_short }}{{ subdomain_base_suffix }}"
+subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
+
+# ------------------------
+# Bastion public hostname
+# (dynamically built from inventory)
+# ------------------------
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ guid }}{{ subdomain_base_suffix }}"
+
+# ------------------------
+# Common password
+# (auto-generated from GUID)
+# ------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# ------------------------
+# User configuration
+# ------------------------
+ansible_user: cloud-user
+remote_user: cloud-user
+
+# -------------------------------------------------------------------
+# Instances to deploy
+# -------------------------------------------------------------------
+# ------------------------
+# Instance Images
+# ------------------------
+bastion_instance_image: rhel-9.6
+default_instance_image: rhel-10.0
+controller_instance_image: base-zero-aap-2.5-container-ce
+
+default_rootfs_size: 50Gi
+controller_rootfs_size: 100Gi
+# showroom_tls_provider: none
+openshift_cnv_legacy_routes: true
+openshift_cnv_route_remove_x_frame_options_header: true
+# ------------------------
+# Instances (VMs)
+# ------------------------
+instances:
+  - name: "bastion"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ bastion_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ default_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: bastion
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: bastion-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: bastion-443
+    routes:
+      - name: bastion-443
+        host: bastion
+        service: bastion
+        targetPort: 443
+        tls: true
+
+  - name: "controller"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ controller_instance_image }}"
+    memory: 16G
+    cores: 4
+    image_size: "{{ controller_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+      - key: "ostype"
+        value: "linux"
+
+    userdata: |-
+      #cloud-config
+      user: rhel
+      password: ansible123!
+      chpasswd: { expire: False }
+      runcmd:
+        - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+        - systemctl reload sshd
+    networks:
+      - default
+    services:
+      - name: controller-443
+        ports:
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: controller-443
+    routes:
+      - name: controller-443
+        host: controller
+        service: controller-443
+        targetPort: 443
+        tls: true
+        tls_termination: reencrypt
+        tls_destinationCACertificate: |
+          -----BEGIN CERTIFICATE-----
+          MIIF1jCCA76gAwIBAgIUBQZlbUZlOmMKhspO9U4/nTJAXAEwDQYJKoZIhvcNAQEL
+          BQAwgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQIDA5Ob3J0aCBDYXJvbGluYTEQMA4G
+          A1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVkIEhhdDEQMA4GA1UECwwHQW5zaWJs
+          ZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0aW9uIFBsYXRmb3JtMB4XDTI1MDQy
+          MzA4MjEyOVoXDTM1MDQyMTA4MjEyOVowgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQI
+          DA5Ob3J0aCBDYXJvbGluYTEQMA4GA1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVk
+          IEhhdDEQMA4GA1UECwwHQW5zaWJsZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0
+          aW9uIFBsYXRmb3JtMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2Ytu
+          a9MM9qr0UBvlIJPXmeSjzQXmx+CJwQAhDoR8MgOkjvWjjEdsX4VHBfQTO58d5sPr
+          oNg95GRe9y9Gjt6Lh7szLk70Q766Ncq8OIBYieiVKctIV+ZZmX7+bBcyzbII/0C9
+          Ili3lNd+XKfl5vmCWoYyuQncC1FZgVpHqZDP/+RCCMThdKEvugbQUmXF6pmEFF7Z
+          8PxYpxnVDX2ipOfWcjZDm6pTBd5+dzXHQVsWe25kY6QW0zEYzPJb3q0gP7oNz1uV
+          rXgYBnKQ8NdoSGtS7w9bvSw28Bf1ZFTvBKeCxWNeoJbiszqdsDd6PEwb4uE1Tr6D
+          qsLfPgvQzngQ+a7YrZ+M6GskQkfk+ZWMK8h6066p27Tzs6/9jMiCFuKwRuKWy9Qi
+          DdCSnwVIw4VB40ysoAHprxBHq4y/YJ2RDiC9EehTXsQf/uAy3M7KBBjVGlMfXxUE
+          NfjbeMdSQip04jKQGhJf8teXTymfcjlGaoCtymB+h4s3hc1T7DjfR0Q1Gd3AIL/p
+          lHOgU4TMBzeghqeDRbY4YQRSI1aF/hzTvAJzMaONs161buKOQ47O5UGGJYHHlJbf
+          aI0s3Mhld1YvIFk78A4tFI9GIwzj4IzVmCv4MZHg2BXKAU6m3Y6bYNabqP6Ho4Fs
+          DZOVkMvwTGKGfRxjdp0kx6HxNmjnVDMXGM9g8cECAwEAAaNCMEAwDgYDVR0PAQH/
+          BAQDAgIEMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFFugxH0taHxJ0/d71phl
+          a1Vt78fTMA0GCSqGSIb3DQEBCwUAA4ICAQApZCo7gI0xdk2TxjOcq+BdNsOvKjWL
+          ADceDM78oPy0xpgKd2u9INITzIY2f4KGcepXslnlMQQvny80N1LXu9Tkn4rhoU03
+          DXb9bXSr44T3fIf4JFU2iv5Hb6Az/DiQ3o9fZnhpW0AmzR1LmZUuFBJZefFBMMKl
+          s2W9C3f3nUPzi1qrGSXszXXbIDYsRMhax/MxWR9mxITuN3T6PhW8A1LyQ8dWRCLw
+          jFFcNuGjlR8w16XhRCw8uA1RzVwNWoUGvMiapboR25N0DLVCG8qf/mdEI4re8MhM
+          EYHugB/e7vRx6iV9ov7jJSB8BrBPWy/7ncebWIf8OvjM2UcUk0hciAQGD4Udbb3s
+          LGcpjZRJDrnpBdp+CJMCNNjoI0wLbmRDEVPGOSkJSmnj+8VTlQ5s+Dxvj2hh/rq7
+          APwxbIl1YBpTx65KwhacJbXSByk8bnwEQdRo240kC5ggC6twb/vvslRortZtyfqw
+          E/xGAKc9LOIFiqk1f0IU2ssEBvSFvYjypXsGnFITamNN2lMS2k5XQIA4avwWsoO4
+          rRLV87ua9S7g31PTYCMJBGw/B3PXhXjJG/eXgLyhEoUQP/fqeGiPEBzagyo71qL5
+          fH5qke1XR5LFGpndX1GuSVBhdZq94x0aGXWTQCDNIPQ3QtrQ64PBF1vRFdJ6o/FI
+          uEOWpQhGYHMC0A==
+          -----END CERTIFICATE-----
+
+  - name: "ctfdashboard"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ default_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ default_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "ctfdashboards"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: ctfdashboard
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: ctfdashboard-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: ctfdashboard-443
+          - port: 8000
+            protocol: TCP
+            targetPort: 8000
+            name: ctfdashboard-8000
+          - port: 8443
+            protocol: TCP
+            targetPort: 8443
+            name: ctfdashboard-8443
+          - port: 8501
+            protocol: TCP
+            targetPort: 8501
+            name: ctfdashboard-8501
+    routes:
+      - name: ctfdashboard-443
+        host: ctfdashboard
+        service: ctfdashboard
+        targetPort: 443
+        tls: true
+
+  - name: misc
+    count: 1
+    unique: true
+    public_dns: false
+    dns_loadbalancer: false
+    floating_ip: false
+    image: "{{ default_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ default_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "miscs"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: misc
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: misc-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: misc-443
+    routes:
+      - name: misc-443
+        host: misc
+        service: misc
+        targetPort: 443
+        tls: true
+
+  - name: audit
+    count: 1
+    unique: true
+    public_dns: false
+    dns_loadbalancer: false
+    floating_ip: false
+    image: "{{ default_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ default_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "audits"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: audit
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: audit-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: audit-443
+          - port: 514
+            protocol: TCP
+            targetPort: 514
+            name: audit-514
+          - port: 514
+            protocol: UDP
+            targetPort: 514
+            name: audit-udp-514
+    routes:
+      - name: audit-443
+        host: audit
+        service: audit
+        targetPort: 443
+        tls: true
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/agnosticd/cloud_vm_workloads.git
+      type: git
+      version: main
+    - name: https://github.com/rhpds/rhpds.ansible_automation_platform.git
+      type: git
+      version: main
+    - name: https://github.com/rhpds/rhpds.ctf.git
+      type: git
+      version: main
+  # roles:
+  #   - name: rh1-lab30-ctf-participants-ar
+  #     src: https://github.com/opentraining-labs-customizations/rh1-lab30-ctf-participants-ar.git
+  #     version: 1.0.2
+  #   - name: rh1-lab30-ctf-ocp-ar
+  #     src: https://github.com/opentraining-labs-customizations/rh1-lab30-ctf-ocp-ar.git
+  #     version: 1.0.1
+  #   - name: rh1-lab30-ctf-infra-ar
+  #     src: https://github.com/opentraining-labs-customizations/rh1-lab30-ctf-infra-ar.git
+  #     version: 1.0.1
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  all:
+    - host_satellite_repositories
+    - host_common_packages
+    - rhpds.ctf.infra
+  bastions:
+    - bastion
+    - agnosticd.cloud_vm_workloads.control_user
+    - agnosticd.cloud_vm_workloads.asset_injector
+# post_software_workloads:
+#   bastions:
+#     - rhpds.ansible_automation_platform.configuration
+
+post_software_final_workloads:
+  localhost:
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+
+# -------------------------------------------------------------------
+# Workload: host_satellite_repositories
+# -------------------------------------------------------------------
+install_satellite_repositories: true
+
+# -------------------------------------------------------------------
+# Call role host_common_packages
+# -------------------------------------------------------------------
+install_common_packages: false
+host_common_packages_update_all: false
+
+bastion_host_packages:
+  - at
+  - bash-completion
+  - bind-utils
+  - buildah
+  - git
+  - httpd-tools
+  - nano
+  - podman
+  - python3
+  - python3-pip
+  - tmux
+  - tree
+  - unzip
+  - vim-enhanced
+  - wget
+  - ansible
+
+node_host_packages:
+  - skopeo
+  - at
+  - bash-completion
+  - bind-utils
+  - buildah
+  - git
+  - httpd-tools
+  - nano
+  - podman
+  - python3
+  - python3-pip
+  - tmux
+  - tree
+  - unzip
+  - vim-enhanced
+  - wget
+
+# Extra packages set dynamically based on group membership
+host_common_packages_extra: >-
+  {{
+    bastion_host_packages
+     if 'bastions' in group_names
+      else
+        node_host_packages if ('bastions' not in group_names and 'controllers' not in group_names)
+          else
+              []
+  }}
+
+# -------------------------------------------------------------------
+# Workload: bastion
+# -------------------------------------------------------------------
+install_bastion: true
+bastion_setup_student_user: true
+bastion_student_user_name: lab-user
+bastion_student_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.control_user
+# -------------------------------------------------------------------
+env_authorized_key: "{{guid}}key"
+install_control_user: true
+student_name: "{{ bastion_student_user_name }}"
+student_password: "{{ bastion_student_user_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ bastion_student_user_password }}"
+control_user_private_group: "{{ omit }}"
+control_user_ssh_config: ./files/ssh_config.j2
+
+# Disable control_user's user_data reporting (bastion role handles it)
+control_user_enable_user_data: false
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.asset_injector
+# -------------------------------------------------------------------
+bastion_asset_injector_assets:
+  - description: Create SSH config for lab-user to easily SSH to nodes
+    type: content
+    dest: /home/{{ bastion_student_user_name }}/.ssh/config
+    owner: "{{ bastion_student_user_name }}"
+    group: "{{ bastion_student_user_name }}"
+    mode: "0600"
+    content: |
+      # SSH config for easy access to nodes
+      Host registry target
+          User {{ ansible_user }}
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+
+# Set asset_injector_assets based on group membership
+asset_injector_assets: >-
+  {{
+    bastion_asset_injector_assets
+    if 'bastions' in group_names else
+    []
+  }}
+
+# -------------------------------------------------------------------
+# Workload: rhpds.ansible_automation_platform.configuration
+# -------------------------------------------------------------------
+ansible_automation_platform_configuration_host: "https://controller.{{ subdomain }}"
+ansible_automation_platform_configuration_username: admin
+ansible_automation_platform_configuration_password: "ansible123!"
+ansible_automation_platform_configuration_verify_ssl: false
+ansible_automation_platform_configuration_create_controller_token: false
+ansible_automation_platform_configuration_generate_ocp_token: false
+
+controller_dependency_check: false
+
+aap_hostname: "{{ ansible_automation_platform_configuration_host }}"
+aap_username: "{{ ansible_automation_platform_configuration_username }}"
+aap_password: "{{ ansible_automation_platform_configuration_password }}"
+aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
+
+
+aap_configuration_dispatcher_roles:
+  - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
+  - {role: controller_credentials, var: controller_credentials, tags: controller_credentials}
+  # - {role: controller_inventories, var: controller_inventories, tags: controller_inventories}
+  # - {role: controller_hosts, var: controller_hosts, tags: controller_hosts}
+  # - {role: controller_projects, var: controller_projects, tags: controller_projects}
+  # - {role: controller_job_templates, var: controller_templates, tags: controller_job_templates}
+  # - {role: controller_execution_environments, var: controller_execution_environments, tags: controller_execution_environments}
+
+ctf_ssh_private_key: |
+  -----BEGIN OPENSSH PRIVATE KEY-----
+  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
+  -----END OPENSSH PRIVATE KEY-----
+
+gateway_settings:
+  SESSION_COOKIE_AGE: 9000
+
+controller_credentials:
+  - name: "CTF Host Credential"
+    description: "Machine Credential with become_method for hosts"
+    organization: Default
+    credential_type: Machine
+    inputs:
+      username: "lab-user"
+      ssh_key_data: "{{ ctf_ssh_private_key }}"
+      become_method: sudo
+
+  - name: "CTFd Instance Credential"
+    description: "Machine Credential with become_method for hosts"
+    organization: Default
+    credential_type: Machine
+    inputs:
+      username: "ec2-user"
+      # ssh_key_data: "{{ lookup('file',hostvars.localhost.env_authorized_key_path) }}"
+      become_method: sudo
+
+  - name: "CTF Git Credential"
+    description: "CTF Git repo Credential"
+    organization: Default
+    credential_type: Source Control
+    inputs:
+      username: "rhctfgit@gmail.com"
+      password: "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"
+      # password: "s1DF#%F@SDF#%F@"
+
+controller_inventories:
+  - name: "CTFd Instance Server"
+    description: "Only the ctfdashboard hostname"
+    organization: "Default"
+    prevent_instance_group_fallback: false
+    state: present
+
+  - name: "CTF All Table Host"
+    description: "CTF All Table Host"
+    organization: "Default"
+    prevent_instance_group_fallback: false
+    state: present
+
+controller_hosts:
+  - name: ctfdashboard
+    inventory: "CTFd Instance Server"
+
+controller_projects:
+  - name: "CTFd Instance Installation"
+    description: "Installs CTFd on ctfdashboard"
+    organization: "Default"
+    scm_type: git
+    scm_url: "https://github.com/opentraining-labs-customizations/rh1-lab30-servers-for-ctf"
+    scm_branch: main
+    scm_clean: 'no'
+    scm_delete_on_update: 'no'
+
+  - name: "CTF Flags Repo For All Table Host"
+    description: "CTF Flags Repo For All Table Host"
+    organization: "Default"
+    scm_type: git
+    scm_url: "https://github.com/Red-Hat-CTF/prep"
+    scm_branch: main
+    scm_clean: 'no'
+    scm_delete_on_update: 'no'
+    credential: "CTF Git Credential"
+
+controller_templates:
+  - name: CTFd Instance Installation
+    job_type: run
+    inventory: CTFd Instance Server
+    project: CTFd Instance Installation
+    playbook: ctfd_provisioning_playbook.yml
+    execution_environment: Default execution environment
+    credentials:
+      - "CTFd Instance Credential"
+
+  - name: CTF Flags Setup For All Table Host
+    job_type: run
+    inventory: "CTF All Table Host"
+    project: CTF Flags Repo For All Table Host
+    playbook: main.yml
+    execution_environment: Default execution environment
+    credentials:
+      - "CTF Host Credential"
+
+controller_execution_environments:
+  - name: "Custom RHO EE"
+    description: "EE for OCP CTF"
+    image: quay.io/castawayegr/custom-rho-ee:latest
+    pull: "missing"
+    state: present
+
+  - name: "Platform EE CTF"
+    description: "Platform EE CTF"
+    image: quay.io/mknittel/rh-ctf-platform:1.0.1
+    pull: "missing"
+    state: present
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  bastion_public_hostname: "{{ bastion_public_hostname }}"
+  bastion_url: "https://{{ bastion_public_hostname }}"
+  bastion_ssh_user_name: "{{ bastion_student_user_name }}"
+  bastion_ssh_password: "{{ bastion_student_user_password }}"
+  controller_url: "https://controller.{{ subdomain }}"
+  controller_username: "{{ ansible_automation_platform_configuration_username }}"
+  controller_password: "{{ ansible_automation_platform_configuration_password }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: D54486F1-FAF5-4E98-8BDD-0578BD12A05B
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      # image: quay.io/agnosticd/ee-multicloud:chained-2025-06-30
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "CTF Leader Board"
+    category: Workshops
+    keywords:
+      - ctf
+      - leaderboard
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHDP
+    multiuser: false
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+      quota:
+        requests.storage: "2000Gi"
+  owners:
+    maintainer:
+      - name: Prakhar Srivastava
+        email: psrivast@redhat.com
+    sme:
+      - name: Mitesh Sharma
+        email: msharma@redhat.com
