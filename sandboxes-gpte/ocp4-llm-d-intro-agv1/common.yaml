@@ -1,0 +1,311 @@
+---
+#include /includes/catalog-icon-openshift-data-science.yaml
+
+#include /includes/terms-of-service.yaml
+#include /includes/aws-sandbox-meta.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-regions-6.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# LLM-D Introduction: Agv1
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: ec2
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# VM configuration
+# -------------------------------------------------------------------
+master_instance_type: g6.12xlarge
+master_instance_count: 1
+master_storage_type: io1
+master_storage_size: 1500
+
+worker_instance_type: m6a.4xlarge
+worker_instance_count: 0
+worker_storage_type: gp3
+worker_storage_size: 1500
+
+bastion_instance_type: t2.small
+bastion_instance_image: RHEL95GOLD-latest
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+host_ocp4_installer_version: "4.18.24"
+host_ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: false
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_base: user
+ocp4_workload_user_count: 1
+ocp4_workload_multi_user: "{{ true if num_users | int > 1 else false }}"
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_password: "{{ common_password }}"
+common_user_password: "{{ common_password }}"
+common_admin_username: admin
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.18_2025_07_25
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+  - ocp4_workload_authentication
+  - ocp4_workload_cert_manager
+  - ocp4_workload_authorino
+  - ocp4_workload_pipelines
+  - ocp4_workload_openshift_gitops
+  - ocp4_workload_nvidia_gpu_setup
+  - ocp4_workload_serverless
+  - ocp4_workload_ossm
+  - ocp4_workload_openshift_ai
+#  - ocp4_workload_gitops_bootstrap
+  - ocp4_workload_web_terminal
+  - ocp4_workload_showroom
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_htpasswd
+# -------------------------------------------------------------------
+ocp4_workload_authentication_htpasswd_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: "{{ ocp4_workload_user_base }}"
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ ocp4_workload_user_count }}"
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1.16
+ocp4_workload_cert_manager_use_catalog_snapshot: true
+ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_cert_manager_starting_csv: cert-manager-operator.v1.16.1
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_authorino
+# -------------------------------------------------------------------
+ocp4_workload_authorino_operator_channel: stable
+ocp4_workload_authorino_operator_use_catalog_snapshot: true
+ocp4_workload_authorino_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_authorino_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_authorino_operator_catalogsource_name: redhat-operators-snapshot-authorino
+ocp4_workload_authorino_operator_starting_csv: authorino-operator.v1.2.2
+
+# -------------------------------------------------------------------
+# ocp4_workload_pipelines
+# -------------------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.18
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_pipelines_starting_csv: openshift-pipelines-operator-rh.v1.18.1
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.16
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_openshift_gitops_starting_csv: openshift-gitops-operator.v1.16.2
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ common_admin_username }}, role:admin
+  g, user1, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+ocp4_workload_openshift_gitops_resource_health:
+  - check: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.modelStatus ~= nil then
+          if obj.status.modelStatus.transitionStatus == "UpToDate" then
+            hs.status = "Healthy"
+            hs.message = obj.status.url
+          else
+            hs.status = "Progressing"
+            hs.message = obj.status.modelStatus.transitionStatus
+          end
+          return hs
+        end
+      end
+      hs.status = "Degraded"
+      hs.message = "Not at latest version, no known status"
+      return hs
+    group: serving.kserve.io
+    kind: InferenceService
+
+# -------------------------------------------------------------------
+# ocp4_workload_nvidia_gpu_setup
+# -------------------------------------------------------------------
+nfd_operator_channel: stable
+nfd_operator_operand_image: "registry.redhat.io/openshift4/ose-node-feature-discovery-rhel9:v4.18.0"
+nfd_operator_starting_csv: nfd.4.18.0-202507081733
+# nfd_operator_operand_image: "registry.redhat.io/openshift4/ose-node-feature-discovery-rhel9:v4.19.0"
+# nfd_operator_starting_csv: nfd.4.19.0-202507011209
+# Operator not found in the this catalog snapshot.
+nfd_operator_use_catalog_snapshot: true
+nfd_operator_catalogsource_name: redhat-operators-snapshot-nfd
+nfd_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+nfd_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# Not implemented in the agd role.
+nvidia_gpu_operator_use_catalog_snapshot: true
+nvidia_gpu_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+nvidia_gpu_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+nvidia_gpu_operator_channel: v25.3
+nvidia_gpu_operator_starting_csv: gpu-operator-certified.v25.3.1
+
+# -------------------------------------------------------------------
+# ocp4_workload_serverless
+# -------------------------------------------------------------------
+ocp4_workload_serverless_channel: stable
+ocp4_workload_serverless_use_catalog_snapshot: true
+ocp4_workload_serverless_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_serverless_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_serverless_starting_csv: serverless-operator.v1.36.0
+
+ocp4_workload_serverless_install_serving: false
+ocp4_workload_serverless_install_eventing: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_ossm
+# -------------------------------------------------------------------
+ocp4_workload_ossm_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_ossm_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_ossm_es: false
+ocp4_workload_ossm_jaeger: false
+ocp4_workload_ossm_kiali: false
+
+ocp4_workload_ossm_servicemesh_channel: stable
+ocp4_workload_ossm_servicemesh_startingcsv: servicemeshoperator.v2.6.8
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_ai
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_channel: stable
+ocp4_workload_openshift_ai_use_catalog_snapshot: true
+ocp4_workload_openshift_ai_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_ai_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_openshift_ai_starting_csv: rhods-operator.2.22.0
+
+ocp4_workload_openshift_ai_kserve: Managed
+
+# -------------------------------------------------------------------
+# ocp4_workload_web_terminal
+# -------------------------------------------------------------------
+#ocp4_workload_web_terminal_channel: fast
+#ocp4_workload_web_terminal_use_catalog_snapshot: true
+#ocp4_workload_web_terminal_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+#ocp4_workload_web_terminal_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+#ocp4_workload_web_terminal_starting_csv: web-terminal.v1.13.0
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/ritzshah/llm-rag-deployment.git
+# ocp4_workload_gitops_bootstrap_repo_revision: v1.0.0
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap-helm-chart
+ocp4_workload_gitops_bootstrap_repo_revision: update-token-v1
+
+ocp4_workload_gitops_bootstrap_helm_values:
+# Bootstrap ApplicationSet configuration for ArgoCD
+# Gradio UI Configuration (shared between bootstrap and bootstrap-rag)
+  gradioEnv:
+    BEARER_TOKEN: "{{ granite_bearerToken }}"
+    INFERENCE_SERVER_URL: https://granite-3-2-8b-instruct-predictor-maas-apicast-production.apps.maas.redhatworkshops.io:443/v1/completions
+    MODEL_NAME: granite-3-2-8b-instruct
+  gradioRagEnv:
+    BEARER_TOKEN: "{{ granite_bearerToken }}"
+    INFERENCE_SERVER_URL: https://granite-3-2-8b-instruct-predictor-maas-apicast-production.apps.maas.redhatworkshops.io:443/v1/completions
+    MODEL_NAME: granite-3-2-8b-instruct
+ocp4_workload_gitops_bootstrap_health_retries: 2
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/private-summit-llmaas-showroom
+ocp4_workload_showroom_content_git_repo_ref: v1.1.1
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: 1.3.3
+ocp4_workload_showroom_content_only: true
+
+# -------------------------------------------------------------------
+# Babylon Meta Variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 2f0d9e7e-b897-11f0-8b59-9f3357f7a4a9
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2025-04-14
+    actions:
+      start:
+        disable: true
+      stop:
+        disable: true
+  sandbox_api:
+    reservation: pgpu-event
+    actions:
+      start:
+        enable: false
+      stop:
+        enable: false
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Introducing llm-d: Your Production-Ready Path to Scalable LLM Inference - Agv1"
+    category: Demos
+    multiuser: false
+    keywords: []
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+  tower:
+    timeout: 21600
+  owners:
+    maintainer:
+      - name: Ritesh Shah
+        email: rshah@redhat.com
