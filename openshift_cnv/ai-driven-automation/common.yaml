@@ -37,7 +37,7 @@ subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
 ansible_user: cloud-user
 remote_user: cloud-user
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + '_1' }}"
-windows_password: "{{ common_password }}"
+windows_password: Ansible123!
 
 # -------------------------------------------------------------------
 # Instance Config
@@ -57,11 +57,6 @@ service_rootfs_size: 50Gi
 cisco_instance_image: c8000v-rhdp-8g
 cisco_rootfs_size: 10Gi
 
-openshift_cnv_legacy_routes: true
-
-# default_instance_image: RHEL95GOLD-latest
-# controller_instance_image: aap-2.5-10.1-x86_64-20250304
-# rhelai_instance_image: RHELAI13
 networks:
   - name: default
   - name: kafka
@@ -278,16 +273,44 @@ instances:
         targetPort: 8065
         tls: true
         tls_termination: edge
-      - name: service-9092
-        host: service-9092
-        service: service1-fip
-        targetPort: 9092
+
+  - name: "windows"
+    image: "base-windows-ad-2022.qcow2"
+    memory: "16G"
+    cores: 4
+    image_size: "60Gi"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+    interface_model: "e1000e"
+    networks:
+      - default
+    services:
+      - name: windows
+        ports:
+          - port: 5986
+            protocol: TCP
+            targetPort: 5986
+            name: windows
+      - name: windows-rdp
+        ports:
+          - port: 3389
+            protocol: TCP
+            targetPort: 3389
+            name: windows-rdp
+      - name: iis
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: iis
+    routes:
+      - name: windows
+        host: windows
+        service: iis
+        targetPort: 80
         tls: true
-      - name: service-9093
-        host: service-9093
-        service: service1-fip
-        targetPort: 9093
-        tls: true
+        tls_termination: Edge
 
   - name: "cisco-1"
     count: 1
@@ -464,13 +487,13 @@ vscode_server_bind_addr_port: 8080
 # -------------------------------------------------------------------
 gitea_http_listen: "0.0.0.0"
 gitea_db_pasword: "{{ common_password }}"
-gitea_create_url: "https://gitea.{{ subdomain }}"
+gitea_create_url: "https://gitea-{{ subdomain_base }}"
 gitea_create_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
 # Role: ansible_automation_platform_configuration
 # -------------------------------------------------------------------
-ansible_automation_platform_configuration_host: "https://controller.{{ subdomain }}"
+ansible_automation_platform_configuration_host: "https://controller-{{ subdomain_base }}"
 ansible_automation_platform_configuration_username: admin
 ansible_automation_platform_configuration_password: "ansible123!"
 ansible_automation_platform_configuration_verify_ssl: false
@@ -483,20 +506,6 @@ aap_hostname: "{{ ansible_automation_platform_configuration_host }}"
 aap_username: "{{ ansible_automation_platform_configuration_username }}"
 aap_password: "{{ ansible_automation_platform_configuration_password }}"
 aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
-
-# private_key_paths: >-
-#   {{ hostvars.localhost.ssh_provision_key_path
-#   | default(hostvars.localhost.ssh_key)
-#   | default(hostvars.localhost.infra_ssh_key)
-#   | default(hostvars.localhost.ansible_ssh_private_key_file)
-#   | default(hostvars.localhost.default_key_name)
-#   }}
-# "{{ lookup('file', ssh_provision_key_path) }}"
-# ssh_privatekey: "{{ lookup('file',private_key_paths) }}"
-# ssh_privatekey: "{{ lookup('file', hostvars.localhost.ssh_provision_key_path) }}"
-# ssh_privatekey: "{{ lookup('agnosticd_user_data', 'ssh_provision_key') }}"
-# create_ssh_provision_key_enable_user_info_data: true
-
 
 private_key_paths: >-
   {{ hostvars.localhost.ssh_provision_key_path
@@ -584,7 +593,6 @@ controller_credentials:
       username: "lab-user"
       password: "{{ common_password }}"
 
-
 controller_inventories:
   - name: "lab-inventory"
     description: "Inventory lab"
@@ -601,27 +609,27 @@ controller_inventories:
     organization: "Default"
     prevent_instance_group_fallback: false
     state: present
+
 controller_hosts:
   - name: "{{ groups['rhel9_nodes'][0].split('.')[0] }}"
     inventory: "lab-inventory"
-    variables:
-      ansible_host: "node1.example.com"
   - name: "{{ groups['servers'][0].split('.')[0] }}"
     inventory: "service-inventory"
-    variables:
-      ansible_host: "service1.example.com"
   - name: "gitea"
     inventory: "gitea-inventory"
     variables:
-      ansible_host: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain }}"
-  # - name: "{{ groups['windows'][0].split('.')[0] }}"
-  #   inventory: "lab-inventory"
-  #   enabled: true
-  #   state: present
-  #   variables:
-  #     ansible_host: "{{ groups['windows'][0].split('.')[0] }}.example.com"
-  #     ansible_password: "{{ windows_password }}"
-  #     ansible_user: "Administrator"
+      ansible_host: "bastion"
+  - name: "windows"
+    inventory: "lab-inventory"
+    enabled: true
+    state: present
+    variables:
+      ansible_host: "windows"
+      ansible_password: "{{ windows_password }}"
+      ansible_user: "Administrator"
+      ansible_connection: winrm
+      ansible_port: 5986
+      ansible_winrm_server_cert_validation: ignore
 
 controller_configuration_projects_async_retries: 60
 
@@ -630,7 +638,8 @@ controller_projects:
     description: "Project for AI EDA ADP"
     organization: "Default"
     scm_type: "git"
-    scm_url: "https://github.com/ansible-tmm/aiops-summitlab.git"
+    # scm_url: "https://github.com/ansible-tmm/aiops-summitlab.git"
+    scm_url: "https://github.com/miteshget/aiops-summitlab.git"
     scm_branch: "main"
     scm_clean: false
     scm_delete_on_update: false
@@ -700,7 +709,7 @@ controller_templates:
     survey_enabled: false
     verbosity: 1
     extra_vars:
-      mattermost_instance: "https://mattermost.{{ subdomain }}"
+      mattermost_instance: "https://mattermost-{{ subdomain_base}}"
       mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
   - name: "🤖 RHEL AI: Analyze Incident"
     description: "Job template to get details from RHEL AI"
@@ -809,19 +818,19 @@ mattermost_admin_password: "{{ common_password }}"
 # Workload: agnosticv_userdata_import
 # -------------------------------------------------------------------
 agnosticv_importdata:
-  controller_url: "https://controller.{{ subdomain }}"
+  controller_url: "https://controller-{{ subdomain_base }}"
   controller_username: "{{ ansible_automation_platform_configuration_username }}"
   controller_password: "{{ ansible_automation_platform_configuration_password }}"
-  mattermost_url: "https://mattermost.{{ subdomain }}"
-  mattermost_username: admin
+  mattermost_url: "https://mattermost-{{ subdomain_base }}"
+  mattermost_username: ansibleadmin@ansible.com
   mattermost_password: "{{ common_password }}"
-  splunk_url: "https://splunk.{{ subdomain }}"
+  splunk_url: "https://splunk-{{ subdomain_base }}"
   splunk_username: "admin"
   splunk_password: "{{ common_password }}"
-  gitea_url: "https://gitea.{{ subdomain }}"
+  gitea_url: "https://gitea-{{ subdomain_base }}"
   gitea_username: "{{ student_name }}"
   gitea_password: "{{ common_password }}"
-  vscode_server_url: "https://vscode.{{ subdomain }}"
+  vscode_server_url: "https://vscode-{{ subdomain_base }}"
   vscode_server_password: "{{ common_password }}"
   ssh_command: >-
     ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
@@ -830,6 +839,8 @@ agnosticv_importdata:
   ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
   ssh_username: "{{ student_name }}"
   ssh_password: "{{ common_password }}"
+  windows_username: admin
+  windows_password: "{{ windows_password }}"
 
 # -------------------------------------------------------------------
 # Role: showroom
@@ -852,9 +863,9 @@ showroom_tab_double_tty_bottom_username: "{{ student_name }}"
 showroom_ssh_host: "{{ openshift_cnv_ssh_address }}"
 showroom_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
 showroom_ssh_username: "{{ student_name }}"
-showroom_host: "showroom.{{ subdomain }}"
+showroom_host: "showroom-{{ subdomain_base }}"
 
-showroom_tab_web1_url: "https://controller.{{ subdomain }}"
+showroom_tab_web1_url: "https://controller-{{ subdomain_base }}"
 showroom_tab_web1_name: "AAP"
 
 # -------------------------------------------------------------------
