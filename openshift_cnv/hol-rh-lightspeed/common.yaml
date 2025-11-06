@@ -1,0 +1,394 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog: hol-rh-lightspeed
+# --- Catalog Item: Hands on with Red Hat Lightspeed in Satellite
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#includes/access-restriction-rh1-2026-devs.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-9-x86_64-latest.yaml
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+cloud_provider: openshift_cnv
+cloud_provider_version: main
+config: cloud-vms-base
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+# ------------------------
+# Subdomain configuration
+# ------------------------
+subdomain_base_short: "{{ guid }}"
+subdomain_base_suffix: ".{{ sandbox_openshift_apps_domain }}"
+subdomain_base: "{{ subdomain_base_short }}{{ subdomain_base_suffix }}"
+subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
+
+# ------------------------
+# Bastion public hostname
+# (dynamically built from inventory)
+# ------------------------
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ guid }}{{ subdomain_base_suffix }}"
+
+# ------------------------
+# Common password
+# (auto-generated from GUID)
+# ------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# ------------------------
+# User configuration
+# ------------------------
+ansible_user: cloud-user
+remote_user: cloud-user
+
+# -------------------------------------------------------------------
+# Instances to deploy
+# -------------------------------------------------------------------
+# ------------------------
+# Instance Images
+# ------------------------
+bastion_instance_image: rhel-9.6
+node_instance_image: rhel-9.4
+satellite_instance_image: rhel-9.6
+
+bastion_rootfs_size: 100Gi
+node_rootfs_size: 20Gi
+satellite_rootfs_size: 120Gi
+
+# showroom_tls_provider: none
+openshift_cnv_legacy_routes: false
+openshift_cnv_route_remove_x_frame_options_header: true
+
+# ------------------------
+# Instances (VMs)
+# ------------------------
+instances:
+  - name: "bastion"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ bastion_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ bastion_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: bastion
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: bastion-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: bastion-443
+    routes:
+      - name: bastion-443
+        host: bastion
+        service: bastion
+        targetPort: 443
+        tls: true
+
+  - name: "node"
+    count: 2
+    unique: false
+    public_dns: false
+    floating_ip: false
+    image: "{{ node_instance_image }}"
+    memory: 2G
+    cores: 2
+    image_size: "{{ node_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel9_nodes"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: nodes
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: node-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: node-443
+
+  - name: satellite
+    count: 1
+    unique: true
+    public_dns: false
+    dns_loadbalancer: false
+    floating_ip: false
+    image: "{{ satellite_instance_image }}"
+    memory: 32G
+    cores: 8
+    image_size: "{{ satellite_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "satellites"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: satellite
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: satellite-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: satellite-443
+    routes:
+      - name: satellite-80
+        host: satellite
+        service: satellite
+        targetPort: 80
+        tls: false
+      - name: satellite-443
+        host: satellite
+        service: satellite
+        targetPort: 443
+        tls: true
+
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/agnosticd/cloud_vm_workloads.git
+      type: git
+      version: main
+    - name: https://github.com/rhpds/rhpds.ansible_automation_platform.git
+      type: git
+      version: main
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  all:
+    - host_satellite_repositories
+    - host_common_packages
+    - agnosticd.cloud_vm_workloads.control_user
+    - agnosticd.cloud_vm_workloads.asset_injector
+  bastions:
+    - bastion
+
+post_software_final_workloads:
+  localhost:
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+
+# -------------------------------------------------------------------
+# Workload: host_satellite_repositories
+# -------------------------------------------------------------------
+install_satellite_repositories: true
+
+# -------------------------------------------------------------------
+# Call role host_common_packages
+# -------------------------------------------------------------------
+install_common_packages: false
+host_common_packages_update_all: false
+
+bastion_host_packages:
+  - at
+  - bash-completion
+  - bind-utils
+  - buildah
+  - git
+  - httpd-tools
+  - nano
+  - podman
+  - python3
+  - python3-pip
+  - tmux
+  - tree
+  - unzip
+  - vim-enhanced
+  - wget
+  # - ansible
+
+node_host_packages:
+  - skopeo
+  - at
+  - bash-completion
+  - bind-utils
+  - buildah
+  - git
+  - httpd-tools
+  - nano
+  - podman
+  - python3
+  - python3-pip
+  - tmux
+  - tree
+  - unzip
+  - vim-enhanced
+  - wget
+
+# Extra packages set dynamically based on group membership
+host_common_packages_extra: >-
+  {{
+    bastion_host_packages
+     if 'bastions' in group_names
+      else
+        node_host_packages if ('bastions' not in group_names and 'satellites' not in group_names)
+          else
+              []
+  }}
+
+# -------------------------------------------------------------------
+# Workload: bastion
+# -------------------------------------------------------------------
+install_bastion: true
+bastion_setup_student_user: true
+bastion_student_user_name: lab-user
+bastion_student_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.control_user
+# -------------------------------------------------------------------
+env_authorized_key: "{{guid}}key"
+install_control_user: true
+student_name: "{{ bastion_student_user_name }}"
+student_password: "{{ bastion_student_user_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ bastion_student_user_password }}"
+control_user_private_group: "{{ omit }}"
+control_user_ssh_config: ./files/ssh_config.j2
+
+# Disable control_user's user_data reporting (bastion role handles it)
+control_user_enable_user_data: false
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.asset_injector
+# -------------------------------------------------------------------
+bastion_asset_injector_assets:
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
+
+  - description: Create SSH config for lab-user to easily SSH to nodes
+    type: content
+    dest: /home/{{ bastion_student_user_name }}/.ssh/config
+    owner: "{{ bastion_student_user_name }}"
+    group: "{{ bastion_student_user_name }}"
+    mode: "0600"
+    content: |
+      # SSH config for easy access to nodes
+      Host registry target
+          User {{ ansible_user }}
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+
+# Set asset_injector_assets based on group membership
+asset_injector_assets: >-
+  {{
+    bastion_asset_injector_assets
+    if 'bastions' in group_names else
+    []
+  }}
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  bastion_public_hostname: "{{ bastion_public_hostname }}"
+  bastion_url: "https://{{ bastion_public_hostname }}"
+  bastion_ssh_username: "{{ student_name }}"
+  bastion_ssh_password: "{{ common_password }}"
+  bastion_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+  bastion_ssh_command: >-
+    ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
+    -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
+  satellite_url: https://satellite-{{ subdomain_base }}
+  satellite_username: admin
+  satellite_password: TBD
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 762257E0-0EB8-43A1-AE86-642EB894DEF6
+  owners:
+    maintainer:
+      - name: John Spinks
+        email: jspinks@redhat.com
+    sme:
+      - name: Mitesh Sharma
+        email: msharma@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Hands on with Red Hat Lightspeed in Satellite"
+    category: Workshops
+    keywords:
+      - hol
+      - lightspeed
+      - satellite
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHDP
+    multiuser: false
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
