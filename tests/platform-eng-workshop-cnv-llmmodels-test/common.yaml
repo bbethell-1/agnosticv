@@ -1,0 +1,304 @@
+---
+# -------------------------------------------------------------------
+# AgnosticV Includes
+# -------------------------------------------------------------------
+#include /includes/catalog-icon-pe.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/secrets/litemaas-test.yaml
+#include /includes/parameters/purpose.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: Platform Engineering Workshops
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp-workloads
+software_to_deploy: none
+openshift_cluster_admin_service_account_enable: true
+project_tag: "{{ env_type }}-{{ guid }}"
+num_users: 1
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Cloud Provider
+# -------------------------------------------------------------------
+cloud_provider: multi
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: "{{ 'v4.19_2025_09_15' if ocp4_installer_version == '4.19'  else 'v4.18_2025_09_29' }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+    - name: "https://github.com/rhpds/rhpds.litellm_virtual_keys.git"
+      type: git
+      version: main
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# -------------------------------------------------------------------
+# Other Variables
+# -------------------------------------------------------------------
+
+install_ftl: false
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# This is the list of workloads to deploy on the OpenShift cluster
+# The LiteLLM virtual keys workload creates AI model access keys for users
+#
+# IMPORTANT: When the catalog item is destroyed, AgnosticD automatically
+# runs all infra_workloads with ACTION=destroy, which will:
+#   1. Delete the virtual key from LiteLLM
+#   2. Clean up all associated resources
+#
+infra_workloads:
+  - ocp4_workload_litellm_virtual_keys
+
+# ===================================================================
+# Workload: ocp4_workload_litellm_virtual_keys
+# ===================================================================
+# This workload creates LiteLLM virtual keys for accessing AI models
+# Keys are named: virtkey-{GUID} for easy tracking
+#
+# Lifecycle:
+#   - ACTION=provision → Creates virtual key (workload.yml)
+#   - ACTION=destroy   → Deletes virtual key (remove_workload.yml)
+#
+# User Info Display:
+#   - Messages: Sent via email and shown in RHDP UI
+#   - Data: Displayed in the "Information" tab alongside OpenShift creds
+#     * litellm_api_endpoint
+#     * litellm_virtual_key
+#     * litellm_available_models
+#     * litellm_key_duration
+#     * litellm_subscription_package
+#
+# NOTE: This is for TESTING purposes only
+# ===================================================================
+
+# -------------------------------------------------------------------
+# LiteLLM Connection Settings
+# -------------------------------------------------------------------
+# These will be loaded from /includes/secrets/litemaas-test.yaml
+# litellm_url: "https://litellm-rhpds.apps.cluster.com"
+# litellm_master_key: "sk-xxxxx"
+
+# -------------------------------------------------------------------
+# Subscription Package Selection (OPTION 1 - Recommended)
+# -------------------------------------------------------------------
+# Choose one of the predefined subscription packages:
+#   - ai-beginner: Granite only, 7 days
+#   - ai-developer: Granite + Mistral, 30 days (default)
+#   - ai-researcher: Granite + Mistral + Llama, 90 days
+#   - lab-dev: Granite + Mistral, 14 days
+#   - lab-prod: Granite + Mistral, 90 days
+#   - custom: Define your own models and duration (see OPTION 2 below)
+#
+# This is the easiest way to provision keys with standard configurations
+# ocp4_workload_litellm_virtual_keys_subscription_package: "ai-developer"
+
+# -------------------------------------------------------------------
+# Custom Model Selection (OPTION 2 - Advanced)
+# -------------------------------------------------------------------
+# If you want to customize which models and duration, set the
+# subscription package to "custom" and define these variables:
+#
+# ocp4_workload_litellm_virtual_keys_subscription_package: "custom"
+# ocp4_workload_litellm_virtual_keys_custom_models:
+#   - "openai/granite-3-2-8b-instruct"
+#   - "openai/mistral-7b-instruct"
+# ocp4_workload_litellm_virtual_keys_custom_duration: "60d"
+#
+# Available models (TESTING):
+#   - openai/granite-3-2-8b-instruct (IBM Granite)
+#   - openai/mistral-7b-instruct (Mistral AI)
+#
+# Duration format: "7d" (7 days), "30d" (30 days), "90d" (90 days)
+
+# -------------------------------------------------------------------
+# Map catalog parameters to workload variables
+# -------------------------------------------------------------------
+# If user selects parameters from catalog UI, they override defaults above
+ocp4_workload_litellm_virtual_keys_subscription_package: "{{ litellm_subscription_package | default('ai-developer') }}"
+
+# Convert comma-separated custom models string to list if provided
+ocp4_workload_litellm_virtual_keys_custom_models: "{{ litellm_custom_models.split(',') | map('trim') | list if litellm_custom_models | default('') | length > 0 else [] }}"
+
+# Use custom duration from catalog if provided
+ocp4_workload_litellm_virtual_keys_custom_duration: "{{ litellm_custom_duration | default('30d') }}"
+
+# -------------------------------------------------------------------
+# Advanced Options (Usually no need to change)
+# -------------------------------------------------------------------
+# Enable user.info messages (sent to users via email/UI)
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+
+# Enable user.info data (stored for API/automation access)
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
+
+# Force database deletion if API delete fails (workaround for LiteLLM bug)
+# Only enable if keys are not being deleted properly
+ocp4_workload_litellm_virtual_keys_force_db_delete: false
+
+# Namespace where LiteLLM and PostgreSQL are deployed
+ocp4_workload_litellm_virtual_keys_namespace: "rhpds"
+
+# -------------------------------------------------------------------
+# Workload Removal (Cleanup)
+# -------------------------------------------------------------------
+# These workloads are explicitly removed during environment destruction
+# with ACTION=destroy
+infra_workloads_remove:
+  - ocp4_workload_litellm_virtual_keys
+
+# Student workloads (none for this testing environment)
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 0433c881-11c0-4161-8f9b-89eb98c9ac0d
+  owners:
+    maintainer:
+      - name: Prakhar Srivastava
+        email: psrivast@redhat.com
+      - name: Ashok Jammula
+        email: ajammula@redhat.com
+    instructions:
+      - name: Prakhar Srivastava
+        email: psrivast@redhat.com
+      - name: Ashok Jammula
+        email: ajammula@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LiteMaaS Test"
+    category: Workshops
+    multiuser: false
+    keywords:
+      - litemaas
+      - ai
+      - models
+    labels:
+      Product: Red_Hat_AI
+      Provider: RHDP
+      Product_Family: Red_Hat_Cloud
+    parameters:
+
+      # ---------------------------------------------------------------
+      # LiteLLM Virtual Key Configuration (TESTING ONLY)
+      # ---------------------------------------------------------------
+      - name: litellm_subscription_package
+        description: |
+          Choose AI model subscription package (OPTION 1 - TESTING):
+          - ai-beginner: Granite only, 7 days
+          - ai-developer: Granite + Mistral, 30 days (default)
+          - lab-dev: Granite + Mistral, 14 days
+          - lab-prod: Granite + Mistral, 90 days
+          - custom: Define your own (use advanced options below)
+        formLabel: AI Subscription Package
+        required: false
+        openAPIV3Schema:
+          type: string
+          default: 'ai-developer'
+          enum:
+            - 'ai-beginner'
+            - 'ai-developer'
+            - 'lab-dev'
+            - 'lab-prod'
+            - 'custom'
+        components:
+          - name: all
+
+      - name: litellm_custom_models
+        description: |
+          Custom models (OPTION 2 - only if subscription = custom):
+          Enter comma-separated model names, e.g.:
+          openai/granite-3-2-8b-instruct,openai/mistral-7b-instruct
+        formLabel: Custom Models (comma-separated)
+        required: false
+        openAPIV3Schema:
+          type: string
+          default: ''
+        components:
+          - name: all
+
+      - name: litellm_custom_duration
+        description: |
+          Custom duration (OPTION 2 - only if subscription = custom):
+          Format: 7d, 30d, 60d, 90d
+        formLabel: Custom Duration
+        required: false
+        openAPIV3Schema:
+          type: string
+          default: '30d'
+        components:
+          - name: all
+  # Components to include in template and catalog item
+  components:
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: openshift_cnv/ocp-cnv-pools/prod
+      parameter_values:
+        # Fixed to OpenShift 4.18 for LiteMaaS testing
+        cluster_size: sno
+        ocp4_installer_version: "4.18"
+      # Propagate agnosticd_user_info data set by this component to variables.
+      propagate_provision_data:
+        - name: openshift_api_ca_cert
+          var: openshift_api_ca_cert
+        - name: openshift_api_url
+          var: openshift_api_url
+        - name: openshift_cluster_admin_token
+          var: openshift_api_key
+
+  # -------------------------------------------------------------------
+  # Sandbox API Configuration
+  # -------------------------------------------------------------------
+  # IMPORTANT: catch_all must be false to allow infra_workloads_remove to run
+  # This ensures the LiteLLM virtual key is properly deleted during cleanup
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2025-04-14
+      pull: missing
