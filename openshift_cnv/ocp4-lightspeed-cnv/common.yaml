@@ -47,6 +47,7 @@ workloads:
 - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
 - agnosticd.ai_workloads.ocp4_workload_ols
 - agnosticd.core_workloads.ocp4_workload_web_terminal
+- agnosticd.core_workloads.ocp4_workload_showroom
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication_htpasswd
@@ -61,15 +62,31 @@ ocp4_workload_authentication_htpasswd_user_password: ""
 ocp4_workload_authentication_htpasswd_user_password_length: 16
 ocp4_workload_authentication_htpasswd_user_password_randomized: true
 ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+
 ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_ols
 # -------------------------------------------------------------------
-
-ocp4_workload_ai_platform: azure #openai, azure, watson, openshiftai
+# Create a child app and SP for this lab environment
+# It is removed when the environment is destroyed
 ocp4_workload_ols_get_token: true
+ocp4_workload_ai_platform: azure #openai, azure, watson, openshiftai
+
+# Creates a broken pod that you can demo with
+# Does not affect overall functionality of lab environment
 ocp4_workload_ols_create_broken_pod: true
+
+# Enable this for the demo exercise
+ocp4_workload_ols_enable_rag: true
+ocp4_workload_ols_rag_image: 'quay.io/dialvare/acme-byok:latest'
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/dialvare/showroom-openshift-lightspeed.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_only: true
 
 # -------------------------------------------------------------------
 # Workloads to remove before sandbox is nuked
@@ -82,7 +99,7 @@ remove_workloads:
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
-  asset_uuid: 8192a1e8-6450-498c-8b65-9fd19e28fa01
+  asset_uuid: 4a559296-e641-4411-9c55-87d6dca8796c
   owners:
     maintainer:
     - name: Nate Stephany
@@ -92,9 +109,6 @@ __meta__:
     instructions:
     - name: Diego Alvarez
       email: dialvare@redhat.com
-
-  anarchy:
-    namespace: babylon-anarchy-ocp-wksp
 
   catalog:
     reportingLabels:
@@ -115,7 +129,7 @@ __meta__:
       Product_Family: Red_Hat_Cloud
     parameters:
     - name: host_ocp4_installer_version
-      description: Version of OpenShift to Install
+      description: Version of OpenShift to install
       formLabel: OpenShift Version
       required: false
       openAPIV3Schema:
@@ -123,13 +137,12 @@ __meta__:
         default: '4.18'
         enum:
         - '4.18'
-        # - '4.20.0'
-      # Parameter for openshift cluster
+        - '4.20.0'
       components:
-      - name: openshift
+      - name: openshift-base
 
   components:
-  - name: openshift
+  - name: openshift-base
     display_name: OpenShift Cluster
     item: agd-v2/ocp-cluster-cnv-pools/prod
     parameter_values:
@@ -156,7 +169,7 @@ __meta__:
   sandbox_api:
     actions:
       destroy:
-        # This is set to allow the ocp4_workload_ols remove_workload ro run
+        # Allow the ocp4_workload_ols remove_workload to run
         catch_all: false
 
   deployer:
