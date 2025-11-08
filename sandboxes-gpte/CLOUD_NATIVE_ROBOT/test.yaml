@@ -4,6 +4,30 @@ purpose: TEST
 # Don't update bastion packages, save some time...
 update_packages: true
 
+
+# Add a MachineSet for AWS Bare arm instances
+ocp4_workload_machinesets_machineset_groups:
+  - name: arm
+    role: arm
+    instance_type: m7g.2xlarge
+    root_volume_size: 250
+  #  openshift-install coreos print-stream-json | jq  -r -c '.architectures | keys '
+  # ["aarch64","ppc64le","s390x","x86_64"]
+    aws_instance_ami_architecture: aarch64
+    autoscale: false
+    total_replicas: "{{ [(num_users | int / 40) | round(0, 'ceil') | int, 1] | max }}"
+    total_replicas_min: "{{ [(num_users | int / 40) | round(0, 'ceil') | int, 1] | max }}"
+    total_replicas_max: "{{ [(num_users | int / 40) | round(0, 'ceil') | int, 3] | max }}"
+  # machineConfigPool:
+  #   setup: true
+  #   maxPodsPerNode: 250
+    taints:
+      - key: "kubernetes.io/arch"
+        value: "arm"
+        effect: NoSchedule
+
+worker_instance_count: "{{ [(num_users | int / 5 ) | round(0, 'ceil') | int, 3] | max  }}"
+
 # ---------------------------------------------------------
 # Babylon meta variables
 # ---------------------------------------------------------
