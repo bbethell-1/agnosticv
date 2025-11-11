@@ -11,6 +11,7 @@
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/ansible-tower-advanced-24.yaml
 #include /includes/secrets/registry-redhat.yaml
+#include /includes/secrets/litemaas-test.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: Introduction to AI-Driven Ansible Automation
@@ -351,6 +352,9 @@ requirements_content:
       version: ">=6.0.0"
     - name: cisco.ios
       version: ">=5.0.0"
+    - name: "https://github.com/rhpds/rhpds.litellm_virtual_keys.git"
+      type: git
+      version: main
 
 # -------------------------------------------------------------------
 # Workloads: Pre/Software/Post
@@ -382,6 +386,7 @@ software_workloads:
 
 post_software_workloads:
   bastions:
+    - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
     - ansible_automation_platform_configuration
 
 post_software_final_workloads:
@@ -487,6 +492,20 @@ gitea_http_listen: "0.0.0.0"
 gitea_db_pasword: "{{ common_password }}"
 gitea_create_url: "https://gitea-{{ subdomain_base }}"
 gitea_create_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# LiteLLM Virtual Keys Configuration
+# -------------------------------------------------------------------
+# Convert model selection to actual model list
+ocp4_workload_litellm_virtual_keys_models:
+  - 'openai/granite-3-2-8b-instruct'
+
+# Duration selected by user
+ocp4_workload_litellm_virtual_keys_duration: "{{ litellm_duration | default('3d') }}"
+
+# Enable user.info messages and data
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
 
 # -------------------------------------------------------------------
 # Role: ansible_automation_platform_configuration
@@ -715,12 +734,16 @@ controller_templates:
     job_type: "run"
     inventory: "Demo Inventory"
     project: "AI-EDA"
-    playbook: "playbooks/rhelai_inference_survey.yml"
+    playbook: "playbooks/rhelai_inference_survey_maas.yml"
     ask_variables_on_launch: false
     survey_enabled: false
     verbosity: 1
     extra_vars:
-      rhelai_token: "{{ common_password }}"
+      rhelai_url_proto: https
+      rhelai_port: 443
+      rhelai_server: "{{ litellm_api_endpoint | regex_replace('^https?://', '') }}"
+      rhelai_model_name: "openai/granite-3-2-8b-instruct"
+      rhelai_token: "{{ litellm_virtual_key }}"
   - name: "⚙️ Build Ansible Lightspeed Job Template"
     description: "Generate job template for Ansible Lightsoeed to generate playbook"
     organization: "Default"
