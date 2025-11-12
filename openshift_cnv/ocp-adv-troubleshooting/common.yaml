@@ -1,4 +1,5 @@
 ---
+#include /includes/agd-v2-mapping.yaml
 #include /includes/catalog-icon-openshift.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/sandbox-api.yaml
@@ -8,21 +9,33 @@
 
 #include /includes/ansible_control_plane/current_controller.yaml
 
+#include /includes/secrets/dynamic-aws-dns.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/secrets/s3-rhpds-private-bucket.yaml
 #include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/secrets/zerossl.yaml
+
+# needed for rhpds.ocp_adv_troubleshooting workload
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+
+# This catalog item is an advancement on /pert/anatomy-must-gather
+#
+# It is one RHEL 9 VM in which the user logs in and dissects
+# * ocp-must-gather output
+# * ovs network database data
+#
+# It now uses AgnosticD-v2 for the deployment
+# Everything it needs is part of base AgnosticD-v2
+# It includes the rhpds.ocp_adv_troubleshooting role
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-env_type: base-infra
+config: cloud-vms-base
 cloud_provider: openshift_cnv
 common_password: >-
   {{
     lookup('password', output_dir ~ '/user_password length=12 chars=ascii_letters,digits')
   }}
-
-subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
 
 # -------------------------------------------------------------------
 # Platform
@@ -30,45 +43,16 @@ subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
 platform: RHPDS
 bastion_public_hostname: "rhel9.{{ guid }}.{{ subdomain_base_suffix }}"
 
-# -------------------------------------------------------------------
-# inventory_groups (optional but nice to have)
-# -------------------------------------------------------------------
-
-inventory_groups:
-  - bastions
-
-# -------------------------------------------------------------------
-# Role: ansible_service_account
-# -------------------------------------------------------------------
-
-ansible_service_account_user_name: "{{ student_name }}"
-ansible_service_account_user_password: "{{ common_password }}"
-ansible_service_account_user_preferred_python: "3.9"
-
-# -------------------------------------------------------------------
-# Infra workloads
-# -------------------------------------------------------------------
-software_workloads:
-  bastions:
-    - rhpds.ocp_adv_troubleshooting
-
-# -------------------------------------------------------------------
-# Ansible Module, Collections, and Roles Requirements
-# -------------------------------------------------------------------
-
-requirements_content:
-  roles:
-    - name: rhpds.ocp_adv_troubleshooting
-      src: https://github.com/rhpds/ocp-adv-troubleshooting-collection.git
-      #version: v1.0.5
+# Subdomain configuration
+subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
+subdomain_base_short: "{{ guid }}"
+subdomain_base_suffix: ".{{ sandbox_openshift_apps_domain }}"
+subdomain_base: "{{ subdomain_base_short }}{{ subdomain_base_suffix }}"
 
 # -------------------------------------------------------------------
 # Instance Config
 # -------------------------------------------------------------------
-rhel_instance_image: rhel-9.6
-rootfs_size_rhel: "200Gi"
-
-openshift_cnv_legacy_routes: true
+#openshift_cnv_legacy_routes: true
 
 instances:
   - name: "rhel9"
@@ -76,13 +60,13 @@ instances:
     unique: true
     public_dns: false
     floating_ip: false
-    image: "{{ rhel_instance_image }}"
-    memory: 8Gi
-    image_size: "{{ rootfs_size_rhel }}"
+    image: "rhel-9.6"
+    memory: "8G"
+    image_size: "200Gi"
     cores: 4
     tags:
       - key: "AnsibleGroup"
-        value: "bastions,showroom"
+        value: "bastions"
       - key: "ostype"
         value: "linux"
     networks:
@@ -108,10 +92,37 @@ instances:
         tls_termination: Edge
 
 # -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+requirements_content:
+  roles:
+    - name: rhpds.ocp_adv_troubleshooting
+      src: https://github.com/rhpds/ocp-adv-troubleshooting-collection.git
+      #version: v1.0.5
+
+# -------------------------------------------------------------------
+# Infra workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  bastions:
+    - host_satellite_repositories
+    - host_common_packages
+
+software_workloads:
+  bastions:
+    - bastion
+    - rhpds.ocp_adv_troubleshooting
+
+# -------------------------------------------------
+# Set up Bastion
+# -------------------------------------------------
+bastion_student_user_password: "{{ common_password }}"
+openshift_cnv_route_remove_x_frame_options_header: true
+
+# -------------------------------------------------------------------
 # Role: set-repositories
 # -------------------------------------------------------------------
-repo_method: satellite
-use_content_view: true
+install_satellite_repositories: true
 
 # -------------------------------------------------------------------
 # Role: common
@@ -119,49 +130,16 @@ use_content_view: true
 student_name: lab-user
 student_password: "{{ common_password }}"
 
-agd_install_bastion_base: true
-agd_install_common: true
-agd_bastion_packages:
-  - python3
-  - unzip
-  - bash-completion
-  - tmux
-  - bind-utils
-  - wget
-  - nano
-  - git
-  - vim-enhanced
-  - httpd-tools
-  - openldap-clients
-  - podman
-  - tree
-  - runc
+host_common_packages_extra: >-
+  {{
+    ['podman','tree','runc','openldap-clients']
+  }}
+#['podman', 'podman-docker', 'buildah', 'skopeo', 'git', 'vim', 'qemu-kvm', 'libvirt', 'virt-install', 'virt-manager', 'python3-libvirt', 'make', 'jq', 'cockpit']
 
 # -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
 showroom_git_repo: "https://github.com/rhpds/ocp-adv-troubleshooting-showroom.git"
-showroom_git_ref: main
-showroom_user: showroom
-showroom_ui: default
-# showroom_ui_zero_bundle: https://github.com/rhpds/nookbag/releases/download/nookbag-v0.0.5/nookbag-v0.0.5.zip
-showroom_user_password: "{{ common_password }}"
-showroom_ssh_method: sshkey
-showroom_tab_services:
-  - double_tty
-
-showroom_tab_double_tty_top_username: "{{ student_name }}"
-showroom_tab_double_tty_bottom_username: "{{ student_name }}"
-showroom_ttys_enable_tmux: false
-showroom_lab_users:
-  - "{{ student_name }}"
-
-showroom_ssh_host: "{{ openshift_cnv_ssh_address }}"
-showroom_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
-showroom_ssh_username: "{{ student_name }}"
-showroom_host: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ guid }}{{ subdomain_base_suffix }}"
-
-showroom_tls_provider: none
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -172,8 +150,6 @@ __meta__:
     maintainer:
       - name: Judd Maltin
         email: jmaltin@redhat.com
-      - name: Sarvesh Pandit
-        email: sapandit@redhat.com
     instructions:
       - name: Judd Maltin
         email: jmaltin@redhat.com
@@ -207,6 +183,8 @@ __meta__:
         purpose: prod
         virt: "yes"
   deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:2025-09-10
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-06-30
       pull: missing
