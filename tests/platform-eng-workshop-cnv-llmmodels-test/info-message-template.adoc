@@ -19,57 +19,29 @@ Your environment includes access to AI models via LiteLLM.
 
 === Available Models
 
-[source,json]
-----
-{litellm_available_models}
-----
-
-==== Model Details
-
 ifdef::litellm_model_granite_3_2_8b_instruct[]
-* *Granite 3.2 8B Instruct* (`granite-3-2-8b-instruct`)
-** Type: Chat/Text Generation
-** Endpoint: `/v1/chat/completions`
-** Description: IBM's latest enterprise AI model for chat and text generation
+* `granite-3-2-8b-instruct`
 endif::[]
-
 ifdef::litellm_model_mistral_7b_instruct[]
-* *Mistral 7B Instruct* (`mistral-7b-instruct`)
-** Type: Chat/Text Generation
-** Endpoint: `/v1/chat/completions`
-** Description: Fast and efficient open-source chat model
+* `mistral-7b-instruct`
 endif::[]
-
 ifdef::litellm_model_granite_8b_code_instruct[]
-* *Granite 8B Code Instruct* (`granite-8b-code-instruct-128k`)
-** Type: Code Generation
-** Endpoint: `/v1/chat/completions`
-** Description: IBM's specialized code generation model with 128k context
+* `granite-8b-code-instruct-128k`
 endif::[]
-
 ifdef::litellm_model_codellama_7b[]
-* *CodeLlama 7B* (`codellama-7b`)
-** Type: Code Completion
-** Endpoint: `/v1/completions` (not chat/completions)
-** Description: Meta's base code completion model
+* `codellama-7b`
 endif::[]
-
 ifdef::litellm_model_nomic_embed[]
-* *Nomic Embed v1.5* (`nomic-embed-text-v1-5`)
-** Type: Embeddings
-** Endpoint: `/v1/embeddings`
-** Description: Text embeddings for semantic search and RAG applications
+* `nomic-embed-text-v1-5`
 endif::[]
 
 === Usage Examples
 
-==== Chat/Text Generation Models
-
-Use these models for chat and text generation:
+ifdef::litellm_model_granite_3_2_8b_instruct[]
+==== Granite 3.2 8B Instruct (Chat)
 
 [source,bash,subs="attributes"]
 ----
-# Granite 3.2 8B Instruct
 curl {litellm_api_base_url}/chat/completions \
   -H "Authorization: Bearer {litellm_virtual_key}" \
   -H "Content-Type: application/json" \
@@ -77,8 +49,14 @@ curl {litellm_api_base_url}/chat/completions \
     "model": "granite-3-2-8b-instruct",
     "messages": [{"role": "user", "content": "Explain Kubernetes"}]
   }'
+----
+endif::[]
 
-# Mistral 7B Instruct
+ifdef::litellm_model_mistral_7b_instruct[]
+==== Mistral 7B Instruct (Chat)
+
+[source,bash,subs="attributes"]
+----
 curl {litellm_api_base_url}/chat/completions \
   -H "Authorization: Bearer {litellm_virtual_key}" \
   -H "Content-Type: application/json" \
@@ -87,12 +65,13 @@ curl {litellm_api_base_url}/chat/completions \
     "messages": [{"role": "user", "content": "What is DevOps?"}]
   }'
 ----
+endif::[]
 
-==== Code Generation Models
+ifdef::litellm_model_granite_8b_code_instruct[]
+==== Granite 8B Code Instruct (Code Generation)
 
 [source,bash,subs="attributes"]
 ----
-# Granite 8B Code Instruct (chat completions)
 curl {litellm_api_base_url}/chat/completions \
   -H "Authorization: Bearer {litellm_virtual_key}" \
   -H "Content-Type: application/json" \
@@ -100,8 +79,16 @@ curl {litellm_api_base_url}/chat/completions \
     "model": "granite-8b-code-instruct-128k",
     "messages": [{"role": "user", "content": "Write a Python function to sort a list"}]
   }'
+----
+endif::[]
 
-# CodeLlama 7B (completions - note different endpoint)
+ifdef::litellm_model_codellama_7b[]
+==== CodeLlama 7B (Code Completion)
+
+NOTE: This model uses the `/completions` endpoint, not `/chat/completions`
+
+[source,bash,subs="attributes"]
+----
 curl {litellm_api_base_url}/completions \
   -H "Authorization: Bearer {litellm_virtual_key}" \
   -H "Content-Type: application/json" \
@@ -111,12 +98,15 @@ curl {litellm_api_base_url}/completions \
     "max_tokens": 100
   }'
 ----
+endif::[]
 
-==== Embedding Model
+ifdef::litellm_model_nomic_embed[]
+==== Nomic Embed v1.5 (Embeddings)
+
+NOTE: This model uses the `/embeddings` endpoint
 
 [source,bash,subs="attributes"]
 ----
-# Nomic Embed v1.5 (embeddings endpoint)
 curl {litellm_api_base_url}/embeddings \
   -H "Authorization: Bearer {litellm_virtual_key}" \
   -H "Content-Type: application/json" \
@@ -125,8 +115,9 @@ curl {litellm_api_base_url}/embeddings \
     "input": "Text to embed"
   }'
 ----
+endif::[]
 
-==== Python Example (Chat)
+==== Python Example
 
 [source,python,subs="attributes"]
 ----
@@ -137,19 +128,33 @@ client = OpenAI(
     base_url="{litellm_api_base_url}"
 )
 
+ifdef::litellm_model_granite_3_2_8b_instruct,litellm_model_mistral_7b_instruct,litellm_model_granite_8b_code_instruct[]
 # Chat completion
 response = client.chat.completions.create(
-    model="granite-3-2-8b-instruct",
+    model="granite-3-2-8b-instruct",  # or mistral-7b-instruct or granite-8b-code-instruct-128k
     messages=[{{"role": "user", "content": "What is Red Hat OpenShift?"}}]
 )
 print(response.choices[0].message.content)
 
+endif::[]
+ifdef::litellm_model_codellama_7b[]
+# Code completion
+response = client.completions.create(
+    model="codellama-7b",
+    prompt="def fibonacci(n):\n    ",
+    max_tokens=100
+)
+print(response.choices[0].text)
+
+endif::[]
+ifdef::litellm_model_nomic_embed[]
 # Embeddings
 embedding = client.embeddings.create(
     model="nomic-embed-text-v1-5",
     input="Text to embed"
 )
 print(f"Embedding dimension: {{len(embedding.data[0].embedding)}}")
+endif::[]
 ----
 
 [WARNING]
