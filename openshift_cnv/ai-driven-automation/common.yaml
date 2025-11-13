@@ -11,7 +11,7 @@
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/ansible-tower-advanced-24.yaml
 #include /includes/secrets/registry-redhat.yaml
-#include /includes/secrets/litemaas-test.yaml
+#include /includes/secrets/litemaas-master_api.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: Introduction to AI-Driven Ansible Automation
@@ -151,16 +151,26 @@ instances:
       - key: "AnsibleGroup"
         value: "isolated"
     services:
-      - name: controller-443
+      - name: controller
         ports:
-          - port: 443
+          - name: controller-443
+            port: 443
             protocol: TCP
             targetPort: 443
-            name: controller-443
+          - name: controller-5000
+            port: 5000
+            protocol: TCP
+            targetPort: 5000
     routes:
+      - name: controller-5000
+        host: webhook
+        service: controller
+        targetPort: 5000
+        tls: true
+        tls_termination: edge
       - name: controller-443
         host: controller
-        service: controller-443
+        service: controller
         targetPort: 443
         tls: true
         tls_termination: reencrypt
@@ -839,6 +849,7 @@ mattermost_admin_password: "{{ common_password }}"
 # Workload: agnosticv_userdata_import
 # -------------------------------------------------------------------
 agnosticv_importdata:
+  eda_webhook_url: "https://webhook-{{ subdomain_base }}"
   controller_url: "https://controller-{{ subdomain_base }}"
   controller_username: "{{ ansible_automation_platform_configuration_username }}"
   controller_password: "{{ ansible_automation_platform_configuration_password }}"
