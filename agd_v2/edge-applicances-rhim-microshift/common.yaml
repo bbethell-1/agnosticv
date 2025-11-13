@@ -115,23 +115,6 @@ instances:
             protocol: TCP
             targetPort: 5000
             name: registry-http
-  - name: target
-    count: 1
-    unique: true
-    public_dns: false
-    dns_loadbalancer: false
-    floating_ip: false
-    image: "{{ default_instance_image }}"
-    memory: 8G
-    cores: 4
-    image_size: 100Gi
-    tags:
-      - key: "AnsibleGroup"
-        value: "nodes,targets"
-      - key: "ostype"
-        value: "linux"
-    networks:
-      - default
 
 # -------------------------------------------------
 # Set up Bastion
@@ -186,8 +169,6 @@ host_common_packages_extra: >-
     if 'bastions' in group_names else
     ['podman', 'skopeo']
     if 'registries' in group_names else
-    ['firewalld', 'jq', 'cockpit']
-    if 'targets' in group_names else
     []
   }}
 
@@ -203,7 +184,7 @@ bastion_asset_injector_assets:
     mode: "0600"
     block: |
       # SSH config for easy access to nodes
-      Host registry target
+      Host registry
           User {{ ansible_user }}
           StrictHostKeyChecking no
           UserKnownHostsFile /dev/null
@@ -224,27 +205,10 @@ bastion_asset_injector_assets:
     create: true
     state: present
 
-target_asset_injector_assets:
-  - description: Allow insecure access to registry
-    type: blockinfile
-    path: /etc/containers/registries.conf.d/insecure-registry.conf
-    owner: "root"
-    group: "root"
-    mode: "0644"
-    block: |
-      [[registry]]
-      location = "registry:5000"
-      insecure = true
-    marker: "# {mark} ANSIBLE MANAGED - INSECURE REGISTRY"
-    create: true
-    state: present
-
 asset_injector_assets: >-
   {{
     bastion_asset_injector_assets
     if 'bastions' in group_names else
-    target_asset_injector_assets
-    if 'targets' in group_names else
     []
   }}
 
@@ -273,7 +237,6 @@ agnosticv_importdata:
   bastion_ssh_user_name: "{{ bastion_student_user_name }}"
   bastion_ssh_password: "{{ bastion_student_user_password }}"
   registry_hostname: "registry"
-  target_hostname: "target"
 
 # -------------------------------------------------------------------
 # Workloads
