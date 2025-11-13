@@ -38,8 +38,15 @@ workloads:
 # -------------------------------------------------------------------
 # LiteLLM Virtual Keys Configuration
 # -------------------------------------------------------------------
-# Convert model selection to actual model list
-ocp4_workload_litellm_virtual_keys_models: "{{ ['openai/granite-3-2-8b-instruct'] if litellm_models_selection | default('granite') == 'granite' else ['openai/mistral-7b-instruct'] if litellm_models_selection == 'mistral' else ['openai/granite-3-2-8b-instruct', 'openai/mistral-7b-instruct'] }}"
+# Build model list based on checkbox selections
+ocp4_workload_litellm_virtual_keys_models: >-
+  {{
+    (litellm_model_granite_3_2_8b_instruct | default(true) | bool | ternary(['granite-3-2-8b-instruct'], [])) +
+    (litellm_model_granite_8b_code_instruct | default(false) | bool | ternary(['granite-8b-code-instruct-128k'], [])) +
+    (litellm_model_mistral_7b_instruct | default(false) | bool | ternary(['mistral-7b-instruct'], [])) +
+    (litellm_model_nomic_embed | default(false) | bool | ternary(['nomic-embed-text-v1-5'], [])) +
+    (litellm_model_codellama_7b | default(false) | bool | ternary(['codellama-7b'], []))
+  }}
 
 # Duration selected by user
 ocp4_workload_litellm_virtual_keys_duration: "{{ litellm_duration | default('3d') }}"
@@ -86,22 +93,48 @@ __meta__:
       primaryBU: Hybrid_Platforms
 
     parameters:
-      # Model selection (dropdown with predefined combinations)
-      - name: litellm_models_selection
-        description: |
-          Select which AI models to access:
-          - Granite Only: IBM Granite 3.2 8B model
-          - Mistral Only: Mistral 7B model
-          - Both Models: Granite + Mistral (recommended)
-        formLabel: AI Models
-        required: true
+      # Chat/Text Generation Models
+      - name: litellm_model_granite_3_2_8b_instruct
+        formLabel: Granite 3.2 8B Instruct
+        formGroup: Chat & Text Models
+        description: IBM Granite 3.2 8B - General purpose chat and text generation
         openAPIV3Schema:
-          type: string
-          default: 'granite'
-          enum:
-            - 'granite'
-            - 'mistral'
-            - 'both'
+          type: boolean
+          default: true
+
+      - name: litellm_model_mistral_7b_instruct
+        formLabel: Mistral 7B Instruct
+        formGroup: Chat & Text Models
+        description: Mistral 7B - Fast and efficient chat model
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      # Code Models
+      - name: litellm_model_granite_8b_code_instruct
+        formLabel: Granite 8B Code Instruct
+        formGroup: Code Models
+        description: IBM Granite 8B Code - Specialized for code generation (128k context)
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      - name: litellm_model_codellama_7b
+        formLabel: CodeLlama 7B
+        formGroup: Code Models
+        description: Meta CodeLlama 7B - Code completion (use /v1/completions endpoint)
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      # Embedding Models
+      - name: litellm_model_nomic_embed
+        formLabel: Nomic Embed v1.5
+        formGroup: Embedding Models
+        description: Nomic Embed - Text embeddings (use /v1/embeddings endpoint)
+        openAPIV3Schema:
+          type: boolean
+          default: false
 
       # Duration selection
       - name: litellm_duration
