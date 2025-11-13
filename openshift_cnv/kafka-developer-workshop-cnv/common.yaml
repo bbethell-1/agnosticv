@@ -1,0 +1,178 @@
+---
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# -------------------------------------------------------------------
+#
+# --- Catalog Item: Kafka Developer Workshop
+#
+# -------------------------------------------------------------------
+
+# AgnosticDv2 variables
+config: openshift-workloads
+cloud_provider: none
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# -------------------------------------------------------------------
+# Collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: main
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: main
+  - name: https://github.com/rhpds/kafka-developer-workshop.git
+    type: git
+    version: main
+
+# -------------------------------------------------------------------
+# Autoscaling cluster
+# -------------------------------------------------------------------
+openshift_cnv_scale_cluster: true
+ai_workers_cores: 16
+ai_workers_memory: 64Gi
+worker_instance_count: "{{[(num_users | int / 3) | round(0, 'ceil') | int, 3] | max }}"
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+- kafka.workshop.ocp4_workload_kafka_workshop
+- agnosticd.core_workloads.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_htpasswd
+# -------------------------------------------------------------------
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+# Generate user password
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_password_randomized: true
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/streams-kafka-workshop/showroom.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_only: "false"
+
+# Verify in v2
+# ocp4_workload_showroom_namespace: showroom
+ocp4_workload_showroom_stacked_terminals_enable: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 6e7e2540-27f9-4d42-87ea-a8ea50ae6c1f
+  owners:
+    maintainer:
+    - name: Bernard Tison
+      email: btison@redhat.com
+    instructions:
+    - name: Vamsi Ravula
+      email: vravula@redhat.com
+    - name: Bernard Tison
+      email: btison@redhat.com
+
+  catalog:
+    reportingLabels:
+      primaryBU: Application_Developer
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Kafka Developer Workshop
+    category: Labs
+    multiuser: true
+    keywords:
+    - kafka
+    - streams
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: App_Services_BU
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the environment.
+      formLabel: User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 50
+
+  components:
+  - name: openshift-base
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools/prod
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: "4.19"
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    # Propagate bastion data for infra_add_bastion role
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    # Needed for scaling cluster with workers
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
