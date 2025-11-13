@@ -25,6 +25,7 @@
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/registry-redhat.yaml
+#include /includes/secrets/showroom-shared-410.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -63,9 +64,9 @@ instances:
   - name: "{{ bastion_hostname | default('bastion') }}"
     count: 1
     unique: true
-    public_dns: true
-    dns_loadbalancer: true
-    floating_ip: true
+    public_dns: false
+    dns_loadbalancer: false
+    floating_ip: false
     image: "{{ bastion_instance_image | default(default_instance_image) }}"
     memory: 16G
     cores: 8
@@ -181,7 +182,7 @@ host_common_packages_update_all: false
 # Extra packages set dynamically based on group membership
 host_common_packages_extra: >-
   {{
-    ['podman', 'podman-docker', 'buildah', 'skopeo', 'git', 'vim', 'qemu-kvm', 'libvirt', 'virt-install', 'virt-manager', 'python3-libvirt', 'make', 'jq', 'cockpit']
+    ['python3-pip', 'podman', 'podman-docker', 'buildah', 'skopeo', 'git', 'vim', 'qemu-kvm', 'libvirt', 'virt-install', 'virt-manager', 'python3-libvirt', 'make', 'jq', 'cockpit']
     if 'bastions' in group_names else
     ['podman', 'skopeo']
     if 'registries' in group_names else
@@ -258,11 +259,15 @@ requirements_content:
     - name: https://github.com/rhpds/rhpds.edge_rhim_microshift
       type: git
       version: main
+    - name: https://github.com/agnosticd/showroom
+      type: git
+      version: v1.1.0
 
 # -------------------------------------------------------------------
 # AgnosticV User Data to be displayed
 # -------------------------------------------------------------------
 agnosticv_importdata:
+  openshift_cnv_ssh_address: "{{ openshift_cnv_ssh_address }}"
   bastion_public_hostname: "{{ bastion_public_hostname }}"
   bastion_url: "https://{{ bastion_public_hostname }}"
   bastion_ssh_user_name: "{{ bastion_student_user_name }}"
@@ -291,6 +296,26 @@ post_software_workloads:
     - agnosticd.cloud_vm_workloads.asset_injector
     - rhpds.edge_rhim_microshift.registry
     - rhpds.edge_rhim_microshift.bastion
+
+post_software_final_workloads:
+  localhost:
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+    - agnosticd.showroom.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_openshift_api_token: "{{ showroom_openshift_api_token }}"
+ocp4_workload_showroom_openshift_api_url: "{{ showroom_openshift_api_url }}"
+ocp4_workload_showroom_namespace: "showroom-{{ guid }}"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/edge-applicances-rhim-microshift-showroom.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+bastion_ansible_host: "{{ openshift_cnv_ssh_address }}"
+bastion_ansible_user: "{{ student_name }}"
+bastion_ansible_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+bastion_ansible_ssh_pass: "{{ student_password }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
