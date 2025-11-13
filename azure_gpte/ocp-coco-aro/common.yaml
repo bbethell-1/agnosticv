@@ -1,46 +1,79 @@
 ---
 #include /includes/catalog-icon-azure.yaml
+#include /includes/parameters/azure-region2.yaml
+#include /includes/lifetime-standard.yaml
 #include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/num-users-salesforce.yaml
 #include /includes/parameters/purpose.yaml
-#include /includes/parameters/azure-aro-version.yaml
-#include /includes/parameters/open-environment-annotation-hidden.yaml
-#include /includes/parameters/requester_username.yaml
-#include /includes/parameters/student-email.yaml
 #include /includes/terms-of-service.yaml
+#include /includes/access-restriction-devs-only.yaml
 #include /includes/ansible_control_plane/current_controller.yaml
-#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-#include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/agnosticd_save_output_dir_s3.yaml
-#include /includes/secrets/azure_redhat0.yaml
-#include /includes/runtime-unlimited.yaml
-#include /includes/access-restriction-rh1-2026-devs.yaml
+#include /includes/secrets/azure_opentlc.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: Confidential Containers on Redhat OCP & MS Azure
 # -------------------------------------------------------------------
 # -------------------------------------------------------------------
-# Mandatory Variables for this Catalog Item
+# Mandatory Variables
 # -------------------------------------------------------------------
-env_type: open-environment-azure-subscription
-agnosticd_open_environment: true
+env_type: ocp4-cluster
+software_to_deploy: openshift4
 cloud_provider: azure
+student_name: lab-user
+student_password: "{{ common_password }}"
 
-# Azure pool to use
-az_pool_id: "01"
-#azure_region: eastus
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
 
-# Enable ARO installation functions
-install_aro: true
-project_tag: "{{ env_type }}-{{ guid }}"
+# -------------------------------------------------------------------
+# Role: create_ssh_provision_key
+# -------------------------------------------------------------------
+create_ssh_provision_key_enable_user_info_data: true
 
-# ------------------------------------------------------
-# Azure Properties
-# ------------------------------------------------------
-azure_deploy_bastion: true
-# Get latest versions using
-#   az aro get-versions --location eastus -o table
-aro_install_helm: true
-rhel_sku: "9_3"
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.20.0"
+ocp4_installer_use_dev_preview: false
+
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Student Workloads (YAML List)
+# -------------------------------------------------------------------
+student_workloads: []
+
+# Workload variables #
+num_users: 1
+ocp4_workload_user_base: user
+ocp4_workload_user_count: "{{ num_users }}"
+ocp4_workload_multi_user: "{{ true if num_users | int > 1 else false }}"
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.20_2025_10_23
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:16] }}"
+common_user_password: openshiftredhat12
+common_admin_password: "{{ common_password }}"
 
 # Extra packages to install
 common_extra_packages:
@@ -50,92 +83,75 @@ common_extra_packages:
   - postgresql
   - httpd-tools
 
-bastion_remove_insights_motd: true
-bastion_custom_motd: |-
-  ---------------------------------------------------------------------------
-          Welcome to the Azure Red Hat OpenShift Workshop!
-  ---------------------------------------------------------------------------
-
-  By continuing to use this service you agree to use this environment
-  solely for the purposes of completing the steps in the lab guide.
-
-  Any other use is a violation of this service and appropriate action
-  will be taken. If you disagree with these terms you must disconnect now.
-  ----------------------------------------------------------------------------
-# -------------------------------------------------------------------
-# Enable if the item is being deployed to a sandbox account
-# and you want credentials provided to the user
-# -------------------------------------------------------------------
-sandbox_student_user: true
-
-# -------------------------------------------------------------------
-# Platform
-# -------------------------------------------------------------------
-platform: RHPDS
-
-# Workload variables #
-ocp4_workload_user_base: user
-ocp4_workload_user_count: "{{ num_users }}"
-ocp4_workload_multi_user: "{{ true if num_users | int > 1 else false }}"
-
-ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.17_2025_10_20
-
-# -------------------------------------------------------------------
-# Common Password
-# -------------------------------------------------------------------
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-common_user_password: openshift
-common_admin_password: "{{ common_password }}"
-
-# -------------------------------------------------------------
-# ARO version
-# -------------------------------------------------------------
-az_aro_version: 4.17.27
-
-# -------------------------------------------------------------------
-# Student User on Bastion
-# -------------------------------------------------------------------
-install_student_user: true
-# --- student_name not set -> Requestor User ID is used as student_name
-student_name: lab-user
-# --- student_password not set -> generate random password
-# student_password: "{{ common_password }}"
-# --- Student is allowed to sudo and switch to root
-student_sudo: true
-
 # -------------------------------------------------------------------
 # Other Variables
 # -------------------------------------------------------------------
 # Show kubeadmin password
 ocp4_cluster_show_access_user_info: true
 install_ftl: false
-ocp4_workload_showroom_content_only: true
+
+# -------------------------------------------------------------------
+# Azure cloud specific vars
+# -------------------------------------------------------------------
+
+# Enable RHEL Gold Image
+rhel_publisher: redhat
+rhel_offer: rhel-byos
+rhel_sku: rhel-lvm96-gen2
+#rhel_sku: rhel-lvm81-gen2
+rhel_version: latest
+rhel_plan_name: rhel-lvm96-gen2
+#rhel_plan_name: rhel-lvm81-gen2
+rhel_plan_publisher: redhat
+rhel_plan_product: rhel-byos
+
+# OpenShift 4 (ocp4-cluster) specific vars
+windows_vm_count: 0
+cluster_dns_zone: azure.opentlc.com
+ocp4_base_domain: azure.opentlc.com
+basesuffix: .azure.opentlc.com
+
+master_instance_type_family: "Standard"
+master_instance_count: 1
+master_instance_version: "v5"
+
+worker_instance_count: 0
+
+master_instance_type_size: "D16s"
+master_instance_type: "{{ master_instance_type_family }}_{{ master_instance_type_size }}_{{ master_instance_version }}"
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 infra_workloads:
   - ocp4_workload_authentication # all segments
+  - ocp4_workload_le_certificates
   - ocp4_workload_nvidia_gpu_setup
   - ocp4_workload_pipelines
   - ocp4_workload_openshift_gitops
   - ocp4_workload_serverless
   - ocp4_workload_ossm
-  - ocp4_workload_web_terminal
+  - ocp4_workload_gitops_bootstrap
   - ocp4_workload_showroom
+  - ocp4_workload_web_terminal
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
+install_idm: htpasswd
+
 ocp4_workload_authentication_idm_type: htpasswd
 ocp4_workload_authentication_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
-ocp4_workload_authentication_htpasswd_user_base: "{{ ocp4_workload_user_base }}"
-ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
-ocp4_workload_authentication_htpasswd_user_count: "{{ ocp4_workload_user_count }}"
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+# Generate user password
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
 ocp4_workload_authentication_remove_kubeadmin: true
-ocp4_workload_authentication_enable_user_info_data: true
+
+# Use Let's Encrypt Prod certificates
+install_lets_encrypt_certificates: false
 
 # ------------------------------------------------
 # Node Feature Discovery Operator
@@ -143,20 +159,19 @@ ocp4_workload_authentication_enable_user_info_data: true
 nfd_operator_namespace: openshift-nfd
 nfd_operator_channel: "stable"
 nfd_operator_automatic_install_plan_approval: true
-nfd_operator_starting_csv: "nfd.4.17.0-202510142111"
+nfd_operator_starting_csv: ""
 nfd_operator_wait_for_deploy: true
 nfd_operator_use_catalog_snapshot: false
 nfd_operator_catalogsource_name: ""
 nfd_operator_catalog_snapshot_image: ""
 nfd_operator_catalog_snapshot_image_tag: ""
-
 # ------------------------------------------------
 # NVIDIA GPU Operator
 # ------------------------------------------------
 nvidia_gpu_operator_namespace: nvidia-gpu-operator
 nvidia_gpu_operator_channel: stable
 nvidia_gpu_operator_automatic_install_plan_approval: true
-nvidia_gpu_operator_starting_csv: gpu-operator-certified.v25.10.0
+nvidia_gpu_operator_starting_csv: ""
 nvidia_gpu_operator_wait_for_deploy: true
 nvidia_gpu_operator_use_catalog_snapshot: false
 nvidia_gpu_operator_catalogsource_name: ""
@@ -164,35 +179,24 @@ nvidia_gpu_operator_catalog_snapshot_image: ""
 nvidia_gpu_operator_catalog_snapshot_image_tag: ""
 
 # -------------------------------------------------------------------
-# Workload ocp4_workload_ossm - Service Mesh
+# ocp4_workload_ossm
 # -------------------------------------------------------------------
 ocp4_workload_ossm_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_ossm_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
-# Elasticsearch
-ocp4_workload_ossm_es_channel: stable
-ocp4_workload_ossm_es_startingcsv: ""
+ocp4_workload_ossm_es: false
+ocp4_workload_ossm_jaeger: false
+ocp4_workload_ossm_kiali: false
 
-# Jaeger
-ocp4_workload_ossm_jaeger_channel: stable
-ocp4_workload_ossm_jaeger_startingcsv: ""
-
-# Kiali
-ocp4_workload_ossm_kiali_channel: stable
-ocp4_workload_ossm_kiali_startingcsv: ""
-
-# Service Mesh
 ocp4_workload_ossm_servicemesh_channel: stable
 ocp4_workload_ossm_servicemesh_startingcsv: ""
-
-ocp4_workload_rhsso_starting_csv: rhsso-operator.7.6.12-opr-004
 
 # ---------------------------------------------------------
 # Workload: ocp4_workload_pipelines
 # ---------------------------------------------------------
 ocp4_workload_pipelines_channel: pipelines-1.20
 
-ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_use_catalog_snapshot: false
 ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
@@ -255,9 +259,15 @@ ocp4_workload_showroom_deployment_type: helm
 ocp4_workload_showroom_content_git_repo: >-
   https://github.com/rhpds/confidential-containers-azure-showroom.git #To be updated to the actual repo later
 ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_only: true
 
-# --- Student Workloads (YAML List)
-student_workloads: []
+ -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/coco-azure-gitops
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+ocp4_workload_gitops_bootstrap_health_retries: 2
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_serverless
@@ -285,64 +295,27 @@ __meta__:
         email: uad@redhat.com
       - name: Ricardo Garcia Cavero
         email: rgarcia@redhat.com
+
   anarchy:
     namespace: babylon-anarchy-azure-gpte
-  catalog:
-    parameters:
-      - name: num_users
-        description: >-
-          Number of users to provision within the cluster.
-        formLabel: OpenShift User Count
-        openAPIV3Schema:
-          type: integer
-          default: 1
-          minimum: 1
-      - name: azure_region
-        description: Azure Region to Provision Environment
-        formLabel: Region
-        required: true
-        openAPIV3Schema:
-          type: string
-          default: centralus
-          enum:
-            - centralus
-            - eastus
-            - northcentralus
-            - westcentralus
-      - name: open_env_azure_install_aro_master_vm_size
-        description: Azure Master VM Size
-        formLabel: Region
-        required: true
-        openAPIV3Schema:
-          type: string
-          default: Standard_D8s_v5
-          enum:
-            - Standard_D8s_v3
-            - Standard_D8s_v5
-            - Standard_D8s_v6
-      - name: open_env_azure_install_aro_worker_vm_size
-        description: Azure Worker VM Size
-        formLabel: Region
-        required: true
-        openAPIV3Schema:
-          type: string
-          default: Standard_D4s_v5
-          enum:
-            - Standard_D4s_v3
-            - Standard_D4s_v5
-            - Standard_D4s_v6
-    namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: Understanding Confidential Containers - Workshop on ARO
-    category: Labs
-    keywords: []
-    labels:
-      Product_Family: Red_Hat_Cloud
-      Product: Microsoft_Azure_Red_Hat_OpenShift
-      Provider: RHDP
-      SLA: Community
-    reportingLabels:
-      primaryBU: Hybrid_Platforms
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+      image: quay.io/agnosticd/ee-multicloud:v0.1.1
       pull: missing
+  catalog:
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Confidential Containers on Redhat OCP & MS Azure
+    category: Demos
+    keywords:
+      - azure
+      - ocp
+      - ocp4
+      - confidential-containers
+    labels:
+      Product_Family: Red_Hat_Cloud
+      Product: Red_Hat_OpenShift_Container_Platform
+      Provider: RHDP
+      Base_Component: 'False'
+    parameters: []
