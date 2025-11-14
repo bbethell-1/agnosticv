@@ -36,7 +36,6 @@ subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
 ansible_user: cloud-user
 remote_user: cloud-user
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + '_1' }}"
-windows_password: Ansible123!
 
 # -------------------------------------------------------------------
 # Instance Config
@@ -106,6 +105,22 @@ instances:
             protocol: TCP
             targetPort: 8080
             name: bastion-8080
+          - port: 5514
+            protocol: TCP
+            targetPort: 5514
+            name: bastion-5514-tcp
+          - port: 5514
+            protocol: UDP
+            targetPort: 5514
+            name: bastion-5514-udp
+          - port: 1514
+            protocol: TCP
+            targetPort: 1514
+            name: bastion-1514-tcp
+          - port: 1514
+            protocol: UDP
+            targetPort: 1514
+            name: bastion-1514-udp
     routes:
       - name: showroom
         host: showroom
@@ -163,7 +178,7 @@ instances:
             targetPort: 5000
     routes:
       - name: controller-5000
-        host: webhook
+        host: eda-webhook
         service: controller
         targetPort: 5000
         tls: true
@@ -283,45 +298,42 @@ instances:
         tls: true
         tls_termination: edge
 
-  - name: "windows"
-    image: "base-windows-ad-2022.qcow2"
-    memory: "16G"
+  # Cisco router instances with proper SSH key configuration
+  - name: "cisco-rtr1"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ cisco_instance_image }}"
+    memory: 8G
     cores: 4
-    image_size: "60Gi"
+    image_size: "{{ cisco_rootfs_size }}"
     tags:
       - key: "AnsibleGroup"
         value: "isolated"
-    interface_model: "e1000e"
+      - key: "ostype"
+        value: "network"
+      - key: "ansible_network_os"
+        value: "ios"
     networks:
       - default
-    services:
-      - name: windows
-        ports:
-          - port: 5986
-            protocol: TCP
-            targetPort: 5986
-            name: windows
-      - name: windows-rdp
-        ports:
-          - port: 3389
-            protocol: TCP
-            targetPort: 3389
-            name: windows-rdp
-      - name: iis
-        ports:
-          - port: 80
-            protocol: TCP
-            targetPort: 80
-            name: iis
-    routes:
-      - name: windows
-        host: windows
-        service: iis
-        targetPort: 80
-        tls: true
-        tls_termination: Edge
+    cdroms:
+      - metadata:
+          name: "cisco-rtr1-config"
+        spec:
+          source:
+            pvc:
+              name: "ans-bu-cisco-rhdp-config"
+              namespace: cnv-images
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "20Mi"
 
-  - name: "cisco-1"
+  - name: "cisco-rtr2"
     count: 1
     unique: true
     public_dns: false
@@ -333,20 +345,27 @@ instances:
     tags:
       - key: "AnsibleGroup"
         value: "isolated"
-
-  - name: "cisco-2"
-    count: 1
-    unique: true
-    public_dns: false
-    floating_ip: false
-    image: "{{ cisco_instance_image }}"
-    memory: 8G
-    cores: 4
-    image_size: "{{ cisco_rootfs_size }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "isolated"
-
+      - key: "ostype"
+        value: "network"
+      - key: "ansible_network_os"
+        value: "ios"
+    networks:
+      - default
+    cdroms:
+      - metadata:
+          name: "cisco-rtr2-config"
+        spec:
+          source:
+            pvc:
+              name: "ans-bu-cisco-rhdp-config"
+              namespace: cnv-images
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "20Mi"
 
 # -------------------------------------------------------------------
 # Ansible Module, Collections, and Roles Requirements
@@ -380,6 +399,7 @@ pre_software_workloads:
     - bastion-lite
     - control-user
     - asset_injector
+    - lb2961.ai_driven_aap.controller_firewall
   servers:
     - lb2961.ai_driven_aap.mattermost
     - lb2961.ai_driven_aap.kafka
@@ -485,6 +505,19 @@ asset_injector_assets:
     type: service
     name: sshd
     state: restarted
+
+# -------------------------------------------------------------------
+# Role: lb2961.ai_driven_aap.controller_firewall
+# -------------------------------------------------------------------
+controller_firewall_hostname: controller
+controller_firewall_user: rhel
+controller_firewall_password: ansible123!
+
+# -------------------------------------------------------------------
+# Role: rhel-firewalld (for controller/isolated group)
+# -------------------------------------------------------------------
+rhel_firewalld_open_ports:
+  - 5000/tcp
 
 # -------------------------------------------------------------------
 # Role: vscode-server
@@ -619,6 +652,15 @@ controller_credentials:
     inputs:
       username: "lab-user"
       password: "{{ common_password }}"
+  # Network Credential for Cisco devices
+  - name: "Network Credential"
+    description: "Cisco Network Devices Credential"
+    organization: "Default"
+    credential_type: "Machine"
+    inputs:
+      username: admin
+      password: "ansible123!"
+      become_method: enable
 
 controller_inventories:
   - name: "lab-inventory"
@@ -636,6 +678,17 @@ controller_inventories:
     organization: "Default"
     prevent_instance_group_fallback: false
     state: present
+  # Network Inventory
+  - name: "network-inventory"
+    description: "Network Devices Inventory"
+    organization: "Default"
+    prevent_instance_group_fallback: false
+    state: present
+  - name: "aap-controller"
+    description: "AAP Controller Inventory"
+    organization: "Default"
+    prevent_instance_group_fallback: false
+    state: present
 
 controller_hosts:
   - name: "{{ groups['rhel9_nodes'][0].split('.')[0] }}"
@@ -646,21 +699,40 @@ controller_hosts:
     inventory: "gitea-inventory"
     variables:
       ansible_host: "bastion"
-  - name: "windows"
-    inventory: "lab-inventory"
-    enabled: true
-    state: present
+  - name: "controller"
+    inventory: "aap-controller"
     variables:
-      ansible_host: "windows"
-      ansible_password: "{{ windows_password }}"
-      ansible_user: "Administrator"
-      ansible_connection: winrm
-      ansible_port: 5986
-      ansible_winrm_server_cert_validation: ignore
+      ansible_host: "controller.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+      ansible_user: "rhel"
+      ansible_password: "{{ common_password }}"
+  # Network Hosts
+  - name: "cisco-rtr1"
+    inventory: "network-inventory"
+    variables:
+      ansible_host: "cisco-rtr1.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+      ansible_network_os: cisco.ios.ios
+      ansible_connection: ansible.netcommon.network_cli
+  - name: "cisco-rtr2"
+    inventory: "network-inventory"
+    variables:
+      ansible_host: "cisco-rtr2.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+      ansible_network_os: cisco.ios.ios
+      ansible_connection: ansible.netcommon.network_cli
 
 controller_configuration_projects_async_retries: 60
 
 controller_projects:
+  # AI-EDA2 must be first and wait for sync so job templates can reference it
+  - name: "AI-EDA2"
+    description: "Project for AI EDA - ansible-tmm repository"
+    organization: "Default"
+    scm_type: "git"
+    scm_url: "https://github.com/ansible-tmm/aiops-summitlab.git"
+    scm_branch: "main"
+    scm_clean: false
+    scm_delete_on_update: false
+    scm_update_on_launch: true
+    wait: true
   - name: "AI-EDA"
     description: "Project for AI EDA ADP"
     organization: "Default"
@@ -682,8 +754,43 @@ controller_projects:
     scm_branch: "main"
     credential: "Gitea"
     wait: false
+  # Network playbooks from Gitea
+  - name: "Lightspeed-Playbooks-Network"
+    description: "Network AIOps Lightspeed Playbooks from Gitea"
+    organization: "Default"
+    scm_type: "git"
+    scm_url: "{{ gitea_create_url }}/lab-user/lightspeed_playbooks.git"
+    scm_clean: true
+    scm_delete_on_update: false
+    scm_update_on_launch: true
+    scm_branch: "main"
+    credential: "Gitea"
+    wait: false
 
 controller_templates:
+  # Initialization job templates (must run before Lightspeed projects sync)
+  - name: "Initialize Lightspeed Gitea Repository"
+    description: "Create empty lightspeed-response-network.yml in Gitea"
+    organization: "Default"
+    job_type: "run"
+    inventory: "gitea-inventory"
+    project: "AI-EDA2"
+    playbook: "playbooks/initialize_gitea_lightspeed.yml"
+    verbosity: 1
+    extra_vars:
+      gitea_url: "{{ gitea_create_url }}"
+      gitea_password: "{{ common_password }}"
+  - name: "Create Network AIOps Workflow"
+    description: "Create Network AIOps Workflow with all nodes"
+    organization: "Default"
+    job_type: "run"
+    inventory: "Demo Inventory"
+    project: "AI-EDA2"
+    playbook: "playbooks/create_network_aiops_workflow.yml"
+    credentials:
+      - "AAP"
+    verbosity: 1
+  # Demo job templates
   - name: "❌ Break Apache"
     description: "Job template to break Apache config"
     organization: "Default"
@@ -744,7 +851,7 @@ controller_templates:
     job_type: "run"
     inventory: "Demo Inventory"
     project: "AI-EDA"
-    playbook: "playbooks/rhelai_inference_survey_maas.yml"
+    playbook: "playbooks/rhelai_inference_survey.yml"
     ask_variables_on_launch: false
     survey_enabled: false
     verbosity: 1
@@ -791,8 +898,38 @@ controller_templates:
     ask_variables_on_launch: false
     survey_enabled: false
     verbosity: 1
+  # Network Job Templates
+  - name: "Network Router Setup"
+    description: "Setup Cisco routers with OSPF configuration"
+    organization: "Default"
+    job_type: "run"
+    inventory: "network-inventory"
+    project: "AI-EDA2"
+    playbook: "playbooks/setup_routers.yml"
+    credentials:
+      - "Network Credential"
+    verbosity: 1
+    extra_vars:
+      bastion_ip: "bastion.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+  - name: "Network AIOps"
+    description: "Generate OSPF remediation playbook using Lightspeed AI"
+    organization: "Default"
+    job_type: "run"
+    inventory: "gitea-inventory"
+    project: "AI-EDA2"
+    playbook: "playbooks/network_aiops.yml"
+    credentials:
+      - "ansible-vault"
+    ask_variables_on_launch: true
+    verbosity: 1
+    extra_vars:
+      gitea_url: "{{ gitea_create_url }}"
+      gitea_password: "{{ common_password }}"
 
 controller_launch_jobs:
+  # Run initialization jobs first
+  - name: "Initialize Lightspeed Gitea Repository"
+  - name: "Create Network AIOps Workflow"
   - name: "✅ Restore Apache"
 
 eda_projects:
@@ -800,6 +937,12 @@ eda_projects:
     description: "Event-driven Ansible rulebooks for AIOps"
     organization: Default
     url: "{{ eda_repo_url }}"
+    tls_validation: true
+  # EDA Project for network rulebooks
+  - name: "lightspeed-network"
+    description: "Network AIOps rulebooks for OSPF automation"
+    organization: Default
+    url: "https://gitlab.com/redhatautomation/lightspeed_playbooks.git"
     tls_validation: true
 
 eda_credentials:
@@ -812,6 +955,14 @@ eda_credentials:
       password: "{{ common_password }}"
       username: "{{ student_name }}"
       verify_ssl: false
+  # EDA credential for gitea
+  - name: "gitea"
+    description: "Gitea Source Control Credential for EDA"
+    organization: Default
+    credential_type: "Source Control"
+    inputs:
+      username: "lab-user"
+      password: "{{ common_password }}"
 
 eda_decision_environments:
   - name: "{{ eda_decision_environment_name }}"
@@ -825,6 +976,17 @@ eda_rulebook_activations:
     organization: Default
     project: "ai-eda"
     rulebook: "web_app.yml"
+    decision_environment: "{{ eda_decision_environment_name }}"
+    restart_policy: "on-failure"
+    enabled: true
+    eda_credentials: "AAP"
+    state: present
+  # EDA Rulebook Activation for OSPF
+  - name: "OSPF Neighbor"
+    description: "Detect and remediate OSPF neighbor issues via Splunk webhook"
+    organization: Default
+    project: "lightspeed-network"
+    rulebook: "ospf.yml"
     decision_environment: "{{ eda_decision_environment_name }}"
     restart_policy: "on-failure"
     enabled: true
@@ -849,10 +1011,10 @@ mattermost_admin_password: "{{ common_password }}"
 # Workload: agnosticv_userdata_import
 # -------------------------------------------------------------------
 agnosticv_importdata:
-  eda_webhook_url: "https://webhook-{{ subdomain_base }}"
   controller_url: "https://controller-{{ subdomain_base }}"
   controller_username: "{{ ansible_automation_platform_configuration_username }}"
   controller_password: "{{ ansible_automation_platform_configuration_password }}"
+  eda_webhook_url: "https://eda-webhook-{{ subdomain_base }}"
   mattermost_url: "https://mattermost-{{ subdomain_base }}"
   mattermost_username: ansibleadmin@ansible.com
   mattermost_password: "{{ common_password }}"
@@ -871,8 +1033,6 @@ agnosticv_importdata:
   ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
   ssh_username: "{{ student_name }}"
   ssh_password: "{{ common_password }}"
-  windows_username: admin
-  windows_password: "{{ windows_password }}"
 
 # -------------------------------------------------------------------
 # Role: showroom
