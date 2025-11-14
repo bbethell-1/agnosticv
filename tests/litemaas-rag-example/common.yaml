@@ -1,0 +1,131 @@
+---
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/purpose.yaml
+
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+
+# Agnosticdv2 variables
+config: openshift-workloads
+cloud_provider: none
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_cluster_admin_token }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # MaaS RAG Example Collection
+  - name: https://github.com/prakhar1985/maas-rag-example.git
+    type: git
+    version: main
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+- maas_rag_example.maas_rag_example.ocp4_workload_maas_rag_example
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+# LiteMaaS API configuration (from LiteMaaS Virtual Keys catalog item)
+litellm_api_base_url: "{{ litellm_api_base_url }}"
+litellm_virtual_key: "{{ litellm_virtual_key }}"
+
+__meta__:
+  asset_uuid: ef11e2aa-60b1-4a7e-bb5c-c8b33338bbf6
+  owners:
+    maintainer:
+    - name: Prakhar Srivastava
+      email: psrivast@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+
+  catalog:
+    display_name: "LiteMaaS RAG Collection Example"
+    category: Workshops
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+    - ocp
+    - openshift
+    - ai
+    - llm
+    - rag
+    - litemaas
+    labels:
+      Product: Red_Hat_OpenShift
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+
+  # Components to include in template and catalog item
+  components:
+  - name: openshift
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools/prod
+    parameter_values:
+      cluster_size: sno
+      host_ocp4_installer_version: "4.20.0"
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: openshift_api_url
+      var: openshift_api_url
+    # Propagate bastion data for infra_add_bastion role
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+  - name: litemaas
+    display_name: LiteMaaS Virtual Keys
+    item: agd_v2/litemaas-virtual-keys-rhdps/prod
+    parameter_values:
+      litellm_available_models:
+      - nomic-embed-text-v1-5
+      - granite-3-2-8b-instruct
+      - llama-guard-3-1b
+    propagate_provision_data:
+    - name: litellm_api_base_url
+      var: litellm_api_base_url
+    - name: litellm_virtual_key
+      var: litellm_virtual_key
+
+  # Disable actions on chained config that are handled by base.
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      pull: missing
+    actions:
+      destroy:
+        disable: true
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
