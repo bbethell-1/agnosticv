@@ -1,0 +1,261 @@
+---
+# This item is restricted to devs only.
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift-data-science.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/ocp4_workload_ols_api_token.yaml
+
+# -------------------------------------------------------------------
+# Catalog Item: Red Hat OpenShift AI 3.0 (CNV)
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticDv2 variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# -------------------------------------------------------------------
+# Collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: main
+  - name: https://github.com/agnosticd/ai_workloads.git
+    type: git
+    version: main
+  - name: https://github.com/rhpds/rhpds.openshift-ai.git
+    type: git
+    version: main
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+- agnosticd.core_workloads.ocp4_workload_nfd
+# No GPUs in CNV clusters at this time
+# - agnosticd.ai_workloads.ocp4_workload_nvidia_gpu_operator
+- agnosticd.core_workloads.ocp4_workload_authorino
+- agnosticd.core_workloads.ocp4_workload_pipelines
+- agnosticd.core_workloads.ocp4_workload_serverless
+- agnosticd.ai_workloads.ocp4_workload_openshift_ai
+- rhpds.openshift_ai.ocp4_workload_openshift_ai_dashboard_config
+# No GPUs in CNV clusters at this time
+# - rhpds.openshift_ai.ocp4_workload_openshift_ai_model_deployment
+- agnosticd.ai_workloads.ocp4_workload_ols
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+# -------------------------------------------------------------------
+ocp4_workload_authentication_keycloak_channel: stable-v26.2
+# Generate admin
+ocp4_workload_authentication_keycloak_admin_create: true
+ocp4_workload_authentication_keycloak_admin_username: admin
+ocp4_workload_authentication_keycloak_admin_password: ""
+# Generate user
+ocp4_workload_authentication_keycloak_num_users: 1
+ocp4_workload_authentication_keycloak_user_username_base: user
+ocp4_workload_authentication_keycloak_user_password: ""
+
+ocp4_workload_authentication_keycloak_openshift_client_secret: ""
+ocp4_workload_authentication_keycloak_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_nfd
+# -------------------------------------------------------------------
+ocp4_workload_nfd_operator_channel: stable
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_nvidia_gpu_operator
+# -------------------------------------------------------------------
+# ocp4_workload_nvidia_gpu_operator_channel: v25.10
+
+# -------------------------------------------------------------------
+# ocp4_workload_authorino
+# -------------------------------------------------------------------
+ocp4_workload_authorino_operator_channel: stable
+
+# -------------------------------------------------------------------
+# ocp4_workload_pipelines
+# -------------------------------------------------------------------
+ocp4_workload_pipelines_channel: latest
+
+# -------------------------------------------------------------------
+# ocp4_workload_serverless
+# -------------------------------------------------------------------
+ocp4_workload_serverless_channel: stable
+ocp4_workload_serverless_install_serving: false
+ocp4_workload_serverless_install_eventing: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_ai
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_channel: fast-3.x
+
+# DSC Configuration
+ocp4_workload_openshift_ai_dashboard: Managed
+ocp4_workload_openshift_ai_datasciencepipelines: Managed
+ocp4_workload_openshift_ai_kserve: Managed
+ocp4_workload_openshift_ai_modelmeshserving: Managed
+
+ocp4_workload_openshift_ai_modelregistry: Managed
+ocp4_workload_openshift_ai_modelregistry_namespace: rhoai-model-registries
+ocp4_workload_openshift_ai_modelregistry_config:
+  managementState: "{{ ocp4_workload_openshift_ai_modelregistry }}"
+  registriesNamespace: "{{ ocp4_workload_openshift_ai_modelregistry_namespace }}"
+
+ocp4_workload_openshift_ai_ray: Managed
+ocp4_workload_openshift_ai_trustyai: Managed
+ocp4_workload_openshift_ai_trainingoperator: Managed
+ocp4_workload_openshift_ai_workbenches: Managed
+ocp4_workload_openshift_ai_feastoperator: Managed
+ocp4_workload_openshift_ai_llamastackoperator: Managed
+ocp4_workload_openshift_ai_kueue: Removed
+ocp4_workload_openshift_ai_aipipelines: Managed
+
+# -------------------------------------------------------------------
+# rhpds.openshift_ai.ocp4_workload_openshift_ai_dashboard_config
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_dashboard_config_settings:
+  disableTracking: false
+  disableModelRegistry: false
+  disableModelCatalog: false
+  disableKServeMetrics: false
+  genAiStudio: true
+  modelAsService: true
+  disableLMEval: false
+
+ocp4_workload_openshift_ai_dashboard_config_notebook_controller:
+  enabled: true
+  pvcSize: 20Gi
+
+ocp4_workload_openshift_ai_hardware_profile_gpu_identifiers:
+- defaultCount: '1'
+  displayName: CPU
+  identifier: cpu
+  maxCount: '8'
+  minCount: 1
+  resourceType: CPU
+- defaultCount: 12Gi
+  displayName: Memory
+  identifier: memory
+  maxCount: 16Gi
+  minCount: 1Gi
+  resourceType: Memory
+# - defaultCount: 1
+#   displayName: GPU
+#   identifier: nvidia.com/gpu
+#   maxCount: 4
+#   minCount: 1
+#   resourceType: Accelerator
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ols
+# -------------------------------------------------------------------
+# Create a child app and SP for this lab environment
+# It is removed when the environment is destroyed
+ocp4_workload_ols_get_token: true
+ocp4_workload_ai_platform: azure #openai, azure, watson, openshiftai
+
+# -------------------------------------------------------------------
+# Workloads to remove before sandbox is nuked
+# make sure __meta__.sandbox_api.actions.destroy.catch_all is set to false
+# -------------------------------------------------------------------
+remove_workloads:
+- agnosticd.ai_workloads.ocp4_workload_ols
+
+# -------------------------------------------------------------------
+# Babylon Meta Variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 008dd200-9ab9-492d-9587-60627eed0f97
+  owners:
+    maintainer:
+    - name: Tyrell Reddy
+      email: treddy@redhat.com
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Red Hat Openshift AI 3.0 (CNV)"
+    category: Demos
+    multiuser: false
+    keywords:
+    - openshift ai
+    - rhoai
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_AI
+      Product_Family: Red_Hat_AI
+
+  components:
+  - name: openshift-base
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools/prod
+    parameter_values:
+      cluster_size: sno
+      host_ocp4_installer_version: "4.20.0"
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    # Propagate bastion data for infra_add_bastion role
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+
+  sandbox_api:
+    actions:
+      destroy:
+        # Allow the ocp4_workload_ols remove_workload to run
+        catch_all: false
+      start:
+        # override default to let sandbox-api start and stop
+        enable: true
+      stop:
+        # override default to let sandbox-api start and stop
+        enable: true
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      pull: missing
+    actions:
+      start:
+        # This is default setting
+        disable: false
+      stop:
+        # This should let sandbox-api handle stopping
+        disable: true
