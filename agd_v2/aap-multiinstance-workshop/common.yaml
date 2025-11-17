@@ -27,7 +27,7 @@
 config: openshift-workloads
 cloud_provider: none
 software_to_deploy: none
-openshift_cnv_scale_cluster: false
+openshift_cnv_scale_cluster: true
 clusters:
   - default:
       api_url: "{{ openshift_api_url }}"
@@ -49,7 +49,11 @@ bastion_instance_image: rhel-9.5
 bastion_cores: 2
 bastion_memory: 4Gi
 
-worker_instance_count: 0
+# Worker nodes calculation based on num_users
+# Per user: 0.75 CPU (750m) + 2.5Gi memory
+# Worker capacity: 16 CPU + 64Gi memory
+# Scaling: 1-40 users = 2 workers, 41-64 users = 3 workers, 65+ users = 4 workers
+worker_instance_count: "{{ [2, ((num_users | int * 0.75 / 16) | round(0, 'ceil') | int)] | max }}"
 
 ai_workers_cores: 16
 ai_workers_memory: 64Gi
