@@ -113,45 +113,60 @@ requirements_content:
 # Workloads
 # -------------------------------------------------------------------
 workloads:
-  - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+  - agnosticd.core_workloads.ocp4_workload_authentication_keycloak
   - rhpds.aap_self_service_portal.ocp4_workload_aap_multiinstance
   - rhpds.aap_self_service_portal.self_service
 
-# -------------------------------------------------------------------
-# Workload: agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
-# -------------------------------------------------------------------
-ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
-ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
-ocp4_workload_authentication_htpasswd_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
-ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+# ===================================================================
+# Workload: agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+# ===================================================================
+# Red Hat Build of Keycloak (RHBK) - User Authentication
+# Creates Keycloak instance and manages user accounts
 
-# -------------------------------------------------------------------
+# Operator configuration
+ocp4_workload_authentication_keycloak_namespace: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.2
+ocp4_workload_authentication_keycloak_use_catalog_source: true
+ocp4_workload_authentication_keycloak_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_authentication_keycloak_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# Admin user
+ocp4_workload_authentication_keycloak_admin_create: true
+ocp4_workload_authentication_keycloak_admin_username: admin
+ocp4_workload_authentication_keycloak_admin_password: "{{ common_password }}"
+
+# Student users
+ocp4_workload_authentication_keycloak_num_users: "{{ num_users }}"
+ocp4_workload_authentication_keycloak_user_username_base: user
+ocp4_workload_authentication_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_authentication_keycloak_remove_kubeadmin: true
+
+# ===================================================================
 # Workload: rhpds.aap_self_service_portal.ocp4_workload_aap_multiinstance
-# -------------------------------------------------------------------
-# AAP version
-ocp4_workload_aap_multiinstance_version: "2.6"
+# ===================================================================
+# Ansible Automation Platform - Multi-Instance Deployment
+# Deploys AAP instances per user with Controller, EDA, and optional components
 
-# Component toggles
+# AAP version and components
+ocp4_workload_aap_multiinstance_version: "2.6"
 ocp4_workload_aap_multiinstance_enable_controller: true
 ocp4_workload_aap_multiinstance_enable_eda: true
 ocp4_workload_aap_multiinstance_enable_hub: false
 ocp4_workload_aap_multiinstance_enable_lightspeed: false
 
-# Authentication - use common_password for all AAP admin passwords
+# AAP admin credentials
 ocp4_workload_aap_multiinstance_admin_password: "{{ common_password }}"
 
-# User access
+# User access and permissions
 ocp4_workload_aap_multiinstance_grant_user_access: true
 ocp4_workload_aap_multiinstance_user_role: admin
 
-# Manifest injection
+# License manifest
 ocp4_workload_aap_multiinstance_inject_manifest: true
 ocp4_workload_aap_multiinstance_manifest:
   url: "https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip"
 
-# Resource limits (reduced for workshop environment)
+# Resource limits - Controller Web
 ocp4_workload_aap_multiinstance_controller_web_resource_requirements:
   requests:
     cpu: 250m
@@ -160,6 +175,7 @@ ocp4_workload_aap_multiinstance_controller_web_resource_requirements:
     cpu: 1000m
     memory: 2Gi
 
+# Resource limits - Controller Task
 ocp4_workload_aap_multiinstance_controller_task_resource_requirements:
   requests:
     cpu: 250m
@@ -168,6 +184,7 @@ ocp4_workload_aap_multiinstance_controller_task_resource_requirements:
     cpu: 1000m
     memory: 2Gi
 
+# Resource limits - EDA Controller
 ocp4_workload_aap_multiinstance_eda_resource_requirements:
   requests:
     cpu: 250m
@@ -176,31 +193,31 @@ ocp4_workload_aap_multiinstance_eda_resource_requirements:
     cpu: 500m
     memory: 1Gi
 
-# EDA cluster permissions (enable if needed for Kubernetes event sources)
+# EDA cluster permissions
 ocp4_workload_aap_multiinstance_eda_create_rolebinding: false
 
-# -------------------------------------------------------------------
+# ===================================================================
 # Workload: rhpds.aap_self_service_portal.self_service
-# -------------------------------------------------------------------
-# AAP Controller connection (will be set per user based on their AAP instance)
+# ===================================================================
+# Self-Service Automation Portal
+# Deploys portal interface for AAP job templates and workflows
+
+# AAP connection (set dynamically per user)
 controller_host: "{{ aap_controller_url }}"
 controller_username: "{{ aap_admin_username }}"
 controller_password: "{{ aap_admin_password }}"
 controller_verify_ssl: false
 
-# OpenShift namespace for self-service portal
+# Portal deployment
 openshift_namespace: "{{ aap_namespace }}-ssap"
+helm_chart_version: "2.0.3"
 
-# Self-service portal configuration
+# OAuth configuration
 aap_ssl_verify: false
 aap_oauth_client_name: "Self Service Portal"
 aap_organization: "Default"
-helm_chart_version: "2.0.3"
 
-# -------------------------------------------------------------------
-# Self-service automation plugin URL
-# -------------------------------------------------------------------
-
+# Service automation plugin URL
 service_automation_url: !vault |
           $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
           62653539353734396336356466343237393732663839633232323862613364346666343231636166
