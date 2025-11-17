@@ -1,0 +1,200 @@
+---
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/zerossl.yaml
+
+#include /includes/secrets/demosat-rhel-9-10.0-latest.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: openshift_cnv
+cloud_provider_version: main
+config: cloud-vms-base
+
+# Subdomain configuration
+subdomain: "{{ sandbox_openshift_apps_domain }}"
+showroom_host: "{{ bastion_public_hostname }}"
+
+# Bastion public hostname (dynamically built from inventory)
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ guid }}.{{ subdomain }}"
+
+# Common password (auto-generated from GUID)
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# User configuration
+ansible_user: cloud-user
+remote_user: cloud-user
+
+# -------------------------------------------------------------------
+# Instance Images
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.6
+worker_instance_image: rhel-10.0
+
+# -------------------------------------------------------------------
+# Instances to deploy
+# -------------------------------------------------------------------
+instances:
+  - name: "{{ bastion_hostname | default('bastion') }}"
+    count: 1
+    unique: true
+    public_dns: false
+    dns_loadbalancer: true
+    floating_ip: false
+    image: "{{ bastion_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: 100Gi
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+    networks:
+      - default
+    services:
+      - name: bastion
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: bastion-http
+    routes:
+      - name: bastion-https
+        host: bastion
+        service: bastion
+        targetPort: 80
+        tls: true
+        tls_termination: edge
+  - name: "worker"
+    count: 1
+    unique: true
+    public_dns: false
+    dns_loadbalancer: true
+    floating_ip: false
+    image: "{{ worker_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: 100Gi
+    tags:
+      - key: "AnsibleGroup"
+        value: "workers"
+      - key: "ostype"
+        value: "linux"
+    networks:
+      - default
+
+# -------------------------------------------------
+# CNV/OCP options
+# -------------------------------------------------
+# Remove the X-Frame-Options header from the OCP routes
+openshift_cnv_route_remove_x_frame_options_header: false
+openshift_cnv_legacy_routes: false
+
+# -------------------------------------------------------------------
+# Custom collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: v1.2.0
+
+# -------------------------------------------------
+# Bastion options
+# -------------------------------------------------
+# Used by the bastion role to create the user and enable password SSH
+bastion_setup_student_user: true
+# 'lab-user' is the default but can be overridden
+bastion_student_user_name: lab-user
+# Set password with value, otherwise it will be auto-generated
+bastion_student_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+showroom_git_repo: https://github.com/rhpds/showroom_template_nookbag.git
+showroom_git_ref: two-terminals
+# Setting TLS provider to none and tls_termination for bastion route to edge
+showroom_tls_provider: none
+
+showroom_tab_services:
+  - "single_terminal"
+  - "second_terminal"
+
+showroom_ssh_method: password
+
+showroom_ssh_host: "host.containers.internal"
+showroom_ssh_username: "{{ bastion_student_user_name }}"
+showroom_ssh_password: "{{ common_password }}"
+showroom_ssh_port: 22
+
+showroom_terminal2_ssh_host: "worker.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+showroom_terminal2_ssh_username: "{{ bastion_student_user_name }}"
+showroom_terminal2_ssh_password: "{{ common_password }}"
+#########################################################
+
+# -------------------------------------------------------------------
+# Run pre-software workloads on bastion
+# -------------------------------------------------------------------
+pre_software_workloads:
+  all:
+    - host_satellite_repositories        # register to Satellite (set its vars)
+    - host_common_packages               # installs basics (git, unzip, etc.)
+    - bastion                            # bastion setup role so password SSH is enabled
+
+# -------------------------------------------------------------------
+# Run showroom setup role on bastion
+# -------------------------------------------------------------------
+post_software_final_workloads:
+  bastions:
+    - agnosticd.showroom.vm_workload_showroom
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 81d0e26e-e8a9-4a8b-882a-c205fe96958d
+  owners:
+    maintainer:
+      - name: Andrew Jones
+        email: andrjone@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-06-30
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Showroom collection demo on VM"
+    category: Workshops
+    keywords:
+      - vm
+      - showroom
+    labels:
+      Provider: RHDP
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+      quota:
+        requests.storage: "200Gi"
