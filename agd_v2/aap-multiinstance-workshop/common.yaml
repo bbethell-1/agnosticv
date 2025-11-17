@@ -50,10 +50,12 @@ bastion_cores: 2
 bastion_memory: 4Gi
 
 # Worker nodes calculation based on num_users
-# Per user: 0.75 CPU (750m) + 2.5Gi memory
+# Per user AAP deployment includes: Controller (web+task), EDA, PostgreSQL, Redis, migrations
+# Actual resource usage per user: ~2 CPU + 6Gi memory (including all operator-managed pods)
 # Worker capacity: 16 CPU + 64Gi memory
-# Scaling: 1-40 users = 2 workers, 41-64 users = 3 workers, 65+ users = 4 workers
-worker_instance_count: "{{ [2, ((num_users | int * 0.75 / 16) | round(0, 'ceil') | int)] | max }}"
+# Scaling: 1 worker per 6 users (accounts for all AAP operator overhead)
+# 1-6 users = 2 workers, 7-12 users = 3 workers, 13-18 users = 4 workers, etc.
+worker_instance_count: "{{ [2, ((num_users | int / 6.0) | round(0, 'ceil') | int) + 1] | max }}"
 
 ai_workers_cores: 16
 ai_workers_memory: 64Gi
