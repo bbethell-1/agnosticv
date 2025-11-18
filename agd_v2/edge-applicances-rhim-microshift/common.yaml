@@ -35,13 +35,11 @@ cloud_provider_version: main
 config: cloud-vms-base
 
 # Subdomain configuration
-subdomain_base_short: "{{ guid }}"
-subdomain_base_suffix: ".{{ sandbox_openshift_apps_domain }}"
-subdomain_base: "{{ subdomain_base_short }}{{ subdomain_base_suffix }}"
-subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
+subdomain: "{{ sandbox_openshift_apps_domain }}"
+showroom_host: "{{ bastion_public_hostname }}"
 
 # Bastion public hostname (dynamically built from inventory)
-bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ guid }}{{ subdomain_base_suffix }}"
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ guid }}.{{ subdomain }}"
 
 # Common password (auto-generated from GUID)
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
@@ -81,16 +79,17 @@ instances:
     services:
       - name: bastion
         ports:
-          - port: 443
+          - port: 80
             protocol: TCP
-            targetPort: 443
-            name: bastion-https
+            targetPort: 80
+            name: bastion-http
     routes:
-      - name: bastion-https
+      - name: bastion-http
         host: bastion
         service: bastion
-        targetPort: 443
+        targetPort: 80
         tls: true
+        tls_termination: edge
   - name: registry
     count: 1
     unique: true
@@ -225,7 +224,7 @@ requirements_content:
       version: main
     - name: https://github.com/agnosticd/showroom
       type: git
-      version: v1.1.0
+      version: v1.2.1
 
 # -------------------------------------------------------------------
 # AgnosticV User Data to be displayed
@@ -263,26 +262,26 @@ post_software_workloads:
 post_software_final_workloads:
   localhost:
     - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
-    - agnosticd.showroom.ocp4_workload_showroom
-
-pre_destroy_workloads:
-  localhost:
-    - agnosticd.showroom.ocp4_workload_showroom
+  bastions:
+    - agnosticd.showroom.vm_workload_showroom
 
 # -------------------------------------------------------------------
-# ocp4_workload_showroom
+# Role: showroom
 # -------------------------------------------------------------------
-ocp4_workload_showroom_openshift_api_token: "{{ showroom_openshift_api_token }}"
-ocp4_workload_showroom_openshift_api_url: "{{ showroom_openshift_api_url }}"
-ocp4_workload_showroom_namespace: "showroom-{{ guid }}"
-ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/edge-applicances-rhim-microshift-showroom.git
-ocp4_workload_showroom_content_git_repo_ref: main
-ocp4_workload_showroom_terminal_type: wetty
-ocp4_workload_showroom_wetty_ssh_bastion_login: true
-bastion_ansible_host: "{{ openshift_cnv_ssh_address }}"
-bastion_ansible_user: "{{ student_name }}"
-bastion_ansible_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
-bastion_ansible_ssh_pass: "{{ student_password }}"
+showroom_git_repo: https://github.com/rhpds/edge-applicances-rhim-microshift-showroom.git
+showroom_git_ref: main
+# Setting TLS provider to none and tls_termination for bastion route to edge
+showroom_tls_provider: none
+
+showroom_tab_services:
+  - "single_terminal"
+
+showroom_ssh_method: password
+
+showroom_ssh_host: "host.containers.internal"
+showroom_ssh_username: "{{ bastion_student_user_name }}"
+showroom_ssh_password: "{{ common_password }}"
+showroom_ssh_port: 22
 
 # -------------------------------------------------------------------
 # Babylon meta variables
