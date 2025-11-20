@@ -38,7 +38,8 @@ requirements_content:
   - name: https://github.com/agnosticd/ai_workloads.git
     type: git
     version: main
-  - name: https://github.com/rhpds/rhpds.litemaas.git
+  # Custom workloads
+  - name: https://github.com/rhpds/rhpds.openshift_ai.git
     type: git
     version: main
 
@@ -63,7 +64,7 @@ update_packages: true
 # -------------------------------------------------------------------
 # OpenShift Version
 # -------------------------------------------------------------------
-host_ocp4_installer_version: "4.18.20"
+host_ocp4_installer_version: "4.20.0"
 
 # -------------------------------------------------------------------
 # Student User on Bastion
@@ -74,7 +75,7 @@ bastion_setup_student_user: true
 # List of workloads to be deployed
 # -------------------------------------------------------------------
 workloads:
-- agnosticd.core_workloads.ocp4_workload_openshift_data_foundation
+#- agnosticd.core_workloads.ocp4_workload_openshift_data_foundation
 - agnosticd.core_workloads.ocp4_workload_machinesets
 - agnosticd.core_workloads.ocp4_workload_cert_manager
 - agnosticd.core_workloads.ocp4_workload_authentication_rhsso
@@ -84,12 +85,15 @@ workloads:
 #- agnosticd.core_workloads.ocp4_workload_minio
 - agnosticd.core_workloads.ocp4_workload_nfd
 - agnosticd.core_workloads.ocp4_workload_authorino
-- agnosticd.core_workloads.ocp4_workload_servicemesh2
+- agnosticd.core_workloads.ocp4_workload_servicemesh3
 - agnosticd.ai_workloads.ocp4_workload_nvidia_gpu_operator
+- agnosticd.core_workloads.ocp4_workload_connectivity_link
 #- agnosticd.ai_workloads.ocp4_workload_s3_model_copy_to_minio
 - agnosticd.ai_workloads.ocp4_workload_openshift_ai
 - agnosticd.core_workloads.ocp4_workload_devspaces
-- rhpds.litemaas.ocp4_workload_litemaas
+- rhpds.openshift_ai.ocp4_workload_openshift_ai_dashboard_config
+- rhpds.openshift_ai.ocp4_workload_openshift_ai_model_as_a_service
+#- rhpds.litemaas.ocp4_workload_litemaas
 #- agnosticd.core_workloads.ocp4_workload_litellm
 - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 - agnosticd.core_workloads.ocp4_workload_web_terminal
@@ -105,7 +109,7 @@ common_admin_password: "{{ (guid[::-1][:5] | hash('md5') | int(base=16) | b64enc
 common_admin_username: admin
 
 ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.18_2025_10_23
+ocp4_workload_catalogsource_tag: v4.20_2025_10_23
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_data_foundation
@@ -204,7 +208,7 @@ ocp4_workload_serverless_install_eventing: false
 # -------------------------------------------------------------------
 # ocp4_workload_pipelines
 # -------------------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.18
+ocp4_workload_pipelines_channel: pipelines-1.20
 
 ocp4_workload_pipelines_use_catalog_snapshot: false
 # ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
@@ -212,7 +216,7 @@ ocp4_workload_pipelines_use_catalog_snapshot: false
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.17
+ocp4_workload_openshift_gitops_channel: gitops-1.18
 ocp4_workload_openshift_gitops_use_catalog_snapshot: false
 # ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
@@ -283,21 +287,17 @@ ocp4_workload_authorino_operator_use_catalog_snapshot: false
 # ocp4_workload_authorino_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # -------------------------------------------------------------------
-# ocp4_workload_openshift_servicemesh2
+# agnosticd.core_workloads.ocp4_workload_servicemesh3
 # -------------------------------------------------------------------
-ocp4_workload_servicemesh2_servicemesh_channel: stable
-
-ocp4_workload_servicemesh2_catalogsource_setup: false
-# ocp4_workload_servicemesh2_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-ocp4_workload_servicemesh2_es: false
-ocp4_workload_servicemesh2_jaeger: false
-ocp4_workload_servicemesh2_kiali: false
+ocp4_workload_servicemesh3_channel: stable
+ocp4_workload_servicemesh3_starting_csv: ""
+ocp4_workload_servicemesh3_automatic_install_plan_approval: true
+ocp4_workload_servicemesh3_use_catalog_snapshot: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_nvidia_gpu_setup
 # -------------------------------------------------------------------
-ocp4_workload_nvidia_gpu_operator_channel: v24.9
+ocp4_workload_nvidia_gpu_operator_channel: v25.10
 
 ocp4_workload_nvidia_gpu_operator_use_catalog_snapshot: false
 # ocp4_workload_nvidia_gpu_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
@@ -305,6 +305,13 @@ ocp4_workload_nvidia_gpu_operator_use_catalog_snapshot: false
 ocp4_workload_nvidia_gpu_operator_create_dashboard: true
 ocp4_workload_nvidia_gpu_operator_wait_for_cluster_policy: false
 ocp4_workload_nvidia_gpu_operator_ignore_csv_error: true
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_connectivity_link
+# -------------------------------------------------------------------
+ocp4_workload_connectivity_link_channel: stable
+ocp4_workload_connectivity_link_automatic_install_plan_approval: true
+ocp4_workload_connectivity_link_starting_csv: ""
 
 # -------------------------------------------------------------------
 # ocp4_workload_s3_model_copy_to_minio
@@ -340,15 +347,28 @@ ocp4_workload_s3_model_copy_to_minio_s3_folders:
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_ai
 # -------------------------------------------------------------------
-ocp4_workload_openshift_ai_channel: stable-2.25
+ocp4_workload_openshift_ai_channel: fast-3.x
 
-ocp4_workload_openshift_ai_starting_csv: rhods-operator.2.25.0
-ocp4_workload_openshift_ai_automatic_install_plan_approval: false
-
-ocp4_workload_openshift_ai_use_catalog_snapshot: false
-# ocp4_workload_openshift_ai_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
+# DSC Configuration
+ocp4_workload_openshift_ai_dashboard: Managed
+ocp4_workload_openshift_ai_datasciencepipelines: Managed
 ocp4_workload_openshift_ai_kserve: Managed
+ocp4_workload_openshift_ai_modelmeshserving: Managed
+
+ocp4_workload_openshift_ai_modelregistry: Managed
+ocp4_workload_openshift_ai_modelregistry_namespace: rhoai-model-registries
+ocp4_workload_openshift_ai_modelregistry_config:
+  managementState: "{{ ocp4_workload_openshift_ai_modelregistry }}"
+  registriesNamespace: "{{ ocp4_workload_openshift_ai_modelregistry_namespace }}"
+
+ocp4_workload_openshift_ai_ray: Managed
+ocp4_workload_openshift_ai_trustyai: Managed
+ocp4_workload_openshift_ai_trainingoperator: Managed
+ocp4_workload_openshift_ai_workbenches: Managed
+ocp4_workload_openshift_ai_feastoperator: Managed
+ocp4_workload_openshift_ai_llamastackoperator: Managed
+ocp4_workload_openshift_ai_kueue: Removed
+ocp4_workload_openshift_ai_aipipelines: Managed
 
 # -------------------------------------------------------------------
 # ocp4_workload_devspaces
@@ -377,10 +397,147 @@ ocp4_workload_devspaces_devworkspace_components:
 ocp4_workload_devspaces_devworkspace_devfile: >-
   http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
 
-#--------------------------------
-# ocp4_workload_litemaas #
-#--------------------------------
-ocp4_workload_litemaas_multi_user: true
+# -------------------------------------------------------------------
+# rhpds.openshift_ai.ocp4_workload_openshift_ai_dashboard_config
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_dashboard_config_settings:
+  disableTracking: false
+  disableModelRegistry: false
+  disableModelCatalog: false
+  disableKServeMetrics: false
+  genAiStudio: true
+  modelAsService: true
+  disableLMEval: false
+
+ocp4_workload_openshift_ai_dashboard_config_notebook_controller:
+  enabled: true
+  pvcSize: 20Gi
+
+ocp4_workload_openshift_ai_hardware_profile_gpu_identifiers:
+- defaultCount: '1'
+  displayName: CPU
+  identifier: cpu
+  maxCount: '8'
+  minCount: 1
+  resourceType: CPU
+- defaultCount: 12Gi
+  displayName: Memory
+  identifier: memory
+  maxCount: 16Gi
+  minCount: 1Gi
+  resourceType: Memory
+- defaultCount: 1
+  displayName: GPU
+  identifier: nvidia.com/gpu
+  maxCount: 4
+  minCount: 1
+  resourceType: Accelerator
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_ai_model_as_a_service
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_model_as_a_service_helm_repo: https://github.com/treddy08/model-as-a-service.git
+ocp4_workload_openshift_ai_model_as_a_service_helm_repo_target_revision: main
+ocp4_workload_openshift_ai_model_as_a_service_api_users:
+- count: 1
+  username_prefix: api-user-
+  tier: tier-free-users
+ocp4_workload_openshift_ai_model_as_a_service_models:
+- apiVersion: serving.kserve.io/v1alpha1
+  kind: LLMInferenceService
+  metadata:
+    name: granite-3dot2-8b-instruct
+    namespace: llm
+    annotations:
+      alpha.maas.opendatahub.io/tiers: '[]'
+      openshift.io/display-name: granite-3dot2-8b-instruct
+      serving.kserve.io/deploymentMode: RawDeployment
+  spec:
+    model:
+      uri: 'oci://quay.io/redhat-ai-services/modelcar-catalog:granite-3.2-8b-instruct'
+      name: granite-3dot2-8b-instruct
+    replicas: 1
+    router:
+      route: { }
+      gateway:
+        refs:
+        - name: maas-default-gateway
+          namespace: openshift-ingress
+    template:
+      model:
+        args:
+        - '--port=8080'
+        - '--model=/mnt/models'
+        - '--served-model-name={{ "{{.Name}}" }}'
+        - '--enable-auto-tool-choice'
+        - '--tool-call-parser=granite'
+        - '--chat-template=/app/data/template/tool_chat_template_granite.jinja'
+        - '--max-model-len=120000'
+      # Ensure the pod is scheduled on GPU nodes
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+      - effect: "NoSchedule"
+        key: "nvidia.com/gpu"
+        operator: "Equal"
+        value: "l40-gpu"
+      containers:
+      - name: main
+        resources:
+          limits:
+            cpu: '2'
+            memory: 16Gi
+            nvidia.com/gpu: '1'
+          requests:
+            cpu: '2'
+            memory: 8Gi
+            nvidia.com/gpu: '1'
+- apiVersion: serving.kserve.io/v1alpha1
+  kind: LLMInferenceService
+  metadata:
+    name: llama-guard-3-1b
+    namespace: llm
+    annotations:
+      openshift.io/display-name: llama-guard-3-1b
+      alpha.maas.opendatahub.io/tiers: '[]'
+      argocd.argoproj.io/sync-wave: "2"
+    labels:
+      opendatahub.io/dashboard: 'true'
+  spec:
+    model:
+      name: lama-guard-3-1b
+      uri: 'oci://quay.io/rh-aiservices-bu/llama-guard-3-1b-modelcar:2.0.0'
+    replicas: 1
+    router:
+      route: { }
+      # Connect to MaaS-enabled gateway
+      gateway:
+        refs:
+        - name: maas-default-gateway
+          namespace: openshift-ingress
+    template:
+      model:
+        args:
+        - '--served-model-name={{ "{{.Name}}" }}'
+      # Ensure the pod is scheduled on GPU nodes
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: "Equal"
+        value: "l4-gpu"
+      containers:
+      - name: main
+        resources:
+          limits:
+            cpu: '12'
+            memory: 64Gi
+            nvidia.com/gpu: '1'
+          requests:
+            cpu: '1'
+            memory: '1Gi'
+            nvidia.com/gpu: '1'
 
 # -------------------------------------------------------------------
 # ocp4_workload_gitops_bootstrap
