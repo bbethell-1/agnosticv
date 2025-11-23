@@ -78,7 +78,7 @@ workloads:
 #- agnosticd.core_workloads.ocp4_workload_openshift_data_foundation
 - agnosticd.core_workloads.ocp4_workload_machinesets
 - agnosticd.core_workloads.ocp4_workload_cert_manager
-- agnosticd.core_workloads.ocp4_workload_authentication_rhsso
+- agnosticd.core_workloads.ocp4_workload_authentication_keycloak
 - agnosticd.core_workloads.ocp4_workload_serverless
 - agnosticd.core_workloads.ocp4_workload_pipelines
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
@@ -180,19 +180,19 @@ ocp4_workload_cert_manager_install_ingress_certificates: true
 ocp4_workload_cert_manager_install_api_certificates: false
 
 # -------------------------------------------------------------------
-# ocp4_workload_authentication_rhsso
+# agnosticd.core_workloads.ocp4_workload_authentication_keycloak
 # -------------------------------------------------------------------
-ocp4_workload_authentication_rhsso_channel: stable
-
-ocp4_workload_authentication_rhsso_use_catalog_source: false
-# ocp4_workload_authentication_rhsso_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-ocp4_workload_authentication_rhsso_admin_username: "{{ common_admin_username }}"
-ocp4_workload_authentication_rhsso_admin_password: "{{ common_admin_password }}"
-ocp4_workload_authentication_rhsso_user_count: "{{ ocp4_workload_user_count }}"
-ocp4_workload_authentication_rhsso_user_name_base: "{{ ocp4_workload_user_base}}"
-ocp4_workload_authentication_rhsso_user_password: "{{ common_user_password }}"
-ocp4_workload_rhsso_authentication_remove_kubeadmin: false
+ocp4_workload_authentication_keycloak_namespace: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.2
+ocp4_workload_authentication_keycloak_automatic_install_plan_approval: true
+ocp4_workload_authentication_keycloak_admin_create: true
+ocp4_workload_authentication_keycloak_use_catalog_source: false
+ocp4_workload_authentication_keycloak_num_users: "{{ ocp4_workload_user_count }}"
+ocp4_workload_authentication_keycloak_admin_username: admin
+ocp4_workload_authentication_keycloak_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_keycloak_user_username_base: "{{ ocp4_workload_user_base}}"
+ocp4_workload_authentication_keycloak_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_keycloak_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
 # ocp4_workload_serverless
@@ -239,7 +239,7 @@ ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
 
 ocp4_workload_openshift_gitops_rbac_update: true
 ocp4_workload_openshift_gitops_rbac_policy: |
-  g, {{ ocp4_workload_authentication_rhsso_admin_username }}, role:admin
+  g, {{ ocp4_workload_authentication_keycloak_admin_username }}, role:admin
   g, user1, role:admin
 ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
 
@@ -452,7 +452,7 @@ ocp4_workload_openshift_ai_model_as_a_service_models:
     annotations:
       alpha.maas.opendatahub.io/tiers: '[]'
       openshift.io/display-name: granite-3dot2-8b-instruct
-    argocd.argoproj.io/sync-wave: "2"
+      argocd.argoproj.io/sync-wave: "2"
     labels:
       opendatahub.io/dashboard: 'true'
     name: granite-3dot2-8b-instruct
@@ -512,6 +512,7 @@ ocp4_workload_openshift_ai_model_as_a_service_models:
           name: shm
         image: 'quay.io/modh/vllm:rhoai-2.23-cuda'
         args:
+        - '--served-model-name={{ "{{.Name}}" }}'
         - '--model=/mnt/models'
         - '--enable-auto-tool-choice'
         - '--tool-call-parser'
