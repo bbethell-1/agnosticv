@@ -436,9 +436,12 @@ ocp4_workload_openshift_ai_hardware_profile_gpu_identifiers:
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_ai_model_as_a_service
 # -------------------------------------------------------------------
-ocp4_workload_openshift_ai_model_as_a_service_helm_repo: https://github.com/treddy08/model-as-a-service.git
+ocp4_workload_openshift_ai_model_as_a_service_helm_repo: https://github.com/rhpds/model-as-a-service.git
 ocp4_workload_openshift_ai_model_as_a_service_helm_repo_target_revision: main
 ocp4_workload_openshift_ai_model_as_a_service_api_users:
+- count: 1
+  username_prefix: api-admin-
+  tier: tier-enterprise-users
 - count: 1
   username_prefix: api-user-
   tier: tier-free-users
@@ -446,44 +449,28 @@ ocp4_workload_openshift_ai_model_as_a_service_models:
 - apiVersion: serving.kserve.io/v1alpha1
   kind: LLMInferenceService
   metadata:
-    name: granite-3dot2-8b-instruct
-    namespace: llm
     annotations:
       alpha.maas.opendatahub.io/tiers: '[]'
       openshift.io/display-name: granite-3dot2-8b-instruct
-      serving.kserve.io/deploymentMode: RawDeployment
+    argocd.argoproj.io/sync-wave: "2"
+    labels:
+      opendatahub.io/dashboard: 'true'
+    name: granite-3dot2-8b-instruct
+    namespace: llm
   spec:
     model:
-      uri: 'oci://quay.io/redhat-ai-services/modelcar-catalog:granite-3.2-8b-instruct'
       name: granite-3dot2-8b-instruct
+      uri: 'oci://quay.io/redhat-ai-services/modelcar-catalog:granite-3.2-8b-instruct'
     replicas: 1
     router:
-      route: { }
       gateway:
         refs:
         - name: maas-default-gateway
           namespace: openshift-ingress
+      route: {}
     template:
-      model:
-        args:
-        - '--port=8080'
-        - '--model=/mnt/models'
-        - '--served-model-name={{ "{{.Name}}" }}'
-        - '--enable-auto-tool-choice'
-        - '--tool-call-parser=granite'
-        - '--chat-template=/app/data/template/tool_chat_template_granite.jinja'
-        - '--max-model-len=120000'
-      # Ensure the pod is scheduled on GPU nodes
-      nodeSelector:
-        nvidia.com/gpu.present: "true"
-      tolerations:
-      - effect: "NoSchedule"
-        key: "nvidia.com/gpu"
-        operator: "Equal"
-        value: "l40-gpu"
       containers:
-      - name: main
-        resources:
+      - resources:
           limits:
             cpu: '2'
             memory: 16Gi
@@ -492,6 +479,64 @@ ocp4_workload_openshift_ai_model_as_a_service_models:
             cpu: '2'
             memory: 8Gi
             nvidia.com/gpu: '1'
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+        name: main
+        command:
+        - python
+        - '-m'
+        - vllm.entrypoints.openai.api_server
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+        env:
+        - name: HF_HOME
+          value: /tmp/hf_home
+        - name: VLLM_ATTENTION_BACKEND
+          value: XFORMERS
+        - name: VLLM_USE_V1
+          value: '0'
+        - name: VLLM_PORT
+          value: '8000'
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: shm
+        image: 'quay.io/modh/vllm:rhoai-2.23-cuda'
+        args:
+        - '--model=/mnt/models'
+        - '--enable-auto-tool-choice'
+        - '--tool-call-parser'
+        - granite
+        - '--chat-template'
+        - /app/data/template/tool_chat_template_granite.jinja
+        - '--max-model-len'
+        - '120000'
+        - '--enable-ssl-refresh'
+        - '--ssl-certfile'
+        - /var/run/kserve/tls/tls.crt
+        - '--ssl-keyfile'
+        - /var/run/kserve/tls/tls.key
+      nodeSelector:
+        nvidia.com/gpu.present: 'true'
+      tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Equal
+        value: l40-gpu
+      volumes:
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 2Gi
+        name: shm
 - apiVersion: serving.kserve.io/v1alpha1
   kind: LLMInferenceService
   metadata:
@@ -505,7 +550,7 @@ ocp4_workload_openshift_ai_model_as_a_service_models:
       opendatahub.io/dashboard: 'true'
   spec:
     model:
-      name: lama-guard-3-1b
+      name: llama-guard-3-1b
       uri: 'oci://quay.io/rh-aiservices-bu/llama-guard-3-1b-modelcar:2.0.0'
     replicas: 1
     router:
@@ -516,9 +561,6 @@ ocp4_workload_openshift_ai_model_as_a_service_models:
         - name: maas-default-gateway
           namespace: openshift-ingress
     template:
-      model:
-        args:
-        - '--served-model-name={{ "{{.Name}}" }}'
       # Ensure the pod is scheduled on GPU nodes
       nodeSelector:
         nvidia.com/gpu.present: "true"
@@ -582,24 +624,31 @@ ocp4_workload_gitops_bootstrap_helm_values:
           34633562323937303164633562363935373233303432626639623264613761353633356465316634
           6336626666383437370a633137366531366361336636383234303732313562303430353264383132
           6436
-    graniteToken: !vault |
-          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
-          32656339353764616534626362303832646332313739633339653232616236396534316537343030
-          3330653462643633306564383265363537373838323536370a663931393231323736633933643639
-          30656539646135643638626135373361393765313330616463396133336130633864303761303738
-          3564353235323832340a373365353063356239313764653364336263613665383365376262616236
-          63306538636663366663353663303362316339656462613235333761316331393561616331323734
-          3366656635333439633638666433363233646565353931303666
-    llamaToken: !vault |
-          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
-          62343737623935643866353733336135396634356564303833626339623365393261306261333637
-          3833346361386437363664336331303866643931373932620a316665316164663938326661373735
-          35373961323031303133653466643265333862316632613733366538326565373938386237343062
-          3733616633343361310a363564656261316634636534663561393233623966363036376131316131
-          36613630386334363864323064383739613332393164633362353565663464316533333331633332
-          3561333633383530396433333231306530633065316163393238
+    graniteToken: "{{ admin_api_token }}"
+    llamaToken: "{{ admin_api_token }}"
+#    graniteToken: !vault |
+#          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+#          32656339353764616534626362303832646332313739633339653232616236396534316537343030
+#          3330653462643633306564383265363537373838323536370a663931393231323736633933643639
+#          30656539646135643638626135373361393765313330616463396133336130633864303761303738
+#          3564353235323832340a373365353063356239313764653364336263613665383365376262616236
+#          63306538636663366663353663303362316339656462613235333761316331393561616331323734
+#          3366656635333439633638666433363233646565353931303666
+#    llamaToken: !vault |
+#          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+#          62343737623935643866353733336135396634356564303833626339623365393261306261333637
+#          3833346361386437363664336331303866643931373932620a316665316164663938326661373735
+#          35373961323031303133653466643265333862316632613733366538326565373938386237343062
+#          3733616633343361310a363564656261316634636534663561393233623966363036376131316131
+#          36613630386334363864323064383739613332393164633362353565663464316533333331633332
+#          3561333633383530396433333231306530633065316163393238
+
+admin_api_token: "{{ lookup('agnosticd_user_data', 'api-admin-1').api_key }}"
+granite-3dot2-8b-instruct-endpoint: "{{ lookup('agnosticd_user_data', 'granite-3dot2-8b-instruct').model_url }}"
+llama-guard-3-1b-endpoint: "{{ lookup('agnosticd_user_data', 'llama-guard-3-1b').model_url }}"
 
 ocp4_workload_gitops_bootstrap_health_retries: 2
+
 
 # -------------------------------------------------------------------
 # Role: ocp4_workload_showroom
