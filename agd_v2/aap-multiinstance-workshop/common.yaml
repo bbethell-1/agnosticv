@@ -52,11 +52,11 @@ bastion_memory: 4Gi
 # Worker nodes calculation based on num_users
 # Per user AAP deployment includes: Controller (web+task), EDA, PostgreSQL, Redis, migrations
 # Actual resource usage per user: ~2 CPU + 6Gi memory (including all operator-managed pods)
-# Worker capacity: 32 CPU + 128Gi memory (larger workers to reduce node count for IP limits)
-# Scaling: 1 worker per 10 users (accounts for all AAP operator overhead)
-# 1-10 users = 2 workers, 11-20 users = 3 workers, 21-30 users = 4 workers, etc.
-# Max 60 users = 7 workers (stays within CNV pool IP address range)
-worker_instance_count: "{{ [2, ((num_users | int / 10.0) | round(0, 'ceil') | int) + 1] | max }}"
+# Worker capacity: 32 CPU + 128Gi memory
+# Scaling: More aggressive for larger deployments to improve parallel AAP operator reconciliation
+# 1-10 users = 2 workers, 11-20 users = 3 workers, 21-30 users = 5 workers, 31-40 users = 6 workers
+# 41-50 users = 7 workers, 51-60 users = 9 workers
+worker_instance_count: "{{ [2, ((num_users | int / 7.0) | round(0, 'ceil') | int) + 1] | max }}"
 
 ai_workers_cores: 32
 ai_workers_memory: 128Gi
@@ -314,6 +314,8 @@ __meta__:
     sme:
       - email: hmourad@redhat.com
         name: Hicham Mourad
+  tower:
+    timeout: 21600
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
