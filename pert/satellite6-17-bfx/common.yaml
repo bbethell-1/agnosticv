@@ -1,0 +1,250 @@
+---
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/lifetime-standard.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/ansible_control_plane/current_controller.yaml
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/ansible-tower-advanced-24.yaml
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+
+platform: RHPDS
+
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}.{{ guid }}{{ subdomain_base_suffix }}"
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+env_type: base-infra
+cloud_provider: openshift_cnv
+
+bastion_instance_image: rhel-9.4
+bastion_rootfs_size: 200Gi
+project_tag: "{{ env_type }}-{{ guid }}"
+rhel_instance_image: rhel-9.6
+
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+student_password: "{{ common_password }}"
+
+install_common: false
+install_bastion: false
+config_user_preferred_python: false
+ansible_user: cloud-user
+openshift_cnv_legacy_routes: true
+
+instances:
+- name: bastion
+  count: 1
+  unique: true
+  alt_name: bastion
+  memory: "{{ bastion_memory }}"
+  cores: "{{ bastion_cores }}"
+  image_size: "{{ bastion_rootfs_size }}"
+  image: "{{ bastion_instance_image }}"
+  metadata:
+  - AnsibleGroup: "bastions"
+  - function: bastion
+  - user: "{{ student_name }}"
+  - project: "{{ project_tag }}"
+  - ostype: linux
+  - Purpose: "{{ purpose }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions"
+  - key: "ostype"
+    value: "linux"
+  - key: "instance_filter"
+    value: "{{ env_type }}-{{ guid }}"
+  networks:
+  - default
+  services:
+  - name: bastion-fip
+    type: LoadBalancer
+    ports:
+    - port: 80
+      protocol: TCP
+      targetPort: 80
+      name: bastion-http
+    - port: 443
+      protocol: TCP
+      targetPort: 443
+      name: bastion-https
+    - port: 8080
+      protocol: TCP
+      targetPort: 8080
+      name: bastion-http-alt
+  routes:
+  - name: bastion-http
+    host: bastion
+    service: bastion
+    targetPort: 80
+    tls: false
+  - name: bastion-https
+    host: bastion
+    service: bastion
+    targetPort: 443
+    tls: true
+  disks:
+  - metadata:
+      name: "extradisk{{ guid }}"
+    spec:
+      source:
+        blank: {}
+      pvc:
+        accessModes:
+        - ReadWriteMany
+        volumeMode: Block
+        resources:
+          requests:
+            storage: "200Gi"
+
+- name: "satellite"
+  count: 1
+  unique: true
+  public_dns: true
+  floating_ip: true
+  #image: satellite-server-rhdp-1-6-17-07-02-25
+  image: satellite-6-24-nov-2025
+  memory: 64Gi
+  cores: 8
+  image_size: 350Gi
+  metadata:
+  - AnsibleGroup: "satellite"
+  - user: "{{ ansible_user }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "nodes"
+  - key: "ostype"
+    value: "linux"
+  networks:
+  - default
+  services:
+  - name: satellite-fip
+    type: LoadBalancer
+    ports:
+    - port: 80
+      protocol: TCP
+      targetPort: 80
+      name: satellite-http
+    - port: 443
+      protocol: TCP
+      targetPort: 443
+      name: satellite-https
+  routes:
+  - name: satellite-https
+    host: satellite
+    service: satellite-fip
+    targetPort: 443
+    tls: true
+
+- name: "capsule"
+  count: 1
+  unique: true
+  public_dns: true
+  floating_ip: false
+  image: "{{ rhel_instance_image }}"
+  memory: 64Gi
+  cores: 8
+  image_size: 100Gi
+  networks:
+  - default
+  tags:
+  - key: "AnsibleGroup"
+    value: "nodes"
+  - key: "ostype"
+    value: "linux"
+  services:
+  - name: capsule-fip
+    type: LoadBalancer
+    ports:
+    - port: 9090
+      protocol: TCP
+      targetPort: 9090
+      name: capsule-port
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+
+infra_workloads:
+- ocp4_workload_external_odf
+
+pull_secret: "{{ ocp4_pull_secret }}"
+
+# -------------------------------------------------------------------
+# inventory_groups (optional but nice to have)
+# -------------------------------------------------------------------
+inventory_groups:
+- bastions
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# -------------------------------------------------------------------
+odf_channel: stable-4.16
+
+bastion_cores: "{{ 64 if flavor_type == 'large' else 32 if flavor_type == 'medium' else 16 if flavor_type == 'small' else 16 }}"
+
+bastion_memory: "{{ '64Gi' if flavor_type == 'large' else '32Gi' if flavor_type == 'medium' else '16Gi' if flavor_type == 'small' else '16Gi' }}"
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+__meta__:
+  asset_uuid: 0a3951c8-9fb0-48c8-8f92-01219ac4496d
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+      pull: missing
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: OcpSandbox
+    namespace_suffix: ocp4-cluster
+    cloud_selector:
+      cloud: cnv
+      purpose: prod
+      virt: "yes"
+    quota:
+      requests.storage: "2600Gi"
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Product Enablement Red Hat Satellite 6.17 Break-fix lab"
+    category: Workshops
+    keywords:
+    - satellite
+    - satellite6.17
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+    parameters:
+    - name: flavor_type
+      description: Choose the size of the deployment
+      formLabel: Deployment Size
+      required: true
+      openAPIV3Schema:
+        type: string
+        default: small
+        enum:
+        - small
+        - medium
+        - large
+    reportingLabels:
+      primaryBU: Edge
+      secondaryBU: Hybrid_Platforms
+  owners:
+    maintainer:
+    - name: Yogita Soni
+      email: ysoni@redhat.com
