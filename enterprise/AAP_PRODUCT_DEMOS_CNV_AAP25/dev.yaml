@@ -6,13 +6,18 @@
 # ------------------------------------------------------------------
 purpose: development
 
+# ---------------------
+# APD project variables
+# ---------------------
+apd_git_repo: https://github.com/ansible/product-demos
+apd_git_repo_branch: jce/apd-org
+
 # --------------------
 # common.yml overrides
 # --------------------
-apd_bootstrap_scm_branch: jce/aap-config
 
 # TODO this needs to be removed from common.yml entirely, so that any config-as-code
-# variables can be used without having to add the related dispatcher role config
+# variables can be used without having to add the related dispatcher role config here
 aap_configuration_dispatcher_roles:
   - {role: gateway_organizations, var: aap_organizations, tags: organizations}
   - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
@@ -34,12 +39,29 @@ aap_user_accounts:
     email: apd-admin@example.com
     password: "{{ ansible_automation_platform_configuration_password }}"
 
+gateway_setings:
+  SESSION_COOKIE_AGE: 9000
+
 gateway_role_user_assignments:
   - user: apd-admin
     role_definition: Organization Admin
-    object_id: Ansible Product Demos (APD)
+    object_ids:
+      - Ansible Product Demos (APD)
 
+controller_settings: []
+
+controller_configuration_credentials_secure_logging: false
 controller_credentials:
+  - name: AAP Credential
+    description: AAP credential for applying configuration as code
+    credential_type: Red Hat Ansible Automation Platform
+    organization: Ansible Product Demos (APD)
+    state: exists
+    inputs:
+      host: "{{ ansible_automation_platform_configuration_host }}"
+      username: "{{ ansible_automation_platform_configuration_username }}"
+      password: "{{ ansible_automation_platform_configuration_password }}"
+
   - name: APD Machine Credential
     description: Machine credential for Windows (username/password) and Linux (SSH key) instances
     credential_type: Machine
@@ -49,26 +71,6 @@ controller_credentials:
       username: admin
       ssh_key_data: "{{ ssh_privatekey }}"
       password: "{{ common_password }}"
-
-  - name: APD Bootstrap Credential
-    description: AAP admin credential for bootstrapping Ansible Product Demos
-    credential_type: Red Hat Ansible Automation Platform
-    organization: Default
-    update_secrets: true
-    inputs:
-      host: "{{ ansible_automation_platform_configuration_host }}"
-      username: "{{ ansible_automation_platform_configuration_username }}"
-      password: "{{ ansible_automation_platform_configuration_password }}"
-
-  - name: AAP Credential
-    description: AAP credential for applying configuration as code
-    credential_type: Red Hat Ansible Automation Platform
-    organization: Ansible Product Demos (APD)
-    update_secrets: true
-    inputs:
-      host: "{{ ansible_automation_platform_configuration_host }}"
-      username: "{{ ansible_automation_platform_configuration_username }}"
-      password: "{{ ansible_automation_platform_configuration_password }}"
 
   - name: OpenShift Credential
     description: Credential for OpenShift cluster
@@ -87,33 +89,74 @@ controller_credentials:
       username: "{{ aws_access_key_id }}"
       password: "{{ aws_secret_access_key }}"
 
+controller_inventories:
+  - name: Ansible Product Demos Inventory
+    organization: Ansible Product Demos (APD)
+
 controller_execution_environments:
   - name: Product Demos EE
     image: quay.io/ansible-product-demos/apd-ee-25:latest
 
 controller_projects:
-  - name: Ansible Product Demos Bootstrap
-    organization: Default
+  - name: Ansible Product Demos
+    organization: Ansible Product Demos (APD)
     scm_type: git
-    scm_url: https://github.com/ansible/product-demos-bootstrap.git
-    scm_branch: "{{ apd_bootstrap_scm_branch }}"
+    scm_url: '{{ apd_git_repo }}'
+    scm_branch: '{{ apd_git_repo_branch }}'
+    default_environment: Product Demos EE
     wait: true
 
 controller_templates:
-  - name: APD | Bootstrap Ansible Product Demos
+  - name: "APD | Single demo setup"
     job_type: run
-    inventory: Demo Inventory
-    project: Ansible Product Demos Bootstrap
+    inventory: Ansible Product Demos Inventory
+    project: Ansible Product Demos
+    playbook: setup_demo.yml
+    credentials: AAP Credential
     execution_environment: Product Demos EE
-    playbook: install_product_demos.yml
-    credentials: APD Bootstrap Credential
-    extra_vars:
-      apd_ee_image_version: '25'
-      aap_postinstall_repo_ref: jce/apd-org
+    allow_simultaneous: true
+    survey_enabled: true
+    survey_spec:
+      name: ''
+      description: ''
+      spec:
+        - type: multiplechoice
+          question_name: Demo Category
+          variable: demo
+          required: true
+          choices:
+            - linux
+            - windows
+            - cloud
+            - network
+            - openshift
+            - satellite
 
-controller_launch_jobs:
-  - name: APD | Bootstrap Ansible Product Demos
-    wait: true
+  - name: "APD | Multi-demo setup"
+    project: Ansible Product Demos
+    playbook: multi_select_setup.yml
+    inventory: Ansible Product Demos Inventory
+    credentials: AAP Credential
+    execution_environment: Product Demos EE
+    survey_enabled: true
+    survey:
+      name: ''
+      description: ''
+      spec:
+        - question_name: "Which demos do you want to configure?"
+          type: multiselect
+          variable: demos
+          required: true
+          default: "cloud\nlinux\nnetwork\nopenshift\nwindows"
+          choices:
+            - cloud
+            - linux
+            - network
+            - openshift
+            - satellite
+            - windows
+
+controller_launch_jobs: []
 
 # -------------------------------------------------------------------
 # Babylon meta variables
