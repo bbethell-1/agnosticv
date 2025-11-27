@@ -1,0 +1,768 @@
+---
+#includes/access-restriction-rh1-2026-devs.yaml
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/lifetime-standard.yaml
+
+#include /includes/ansible_control_plane/current_controller.yaml
+
+#include /includes/parameters/purpose.yaml
+
+#include /includes/secrets/agnosticd_save_output_dir_s3.yaml
+#include /includes/secrets/demosat-rhel-7-8-and-9-latest.yaml
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/secrets/registry-redhat.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: Introduction to AI-Driven Ansible Automation
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+cloud_provider: openshift_cnv
+cloud_provider_version: main
+config: cloud-vms-base
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ guid }}{{ subdomain_base_suffix }}"
+subdomain_base_short: "{{ guid }}"
+subdomain_base_suffix: ".{{ sandbox_openshift_apps_domain }}"
+subdomain_base: "{{ subdomain_base_short }}{{ subdomain_base_suffix }}"
+subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
+ansible_user: cloud-user
+remote_user: cloud-user
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + '_1' }}"
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.5
+bastion_rootfs_size: 50Gi
+
+# controller_instance_image: base-zero-aap-2.5-container-ce
+controller_instance_image: aap-2.6-2-ceh-20251103
+
+controller_rootfs_size: 50Gi
+
+rhel7_instance_image: rhel-7.9
+rhel7_rootfs_size: 50Gi
+
+rhel8_instance_image: rhel-8.7
+rhel8_rootfs_size: 50Gi
+
+rhel9_instance_image: rhel-9.6
+rhel9_rootfs_size: 50Gi
+
+workshop_type: ripu
+
+instances_common_tags:
+  - { key: guid, value: "{{ guid }}"}
+  - { key: ansible-workshops, value: "true"}
+  - { key: Workshop, value: "{{ guid }}"}
+  - { key: Workshop_type, value: "{{ workshop_type }}"}
+  - { key: Student, value: "ansible-1" }
+  - { key: Students, value: 1}
+  - { key: Info, value: "AWS_USERNAME that provisioned this"}
+  - { key: Linklight, value: "This was provisioned through the linklight provisioner"}
+  - { key: username, value: "cloud-user"}
+  - { key: operating_system, value: rhel}
+  - { key: "ostype", value: "linux"}
+
+instances_node1_tags:
+  - { key: Index, value: 1}
+  - { key: AnsibleGroup, value: "nodes"}
+  - { key: hostgroup, value: "rhel7_hosts"}
+  - { key: color, value: "#d48a00"}
+  - { key: Workshop_node1, value: "{{ guid }}-node1"}
+  - { key: short_name, value: "node1"}
+  - { key: os_major_version, value: 7}
+
+instances_node2_tags:
+  - { key: Index, value: 2}
+  - { key: AnsibleGroup, value: "nodes"}
+  - { key: hostgroup, value: "rhel8_hosts"}
+  - { key: color, value: "#bf00d4"}
+  - { key: Workshop_node1, value: "{{ guid }}-node2"}
+  - { key: short_name, value: "node2"}
+  - { key: os_major_version, value: 8}
+
+instances_node3_tags:
+  - { key: Index, value: 3}
+  - { key: AnsibleGroup, value: "nodes"}
+  - { key: hostgroup, value: "rhel9_hosts"}
+  - { key: color, value: "#67d300"}
+  - { key: Workshop_node1, value: "{{ guid }}-node3"}
+  - { key: short_name, value: "node2"}
+  - { key: os_major_version, value: 9}
+
+instances:
+  - name: "ansible-1"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ bastion_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: 100Gi
+    tags:
+      - { key: AnsibleGroup, value: "bastions,showroom"}
+      - { key: Workshop_ansible, value: "ansible-1"}
+      - { key: short_name, value: "ansible-1"}
+    networks:
+      - default
+    services:
+      - name: showroom
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: showroom
+      - name: bastion
+        ports:
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: bastion-443
+          - port: 8080
+            protocol: TCP
+            targetPort: 8080
+            name: bastion-8080
+          - port: 9090
+            protocol: TCP
+            targetPort: 9090
+            name: bastion-9090
+    routes:
+      - name: showroom
+        host: showroom
+        service: showroom
+        targetPort: 80
+        tls: true
+        tls_termination: edge
+      - name: bastion-443
+        host: ansible-1
+        service: bastion
+        targetPort: 443
+        tls: true
+      - name: bastion-8080
+        host: code-server
+        service: bastion
+        targetPort: 8080
+        tls: true
+        tls_termination: edge
+      - name: bastion-9090
+        host: cockpit
+        service: bastion
+        targetPort: 9090
+        tls: true
+        tls_termination: edge
+
+  - name: "controller"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ controller_instance_image }}"
+    memory: 32G
+    cores: 8
+    image_size: "{{ controller_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+    userdata: |-
+      #cloud-config
+      user: rhel
+      password: ansible123!
+      chpasswd: { expire: False }
+      runcmd:
+        - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+        - systemctl reload sshd
+    services:
+      - name: controller
+        ports:
+          - name: controller-443
+            port: 443
+            protocol: TCP
+            targetPort: 443
+          - name: controller-5000
+            port: 5000
+            protocol: TCP
+            targetPort: 5000
+      # prefer_fqdn_over_hostname: true
+      # manage_etc_hosts: true
+    routes:
+      - name: controller-5000
+        host: eda-webhook
+        service: controller
+        targetPort: 5000
+        tls: true
+        tls_termination: edge
+      - name: controller-443
+        host: controller
+        service: controller
+        targetPort: 443
+        tls: true
+        tls_termination: reencrypt
+        tls_destinationCACertificate: |
+          -----BEGIN CERTIFICATE-----
+          MIIF1jCCA76gAwIBAgIUASi34Lss1upPyAS1YsA8eZTJOFAwDQYJKoZIhvcNAQEL
+          BQAwgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQIDA5Ob3J0aCBDYXJvbGluYTEQMA4G
+          A1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVkIEhhdDEQMA4GA1UECwwHQW5zaWJs
+          ZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0aW9uIFBsYXRmb3JtMB4XDTI1MTEw
+          MzE5NDkyNVoXDTM1MTEwMTE5NDkyNVowgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQI
+          DA5Ob3J0aCBDYXJvbGluYTEQMA4GA1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVk
+          IEhhdDEQMA4GA1UECwwHQW5zaWJsZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0
+          aW9uIFBsYXRmb3JtMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqNju
+          44XrKsBPTqv5J+OqRz3RsY1QIemHw3NIJF3d3UvimBHt42rHnwt4Lww3mYtYMJQ0
+          nzcRpr+EnFlC5YFl2Htrfq6NzUUqknTpaCeSKNCli4aKYe9JYSocWy/8ag+H7gMf
+          oUFJ7+PDh/S8HcP7ZA15RRXhyGdjzpUK9+ry/UcMcLE4ZOW2Z4YvFyjemh+c/yYY
+          KHsNjV56TRL5q4VqsxlKQuqNQos9lWoHjz363JxC9UrvTPqvl/UbHsQmTD8NKDnB
+          xxsaYTl41kVqscLSw5KR2c6CVVgSjIn5o0iAo01Sd4gONZ0ImhrzQ5Ea9Ya2kKG7
+          OCdg84V4hVmy/fnrcBC4k9RgNthWH9k4eMHwZf3B2P1xZds3dkV1k6yF3zSrQfJd
+          VJZ0AsaeGQGw26NQw0IG17P/jmho1jBhqSLaJyT9vVM/JMOjdojbD/dSFkccID1E
+          wUZeklYiLScD13rhckVk8MxrsFv99BO91tm07lwnj5jsyLoTvUOLuI4o7yw1AlsC
+          V/OjdpAohWbL0W6YxS/elBVgZhe7Gv2lnIF9L7TxTj/UQWaarouAIgyevqbP5dnt
+          mRccxZ38YGivRA+PgWwwSL9AQCFzIJW1Q45shUR2vkTsiWEEB+Lobkj5dcyLG0CH
+          Z7fnJnlKdNDcMbm2s6U1i+nHvv1dpfyveRvOiCsCAwEAAaNCMEAwDgYDVR0PAQH/
+          BAQDAgIEMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFHAFWQy/8in8Lg2TaG9g
+          NJyRxdMfMA0GCSqGSIb3DQEBCwUAA4ICAQBT5QI+nxhpEwPVp/BxZnxJWFBotHw3
+          rROgu1GBR3clZ+c+YFygAUs3LSpCLuDGnqJnh0822sIM+5FFP2ypqHdzeKo3TQEj
+          K4QiTBGeiSgqKqwHQdqPKywgFqAuxFC+clVrmFVR7dQJ8OiUZYNk5fwYLxnOftFQ
+          pxgpJyAX7vpZKnzujc5IGEqb3apjyxUuX3TFRq4uJp8ffWR9cgykeI8WFqAi33+K
+          RW8h9UQbS9mPjkJ3lbTtd06Jx2M0V2pwtQBMlp7aTboEqs+CB5moCIq1wTXvZBqB
+          dcqcpRGppYHL+QuUguBIlZcxn/8JpfoEsYVOJszp4YLEKzr68RoXvevObbrjJxfq
+          BnEPFKqt+pQpjEJktn8JDqp8G6gMc9n+Nkx88f3MR8yr2nhMl9YL6jSZLklH4JJV
+          2UjYg+KU/u/JttFmDydmys1xN9hiFM2wtRjp+r8gAQw95pyUhMraA01qLYWP5wAO
+          KsMpndKg6rUIycxNNr+eLGNafbUNsp9qayRSull5jKok43Goi8oF8edRlPY4qpZW
+          6WvY8+YjBLTCY1rQBb6/Rfr5PHSaRlGLi3Os6xG84gt69dLtMZBz4O232fc5sG5M
+          wMQ+MKwOpgDyuy79XKvsPanlAfP8WgJi79pJdHu3BGTLlDFil9CK8l2sncM1FdaE
+          57Ys1npOUx+oxw==
+          -----END CERTIFICATE-----
+
+  - name: "node1"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel7_instance_image }}"
+    memory: 4G
+    cores: 2
+    image_size: "{{ rhel7_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+        # value: "rhel7_nodes"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: rhel7
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: rhel7-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: rhel7-443
+          - port: 8080
+            protocol: TCP
+            targetPort: 8080
+            name: rhel7-8080
+    routes:
+      - name: rhel7-80
+        host: rhel7
+        service: rhel7
+        targetPort: 80
+        tls: false
+      - name: rhel7-443
+        host: rhel7
+        service: rhel7
+        targetPort: 443
+        tls: true
+      - name: rhel7-8080
+        host: petapp-rhel7
+        service: rhel7
+        targetPort: 8080
+        tls: false
+
+  - name: "node2"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel8_instance_image }}"
+    memory: 4G
+    cores: 2
+    image_size: "{{ rhel8_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+        # https://aap2-prod-us-east-2.aap.infra.demo.redhat.com/#/jobs/playbook/1811448/output
+        # Due to python interpreter error
+        # TODO
+        # value: "rhel8_nodes"
+    services:
+      - name: rhel8
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: rhel8-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: rhel8-443
+          - port: 8080
+            protocol: TCP
+            targetPort: 8080
+            name: rhel8-8080
+    routes:
+      - name: rhel8-80
+        host: rhel8
+        service: rhel8
+        targetPort: 80
+        tls: false
+      - name: rhel8-443
+        host: rhel8
+        service: rhel8
+        targetPort: 443
+        tls: true
+      - name: rhel8-8080
+        host: petapp-rhel8
+        service: rhel8
+        targetPort: 8080
+        tls: false
+
+  - name: "node3"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel9_instance_image }}"
+    memory: 4G
+    cores: 2
+    image_size: "{{ rhel9_rootfs_size }}"
+    tags:
+      - { key: AnsibleGroup, value: "rhel9_nodes"}
+    services:
+      - name: rhel9
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: rhel9-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: rhel9-443
+          - port: 8080
+            protocol: TCP
+            targetPort: 8080
+            name: rhel9-8080
+    routes:
+      - name: rhel9-80
+        host: rhel9
+        service: rhel9
+        targetPort: 80
+        tls: false
+      - name: rhel9-443
+        host: rhel9
+        service: rhel9
+        targetPort: 443
+        tls: true
+      - name: rhel9-8080
+        host: petapp-rhel9
+        service: rhel9
+        targetPort: 8080
+        tls: false
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/agnosticd/cloud_vm_workloads.git
+      type: git
+      version: main
+    - name: https://github.com/rhpds/rhpds.ansible_automation_platform.git
+      type: git
+      version: main
+    - name: https://github.com/rhpds/rhpds.ripu.git
+      type: git
+      version: main
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: main
+
+# -------------------------------------------------------------------
+# Workloads: Pre/Software/Post
+# -------------------------------------------------------------------
+pre_software_workloads:
+  all:
+    - host_satellite_repositories
+  bastions:
+    - host_common_packages
+    - bastion
+
+software_workloads:
+  all:
+    - agnosticd.cloud_vm_workloads.control_user
+    - agnosticd.cloud_vm_workloads.asset_injector
+
+post_software_workloads:
+  bastions:
+    - infra.aap_configuration.dispatch
+    - rhpds.ripu.cockpit
+    - rhpds.ripu.code_server
+    - rhpds.ripu.ansible_navigator
+    - rhpds.ripu.setup_workshop
+
+post_software_final_workloads:
+  localhost:
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+  # bastions:
+  #   - agnosticd.showroom.vm_workload_showroom
+
+# # -------------------------------------------------------------------
+# # Role: set_env_authorized_key
+# # -------------------------------------------------------------------
+# set_env_authorized_key: true
+# env_authorized_key: "{{ guid }}key"
+# ansible_ssh_private_key_file: ~/.ssh/{{ env_authorized_key }}.pem
+# ansible_service_account_user_ssh_config: ssh_config.j2
+
+# -------------------------------------------------------------------
+# Workload: host_satellite_repositories
+# -------------------------------------------------------------------
+install_satellite_repositories: true
+
+# -------------------------------------------------------------------
+# Workload: host_common_packages
+# -------------------------------------------------------------------
+install_common_packages: false
+host_common_packages_update_all: false
+
+host_common_packages_extra:
+  - at
+  - python3
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - httpd-tools
+  - python3-pip
+  - tree
+
+# -------------------------------------------------------------------
+# Workload: bastion
+# -------------------------------------------------------------------
+install_bastion: true
+bastion_setup_student_user: true
+bastion_student_user_name: lab-user
+bastion_student_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.control_user
+# -------------------------------------------------------------------
+env_authorized_key: "{{guid}}key"
+install_control_user: true
+student_name: "{{ bastion_student_user_name }}"
+student_password: "{{ bastion_student_user_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ bastion_student_user_password }}"
+control_user_private_group: "{{ omit }}"
+control_user_ssh_config: ./files/ssh_config.j2
+
+# Disable control_user's user_data reporting (bastion role handles it)
+control_user_enable_user_data: false
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.asset_injector
+# -------------------------------------------------------------------
+asset_injector_assets:
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
+
+# # -------------------------------------------------------------------
+# # Role: vscode-server
+# # -------------------------------------------------------------------
+# install_vscode_server: false
+# vscode_server_install_nginx: false
+# vscode_use_automationcontroller_nginx: false
+# vscode_server_bind_addr_ip: 0.0.0.0
+# vscode_server_bind_addr_port: 8080
+
+
+# -------------------------------------------------------------------
+# Role: ansible_automation_platform_configuration
+# -------------------------------------------------------------------
+# ----------------------
+# Vars
+# ----------------------
+ripu_project_scm_url: 'https://github.com/redhat-partner-tech/leapp-project'
+ripu_project_scm_branch: 'prod'
+
+controller_dependency_check: false
+aap_hostname: "https://controller-{{ subdomain_base }}"
+aap_username: admin
+aap_password: "ansible123!"
+aap_validate_certs: false
+
+aap_configuration_dispatcher_roles:
+  - {role: controller_license, var: controller_license, tags: controller_license}
+  - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
+  - {role: gateway_users, var: aap_user_accounts, tags: gateway_users}
+  - {role: controller_credentials, var: controller_credentials, tags: controller_credentials}
+  - {role: controller_execution_environments, var: controller_execution_environments, tags: controller_execution_environments}
+  - {role: controller_inventories, var: controller_inventories, tags: controller_inventories}
+  - {role: controller_hosts, var: controller_hosts, tags: controller_hosts}
+  - {role: controller_host_groups, var: controller_groups, tags: controller_groups}
+  - {role: controller_projects, var: controller_projects, tags: controller_projects}
+  - {role: controller_job_templates, var: controller_templates, tags: controller_job_templates}
+
+controller_license:
+  manifest_url: "https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip"
+
+gateway_settings:
+  SESSION_COOKIE_AGE: 9000
+
+aap_user_accounts:
+  - username: "lab-user"
+    is_superuser: true
+    password: "{{ common_password }}"
+    email: "lab-user@redhat.com"
+    organizations: "Default"
+    first_name: "lab"
+    last_name: User
+
+controller_credentials:
+  - name: "Controller Credential"
+    organization: Default
+    credential_type: "Red Hat Ansible Automation Platform"
+    inputs:
+      host: "controller-{{ subdomain_base }}"
+      username: "lab-user"
+      password: "{{ common_password }}"
+  - name: "Workshop Credential"
+    organization: Default
+    credential_type: "Machine"
+    inputs:
+      username: "cloud-user"
+      ssh_key_data: "{{ lookup('file', hostvars.localhost.ssh_provision_key_path) }}"
+    state: present
+  - name: "registry.redhat.io credential"
+    organization: Default
+    credential_type: "Container Registry"
+    inputs:
+      host: registry.redhat.io
+      username: "{{ registry_credentials_username }}"
+      password: "{{ registry_credentials_password }}"
+      verify_ssl: true
+    state: present
+  - name: "Demo Credential"
+    credential_type: "Machine"
+    state: absent
+
+controller_execution_environments:
+  - name: "ripu workshop execution environment"
+    image: "registry.redhat.io/ansible-automation-platform-23/ee-supported-rhel8:1.0.0-208"
+    pull: missing
+    credential: "registry.redhat.io credential"
+    state: present
+
+controller_configuration_projects_async_delay: 30
+controller_projects:
+  - name: Project Leapp
+    organization: Default
+    scm_update_on_launch: false
+    scm_update_cache_timeout: 3600
+    scm_type: git
+    scm_url: "{{ ripu_project_scm_url }}"
+    scm_branch: "{{ ripu_project_scm_branch }}"
+    default_environment: "ripu workshop execution environment"
+  - name: "Demo Project"
+    organization: Default
+    state: absent
+
+controller_inventories:
+  - name: "Workshop Inventory"
+    organization: Default
+    state: present
+  - name: "Demo Inventory"
+    organization: Default
+    state: absent
+
+controller_hosts:
+  - name: "controller"
+    inventory: "Workshop Inventory"
+    enabled: true
+    state: present
+    variables:
+      ansible_user: rhel
+      ansible_password: ansible123!
+  - name: "rhel7"
+    inventory: "Workshop Inventory"
+    enabled: true
+    state: present
+  - name: "rhel8"
+    inventory: "Workshop Inventory"
+    enabled: true
+    state: present
+  - name: "rhel9"
+    inventory: "Workshop Inventory"
+    enabled: true
+    state: present
+
+controller_groups:
+  - name: control
+    inventory: "Workshop Inventory"
+    state: present
+    hosts:
+      - "controller"
+  - name: web
+    inventory: "Workshop Inventory"
+    state: present
+    hosts:
+      - rhel7
+      - rhel8
+      - rhel9
+
+controller_templates:
+  - name: "Z / CaC / Controller"
+    project: Project Leapp
+    playbook: controller_cac.yml
+    inventory: Workshop Inventory
+    execution_environment: Default execution environment
+    credentials:
+      - Controller Credential
+    extra_vars:
+      controller_configuration_projects_async_retries: 60
+      controller_configuration_projects_async_delay: 5
+  - name: "Demo Job Template"
+    organization: Default
+    state: absent
+
+# -------------------------------------------------------------------
+# Workload: agnosticv_userdata_import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  controller_url: "{{ aap_hostname }}"
+  controller_username: "{{ student_name }}"
+  controller_password: "{{ student_password }}"
+  # vscode_server_url: "https://vscode-{{ subdomain_base }}"
+  # vscode_server_password: "{{ common_password }}"
+  ssh_command: >-
+    ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
+    -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
+  ssh_hostname: "{{ openshift_cnv_ssh_address }}"
+  ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+  ssh_username: "{{ student_name }}"
+  ssh_password: "{{ common_password }}"
+  cockpit_url: "https://cockpit-{{ subdomain_base }}"
+  cockpit_username: "{{ student_name }}"
+  cockpit_password: "{{ common_password }}"
+  code_server_url: "https://code-server-{{ subdomain_base }}"
+  code_server_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+# showroom_git_repo: https://github.com/rhpds/showroom-ai-driven-ansible-automation.git
+# showroom_user: showroom
+# showroom_ui: default
+# showroom_tls_provider: none
+# showroom_user_password: "{{ common_password }}"
+# showroom_ssh_method: sshkey
+# showroom_ttys_enable_tmux: false
+# showroom_tab_services:
+#   - double_tty
+#   - web1
+# showroom_lab_users:
+#   - "{{ student_name }}"
+
+# showroom_tab_double_tty_top_username: "{{ student_name }}"
+# showroom_tab_double_tty_bottom_username: "{{ student_name }}"
+# showroom_ssh_host: "{{ openshift_cnv_ssh_address }}"
+# showroom_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+# showroom_ssh_username: "{{ student_name }}"
+# showroom_host: "showroom-{{ subdomain_base }}"
+
+# showroom_tab_web1_url: "https://controller-{{ subdomain_base }}"
+# showroom_tab_web1_name: "AAP"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: D42B2D75-1B50-4F14-A404-3BA9FB8863A0
+  owners:
+    maintainer:
+      - name: Ryan Bontreger
+        email: rbontreg@redhat.com
+      - name: Robert Cushman
+        email: rcushman@redhat.com
+    sme:
+      - name: Mitesh Sharma
+        email: msharma@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-09-30
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Automating RHEL In Place Upgrades with Ansible"
+    category: Brand_Events
+    keywords:
+      - ripu
+      - lb1542
+      - '2026'
+      - rh1
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Automation
+      Provider: RHDP
+    multiuser: false
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+      quota:
+        requests.storage: "2000Gi"
