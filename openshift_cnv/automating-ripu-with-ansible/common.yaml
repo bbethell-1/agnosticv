@@ -43,7 +43,6 @@ bastion_rootfs_size: 50Gi
 
 # controller_instance_image: base-zero-aap-2.5-container-ce
 controller_instance_image: aap-2.6-2-ceh-20251103
-
 controller_rootfs_size: 50Gi
 
 rhel7_instance_image: rhel-7.9
@@ -57,46 +56,55 @@ rhel9_rootfs_size: 50Gi
 
 workshop_type: ripu
 
-instances_common_tags:
-  - { key: guid, value: "{{ guid }}"}
-  - { key: ansible-workshops, value: "true"}
-  - { key: Workshop, value: "{{ guid }}"}
-  - { key: Workshop_type, value: "{{ workshop_type }}"}
-  - { key: Student, value: "ansible-1" }
-  - { key: Students, value: 1}
-  - { key: Info, value: "AWS_USERNAME that provisioned this"}
-  - { key: Linklight, value: "This was provisioned through the linklight provisioner"}
-  - { key: username, value: "cloud-user"}
-  - { key: operating_system, value: rhel}
-  - { key: "ostype", value: "linux"}
+# -----------------
+# Instances tags
+# -----------------
+instance_common_tags:
+  - { key: guid, value: "{{ guid }}" }
+  - { key: ansible_workshops, value: "true" }
+  - { key: Workshop, value: "{{ guid }}" }
+  - { key: Workshop_type, value: "{{ workshop_type }}" }
+  - { key: username, value: "cloud-user" }
+  - { key: operating_system, value: "rhel" }
+  - { key: "ostype", value: "linux" }
 
-instances_node1_tags:
-  - { key: Index, value: 1}
-  - { key: AnsibleGroup, value: "nodes"}
-  - { key: hostgroup, value: "rhel7_hosts"}
+instance_node1_tags:
+  - { key: Index, value: "1" }
+  - { key: AnsibleGroup, value: "nodes" }
+  - { key: hostgroup, value: "rhel7_hosts" }
   - { key: color, value: "#d48a00"}
-  - { key: Workshop_node1, value: "{{ guid }}-node1"}
-  - { key: short_name, value: "node1"}
-  - { key: os_major_version, value: 7}
+  - { key: Workshop_node1, value: "{{ guid }}-node1" }
+  - { key: short_name, value: "node1" }
+  - { key: os_major_version, value: "7" }
+  - { key: ansible_python_interpreter, value: "/usr/libexec/platform-python" }
 
-instances_node2_tags:
-  - { key: Index, value: 2}
-  - { key: AnsibleGroup, value: "nodes"}
-  - { key: hostgroup, value: "rhel8_hosts"}
-  - { key: color, value: "#bf00d4"}
-  - { key: Workshop_node1, value: "{{ guid }}-node2"}
-  - { key: short_name, value: "node2"}
-  - { key: os_major_version, value: 8}
+instance_node2_tags:
+  - { key: Index, value: "2" }
+  - { key: AnsibleGroup, value: "nodes" }
+  - { key: hostgroup, value: "rhel8_hosts" }
+  - { key: color, value: "#bf00d4" }
+  - { key: Workshop_node2, value: "{{ guid }}-node2" }
+  - { key: short_name, value: "node2" }
+  - { key: os_major_version, value: "8" }
+  - { key: ansible_python_interpreter, value: "/usr/libexec/platform-python" }
 
-instances_node3_tags:
-  - { key: Index, value: 3}
-  - { key: AnsibleGroup, value: "nodes"}
-  - { key: hostgroup, value: "rhel9_hosts"}
-  - { key: color, value: "#67d300"}
-  - { key: Workshop_node1, value: "{{ guid }}-node3"}
-  - { key: short_name, value: "node2"}
-  - { key: os_major_version, value: 9}
+instance_node3_tags:
+  - { key: Index, value: "3" }
+  - { key: AnsibleGroup, value: "nodes" }
+  - { key: hostgroup, value: "rhel9_hosts" }
+  - { key: color, value: "#67d300" }
+  - { key: Workshop_node3, value: "{{ guid }}-node3" }
+  - { key: short_name, value: "node3" }
+  - { key: os_major_version, value: "9" }
 
+instance_bastion_tags:
+  - { key: AnsibleGroup, value: "bastions,showroom" }
+  - { key: Workshop_ansible_1, value: "ansible-1" }
+  - { key: short_name, value: "ansible-1" }
+
+# -----------------
+# Instance
+# -----------------
 instances:
   - name: "ansible-1"
     count: 1
@@ -107,10 +115,7 @@ instances:
     memory: 8G
     cores: 4
     image_size: 100Gi
-    tags:
-      - { key: AnsibleGroup, value: "bastions,showroom"}
-      - { key: Workshop_ansible, value: "ansible-1"}
-      - { key: short_name, value: "ansible-1"}
+    tags: "{{ instance_common_tags + instance_bastion_tags }}"
     networks:
       - default
     services:
@@ -190,8 +195,6 @@ instances:
             port: 5000
             protocol: TCP
             targetPort: 5000
-      # prefer_fqdn_over_hostname: true
-      # manage_etc_hosts: true
     routes:
       - name: controller-5000
         host: eda-webhook
@@ -250,12 +253,7 @@ instances:
     memory: 4G
     cores: 2
     image_size: "{{ rhel7_rootfs_size }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "isolated"
-        # value: "rhel7_nodes"
-      - key: "ostype"
-        value: "linux"
+    tags: "{{ instance_common_tags + instance_node1_tags }}"
     services:
       - name: rhel7
         ports:
@@ -297,13 +295,7 @@ instances:
     memory: 4G
     cores: 2
     image_size: "{{ rhel8_rootfs_size }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "isolated"
-        # https://aap2-prod-us-east-2.aap.infra.demo.redhat.com/#/jobs/playbook/1811448/output
-        # Due to python interpreter error
-        # TODO
-        # value: "rhel8_nodes"
+    tags: "{{ instance_common_tags + instance_node2_tags }}"
     services:
       - name: rhel8
         ports:
@@ -345,8 +337,7 @@ instances:
     memory: 4G
     cores: 2
     image_size: "{{ rhel9_rootfs_size }}"
-    tags:
-      - { key: AnsibleGroup, value: "rhel9_nodes"}
+    tags: "{{ instance_common_tags + instance_node3_tags }}"
     services:
       - name: rhel9
         ports:
@@ -378,6 +369,7 @@ instances:
         service: rhel9
         targetPort: 8080
         tls: false
+
 # -------------------------------------------------------------------
 # Ansible Module, Collections, and Roles Requirements
 # -------------------------------------------------------------------
@@ -424,14 +416,6 @@ post_software_final_workloads:
     - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
   # bastions:
   #   - agnosticd.showroom.vm_workload_showroom
-
-# # -------------------------------------------------------------------
-# # Role: set_env_authorized_key
-# # -------------------------------------------------------------------
-# set_env_authorized_key: true
-# env_authorized_key: "{{ guid }}key"
-# ansible_ssh_private_key_file: ~/.ssh/{{ env_authorized_key }}.pem
-# ansible_service_account_user_ssh_config: ssh_config.j2
 
 # -------------------------------------------------------------------
 # Workload: host_satellite_repositories
@@ -510,24 +494,18 @@ asset_injector_assets:
     name: sshd
     state: restarted
 
-# # -------------------------------------------------------------------
-# # Role: vscode-server
-# # -------------------------------------------------------------------
-# install_vscode_server: false
-# vscode_server_install_nginx: false
-# vscode_use_automationcontroller_nginx: false
-# vscode_server_bind_addr_ip: 0.0.0.0
-# vscode_server_bind_addr_port: 8080
-
 # -------------------------------------------------------------------
 # Role: ansible_automation_platform_configuration
 # -------------------------------------------------------------------
 # ----------------------
-# Vars
+# Additional Vars
 # ----------------------
 ripu_project_scm_url: 'https://github.com/redhat-partner-tech/leapp-project'
 ripu_project_scm_branch: 'prod'
 
+# ----------------------
+# Controller vars
+# ----------------------
 controller_dependency_check: false
 aap_hostname: "https://controller-{{ subdomain_base }}"
 aap_username: admin
@@ -675,8 +653,6 @@ agnosticv_importdata:
   controller_url: "{{ aap_hostname }}"
   controller_username: "{{ student_name }}"
   controller_password: "{{ student_password }}"
-  # vscode_server_url: "https://vscode-{{ subdomain_base }}"
-  # vscode_server_password: "{{ common_password }}"
   ssh_command: >-
     ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
     -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
