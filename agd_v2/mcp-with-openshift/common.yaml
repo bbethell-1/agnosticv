@@ -93,12 +93,16 @@ workloads:
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication_htpasswd
+# Workload: ocp4_workload_litellm_virtual_keys
 # -------------------------------------------------------------------
-ocp4_workload_litellm_virtual_keys_models:
-- granite-3-2-8b-instruct
-- mistral-7b-instruct
 ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_models:
+- granite-4-0-h-tiny
+- granite-3-2-8b-instruct
+- codellama-7b
+- codellama-7b-instruct
+- Llama-Guard-3-1B
+- nomic-embed-text-v1-5
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication_htpasswd
@@ -111,7 +115,7 @@ ocp4_workload_authentication_htpasswd_user_base: user
 # Generate user password
 ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
 ocp4_workload_authentication_htpasswd_user_password_length: 16
-ocp4_workload_authentication_htpasswd_user_password_randomized: true
+ocp4_workload_authentication_htpasswd_user_password_randomized: false
 ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('2')) | int }}"
 ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
 
@@ -124,7 +128,7 @@ ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
 
 ocp4_workload_gitea_operator_repositories_list:
 - name: mcp
-  repo: https://github.com/redhat-ai-services/etx-agentic-ai
+  repo: https://github.com/rhpds/mcp-gitops
   private: false
 
 ocp4_workload_gitea_operator_deploy_gitea_instance: true
@@ -190,16 +194,18 @@ ocp4_workload_toolhive_registry_api_image: ghcr.io/stacklok/thv-registry-api:lat
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_mcp_user
 # -------------------------------------------------------------------
-ocp4_workload_mcp_gitea_external_url: "https://gitea.{{ openshift_cluster_ingress_domain }}"
+ocp4_workload_mcp_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+ocp4_workload_mcp_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
 
-ocp4_workload_mcp_user: user1
-ocp4_workload_mcp_gitea_password: "{{ common_password }}"
+ocp4_workload_mcp_gitea_external_url: "https://gitea.{{ openshift_cluster_ingress_domain }}"
+ocp4_workload_mcp_gitea_user_password: "{{ common_password }}"
 
 ocp4_workload_mcp_librechat_password: "{{ common_password }}"
-ocp4_workload_mcp_librechat_litemaas_url: "{{ lookup('agnosticd_user_data', 'litellm_api_base_url') }}"
-ocp4_workload_mcp_librechat_litemaas_key: "{{ lookup('agnosticd_user_data', 'litellm_virtual_key') }}"
-ocp4_workload_mcp_librechat_litemaas_models: "{{ lookup('agnosticd_user_data', 'litellm_available_models') }}"
-# ocp4_workload_mcp_librechat_litemaas_models: ["granite-3-2-8b-instruct","mistral-7b-instruct"]
+ocp4_workload_mcp_litemaas_url: "{{ lookup('agnosticd_user_data', 'litellm_api_base_url') }}"
+ocp4_workload_mcp_litemaas_key: "{{ lookup('agnosticd_user_data', 'litellm_virtual_key') }}"
+ocp4_workload_mcp_litemaas_models: "{{ lookup('agnosticd_user_data', 'litellm_available_models') }}"
+
+ocp4_workload_mcp_agent_model_name: "openai/Llama-4-Scout-17B-16E-W4A16"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
