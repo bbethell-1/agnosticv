@@ -23,6 +23,7 @@
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 #include /includes/secrets/demosat-rhel-9-10-latest.yaml
 #include /includes/secrets/zerossl.yaml
+#include /includes/secrets/ocp4_workload_ols_api_token.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -49,6 +50,11 @@ requirements_content:
 
   # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: main
+
+  # AI Workloads (for OpenShift Lightspeed)
+  - name: https://github.com/agnosticd/ai_workloads.git
     type: git
     version: main
 
@@ -103,6 +109,7 @@ ai_control_plane_memory: "{{ '128Gi' if cluster_size == 'sno' else '64Gi' }}"
 workloads:
 - agnosticd.core_workloads.ocp4_workload_external_odf
 - agnosticd.core_workloads.ocp4_workload_cert_manager
+- agnosticd.ai_workloads.ocp4_workload_ols
 
 # ===================================================================
 # Variables for specific workloads
@@ -155,6 +162,26 @@ ocp4_workload_cert_manager_aws_hostedzoneid: "{{ route53_aws_zone_id }}"
 
 ocp4_workload_cert_manager_use_catalog_snapshot: false
 
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ols (OpenShift Lightspeed with Azure AI)
+# -------------------------------------------------------------------
+# Use Azure AI as the backend for OpenShift Lightspeed
+ocp4_workload_ai_platform: azure
+
+# Automatically create and manage Azure AI tokens
+ocp4_workload_ols_get_token: true
+
+# Enable RAG (Retrieval-Augmented Generation) for better context
+ocp4_workload_ols_enable_rag: true
+
+# Do not create broken pod - not needed in pool clusters
+ocp4_workload_ols_create_broken_pod: false
+
+# ===================================================================
+# Workloads to remove on destroy
+# ===================================================================
+remove_workloads:
+- agnosticd.ai_workloads.ocp4_workload_ols
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -171,6 +198,11 @@ __meta__:
       email: josegonz@redhat.com
   anarchy:
     namespace: babylon-anarchy-ocp-wksp
+  sandbox_api:
+    actions:
+      destroy:
+        # Allow remove_workloads to run before sandbox is destroyed
+        catch_all: false
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
