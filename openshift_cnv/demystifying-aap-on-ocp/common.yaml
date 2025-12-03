@@ -16,6 +16,7 @@
 #include /includes/parameters/purpose.yaml
 
 #include /includes/secrets/demosat-rhel-9-10.0-latest.yaml
+#include /includes/secrets/ocp4_workload_ols_api_token.yaml
 
 # -------------------------------------------------------------------
 # Platform
@@ -144,6 +145,9 @@ requirements_content:
     - name: https://github.com/rhpds/rhpds.ansible_automation_platform.git
       type: git
       version: main
+    - name: https://github.com/agnosticd/ai_workloads.git
+      type: git
+      version: main
 
 # -------------------------------------------------------------------
 # Workloads
@@ -157,9 +161,37 @@ pre_software_workloads:
   bastions:
     - bastion
 
+post_software_workloads:
+  localhost:
+    - agnosticd.ai_workloads.ocp4_workload_ols
+
 post_software_final_workloads:
   localhost:
     - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+
+# -------------------------------------------------------------------
+# OpenShift Workloads Configuration
+# -------------------------------------------------------------------
+# Configure cluster access for OpenShift workloads deployed from localhost
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ols (OpenShift Lightspeed with Azure AI)
+# -------------------------------------------------------------------
+# Use Azure AI as the backend for OpenShift Lightspeed
+ocp4_workload_ai_platform: azure
+
+# Automatically create and manage Azure AI tokens
+ocp4_workload_ols_get_token: true
+
+# Enable RAG (Retrieval-Augmented Generation) for better context
+ocp4_workload_ols_enable_rag: true
+
+# Do not create broken pod - not needed for this lab
+ocp4_workload_ols_create_broken_pod: false
 
 # -------------------------------------------------------------------
 # Workload: host_satellite_repositories
