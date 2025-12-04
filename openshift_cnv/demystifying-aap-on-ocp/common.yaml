@@ -16,6 +16,7 @@
 #include /includes/parameters/purpose.yaml
 
 #include /includes/secrets/demosat-rhel-9-10.0-latest.yaml
+#include /includes/secrets/litemaas-master_api.yaml
 
 # -------------------------------------------------------------------
 # Platform
@@ -144,6 +145,9 @@ requirements_content:
     - name: https://github.com/rhpds/rhpds.ansible_automation_platform.git
       type: git
       version: main
+    - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+      type: git
+      version: main
 
 # -------------------------------------------------------------------
 # Workloads
@@ -159,10 +163,26 @@ pre_software_workloads:
 
 post_software_final_workloads:
   localhost:
+    - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
     - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
 
 # NOTE: OpenShift Lightspeed is deployed by the CNV pool (ocp-cluster-cnv-pools)
 # No additional configuration needed here
+
+# -------------------------------------------------------------------
+# LiteLLM Virtual Keys Configuration
+# -------------------------------------------------------------------
+# Models for AAP automation use cases
+ocp4_workload_litellm_virtual_keys_models:
+  - granite-4-0-h-tiny
+  - codellama-7b-instruct
+
+# Key validity duration
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+
+# Enable user.info messages and data
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
 
 # -------------------------------------------------------------------
 # Workload: host_satellite_repositories
@@ -308,6 +328,13 @@ agnosticv_importdata:
   openshift_console_url: "{{ openshift_console_url }}"
   openshift_kubeadmin_user: kubeadmin
   openshift_kubeadmin_password: "{{ openshift_kubeadmin_password }}"
+
+# -------------------------------------------------------------------
+# Pre-destroy workloads (cleanup before environment is destroyed)
+# -------------------------------------------------------------------
+pre_destroy_workloads:
+  localhost:
+    - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 
 # -------------------------------------------------------------------
 # Babylon meta variables
