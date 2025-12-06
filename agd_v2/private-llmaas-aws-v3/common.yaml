@@ -575,6 +575,50 @@ ocp4_workload_openshift_ai_model_as_a_service_models:
         value: "l4-gpu"
       containers:
       - name: main
+        image: 'quay.io/modh/vllm:rhoai-2.23-cuda'
+        command:
+        - python
+        - '-m'
+        - vllm.entrypoints.openai.api_server
+        args:
+        - '--served-model-name=llama-guard-3-1b-v1'
+        - '--model=/mnt/models'
+        - '--distributed-executor-backend=mp'
+        - '--max-model-len'
+        - '6048'
+        - '--dtype=half'
+        - '--enable-chunked-prefill'
+        - '--enable-ssl-refresh'
+        - '--ssl-certfile'
+        - /var/run/kserve/tls/tls.crt
+        - '--ssl-keyfile'
+        - /var/run/kserve/tls/tls.key
+        env:
+        - name: HF_HOME
+          value: /tmp/hf_home
+        - name: VLLM_ATTENTION_BACKEND
+          value: XFORMERS
+        - name: VLLM_USE_V1
+          value: '0'
+        - name: VLLM_PORT
+          value: '8000'
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: shm
         resources:
           limits:
             cpu: '12'
@@ -584,6 +628,11 @@ ocp4_workload_openshift_ai_model_as_a_service_models:
             cpu: '1'
             memory: '1Gi'
             nvidia.com/gpu: '1'
+      volumes:
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 2Gi
+        name: shm
 
 # -------------------------------------------------------------------
 # ocp4_workload_gitops_bootstrap
