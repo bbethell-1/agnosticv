@@ -1,0 +1,384 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog: Production
+# --- Catalog Item: Device Edge Fleet Management with Red Hat Edge Manager (Tech Preview)
+# --- Notes: Origin of this Workshop is Summit 2025
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-virtualization.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+# #include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+# #include /includes/secrets/zerossl.yaml
+#
+#include /includes/access-restriction-devs-edge-bu.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+#include /includes/secrets/rh1-flightctl-lb8580.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_cluster_admin_token }}"
+
+# include this for pooled cluster
+openshift_cnv_scale_cluster: true
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# omit for pooled
+# # -------------------------------------------------------------------
+# # OpenShift Version
+# # -------------------------------------------------------------------
+# ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+# ocp4_installer_version: "4.18.8"
+
+# # -------------------------------------------------------------------
+# # Repos
+# # -------------------------------------------------------------------
+# repo_method: satellite
+# update_packages: true
+
+# # -------------------------------------------------------------------
+# # Default Networking Stack
+# # -------------------------------------------------------------------
+# ocp4_network_type: OVNKubernetes
+
+# # -------------------------------------------------------------------
+# # Student User on Bastion
+# # -------------------------------------------------------------------
+# install_student_user: true
+# student_name: lab-user
+# student_sudo: true
+
+# # -------------------------------------------------------------------
+# # CNV Specific
+# # -------------------------------------------------------------------
+# bastion_instance_image: rhel-9.5
+# bastion_cores: 2
+# bastion_memory: 4Gi
+#
+# master_instance_count: 3
+# ai_control_plane_cores: 16
+# ai_control_plane_memory: "{{ '64Gi' if master_instance_count | int == 1 else '32Gi' }}"
+
+worker_instance_count: "{{ [(num_users | int / 10) | round(0, 'ceil') | int, 3] | max }}"
+ai_workers_cores: 48
+ai_workers_memory: "96Gi"
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+# removed for pooling
+#- agnosticd.core_workloads.ocp4_workload_external_odf
+- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+# removed for pooling
+#- agnosticd.core_workloads.ocp4_workload_cert_manager
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+- agnosticd.core_workloads.ocp4_workload_gitea_operator
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+#- agnosticd.showroom.ocp4_workload_showroom_ocp_integration
+- agnosticd.showroom.ocp4_workload_showroom
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # Assisted Installer Collection
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    # version: v0.0.9
+    version: main
+  # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: main
+  # Showroom
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.3.4
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+num_users: 2
+admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/admin_password length=12 chars=ascii_letters,digits')
+  }}
+# user_password: >-
+#   {{
+#     lookup('password', output_dir ~ '/user_password length=12 chars=ascii_letters,digits')
+#   }}
+# TODO: Change this back to randomized password
+user_password: edgeLB2517
+
+ocp4_workload_user_base: user
+# ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+# ocp4_workload_catalogsource_tag: v4.18_2025_02_24
+
+# # -------------------------------------------------------------------
+# # Workload: ocp4_workload_external_odf
+# # -------------------------------------------------------------------
+# odf_channel: stable-4.18
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+# ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
+# Change this back to randomized password after Summit
+# Added for ease of use with mobile devices
+ocp4_workload_authentication_htpasswd_user_password: "{{ user_password }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
+
+# # -------------------------------------------------------------------
+# # Workload: ocp4_workload_cert_manager
+# # -------------------------------------------------------------------
+# ocp4_workload_cert_manager_channel: stable-v1.15
+# ocp4_workload_cert_manager_use_catalog_snapshot: false
+# ocp4_workload_cert_manager_ec2_region: us-east-2
+# ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+# ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+# ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+# ocp4_workload_cert_manager_install_ingress_certificates: true
+# ocp4_workload_cert_manager_install_api_certificates: false
+
+ocp4_workload_openshift_virtualization_channel: stable
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image_tag: v2.1.0
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.25.2"
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
+ocp4_workload_gitea_operator_gitea_volume_storage_class: ocs-external-storagecluster-cephfs
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel10/postgresql-16
+ocp4_workload_gitea_operator_postgresql_image_tag: latest
+ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
+ocp4_workload_gitea_operator_postgresql_volume_storage_class: ocs-external-storagecluster-cephfs
+ocp4_workload_gitea_operator_ssl_route: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.18
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 8Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "4"
+ocp4_workload_openshift_gitops_repo_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+  g, ssoadmin, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+ocp4_workload_openshift_gitops_resourceTrackingMethod: annotation
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/edge-fleet-gitops.git
+ocp4_workload_gitops_bootstrap_repo_revision: rh1-2026
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  user_password: "{{ user_password }}"
+  admin_password: "{{ admin_password }}"
+  user:
+    count: "{{ num_users }}"
+    prefix: "user"
+  satellite_url: demosat-ha.infra.demo.redhat.com
+  set_repositories_satellite_url: "{{ satellite_url }}"
+  set_repositories_satellite_hostname: "{{ satellite_url }}"
+  satellite_org: Red_Hat_RHDP_Labs
+  set_repositories_satellite_org: "{{ satellite_org }}"
+  set_repositories_satellite_ha: true
+  satellite_activationkey: "{{ satellite_activationkey }}"
+  set_repositories_satellite_activationkey: "{{ satellite_activationkey }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/edge-fleet-showroom.git
+ocp4_workload_showroom_content_git_repo_ref: rh1-2026
+ocp4_workload_showroom_content_antora_playbook: site.yml
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_content_only: false
+ocp4_workload_showroom_second_terminal_tab_enable: true
+ocp4_workload_showroom_passthrough_user_data: true
+ocp4_workload_showroom_deployer_chart_version: 2.0.3
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: a0198ffd-30fc-4ddc-a5c5-85abf31aa2af
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      pull: missing
+  # add for pooled
+    actions:
+      destroy:
+        disable: true
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
+  # omit for pooled
+  # sandbox_api:
+  #   actions:
+  #     destroy:
+  #       catch_all: false
+  # sandboxes:
+  #   - kind: OcpSandbox
+  #     namespace_suffix: ocp4-cluster
+  #     cloud_selector:
+  #       cloud: cnv
+  #       purpose: prod
+  #       virt: "yes"
+  #     quota:
+  #       requests.storage: "4000Gi"
+  #       limits.cpu: "512"
+  #       requests.cpu: "512"
+  #       limits.memory: "1000Gi"
+  #       requests.memory: "1000Gi"
+  # anarchy:
+  #   namespace: babylon-anarchy-ocp-wksp
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "RH1 2026 TEMP - Device Edge Fleet Management with Red Hat Edge Manager (Tech Preview)"
+    workshopLabUiRedirect: true
+    category: Workshops
+    multiuser: true
+    keywords:
+    - openshift
+    - ocp
+    - opensfhit Virtualization
+    - ocp edge
+    - ocp cnv
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the environment.
+      formLabel: User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 122
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    reportingLabels:
+      assetGroup: Virtualization
+      primaryBU: Hybrid_Platforms
+  owners:
+    maintainer:
+    - name: Judd Maltin
+      email: judd@redhat.com
+    sme:
+    - name: Josh Swanson
+      email: jswanson@redhat.com
+    - name: Ken Osborn
+      email: kosborn@redhat.com
+    instructions:
+    - name: Ken Osborn
+      email: kosborn@redhat.com
+  tower:
+    timeout: 21600
+  components:
+  - name: openshift
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools/dev
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: '4.20'
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    # guest cluster credentials
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    # ocpvN cluster credentials
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    # Propagate bastion data for infra_add_bastion role
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    # propogate provision data for showroom
+    - name: bastion_public_hostname
+      var: bastion_public_hostname
+    - name: bastion_ssh_user_name
+      var: bastion_ssh_user_name
+    - name: bastion_ssh_password
+      var: bastion_ssh_password
+    - name: bastion_ssh_port
+      var: bastion_ssh_port
