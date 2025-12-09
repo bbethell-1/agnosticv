@@ -12,10 +12,11 @@
 #include /includes/sandbox-api.yaml
 #include /includes/catalog-icon-openshift.yaml
 #include /includes/terms-of-service.yaml
+#include /includes/access-restriction-rh1-2026-devs.yaml
 
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/salesforce-id.yaml
-#include /includes/access-restriction-rh1-2026-devs.yaml
+
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 
 # ===================================================================
@@ -54,24 +55,30 @@ worker_instance_count: "{{[(num_users | int / 3) | round(0, 'ceil') | int, 3] | 
 # ===================================================================
 requirements_content:
   collections:
+  # Assisted Installer Collection
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.9
+
   # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
     version: "{{ tag }}"
+
   - name: https://github.com/agnosticd/sovereign_cloud.git
     type: git
     version: "{{ tag }}"
-  - name: https://github.com/rhpds/assisted_installer.git
-    type: git
-    version: main
+
+  # Showroom
   - name: https://github.com/agnosticd/showroom.git
     type: git
-    version: v1.2.0
+    version: v1.3.5
 
 # -------------------------------------------------------------------
 # Common Password
 # -------------------------------------------------------------------
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:10] }}"
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:16] }}"
 
 # These need to be set in the pooled base catalog item
 # ai_service_network_cidr: "172.231.0.0/16"
@@ -91,6 +98,7 @@ workloads:
 - agnosticd.core_workloads.ocp4_workload_quay_operator
 - agnosticd.sovereign_cloud.ocp4_workload_register_sno
 - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.showroom.ocp4_workload_showroom_ocp_integration
 - agnosticd.showroom.ocp4_workload_showroom
 
 # ===================================================================
@@ -102,11 +110,11 @@ workloads:
 # -------------------------------------------------------------------
 # Generate admin password
 ocp4_workload_authentication_htpasswd_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
 ocp4_workload_authentication_htpasswd_admin_password_length: 16
 # Generate user password
 ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_password: "{{ common_password}}"
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password}}"
 ocp4_workload_authentication_htpasswd_user_password_length: 16
 ocp4_workload_authentication_htpasswd_user_password_randomized: true
 ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
@@ -146,20 +154,20 @@ ocp4_workload_pipelines_use_catalog_snapshot: false
 # -------------------------------------------------------------------
 ocp4_workload_rhacs_install_operator_channel: rhacs-4.9
 ocp4_workload_rhacs_install_operator_namespace: rhacs-operator
-ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
+ocp4_workload_rhacs_central_admin_password: "{{ common_admin_password }}"
 ocp4_workload_rhacs_enable_central_scanner_v4: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm
 # -------------------------------------------------------------------
-ocp4_workload_rhacm_acm_channel: release-2.14
+ocp4_workload_rhacm_acm_channel: release-2.15
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_quay_operator
 # -------------------------------------------------------------------
 ocp4_workload_quay_operator_channel: stable-3.15
 ocp4_workload_quay_operator_registry_namespace: quay
-ocp4_workload_quay_operator_registry_admin_password: "{{ common_password }}"
+ocp4_workload_quay_operator_registry_admin_password: "{{ common_admin_password }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_register_sno
@@ -197,9 +205,9 @@ ocp4_workload_showroom_content_git_repo: https://github.com/jalvarez-rh/rh1-svc-
 ocp4_workload_showroom_content_git_repo_ref: main
 # Default antora playbook is default-site.yml, override here if needed
 # ocp4_workload_showroom_content_antora_playbook: site.yml
-# Enable Wetty and auto-SSH to bastion
-ocp4_workload_showroom_terminal_type: wetty
-ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+# No terminals. Links are configured in ui-config.yaml in the showroom repo.
+ocp4_workload_showroom_content_only: true
 
 # -------------------------------------------------------------------
 # Babylon meta variables
