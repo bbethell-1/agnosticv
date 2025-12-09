@@ -12,6 +12,7 @@
 #include /includes/catalog-icon-openshift.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/access-restriction-rh1-2026-devs.yaml
+
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/salesforce-id.yaml
 
@@ -45,7 +46,6 @@ worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 3] |
 # ===================================================================
 # Additional Collections & roles to be installed for this config
 # ===================================================================
-
 requirements_content:
   collections:
   # Assisted Installer Collection
@@ -53,9 +53,10 @@ requirements_content:
     type: git
     version: v0.0.9
 
+  # LiteLLM Virtual Keys Collection
   - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
     type: git
-    version: main
+    version: "{{ tag }}"
 
   # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
@@ -72,10 +73,14 @@ requirements_content:
     type: git
     version: "{{ tag }}"
 
+  # Showroom
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.3.5
+
 # ===================================================================
 # List of workloads to be deployed
 # ===================================================================
-
 workloads:
 - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
@@ -84,6 +89,8 @@ workloads:
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
 - agnosticd.ai_workloads.ocp4_workload_toolhive
 - rhpds.mcp_workloads.ocp4_workload_mcp_user
+- agnosticd.showroom.ocp4_workload_showroom_ocp_integration
+- agnosticd.showroom.ocp4_workload_showroom
 
 # ===================================================================
 # Variables for specific workloads
@@ -92,8 +99,8 @@ workloads:
 # -------------------------------------------------------------------
 # Common Password
 # -------------------------------------------------------------------
-
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:10] }}"
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:16] }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_litellm_virtual_keys
@@ -113,11 +120,11 @@ ocp4_workload_litellm_virtual_keys_models:
 # -------------------------------------------------------------------
 ocp4_workload_authentication_htpasswd_admin_user: admin
 # Generate admin password
-ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password}}"
 ocp4_workload_authentication_htpasswd_admin_password_length: 16
 ocp4_workload_authentication_htpasswd_user_base: user
 # Generate user password
-ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
 ocp4_workload_authentication_htpasswd_user_password_length: 16
 ocp4_workload_authentication_htpasswd_user_password_randomized: false
 ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('2')) | int }}"
@@ -151,12 +158,12 @@ ocp4_workload_gitea_operator_ssl_route: true
 ocp4_workload_gitea_operator_create_admin: true
 ocp4_workload_gitea_operator_admin_user: mcpadmin
 ocp4_workload_gitea_operator_admin_email: mcpadmin@redhat.com
-ocp4_workload_gitea_operator_admin_password: ""
+ocp4_workload_gitea_operator_admin_password: "{{ common_admin_password}}"
 
 ocp4_workload_gitea_operator_create_users: true
 ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
 ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_authentication_htpasswd_user_base }}%d"
-ocp4_workload_gitea_operator_user_password: "{{ common_password }}"
+ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
 ocp4_workload_gitea_operator_migrate_repositories: true
 
 # ---------------------------------------------------------
@@ -182,34 +189,42 @@ ocp4_workload_openshift_gitops_use_catalog_snapshot: false
 # -------------------------------------------------------------------
 # ocp4_workload_toolhive
 # -------------------------------------------------------------------
-ocp4_workload_toolhive_helm_chart_crds: oci://ghcr.io/stacklok/toolhive/toolhive-operator-crds:0.0.63
-ocp4_workload_toolhive_helm_chart_operator: oci://ghcr.io/stacklok/toolhive/toolhive-operator:0.5.3
+ocp4_workload_toolhive_helm_chart_crds: oci://ghcr.io/stacklok/toolhive/toolhive-operator-crds:0.0.77
+ocp4_workload_toolhive_helm_chart_operator: oci://ghcr.io/stacklok/toolhive/toolhive-operator:0.5.9
 
-# ocp4_workload_toolhive_operator_image: ghcr.io/stacklok/toolhive/operator:latest-ubi
 ocp4_workload_toolhive_operator_image: ghcr.io/stacklok/toolhive/operator:v0.6.11-ubi
-# ocp4_workload_toolhive_runner_image: ghcr.io/stacklok/toolhive/proxyrunner:latest-ubi
 ocp4_workload_toolhive_runner_image: ghcr.io/stacklok/toolhive/proxyrunner:v0.6.11-ubi
-# ocp4_workload_toolhive_registry_api_image: ghcr.io/stacklok/thv-registry-api:latest
-ocp4_workload_toolhive_registry_api_image: ghcr.io/stacklok/thv-registry-api:v0.3.9
+ocp4_workload_toolhive_registry_api_image: ghcr.io/stacklok/thv-registry-api:v0.4.2
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_mcp_user
 # -------------------------------------------------------------------
-ocp4_workload_mcp_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
-ocp4_workload_mcp_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_mcp_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+ocp4_workload_mcp_user_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
 
-ocp4_workload_mcp_openshift_image: quay.io/containers/kubernetes_mcp_server:v0.0.55
+ocp4_workload_mcp_user_openshift_image: quay.io/containers/kubernetes_mcp_server:v0.0.55
 
-ocp4_workload_mcp_gitea_external_url: "https://gitea.{{ openshift_cluster_ingress_domain }}"
-ocp4_workload_mcp_gitea_user_password: "{{ common_password }}"
+ocp4_workload_mcp_user_gitea_external_url: "https://gitea.{{ openshift_cluster_ingress_domain }}"
+ocp4_workload_mcp_user_gitea_user_password: "{{ common_user_password }}"
 
-ocp4_workload_mcp_librechat_password: "{{ common_password }}"
-ocp4_workload_mcp_litemaas_url: "{{ lookup('agnosticd_user_data', 'litellm_api_base_url') }}"
-ocp4_workload_mcp_litemaas_keys: "{{ lookup('agnosticd_user_data', 'litellm_virtual_keys') }}"
-ocp4_workload_mcp_litemaas_models: "{{ lookup('agnosticd_user_data', 'litellm_available_models') }}"
+ocp4_workload_mcp_user_librechat_password: "{{ common_user_password }}"
+ocp4_workload_mcp_user_litemaas_url: "{{ lookup('agnosticd_user_data', 'litellm_api_base_url') }}"
+ocp4_workload_mcp_user_litemaas_keys: "{{ lookup('agnosticd_user_data', 'litellm_virtual_keys') }}"
+ocp4_workload_mcp_user_litemaas_models: "{{ lookup('agnosticd_user_data', 'litellm_available_models') }}"
 
 # Model to configure for the agent
-ocp4_workload_mcp_agent_model_name: "openai/llama-scout-17b"
+ocp4_workload_mcp_user_agent_model_name: "openai/llama-scout-17b"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom-agentic-ai-llamastack
+ocp4_workload_showroom_content_git_repo_ref: main
+# Default antora playbook is default-site.yml, override here if needed
+# ocp4_workload_showroom_content_antora_playbook: site.yml
+
+# No terminals. Links are configured in ui-config.yaml in the showroom repo.
+ocp4_workload_showroom_content_only: true
 
 # -------------------------------------------------------------------
 # Babylon meta variables
