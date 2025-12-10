@@ -25,6 +25,10 @@ platform: RHPDS
 cloud_provider: openshift_cnv
 cloud_provider_version: main
 config: cloud-vms-base
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -100,11 +104,16 @@ instances:
             targetPort: 443
             name: bastion-443
     routes:
-      - name: bastion-443
+      - name: bastion-80
         host: bastion
         service: bastion
-        targetPort: 443
+        targetPort: 80
         tls: true
+        tls_termination: edge
+      - name: bastion-443
+        host: bastion-443
+        service: bastion
+        targetPort: 443
 
   - name: "node"
     count: 2
@@ -148,6 +157,9 @@ requirements_content:
     - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
       type: git
       version: main
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: main
 
 # -------------------------------------------------------------------
 # Workloads
@@ -161,13 +173,15 @@ pre_software_workloads:
   bastions:
     - bastion
 
-post_software_final_workloads:
+post_software_workloads:
   localhost:
     - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
-    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
 
-# NOTE: OpenShift Lightspeed is deployed by the CNV pool (ocp-cluster-cnv-pools)
-# No additional configuration needed here
+post_software_final_workloads:
+  localhost:
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+  bastions:
+    - agnosticd.showroom.vm_workload_showroom
 
 # -------------------------------------------------------------------
 # LiteLLM Virtual Keys Configuration
@@ -211,6 +225,7 @@ bastion_host_packages:
   - vim-enhanced
   - wget
   - ansible
+  - python3.11-pip
 
 node_host_packages:
   - skopeo
@@ -302,6 +317,20 @@ bastion_asset_injector_assets:
           StrictHostKeyChecking no
           UserKnownHostsFile /dev/null
 
+  - description: Download oc client
+    type: http
+    src: "{{ openshift_client_download_url }}"
+    # src: https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable-4.20/openshift-client-linux.tar.gz
+    dest: /tmp/
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+
+  - description: Unarchive oc client
+    type: unarchive
+    src: /tmp/openshift-client-linux.tar.gz
+    dest: /usr/bin
+    remote_src: true
+
 # Set asset_injector_assets based on group membership
 asset_injector_assets: >-
   {{
@@ -327,6 +356,14 @@ agnosticv_importdata:
   openshift_console_url: "{{ openshift_console_url }}"
   openshift_kubeadmin_user: kubeadmin
   openshift_kubeadmin_password: "{{ openshift_kubeadmin_password }}"
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.showroom.vm_workload_showroom
+# -------------------------------------------------------------------
+showroom_git_repo: https://github.com/rhpds/demystifying-aap-on-ocp-showroom.git
+showroom_git_ref: main
+showroom_tls_provider: none
+showroom_host: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ guid }}{{ subdomain_base_suffix }}"
 
 # -------------------------------------------------------------------
 # Pre-destroy workloads (cleanup before environment is destroyed)
@@ -370,11 +407,9 @@ __meta__:
       pull: missing
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "LB1024: Demystifying Ansible Automation Platform on OpenShift"
-    category: Workshops
+    display_name: "Demystifying Ansible Automation Platform on OpenShift"
+    category: Brand_Events
     keywords:
-      - aap
-      - sno
       - Demystifying
       - lb1024
       - '2026'
@@ -383,7 +418,6 @@ __meta__:
       Product: Red_Hat_Enterprise_Linux
       Product_Family: Red_Hat_Enterprise_Linux
       Provider: RHDP
-      Brand_Event: Red_Hat_One_2026
     multiuser: false
     parameters: []
   sandbox_api:
@@ -405,7 +439,9 @@ __meta__:
       item: agd-v2/ocp-cluster-cnv-pools/prod
       parameter_values:
         cluster_size: sno
-        host_ocp4_installer_version: '4.18'
+        host_ocp4_installer_version: '4.20'
+        ols_enable: true
+        ocp4_fips_enable: false
       # Propagate agnosticd_user_info data set by this component to variables.
       propagate_provision_data:
         - name: sandbox_openshift_api_key
@@ -422,12 +458,14 @@ __meta__:
           var: openshift_console_url
         - name: openshift_kubeadmin_password
           var: openshift_kubeadmin_password
+        - name: openshift_client_download_url
+          var: openshift_client_download_url
         # Propagate bastion data for infra_add_bastion role
-        - name: sno_bastion_public_hostname
+        - name: bastion_public_hostname
           var: bastion_ansible_host
-        - name: sno_bastion_ssh_user_name
+        - name: bastion_ssh_user_name
           var: bastion_ansible_user
         - name: bastion_ssh_password
-          var: sno_astion_ansible_ssh_pass
+          var: bastion_ansible_ssh_pass
         - name: bastion_ssh_port
-          var: sno_bastion_ansible_port
+          var: bastion_ansible_port
