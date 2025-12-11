@@ -24,7 +24,6 @@ platform: RHPDS
 cloud_provider: openshift_cnv
 cloud_provider_version: main
 config: cloud-vms-base
-display_name: "CTF Participant"
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -139,44 +138,81 @@ instances:
 # -------------------------------------------------------------------
 requirements_content:
   collections:
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: main
     - name: https://github.com/agnosticd/cloud_vm_workloads.git
       type: git
       version: main
-    - name: https://github.com/rhpds/rhpds.ansible_automation_platform.git
+    - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
       type: git
       version: main
-    - name: https://github.com/rhpds/rhpds.ctf.git
+    - name: https://github.com/agnosticd/showroom.git
       type: git
       version: main
-  # roles:
-  #   - name: rh1-lab30-ctf-participants-ar
-  #     src: https://github.com/opentraining-labs-customizations/rh1-lab30-ctf-participants-ar.git
-  #     version: 1.0.2
-  #   - name: rh1-lab30-ctf-ocp-ar
-  #     src: https://github.com/opentraining-labs-customizations/rh1-lab30-ctf-ocp-ar.git
-  #     version: 1.0.1
-  #   - name: rh1-lab30-ctf-infra-ar
-  #     src: https://github.com/opentraining-labs-customizations/rh1-lab30-ctf-infra-ar.git
-  #     version: 1.0.1
+    - name: https://github.com/rhpds/rhpds.manage_host.git
+      type: git
+      version: main
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 pre_software_workloads:
+  localhost:
+    - openshift_workload_deployer
   all:
     - host_satellite_repositories
     - host_common_packages
+    - agnosticd.cloud_vm_workloads.control_user
+    - rhpds.manage_host.asset_injector
   bastions:
     - bastion
-    - agnosticd.cloud_vm_workloads.asset_injector
-
-software_workloads:
-  all:
-    - agnosticd.cloud_vm_workloads.control_user
 
 post_software_final_workloads:
   localhost:
     - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+
+# -------------------------------------------------------------------
+# Workload: openshift_workload_deployer
+# -------------------------------------------------------------------
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
+
+openshift_workloads:
+  - name: agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+    clusters:
+      - default
+
+ACTION: provision
+openshift_workload_deployer_workloads: "{{ openshift_workloads }}"
+openshift_workload_deployer_clusters: "{{ clusters }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_htpasswd
+# -------------------------------------------------------------------
+num_users: 1
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_admin_password length=12 chars=ascii_letters,digits')
+  }}
+common_user_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_user_password length=12 chars=ascii_letters,digits')
+  }}
+
+ocp4_workload_authentication_htpasswd_admin_user: admin
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+ocp4_workload_authentication_htpasswd_user_base: "user"
+# Generate user password
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_password_randomized: true
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
 # Workload: host_satellite_repositories
@@ -206,6 +242,8 @@ bastion_host_packages:
   - vim-enhanced
   - wget
   - ansible
+  - python3.11-pip
+  - python3.11-kubernetes
 
 node_host_packages:
   - skopeo
@@ -261,21 +299,66 @@ control_user_enable_user_data: false
 # Workload: agnosticd.cloud_vm_workloads.asset_injector
 # -------------------------------------------------------------------
 bastion_asset_injector_assets:
+  - description: Remove 50-cloud-init.conf, ssh issue
+    module: file
+    state: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    module: file
+    state: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    module: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    module: service
+    name: sshd
+    state: restarted
+
   - description: Create SSH config for lab-user to easily SSH to nodes
-    type: content
+    module: copy
     dest: /home/{{ bastion_student_user_name }}/.ssh/config
     owner: "{{ bastion_student_user_name }}"
     group: "{{ bastion_student_user_name }}"
     mode: "0600"
     content: |
       # SSH config for easy access to nodes
-      Host registry target
-          User {{ ansible_user }}
+      Host *
+          User {{ student_name }}
           StrictHostKeyChecking no
           UserKnownHostsFile /dev/null
+          IdentityFile ~/.ssh/{{ guid }}.pem
+
+  - description: Download oc client
+    module: get_url
+    src: "{{ openshift_client_download_url }}"
+    dest: /tmp/
+    owner: "{{ student_name }}"
+
+  - description: Unarchive oc client
+    module: unarchive
+    src: /tmp/openshift-client-linux.tar.gz
+    dest: /usr/bin
+    remote_src: true
+
+  - description: Openshift oc login
+    become: true
+    become_user: "{{ student_name }}"
+    module: command
+    cmd: "/usr/bin/oc login {{ openshift_api_url }} --token={{ openshift_cluster_admin_token }} --insecure-skip-tls-verify=true"
 
 # Set asset_injector_assets based on group membership
-asset_injector_assets: >-
+asset_injector_modules: >-
   {{
     bastion_asset_injector_assets
     if 'bastions' in group_names else
@@ -286,14 +369,6 @@ asset_injector_assets: >-
 # Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
 # -------------------------------------------------------------------
 agnosticv_importdata:
-  # bastion_public_hostname: "{{ bastion_public_hostname }}"
-  # bastion_url: "https://{{ bastion_public_hostname }}"
-  # bastion_ssh_user_name: "{{ bastion_student_user_name }}"
-  # bastion_ssh_password: "{{ bastion_student_user_password }}"
-  openshift_api_url: "{{ openshift_api_url }}"
-  # openshift_cluster_admin_token: "{{ openshift_cluster_admin_token }}"
-  openshift_console_url: "{{ openshift_console_url }}"
-  openshift_kubeadmin_password: "{{ openshift_kubeadmin_password }}"
   ssh_command: >-
     ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
     -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
@@ -301,6 +376,14 @@ agnosticv_importdata:
   ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
   ssh_username: "{{ student_name }}"
   ssh_password: "{{ common_password }}"
+  openshift_api_url: "{{ openshift_api_url }}"
+  openshift_cluster_admin_token: "{{ openshift_cluster_admin_token }}"
+  openshift_console_url: "{{ openshift_console_url }}"
+  openshift_kubeadmin_user: kubeadmin
+  openshift_kubeadmin_password: "{{ openshift_kubeadmin_password }}"
+  openshift_admin_user: admin
+  openshift_admin_password: "{{ common_admin_password  }}"
+
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
@@ -335,8 +418,8 @@ __meta__:
       pull: missing
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "LB5072: CTF Participant"
-    category: Workshops
+    display_name: "CTF Participant"
+    category: Brand_Events
     keywords:
       - ctf
       - Participant
@@ -365,7 +448,9 @@ __meta__:
       item: agd-v2/ocp-cluster-cnv-pools/prod
       parameter_values:
         cluster_size: sno
-        host_ocp4_installer_version: '4.18'
+        host_ocp4_installer_version: '4.20'
+        ols_enable: true
+        ocp4_fips_enable: false
       # Propagate agnosticd_user_info data set by this component to variables.
       propagate_provision_data:
         - name: sandbox_openshift_api_key
@@ -382,6 +467,8 @@ __meta__:
           var: openshift_console_url
         - name: openshift_kubeadmin_password
           var: openshift_kubeadmin_password
+        - name: openshift_client_download_url
+          var: openshift_client_download_url
         # Propagate bastion data for infra_add_bastion role
         # - name: bastion_public_hostname
         #   var: bastion_ansible_host
