@@ -19,3 +19,198 @@ __meta__:
         virt: "yes"
       quota:
         requests.storage: "2000Gi"
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: main
+    - name: https://github.com/agnosticd/cloud_vm_workloads.git
+      type: git
+      version: main
+    - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+      type: git
+      version: main
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: main
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  localhost:
+    - openshift_workload_deployer
+  all:
+    - host_satellite_repositories
+    - host_common_packages
+    - agnosticd.cloud_vm_workloads.control_user
+    - agnosticd.cloud_vm_workloads.asset_injector
+  bastions:
+    - bastion
+
+post_software_workloads:
+  localhost:
+    - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+
+post_software_final_workloads:
+  localhost:
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+  bastions:
+    - agnosticd.showroom.vm_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload: openshift_workload_deployer
+# -------------------------------------------------------------------
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
+
+openshift_workloads:
+  - name: agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+    clusters:
+      - default
+
+ACTION: provision
+openshift_workload_deployer_workloads: "{{ openshift_workloads }}"
+openshift_workload_deployer_clusters: "{{ clusters }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_htpasswd
+# -------------------------------------------------------------------
+num_users: 1
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_admin_password length=12 chars=ascii_letters,digits')
+  }}
+common_user_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_user_password length=12 chars=ascii_letters,digits')
+  }}
+
+ocp4_workload_authentication_htpasswd_admin_user: admin
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+ocp4_workload_authentication_htpasswd_user_base: "user"
+# Generate user password
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_password_randomized: true
+ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: false
+
+# -------------------------------------------------------------------
+# Call role host_common_packages
+# -------------------------------------------------------------------
+bastion_host_packages:
+  - at
+  - bash-completion
+  - bind-utils
+  - buildah
+  - git
+  - httpd-tools
+  - nano
+  - podman
+  - python3
+  - python3-pip
+  - tmux
+  - tree
+  - unzip
+  - vim-enhanced
+  - wget
+  - ansible
+  - python3.11-pip
+  - python3.11-kubernetes
+
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.asset_injector
+# -------------------------------------------------------------------
+bastion_asset_injector_assets:
+  - description: Remove 50-cloud-init.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+  - description: Restart sshd to pick up new password support configuration
+    type: service
+    name: sshd
+    state: restarted
+
+  - description: Create SSH config for lab-user to easily SSH to nodes
+    type: content
+    dest: /home/{{ bastion_student_user_name }}/.ssh/config
+    owner: "{{ bastion_student_user_name }}"
+    group: "{{ bastion_student_user_name }}"
+    mode: "0600"
+    content: |
+      # SSH config for easy access to nodes
+      Host registry target
+          User {{ ansible_user }}
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+
+  - description: Download oc client
+    type: http
+    src: "{{ openshift_client_download_url }}"
+    dest: /tmp/
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+
+  - description: Unarchive oc client
+    type: unarchive
+    src: /tmp/openshift-client-linux.tar.gz
+    dest: /usr/bin
+    remote_src: true
+
+  - description: Openshift oc login
+    type: command
+    cmd: >-
+      /usr/bin/oc login {{ openshift_api_url }}
+      --token {{ openshift_cluster_admin_token }}
+      --insecure-skip-tls-verify true
+
+  - description: Download AAP manifest
+    type: http
+    src: "https://gpte-public.s3.us-east-1.amazonaws.com/aap/manifest_demystify_aap.zip"
+    dest: /home/{{ student_name }}/
+    owner: "{{ student_name }}"
+    group: "{{ student_name }}"
+
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  ssh_public_hostname: "bastion-{{ subdomain_base }}"
+  bastion_url: "https://bastion-{{ subdomain_base }}"
+  ssh_username: "{{ student_name }}"
+  ssh_password: "{{ common_password }}"
+  ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+  ssh_command: >-
+    ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
+    -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
+  openshift_api_url: "{{ openshift_api_url }}"
+  openshift_cluster_admin_token: "{{ openshift_cluster_admin_token }}"
+  openshift_console_url: "{{ openshift_console_url }}"
+  openshift_kubeadmin_user: kubeadmin
+  openshift_kubeadmin_password: "{{ openshift_kubeadmin_password }}"
+  openshift_admin_user: admin
+  openshift_admin_password: "{{ common_admin_password  }}"
