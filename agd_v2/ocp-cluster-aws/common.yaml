@@ -13,14 +13,11 @@
 #include /includes/catalog-icon-openshift.yaml
 #include /includes/terms-of-service.yaml
 
-
 #include /includes/parameters/ocp4-fips-enable.yaml
+#include /includes/parameters/agnosticd_open_environment.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/aws-regions-3.yaml
-#include /includes/parameters/num-users-salesforce.yaml
-#include /includes/parameters/agnosticd_open_environment.yaml
-#include /includes/parameters/controlplane-count.yaml
 
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/demosat-rhel-9-10-latest.yaml
@@ -70,45 +67,51 @@ bastion_student_suer_sudo: true
 # -------------------------------------------------------------------
 # AWS Specific
 # -------------------------------------------------------------------
+bastion_instance_image: RHEL96GOLD-latest
+
+worker_instance_count: "{{ 0 if cluster_size == 'sno' else worker_instance_count_param }}"
+worker_storage_type: gp3
+
+control_plane_instance_count: "{{ 1 if cluster_size == 'sno' else 3 }}"
 control_plane_instance_type_family: m5
+
 control_plane_instance_type_size: >-
-  {{ '4xlarge' if control_plane_instance_count | int <= 1
+  {{ '8xlarge' if cluster_size == 'sno'
   else '2xlarge' if worker_instance_count | int <= 10
   else '4xlarge' if worker_instance_count | int <= 20
-  else '8xlarge'
   }}
 control_plane_instance_type: "{{ control_plane_instance_type_family }}.{{ control_plane_instance_type_size }}"
-
 control_plane_storage_type: >-
   {{ 'io1' if worker_instance_count | int >= 10
   else 'gp3' }}
-worker_instance_type: "m5a.4xlarge"
-worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
-
-worker_storage_type: gp3
-bastion_instance_image: RHEL96GOLD-latest
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 # --- Workloads to deploy on the cluster (YAML List)
 workloads:
-- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+- agnosticd.core_workloads.ocp4_workload_authentication_keycloak
 - agnosticd.core_workloads.ocp4_workload_cert_manager
 
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication_htpasswd
-# -------------------------------------------------------------------
-ocp4_workload_authentication_htpasswd_admin_user: admin
-# Generate admin password
-ocp4_workload_authentication_htpasswd_admin_password: ""
-ocp4_workload_authentication_htpasswd_admin_password_length: 16
-ocp4_workload_authentication_htpasswd_user_base: user
-# Generate user password
-ocp4_workload_authentication_htpasswd_user_password: ""
-ocp4_workload_authentication_htpasswd_user_password_length: 16
-ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
-ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+# ===================================================================
+# Workload: agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+# ===================================================================
+# Red Hat Build of Keycloak (RHBK) - User Authentication
+# Creates Keycloak instance and manages user accounts
+
+# Operator configuration
+ocp4_workload_authentication_keycloak_namespace: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_keycloak_use_catalog_source: false
+
+ocp4_workload_authentication_keycloak_admin_create: true
+ocp4_workload_authentication_keycloak_admin_username: admin
+ocp4_workload_authentication_keycloak_admin_password: ''
+ocp4_workload_authentication_keycloak_remove_kubeadmin: true
+
+ocp4_workload_authentication_keycloak_num_users: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_keycloak_user_username_base: user
+ocp4_workload_authentication_keycloak_user_password: ''
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager
@@ -133,14 +136,17 @@ __meta__:
     maintainer:
     - name: Wolfgang Kulhanek
       email: wkulhane@redhat.com
+
   anarchy:
     namespace: babylon-anarchy-ocp-wksp
+
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
       pull: missing
+
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: Red Hat OpenShift Container Platform Cluster (AWS) - AgdV2
@@ -157,16 +163,68 @@ __meta__:
     reportingLabels:
       primaryBU: Hybrid_Platforms
     parameters:
+    - name: cluster_size
+      description: >-
+        Cluster size configuration that determines the number of control plane and worker nodes.
+      formLabel: Cluster Size
+      openAPIV3Schema:
+        type: string
+        default: 'sno'
+        enum:
+        - 'sno'
+        - 'multinode'
+
     - name: host_ocp4_installer_version
       description: Version of OpenShift to Install
       formLabel: OpenShift Version
       required: false
       openAPIV3Schema:
         type: string
-        default: '4.19'
+        default: '4.20'
         enum:
+        - '4.16'
         - '4.18'
         - '4.19'
         - '4.20'
       annotation: demo.redhat.com/ocp-version
       variable: host_ocp4_installer_version
+
+    - name: worker_instance_count_param
+      description: OpenShift Worker count
+      formLabel: OpenShift Worker count
+      formHideCondition: cluster_size != 'multinode'
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 10
+
+    - name: worker_instance_type
+      description: OpenShift Worker instance type
+      formLabel: OpenShift Worker instance type
+      formHideCondition: cluster_size != 'multinode'
+      openAPIV3Schema:
+        type: string
+        default: 'm5a.2xlarge'
+        enum:
+        - 'm5a.2xlarge'
+        - 'm5a.4xlarge'
+        - 'm5a.8xlarge'
+
+    - name: create_multi_user
+      description: Create multiple users on cluster?
+      formLabel: Create multiple users on cluster
+      openAPIV3Schema:
+        type: boolean
+        default: false
+
+    - name: num_users
+      description: >-
+        Number of users to provision within the environment.
+      formLabel: User Count
+      formHideCondition: create_multi_user == false
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 50
