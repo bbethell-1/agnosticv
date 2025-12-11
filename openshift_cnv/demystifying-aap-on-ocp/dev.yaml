@@ -36,6 +36,9 @@ requirements_content:
     - name: https://github.com/agnosticd/showroom.git
       type: git
       version: main
+    - name: https://github.com/rhpds/rhpds.manage_host.git
+      type: git
+      version: main
 
 # -------------------------------------------------------------------
 # Workloads
@@ -47,7 +50,7 @@ pre_software_workloads:
     - host_satellite_repositories
     - host_common_packages
     - agnosticd.cloud_vm_workloads.control_user
-    - agnosticd.cloud_vm_workloads.asset_injector
+    - rhpds.manage_host.asset_injector
   bastions:
     - bastion
 
@@ -132,15 +135,15 @@ bastion_host_packages:
 # -------------------------------------------------------------------
 bastion_asset_injector_assets:
   - description: Remove 50-cloud-init.conf, ssh issue
-    type: remove
+    module: remove
     path: /etc/ssh/sshd_config.d/50-cloud-init.conf
 
   - description: Remove 50-redhat.conf, ssh issue
-    type: remove
+    module: remove
     path: /etc/ssh/sshd_config.d/50-redhat.conf
 
   - description: Update sshd_config for password auth
-    type: blockinfile
+    module: blockinfile
     path: /etc/ssh/sshd_config
     state: present
     marker: "# {mark} Our custom SSH settings via Ansible"
@@ -150,12 +153,12 @@ bastion_asset_injector_assets:
       PasswordAuthentication yes
       UsePAM yes
   - description: Restart sshd to pick up new password support configuration
-    type: service
+    module: service
     name: sshd
     state: restarted
 
   - description: Create SSH config for lab-user to easily SSH to nodes
-    type: content
+    module: content
     dest: /home/{{ bastion_student_user_name }}/.ssh/config
     owner: "{{ bastion_student_user_name }}"
     group: "{{ bastion_student_user_name }}"
@@ -168,28 +171,37 @@ bastion_asset_injector_assets:
           UserKnownHostsFile /dev/null
 
   - description: Download oc client
-    type: http
+    module: get_url
     src: "{{ openshift_client_download_url }}"
     dest: /tmp/
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
 
   - description: Unarchive oc client
-    type: unarchive
+    module: unarchive
     src: /tmp/openshift-client-linux.tar.gz
     dest: /usr/bin
     remote_src: true
 
   - description: Openshift oc login
-    type: command
+    become: true
+    become_user: "{{ student_name }}"
+    module: command
     cmd: "/usr/bin/oc login {{ openshift_api_url }} --token={{ openshift_cluster_admin_token }} --insecure-skip-tls-verify=true"
+
   - description: Download AAP manifest
-    type: http
+    module: get_url
     src: "https://gpte-public.s3.us-east-1.amazonaws.com/aap/manifest_demystify_aap.zip"
     dest: /home/{{ student_name }}/
     owner: "{{ student_name }}"
     group: "{{ student_name }}"
 
+asset_injector_modules: >-
+  {{
+    bastion_asset_injector_assets
+    if 'bastions' in group_names else
+    []
+  }}
 
 # -------------------------------------------------------------------
 # Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
