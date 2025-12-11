@@ -135,11 +135,13 @@ bastion_host_packages:
 # -------------------------------------------------------------------
 bastion_asset_injector_assets:
   - description: Remove 50-cloud-init.conf, ssh issue
-    module: remove
+    module: file
+    state: remove
     path: /etc/ssh/sshd_config.d/50-cloud-init.conf
 
   - description: Remove 50-redhat.conf, ssh issue
-    module: remove
+    module: file
+    state: remove
     path: /etc/ssh/sshd_config.d/50-redhat.conf
 
   - description: Update sshd_config for password auth
@@ -152,6 +154,7 @@ bastion_asset_injector_assets:
       ChallengeResponseAuthentication no
       PasswordAuthentication yes
       UsePAM yes
+
   - description: Restart sshd to pick up new password support configuration
     module: service
     name: sshd
@@ -195,6 +198,45 @@ bastion_asset_injector_assets:
     dest: /home/{{ student_name }}/
     owner: "{{ student_name }}"
     group: "{{ student_name }}"
+
+  - description: Create ansible.cfg
+    module: copy
+    become: true
+    become_user: "{{ student_name }}"
+    dest: /home/{{ student_name }}/.ansible.cfg
+    owner: "{{ student_name }}"
+    group: "{{ student_name }}"
+    content: |
+      [galaxy]
+      server_list = certified, validated, community_galaxy
+
+      [galaxy_server.certified]
+      url=https://console.redhat.com/api/automation-hub/content/published/
+      auth_url=https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+      token=
+
+      [galaxy_server.validated]
+      url=https://console.redhat.com/api/automation-hub/content/validated/
+      auth_url=https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+      token=
+
+      [galaxy_server.community_galaxy]
+      url=https://galaxy.ansible.com/
+
+  - description: Install collections
+    become: true
+    become_user: "{{ student_name }}"
+    module: command
+    cmd: >-
+      ansible-galaxy collections install
+      ansible.controller
+      ansible.platform
+      ansible.hub
+      ansible.eda
+      kubernetes.core
+      infra.aap_configuration
+      infra.aap_configuration_extended
+      community.general
 
 asset_injector_modules: >-
   {{
