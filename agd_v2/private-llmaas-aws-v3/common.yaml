@@ -642,28 +642,35 @@ ocp4_workload_openshift_ai_model_as_a_service_models:
 # ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/private-llmaas-multitenant.git
-ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_revision: multi-user-update
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap
 
 ocp4_workload_gitops_bootstrap_helm_values:
   user:
     count: "{{ ocp4_workload_user_count }}"
     prefix: "{{ ocp4_workload_user_base }}"
-  workspace: ""
-  threeScale:
-    repoURL: https://github.com/rhpds/ocp-cluster-addons
-    targetRevision: v1.3.0
-    channel: threescale-2.15
-    startingCSV: 3scale-operator.v0.12.3
-  cmsUpload:
-    repoURL: https://github.com/rhpds/private-llmaas-multitenant.git
-    targetRevision: main
+  workspace:
+    git:
+      url: https://github.com/rhpds/private-llmaas-multitenant
+      revision: multi-user-update
+      path: workspace
+    devworkspace:
+      # name will be auto-generated as llmaas-{username} if not specified
+      devfile: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
+      projects:
+        repoUrl: https://github.com/taylorjordanNC/coding-exercises
+        revision: main
+      components:
+      - name: tooling
+        container:
+          image: registry.redhat.io/devspaces/udi-rhel9:3.21
+          sourceMapping: /projects
   llmaas:
     repoURL: https://github.com/rhpds/private-llmaas-multitenant.git
-    targetRevision: main
+    targetRevision: multi-user-update
   llamaStack:
     repoURL: https://github.com/rhpds/private-llmaas-multitenant.git
-    targetRevision: main
+    targetRevision: multi-user-update
     granite:
       modelName: granite-3dot2-8b-instruct
       endpoint: "{{ granite_3dot2_8b_instruct_endpoint }}"
@@ -672,6 +679,23 @@ ocp4_workload_gitops_bootstrap_helm_values:
       modelName: llama-guard-3-1b
       endpoint: "{{ llama_guard_3_1b_endpoint }}"
       apiToken: "{{ admin_api_token }}"
+  llamaStackInstance:
+    repoURL: https://github.com/rhpds/private-llmaas-multitenant
+    targetRevision: multi-user-update
+    path: llama-stack-instance
+    granite:
+      modelName: granite-3dot2-8b-instruct
+      endpoint: "{{ granite_3dot2_8b_instruct_endpoint }}"
+      apiToken: "{{ admin_api_token }}"
+      tlsverify: false
+    llamaguard:
+      modelName: llama-guard-3-1b
+      endpoint: "{{ llama_guard_3_1b_endpoint }}"
+      apiToken: "{{ admin_api_token }}"
+      tlsverify: false
+    mcp:
+      openshiftServerUrl: http://ocp-mcp-server.lls-demo.svc.cluster.local:8000/sse
+      slackServerUrl: http://slack-mcp-server.lls-demo.svc.cluster.local:80/sse
   slackMcpSecret:
     slackBotToken: !vault |
           $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
