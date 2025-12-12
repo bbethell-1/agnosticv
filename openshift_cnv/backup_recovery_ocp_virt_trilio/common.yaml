@@ -1,170 +1,91 @@
 ---
+# This item is restricted to devs only.
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+#include /includes/agd-v2-mapping.yaml
 #include /includes/catalog-icon-trilio.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/sandbox-api.yaml
 
 #include /includes/parameters/purpose.yaml
-
-#include /includes/parameters/showroom-ocp-defaults.yaml
+#include /includes/parameters/salesforce-id.yaml
 
 #include /includes/secrets/trilio-license.yaml
-
-#include /includes/secrets/zerossl.yaml
-#include /includes/secrets/dynamic-aws-dns.yaml
-#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-#include /includes/secrets/vmware-ibm-rs-clusters-access.yaml
-#include /includes/secrets/openshift_assisted_installer.yaml
-
-#include /includes/secrets/ocp4_token_icr.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: "Backup and Recovery of Red Hat OpenShift Virtualization VMs using Trilio"
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
-# Top level vars
+# AgnosticDv2 variables
 # -------------------------------------------------------------------
-env_type: ocp4-cluster
-software_to_deploy: openshift4_assisted
-cloud_provider: openshift_cnv
-platform: rhpds
+config: openshift-workloads
+cloud_provider: none
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
 
+#-------------------------------------------------------------------
+# Collections for this environment
 # -------------------------------------------------------------------
-# CNV Specific
-# -------------------------------------------------------------------
-bastion_instance_image: rhel-9.5
-bastion_cores: 2
-bastion_memory: 4Gi
-
-master_instance_count: 3
-worker_instance_count: 3
-
-ai_control_plane_cores: "{{ '64' if master_instance_count | int == 1 else '16' }}"
-ai_control_plane_memory: "{{ '128Gi' if master_instance_count | int == 1 else '32Gi' }}"
-
-ai_workers_cores: 16
-ai_workers_memory: 64Gi
-
-# -------------------------------------------------------------------
-# Repos
-# -------------------------------------------------------------------
-repo_method: satellite
-update_packages: true
-
-# -------------------------------------------------------------------
-# Bastion
-# -------------------------------------------------------------------
-bastion_remove_insights_motd: true
-bastion_custom_motd: |-
-  ---------------------------------------------------------------------------
-   Welcome to the Backup and Recovery of Red Hat OpenShift Virtualization VMs using Trilio!
-  ---------------------------------------------------------------------------
-
-  By continuing to use this service you agree to use this environment
-  solely for the purposes of completing the steps in the lab guide.
-
-  Any other use is a violation of this service and appropriate action
-  will be taken. If you disagree with these terms you must disconnect now.
-  ----------------------------------------------------------------------------
-
-# -------------------------------------------------------------------
-# OpenShift Version
-# -------------------------------------------------------------------
-ocp4_installer_version: "4.18.8"
-ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+requirements_content:
+  collections:
+  # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: main
+  - name: https://github.com/rhpds/trilio-workshop.git
+    type: git
+    version: main
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
-infra_workloads:
-  - ocp4_workload_cert_manager
-  - ocp4_workload_external_odf
-  - ocp4_workload_authentication
-#  - ocp4_workload_rhsso_authentication
-  - ocp4_workload_kubevirt
-  - ocp4_workload_minio
-  - ocp4_workload_openshift_gitops
-  - ocp4_workload_gitops_bootstrap
-  - ocp4_workload_trilio_backup_restore_vms
-  - ocp4_workload_showroom
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+- agnosticd.core_workloads.ocp4_workload_minio
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- trilio.workshop.ocp4_workload_trilio_backup_restore_vms
+- agnosticd.core_workloads.ocp4_workload_showroom
 
 # -------------------------------------------------------------------
 # Workload variables
 # -------------------------------------------------------------------
 num_users: 1
-admin_password: >-
-  {{
-    lookup('password', output_dir ~ '/admin_password length=12 chars=ascii_letters,digits')
-  }}
 user_password: >-
   {{
     lookup('password', output_dir ~ '/user_password length=12 chars=ascii_letters,digits')
   }}
 original_namespace: originalvms
 
-ocp4_workload_user_count: "{{ num_users }}"
-ocp4_workload_user_base: dr-admin
-
-ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.18_2025_02_24
-
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication
+# Workload: ocp4_workload_authentication_htpasswd
 # -------------------------------------------------------------------
-ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: "{{ admin_password }}"
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+# Generate user password
 ocp4_workload_authentication_htpasswd_user_base: dr-admin
 ocp4_workload_authentication_htpasswd_user_password: "{{ user_password }}"
-ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
-ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_password_randomized: true
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
-# ocp4_workload_cert_manager
-# -------------------------------------------------------------------
-ocp4_workload_cert_manager_channel: stable-v1.15
-ocp4_workload_cert_manager_use_catalog_snapshot: false
-ocp4_workload_cert_manager_install_ingress_certificates: true
-ocp4_workload_cert_manager_install_api_certificates: false
-ocp4_workload_cert_manager_ec2_region: us-east-2
-ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
-ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
-ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
-
-# -------------------------------------------------------------------
-# ocp4_workload_external_odf
-# -------------------------------------------------------------------
-odf_channel: stable-4.18
-
-# # -------------------------------------------------------------------
-# # ocp4_workload_rhsso_authentication
-# # -------------------------------------------------------------------
-# ocp4_workload_rhsso_authentication_namespace: rhsso
-# ocp4_workload_rhsso_authentication_target_namespaces: ["rhsso"]
-# ocp4_workload_rhsso_authentication_channel: stable
-# ocp4_workload_rhsso_authentication_starting_csv: rhsso-operator.7.6.11-opr-003
-# ocp4_workload_rhsso_authentication_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
-# ocp4_workload_rhsso_authentication_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
-#
-# ocp4_workload_rhsso_authentication_admin_create: true
-# ocp4_workload_rhsso_authentication_admin_username: admin
-# ocp4_workload_rhsso_authentication_admin_password: "{{ admin_password }}"
-#
-# ocp4_workload_rhsso_authentication_remove_kubeadmin: true
-#
-# ocp4_workload_rhsso_authentication_user_count: "1"
-# ocp4_workload_rhsso_authentication_user_name_base: "dr-admin"
-# ocp4_workload_rhsso_authentication_user_password: "{{ user_password }}"
-#
-# ocp4_workload_rhsso_authentication_env_type: "{{ env_type }}"
-
-# -------------------------------------------------------------------
-# ocp4_workload_trilio_backup_restore_vms
+# Workload: ocp4_workload_trilio_backup_restore_vms
 # -------------------------------------------------------------------
 ocp4_workload_trilio_backup_restore_vms_namespace: trilio-system
 ocp4_workload_trilio_backup_restore_vms_operator_channel: 5.0.x
 ocp4_workload_trilio_backup_restore_vms_dr_user: "dr-admin1"
-ocp4_workload_trilio_backup_restore_vms_dr_user_base: "{{ ocp4_workload_user_base }}"
+ocp4_workload_trilio_backup_restore_vms_dr_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
 ocp4_workload_trilio_backup_restore_vms_dr_user_password: "{{ user_password }}"
 ocp4_workload_trilio_backup_restore_vms_s3_accessKey: minio
 ocp4_workload_trilio_backup_restore_vms_s3_secretKey: "{{ user_password }}"
@@ -172,18 +93,12 @@ ocp4_workload_trilio_backup_restore_vms_user_count: "{{ num_users }}"
 ocp4_workload_trilio_backup_restore_vms_dr_user_namespace: "{{ original_namespace }}"
 
 # -------------------------------------------------------------------
-# ocp4_workload_kubevirt
+# Workload: ocp4_workload_openshift_virtualization
 # -------------------------------------------------------------------
-ocp4_workload_kubevirt_channel: stable
-ocp4_workload_kubevirt_use_catalog_snapshot: true
-ocp4_workload_kubevirt_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_kubevirt_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-# ocp4_workload_kubevirt_workload_tolerations:
-#   - key: metal
-#     operator: Exists
+ocp4_workload_openshift_virtualization_channel: stable
 
 # -------------------------------------------------------------------
-# ocp4_workload_minio
+# Workload: ocp4_workload_minio
 # -------------------------------------------------------------------
 ocp4_workload_minio_project: minio
 ocp4_workload_minio_storage_size: 256Gi
@@ -195,36 +110,28 @@ ocp4_workload_minio_image: quay.io/minio/minio
 ocp4_workload_minio_image_tag: RELEASE.2024-05-28T17-19-04Z
 ocp4_workload_minio_bucket_setup: true
 ocp4_workload_minio_bucket_name:
-  - trilio-storage
+- trilio-storage
 ocp4_workload_minio_bucket_multi_user: false
 ocp4_workload_minio_bucket_num_users: "{{ num_users }}"
-ocp4_workload_minio_bucket_userbase: "{{ ocp4_workload_user_base }}"
+ocp4_workload_minio_bucket_userbase: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
 
 # -------------------------------------------------------------------
-# ocp4_workload_openshift_gitops
+# Workload: ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
 ocp4_workload_openshift_gitops_channel: gitops-1.15
-ocp4_workload_openshift_gitops_use_catalog_snapshot: false
-
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_update_route_tls: true
 
 ocp4_workload_openshift_gitops_rbac_update: true
 ocp4_workload_openshift_gitops_rbac_policy: |
-  g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+  g, {{ ocp4_workload_authentication_htpasswd_admin_user }}, role:admin
   g, ssoadmin, role:admin
 ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
-
-#ocp4_workload_openshift_gitops_kustomize_plugin: true
-# ocp4_workload_openshift_gitops_kustomize_plugin_image: quay.io/devfile/universal-developer-image:ubi8-latest
-# ocp4_workload_openshift_gitops_kustomize_plugin_env:
-# - name: MY_VAR
-#   value: myValue
 
 ocp4_workload_openshift_gitops_resourceTrackingMethod: annotation
 
 # -------------------------------------------------------------------
-# ocp4_workload_gitops_bootstrap
+# Workload: ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/lb2788-trilio-gitops
 ocp4_workload_gitops_bootstrap_repo_revision: main
@@ -232,20 +139,20 @@ ocp4_workload_gitops_bootstrap_repo_path: bootstrap
 ocp4_workload_gitops_bootstrap_helm_values:
   user:
     count: "{{ num_users }}"
-    prefix: "{{ ocp4_workload_user_base }}"
+    prefix: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
   user_password: "{{ user_password }}"
   vms:
     namespace: "{{ original_namespace }}"
 
 # ------------------------------------------------------
-# ocp4_workload_showroom
+# Workload: ocp4_workload_showroom
 # ------------------------------------------------------
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom_backup_recovery_ocp_virt_trilio.git
 ocp4_workload_showroom_content_git_repo_ref: main
 ocp4_workload_showroom_deployment_type: helm
 ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
 ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
-ocp4_workload_showroom_deployer_chart_version: 1.2.1
+ocp4_workload_showroom_deployer_chart_version: 1.3.1
 ocp4_workload_showroom_content_only: true
 
 # -------------------------------------------------------------------
@@ -254,28 +161,15 @@ ocp4_workload_showroom_content_only: true
 __meta__:
   asset_uuid: 8e5d0a06-c3a0-420a-ae73-a82d8ecb33e4
   deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
       pull: missing
-  sandbox_api:
-    actions:
-      destroy:
-        catch_all: false
-  sandboxes:
-    - kind: OcpSandbox
-      namespace_suffix: ocp4-cluster
-      cloud_selector:
-        cloud: cnv
-        purpose: prod
-        virt: "yes"
-      quota:
-        requests.storage: "4000Gi"
-        limits.cpu: "512"
-        requests.cpu: "512"
-        limits.memory: "2000Gi"
-        requests.memory: "2000Gi"
+
   anarchy:
     namespace: babylon-anarchy-ocp-wksp
+
   catalog:
     reportingLabels:
       primaryBU: Hybrid_Platforms
@@ -284,29 +178,55 @@ __meta__:
     category: Workshops
     multiuser: false
     keywords:
-      - trilio
-      - ocp
-      - virtualization
-      - backup
-      - recovery
-      - vms
-      - virt
-      - virtualisation
+    - trilio
+    - ocp
+    - virtualization
+    - backup
+    - recovery
+    - vms
+    - virt
     labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
       Provider: RHDP
-  tower:
-    timeout: 14400
+
+  components:
+  - name: openshift_base
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools/prod
+    parameter_values:
+      cluster_size: sno
+      host_ocp4_installer_version: '4.18'
+      ols_enable: false
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+
   owners:
     maintainer:
-      - name: Judd Maltin
-        email: judd@redhat.com
+    - name: Judd Maltin
+      email: judd@redhat.com
     sme:
-      - name: Andrew Harrison
-        email: andharri@redhat.com
+    - name: Andrew Harrison
+      email: andharri@redhat.com
     instructions:
-      - name: Rodolfo Casas
-        email: rcasas@redhat.com
-      - name: Judd Maltin
-        email: judd@redhat.com
-      - name: Andrew Harrison
-        email: andharri@redhat.com
+    - name: Rodolfo Casas
+      email: rcasas@redhat.com
+    - name: Judd Maltin
+      email: judd@redhat.com
+    - name: Andrew Harrison
+      email: andharri@redhat.com
