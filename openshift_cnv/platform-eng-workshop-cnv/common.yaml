@@ -1,72 +1,80 @@
 ---
-# -------------------------------------------------------------------
-# AgnosticV Includes
-# -------------------------------------------------------------------
+# This item is restricted to devs only.
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+#include /includes/agd-v2-mapping.yaml
 #include /includes/catalog-icon-pe.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/sandbox-api.yaml
 
 #include /includes/parameters/purpose.yaml
-
-#include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
-#include /includes/secrets/dynamic-aws-dns.yaml
-#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/parameters/salesforce-id.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: Platform Engineering Workshops
+#
+# --- MIGRATED TO AGNOSTICDv2 ---
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
-# Mandatory Variables
+# AgnosticDv2 variables
 # -------------------------------------------------------------------
-env_type: ocp-workloads
-software_to_deploy: none
-openshift_cluster_admin_service_account_enable: true
-project_tag: "{{ env_type }}-{{ guid }}"
+config: openshift-workloads
+cloud_provider: none
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# -------------------------------------------------------------------
+# Collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: main
+  - name: https://github.com/rhpds/platform-engineering-workshop.git
+    type: git
+    version: main
+
+# openshift_cluster_admin_service_account_enable: true
 num_users: 1
-
-# -------------------------------------------------------------------
-# Platform
-# -------------------------------------------------------------------
-platform: rhpds
-
-# -------------------------------------------------------------------
-# Cloud Provider
-# -------------------------------------------------------------------
-cloud_provider: multi
-
-# -------------------------------------------------------------------
-# Workload variables
-# -------------------------------------------------------------------
-ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: "{{ 'v4.19_2025_09_15' if ocp4_installer_version == '4.19'  else 'v4.18_2025_09_29' }}"
 
 # -------------------------------------------------------------------
 # Common Password
 # -------------------------------------------------------------------
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-
-# -------------------------------------------------------------------
-# Repos
-# -------------------------------------------------------------------
-repo_method: satellite
-
-# Update RHEL to the latest packages (and reboot)
-update_packages: true
-
-# -------------------------------------------------------------------
-# Other Variables
-# -------------------------------------------------------------------
-
-install_ftl: false
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits')
+  }}
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
-infra_workloads:
-- ocp4_workload_authentication
-- ocp4_workload_platform_engineering_workshop
-- ocp4_workload_showroom
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+- rhdp.workshop.ocp4_workload_platform_engineering_workshop
+- agnosticd.core_workloads.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_htpasswd
+# -------------------------------------------------------------------
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+# Generate user password
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_password_randomized: true
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_platform_engineering_workshop
@@ -74,27 +82,11 @@ infra_workloads:
 ocp4_workload_platform_engineering_workshop_noobaa_install: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication
-# -------------------------------------------------------------------
-ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_remove_kubeadmin: true
-ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
-ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
-ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
-
-# -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
 # -------------------------------------------------------------------
-ocp4_workload_showroom_deployment_type: helm
-ocp4_workload_showroom_deployer_chart_version: 1.1.0
 ocp4_workload_showroom_content_git_repo: https://github.com/redhat-pe-workshop/showroom.git
 ocp4_workload_showroom_content_git_repo_ref: main
 ocp4_workload_showroom_content_only: true
-ocp4_workload_showroom_namespace: showroom
-
-# --- Student Workloads (YAML List)
-student_workloads: []
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -116,13 +108,15 @@ __meta__:
       email: eshortis@redhat.com
     - name: Bernard Tison
       email: btison@redhat.com
+
   anarchy:
     namespace: babylon-anarchy-sandboxes-gpte
+
   catalog:
     reportingLabels:
       primaryBU: Hybrid_Platforms
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "Platform Engineering Workshop (CNV Pooled)"
+    display_name: "Platform Engineering Workshop (CNV)"
     category: Workshops
     multiuser: false
     keywords:
@@ -136,28 +130,27 @@ __meta__:
       Product_Family: Red_Hat_Cloud
       Brand_Event: Red_Hat_One_2026
     parameters:
-    - name: ocp4_installer_version
-      description: OpenShift version to install
+    - name: host_ocp4_installer_version
+      description: Version of OpenShift to install
       formLabel: OpenShift Version
       required: false
       openAPIV3Schema:
         type: string
-        default: '4.18'
+        default: '4.20'
         enum:
         - '4.18'
         - '4.20'
       components:
       - name: all
-  # Components to include in template and catalog item
+
   components:
-  - name: openshift
+  - name: openshift_base
     display_name: OpenShift Cluster
-    item: openshift_cnv/ocp-cnv-pools/prod
+    item: agd-v2/ocp-cluster-cnv-pools/prod
     parameter_values:
-      # Automatic cluster size selection based on user count
       cluster_size: sno
-      ocp4_installer_version: "{{ ocp_installer_version }}"
-    # Propagate agnosticd_user_info data set by this component to variables.
+      ocp4_fips_enable: false
+      ols_enable: true
     propagate_provision_data:
     - name: openshift_api_ca_cert
       var: openshift_api_ca_cert
@@ -165,7 +158,29 @@ __meta__:
       var: openshift_api_url
     - name: openshift_cluster_admin_token
       var: openshift_api_key
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+
   deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:2025-04-14
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
       pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
