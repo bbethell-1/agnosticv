@@ -38,10 +38,12 @@ clusters:
 # -------------------------------------------------------------------
 # Autoscaling cluster
 # -------------------------------------------------------------------
-openshift_cnv_scale_cluster: true
+# Only scale for more than 3 users
+openshift_cnv_scale_cluster: "{{ (num_users | int) > 3 }}"
 ai_workers_cores: 16
-ai_workers_memory: 64Gi
-worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max }}"
+ai_workers_memory: 32Gi
+# One additional worker for each 5 users (only when scaling is enabled)
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 1] | max if (num_users | int) > 3 else 0 }}"
 
 # ===================================================================
 # Additional Collections & roles to be installed for this config
@@ -108,7 +110,6 @@ common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:
 ocp4_workload_litellm_virtual_keys_duration: "7d"
 ocp4_workload_litellm_virtual_keys_models:
 - llama-scout-17b
-- granite-4-0-h-tiny
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication_htpasswd
@@ -174,18 +175,20 @@ ocp4_workload_openshift_gitops_channel: gitops-1.18
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_update_route_tls: true
 
-ocp4_workload_openshift_gitops_rbac_update: false
+ocp4_workload_openshift_gitops_rbac_update: true
 ocp4_workload_openshift_gitops_rbac_policy: |
-  g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+  g, {{ ocp4_workload_authentication_htpasswd_admin_user }}, role:admin
 ocp4_workload_openshift_gitops_rbac_scopes: '[email,groups]'
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_app_sync: 30s
 
 ocp4_workload_openshift_gitops_use_catalog_snapshot: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_toolhive
 # -------------------------------------------------------------------
-ocp4_workload_toolhive_helm_chart_crds: oci://ghcr.io/stacklok/toolhive/toolhive-operator-crds:0.0.77
-ocp4_workload_toolhive_helm_chart_operator: oci://ghcr.io/stacklok/toolhive/toolhive-operator:0.5.9
+ocp4_workload_toolhive_helm_chart_crds: oci://ghcr.io/stacklok/toolhive/toolhive-operator-crds:0.0.82
+ocp4_workload_toolhive_helm_chart_operator: oci://ghcr.io/stacklok/toolhive/toolhive-operator:0.5.11
 
 ocp4_workload_toolhive_operator_image: ghcr.io/stacklok/toolhive/operator:v0.6.11-ubi
 ocp4_workload_toolhive_runner_image: ghcr.io/stacklok/toolhive/proxyrunner:v0.6.11-ubi
@@ -196,6 +199,7 @@ ocp4_workload_toolhive_registry_api_image: ghcr.io/stacklok/thv-registry-api:v0.
 # -------------------------------------------------------------------
 ocp4_workload_mcp_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
 ocp4_workload_mcp_user_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_mcp_user_metrics_enable: true
 
 ocp4_workload_mcp_user_openshift_image: quay.io/containers/kubernetes_mcp_server:v0.0.55
 
@@ -206,6 +210,7 @@ ocp4_workload_mcp_user_librechat_password: "{{ common_user_password }}"
 ocp4_workload_mcp_user_litemaas_url: "{{ lookup('agnosticd_user_data', 'litellm_api_base_url') }}"
 ocp4_workload_mcp_user_litemaas_keys: "{{ lookup('agnosticd_user_data', 'litellm_virtual_keys') }}"
 ocp4_workload_mcp_user_litemaas_models: "{{ lookup('agnosticd_user_data', 'litellm_available_models') }}"
+ocp4_workload_mcp_user_librechat_repo_tag: v0.8.1
 
 # Model to configure for the agent
 ocp4_workload_mcp_user_agent_model_name: "openai/llama-scout-17b"
@@ -274,9 +279,9 @@ __meta__:
     display_name: OpenShift Cluster
     item: agd-v2/ocp-cluster-cnv-pools/prod
     parameter_values:
-      cluster_size: multinode
+      cluster_size: sno
       host_ocp4_installer_version: "4.20"
-      ols_enable: true
+      ols_enable: false
       ocp4_fips_enable: false
     # Propagate agnosticd_user_info data set by this component to variables.
     propagate_provision_data:
