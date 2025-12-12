@@ -1,27 +1,46 @@
 ---
+# -------------------------------------------------------------------
+# --- Catalog Item: OpenShift GitOps Blank Environment
+#                   Cluster (CNV) - AgdV2
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
 #include /includes/catalog-icon-openshift.yaml
 
+#include /includes/agd-v2-mapping.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/sandbox-api.yaml
 
 #include /includes/parameters/purpose.yaml
 
-#include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
 #include /includes/secrets/dynamic-aws-dns.yaml
-#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-#include /includes/secrets/openshift_assisted_installer.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/secrets/zerossl.yaml
 
 # -------------------------------------------------------------------
-# OpenShift GitOps Blank Environment
+# Top Variables
 # -------------------------------------------------------------------
-
-# -------------------------------------------------------------------
-# Top level vars
-# -------------------------------------------------------------------
-env_type: ocp4-cluster
-software_to_deploy: openshift4_assisted
 cloud_provider: openshift_cnv
-platform: rhpds
+cloud_provider_version: 1.1.0
+config: openshift-cluster
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # Assisted Installer Collection
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.9
+  # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: 1.1.0
 
 # -------------------------------------------------------------------
 # CNV Specific
@@ -30,41 +49,40 @@ bastion_instance_image: rhel-9.6
 bastion_cores: 2
 bastion_memory: 4Gi
 
-# master_instance_count: 1
-worker_instance_count: "{{ 0 if master_instance_count | int == 1 else [(num_users | int / 3) | round(0, 'ceil') | int, 2] | max }}"
+control_plane_instance_count: "{{ control_plane_count }}"
+worker_instance_count: "{{ 0 if control_plane_count | int == 1 else [(num_users | int / 3) | round(0, 'ceil') | int, 2] | max }}"
 
-# ai_control_plane_cores: 16
-# ai_control_plane_memory: "{{ '64Gi' if master_instance_count | int == 1 else '32Gi' }}"
+ai_control_plane_cores: "{{ control_plane_cores }}"
+ai_control_plane_memory: "{{ control_plane_memory }}"
 
 ai_workers_cores: 8
 ai_workers_memory: 16Gi
 
 # -------------------------------------------------------------------
-# Repos
+# OpenShift settings
 # -------------------------------------------------------------------
-repo_method: satellite
-update_packages: true
+host_ocp4_installer_version: "{{ ocp4_installer_version }}"
+host_ocp4_installer_root_url: https://mirror.openshift.com/pub/openshift-v4/clients
+host_ocp4_deploy_installation_method: openshift_assisted
 
-# -------------------------------------------------------------------
-# OpenShift Version
-# -------------------------------------------------------------------
-# ocp4_installer_version: "4.19"
-ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+openshift_cluster_admin_service_account_enable: true
+
+cluster_name: "cluster-{{ guid }}"
 
 # -------------------------------------------------------------------
 # Student User on Bastion
 # -------------------------------------------------------------------
 install_student_user: true
 
-# -------------------------------------------------------------------
-# Workloads
-# -------------------------------------------------------------------
-infra_workloads:
-- ocp4_workload_external_odf
-- ocp4_workload_authentication
-- ocp4_workload_cert_manager
-- ocp4_workload_openshift_gitops
-- ocp4_workload_gitops_bootstrap
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+- agnosticd.core_workloads.ocp4_workload_external_odf
+- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+- agnosticd.core_workloads.ocp4_workload_cert_manager
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 
 # -------------------------------------------------------------------
 # Workload variables
@@ -72,43 +90,41 @@ infra_workloads:
 ocp4_workload_user_count: "{{ num_users }}"
 ocp4_workload_user_base: user
 
-common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_password: "{{ lookup('password', output_dir ~ '/user_password length=12 chars=ascii_letters,digits') }}"
 
 # -------------------------------------------------------------------
-# ocp4_workload_external_odf
+# agnosticd.core_workloads.ocp4_workload_external_odf
 # -------------------------------------------------------------------
-odf_channel: "stable-4.18"
-# FIXME: use value below when 4.19 is supported
-# odf_channel: "stable-{{ ocp4_installer_version }}"
+ocp4_workload_external_odf_channel: "stable-{{ ocp4_installer_version }}"
 
 # -------------------------------------------------------------------
-# ocp4_workload_authentication
+# agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
 # -------------------------------------------------------------------
-ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_user: admin
 ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
 ocp4_workload_authentication_htpasswd_user_base: user
 ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_password_randomized: true
 ocp4_workload_authentication_htpasswd_user_count: "{{ ocp4_workload_user_count }}"
-ocp4_workload_authentication_remove_kubeadmin: true
-ocp4_workload_authentication_enable_user_info_data: true
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
-# ocp4_workload_cert_manager
+# agnosticd.core_workloads.ocp4_workload_cert_manager
 # -------------------------------------------------------------------
-ocp4_workload_cert_manager_channel: stable-v1.17
+ocp4_workload_cert_manager_channel: stable-v1.18
 ocp4_workload_cert_manager_use_catalog_snapshot: false
 ocp4_workload_cert_manager_install_ingress_certificates: true
 ocp4_workload_cert_manager_install_api_certificates: false
-ocp4_workload_cert_manager_ec2_region: us-east-2
-ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
-ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
-ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+ocp4_workload_cert_manager_cloud_provider: aws
+ocp4_workload_cert_manager_aws_region: us-east-2
+ocp4_workload_cert_manager_aws_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_aws_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_aws_hostedzoneid: "{{ route53_aws_zone_id }}"
 
 # -------------------------------------------------------------------
-# ocp4_workload_openshift_gitops
+# agnosticd.core_workloads.ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.17
+ocp4_workload_openshift_gitops_channel: gitops-1.18
 ocp4_workload_openshift_gitops_use_catalog_snapshot: false
 
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
@@ -116,7 +132,7 @@ ocp4_workload_openshift_gitops_update_route_tls: true
 
 ocp4_workload_openshift_gitops_rbac_update: true
 ocp4_workload_openshift_gitops_rbac_policy: |
-  g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+  g, {{ ocp4_workload_authentication_htpasswd_admin_user }}, role:admin
   g, ssoadmin, role:admin
 ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
 
@@ -126,71 +142,66 @@ ocp4_workload_openshift_gitops_kustomize_plugin: true
 # - name: MY_VAR
 #   value: myValue
 
-ocp4_workload_openshift_gitops_resourceTrackingMethod: annotation
+ocp4_workload_openshift_gitops_resource_tracking_method: annotation
 
 # -------------------------------------------------------------------
-# ocp4_workload_gitops_bootstrap
+# agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ocp4-cnv-gitops
-ocp4_workload_gitops_bootstrap_repo_revision: v1.0.3
+ocp4_workload_gitops_bootstrap_repo_revision: v1.0.4
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap
 
-# 3scale requires RWX storage, so disable it for now.
 ocp4_workload_gitops_bootstrap_helm_values:
   git:
     url: https://github.com/rhpds/ocp-cluster-addons
-    revision: v1.4.0
+    revision: v1.5.0
   threeScale: ''
   devspaces:
-    startingCSV: devspacesoperator.v3.21.0
+    startingCSV: devspacesoperator.v3.24.1
   rhoai:
-    startingCSV: rhods-operator.2.22.1
+    startingCSV: rhods-operator.2.25.0
     datasciencecluster:
       components:
-        codeflare:
+        aipipelines:
+          argoWorkflowsControllers:
+            managementState: Removed
           managementState: Removed
         dashboard:
           managementState: Managed
-        datasciencepipelines:
+        feastoperator:
           managementState: Removed
         kserve:
+          managementState: Managed
           defaultDeploymentMode: RawDeployment
           rawDeploymentServiceConfig: Headed
-          managementState: Managed
           serving:
             managementState: Removed
             name: knative-serving
         kueue:
+          defaultClusterQueueName: default
+          defaultLocalQueueName: default
           managementState: Removed
-        modelmeshserving:
-          managementState: Removed
+        llamastackoperator:
+          managementState: Managed
         modelregistry:
           managementState: Removed
         ray:
           managementState: Removed
-        workbenches:
-          managementState: Managed
         trainingoperator:
           managementState: Removed
         trustyai:
           managementState: Removed
-        feastoperator:
-          managementState: Removed
-        llamastackoperator:
-          managementState: Removed
+        workbenches:
+          managementState: Managed
   rhsso:
-    startingCSV: rhsso-operator.7.6.12-opr-001
+    startingCSV: rhsso-operator.7.6.12-opr-005
     admin:
       username: ssoadmin
       password: "{{ common_admin_password }}"
   webterminal:
-    startingCSV: web-terminal.v1.13.0
+    startingCSV: web-terminal.v1.15.0
   compliance:
-    startingCSV: compliance-operator.v1.6.2
-  showroom:
-    content:
-      repoUrl: https://github.com/rhpds/ocp4-cnv-gitops-showroom.git
-      repoRef: v1.0.0
+    startingCSV: compliance-operator.v1.8.0
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -204,33 +215,13 @@ __meta__:
   anarchy:
     namespace: babylon-anarchy-ocp-wksp
   deployer:
-    actions:
-      start:
-        disable: true
-      stop:
-        disable: true
+    scm_url: https://github.com/agnosticd/agnosticd-v2
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.2
-  sandbox_api:
-    actions:
-      start:
-        enable: false
-      stop:
-        enable: false
-      destroy:
-        catch_all: false
-  sandboxes:
-  - kind: OcpSandbox
-    namespace_suffix: ocp4-cluster
-    cloud_selector:
-      cloud: cnv
-      purpose: prod
-      virt: "yes"
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
   catalog:
-    reportingLabels:
-      primaryBU: Hybrid_Platforms
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: OpenShift GitOps Blank Environment
+    display_name: >-
+      OpenShift GitOps Blank Environment
     category: Open_Environments
     multiuser: true
     keywords:
@@ -254,7 +245,7 @@ __meta__:
         default: 1
         minimum: 1
         maximum: 25
-    - name: master_instance_count
+    - name: control_plane_count
       description: OpenShift control plane node count
       formLabel: Control Plane Count
       required: false
@@ -265,7 +256,7 @@ __meta__:
         enum:
         - 1
         - 3
-    - name: ai_control_plane_cores
+    - name: control_plane_cores
       description: OpenShift control plane nodes cores
       formLabel: Control Plane Cores
       openAPIV3Schema:
@@ -275,7 +266,7 @@ __meta__:
         - 16
         - 24
         - 32
-    - name: ai_control_plane_memory
+    - name: control_plane_memory
       description: OpenShift control plane nodes memory
       formLabel: Control Plane Memory
       openAPIV3Schema:
@@ -291,9 +282,16 @@ __meta__:
       required: false
       openAPIV3Schema:
         type: string
-        default: '4.19'
+        default: '4.20'
         enum:
-        - '4.18'
         - '4.19'
+        - '4.20'
       annotation: demo.redhat.com/ocp-version
       variable: ocp4_installer_version
+  sandboxes:
+  - kind: OcpSandbox
+    namespace_suffix: ocp4-cluster
+    cloud_selector:
+      cloud: cnv
+      purpose: prod
+      virt: "yes"
