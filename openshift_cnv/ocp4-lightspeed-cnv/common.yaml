@@ -39,7 +39,8 @@ requirements_content:
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
     version: main
-  - name: https://github.com/agnosticd/ai_workloads.git
+  # Lightspeed Demo Collection
+  - name: https://github.com/rhpds/rhpds.openshift_lightspeed_demo.git
     type: git
     version: main
 
@@ -49,7 +50,8 @@ requirements_content:
 # --- Infra Workloads (YAML List)
 workloads:
 - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
-- agnosticd.ai_workloads.ocp4_workload_ols
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+- rhpds.openshift_lightspeed_demo.ocp4_workload_lightspeed_demo
 - agnosticd.core_workloads.ocp4_workload_web_terminal
 - agnosticd.core_workloads.ocp4_workload_showroom
 
@@ -70,20 +72,20 @@ ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1'))
 ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_ols
+# Workload: ocp4_workload_lightspeed_demo
 # -------------------------------------------------------------------
-# Create a child app and SP for this lab environment
-# It is removed when the environment is destroyed
-ocp4_workload_ols_get_token: true
-ocp4_workload_ai_platform: azure #openai, azure, watson, openshiftai
+# RHEL9 VM Configuration
+ocp4_workload_lightspeed_demo_vm_namespace: lightspeed-demo
+ocp4_workload_lightspeed_demo_vm_name: rhel9-demo
+ocp4_workload_lightspeed_demo_vm_cpu_cores: 1
+ocp4_workload_lightspeed_demo_vm_memory: 2Gi
 
-# Creates a broken pod that you can demo with
-# Does not affect overall functionality of lab environment
-ocp4_workload_ols_create_broken_pod: true
+# RAG Configuration
+ocp4_workload_lightspeed_demo_enable_rag: true
+ocp4_workload_lightspeed_demo_rag_image: 'quay.io/dialvare/acme-byok:latest'
 
-# Enable this for the demo exercise
-ocp4_workload_ols_enable_rag: true
-ocp4_workload_ols_rag_image: 'quay.io/dialvare/acme-byok:latest'
+# Broken Pod Configuration
+ocp4_workload_lightspeed_demo_create_broken_pod: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
@@ -91,13 +93,6 @@ ocp4_workload_ols_rag_image: 'quay.io/dialvare/acme-byok:latest'
 ocp4_workload_showroom_content_git_repo: https://github.com/dialvare/showroom-openshift-lightspeed.git
 ocp4_workload_showroom_content_git_repo_ref: main
 ocp4_workload_showroom_content_only: true
-
-# -------------------------------------------------------------------
-# Workloads to remove before sandbox is nuked
-# make sure __meta__.sandbox_api.actions.destroy.catch_all is set to false
-# -------------------------------------------------------------------
-remove_workloads:
-- agnosticd.ai_workloads.ocp4_workload_ols
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -169,12 +164,6 @@ __meta__:
       var: bastion_ansible_ssh_pass
     - name: bastion_ssh_port
       var: bastion_ansible_port
-
-  sandbox_api:
-    actions:
-      destroy:
-        # Allow the ocp4_workload_ols remove_workload to run
-        catch_all: false
 
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2
