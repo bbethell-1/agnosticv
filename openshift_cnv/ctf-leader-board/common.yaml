@@ -195,6 +195,10 @@ instances:
             protocol: TCP
             targetPort: 443
             name: ctfdashboard-443
+          - port: 3000
+            protocol: TCP
+            targetPort: 3000
+            name: ctfdashboard-3000
           - port: 8000
             protocol: TCP
             targetPort: 8000
@@ -213,6 +217,18 @@ instances:
         service: ctfdashboard
         targetPort: 443
         tls: true
+      - name: ctfdashboard-3000
+        host: gitea
+        service: ctfdashboard
+        targetPort: 3000
+        tls: true
+        tls_termination: edge
+      - name: ctfdashboard-8000
+        host: ctfd
+        service: ctfdashboard
+        targetPort: 8000
+        tls: true
+        tls_termination: edge
 
   - name: misc
     count: 1
@@ -293,11 +309,9 @@ instances:
 # -------------------------------------------------------------------
 requirements_content:
   collections:
-  # Core OpenShift Workloads
     - name: https://github.com/agnosticd/core_workloads.git
       type: git
       version: main
-    # AI Workloads
     - name: https://github.com/agnosticd/ai_workloads.git
       type: git
       version: main
@@ -305,6 +319,9 @@ requirements_content:
       type: git
       version: main
     - name: https://github.com/rhpds/rhpds.ctf.git
+      type: git
+      version: main
+    - name: https://github.com/rhpds/rhpds.manage_host.git
       type: git
       version: main
   # roles:
@@ -325,14 +342,13 @@ pre_software_workloads:
   all:
     - host_satellite_repositories
     - host_common_packages
+    - agnosticd.cloud_vm_workloads.control_user
+    - rhpds.manage_host.asset_injector
     - rhpds.ctf.infra
   bastions:
     - bastion
 
 software_workloads:
-  all:
-    - agnosticd.cloud_vm_workloads.control_user
-    - agnosticd.cloud_vm_workloads.asset_injector
   bastions:
     - infra.aap_configuration.dispatch
 
@@ -424,17 +440,20 @@ control_user_enable_user_data: false
 # -------------------------------------------------------------------
 # Workload: agnosticd.cloud_vm_workloads.asset_injector
 # -------------------------------------------------------------------
+
 bastion_asset_injector_assets:
   - description: Remove 50-cloud-init.conf, ssh issue
-    type: remove
+    module: file
+    state: remove
     path: /etc/ssh/sshd_config.d/50-cloud-init.conf
 
   - description: Remove 50-redhat.conf, ssh issue
-    type: remove
+    module: file
+    state: remove
     path: /etc/ssh/sshd_config.d/50-redhat.conf
 
   - description: Update sshd_config for password auth
-    type: blockinfile
+    module: blockinfile
     path: /etc/ssh/sshd_config
     state: present
     marker: "# {mark} Our custom SSH settings via Ansible"
@@ -445,30 +464,31 @@ bastion_asset_injector_assets:
       UsePAM yes
 
   - description: Restart sshd to pick up new password support configuration
-    type: service
+    module: service
     name: sshd
     state: restarted
 
-#   - description: Create SSH config for lab-user to easily SSH to nodes
-#     type: content
-#     dest: /home/{{ bastion_student_user_name }}/.ssh/config
-#     owner: "{{ bastion_student_user_name }}"
-#     group: "{{ bastion_student_user_name }}"
-#     mode: "0600"
-#     content: |
-#       # SSH config for easy access to nodes
-#       Host registry target
-#           User {{ ansible_user }}
-#           StrictHostKeyChecking no
-#           UserKnownHostsFile /dev/null
+  - description: Create SSH config for lab-user to easily SSH to nodes
+    module: copy
+    dest: /home/{{ bastion_student_user_name }}/.ssh/config
+    owner: "{{ bastion_student_user_name }}"
+    group: "{{ bastion_student_user_name }}"
+    mode: "0600"
+    content: |
+      # SSH config for easy access to nodes
+      Host *
+          User {{ student_name }}
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+          IdentityFile ~/.ssh/{{ guid }}key.pem
 
-# # Set asset_injector_assets based on group membership
-# asset_injector_assets: >-
-#   {{
-#     bastion_asset_injector_assets
-#     if 'bastions' in group_names else
-#     []
-#   }}
+# Set asset_injector_assets based on group membership
+asset_injector_modules: >-
+  {{
+    bastion_asset_injector_assets
+    if 'bastions' in group_names else
+    []
+  }}
 
 # -------------------------------------------------------------------
 # Workload: infra.aap_configuration.dispatch
@@ -483,6 +503,13 @@ aap_configuration_dispatcher_roles:
   - {role: controller_license, var: controller_license, tags: controller_license}
   - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
   - {role: gateway_users, var: aap_user_accounts, tags: gateway_users}
+  - {role: controller_credentials, var: controller_credentials, tags: controller_credentials}
+  - {role: controller_execution_environments, var: controller_execution_environments, tags: controller_execution_environments}
+  - {role: controller_inventories, var: controller_inventories, tags: controller_inventories}
+  - {role: controller_hosts, var: controller_hosts, tags: controller_hosts}
+  - {role: controller_host_groups, var: controller_groups, tags: controller_groups}
+  - {role: controller_projects, var: controller_projects, tags: controller_projects}
+  - {role: controller_job_templates, var: controller_templates, tags: controller_job_templates}
 
 ctf_ssh_private_key: |
   -----BEGIN OPENSSH PRIVATE KEY-----
@@ -650,6 +677,9 @@ agnosticv_importdata:
   ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
   ssh_username: "{{ student_name }}"
   ssh_password: "{{ common_password }}"
+  git_url: "https://gitea-{{ subdomain_base }}"
+  ctfd_url: "https://ctfd-{{ subdomain_base }}"
+  subdomain_base: "{{ subdomain_base }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
