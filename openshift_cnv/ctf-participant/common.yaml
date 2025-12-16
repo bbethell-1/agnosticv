@@ -105,8 +105,8 @@ instances:
         targetPort: 443
         tls: true
 
-  - name: "server"
-    count: 2
+  - name: "server1"
+    count: 1
     unique: false
     public_dns: false
     floating_ip: false
@@ -120,18 +120,70 @@ instances:
       - key: "ostype"
         value: "linux"
     services:
-      - name: node
+      - name: server1-fip
+        type: LoadBalancer
+        ports:
+          - port: 2222
+            protocol: TCP
+            targetPort: 22
+            name: server1-22
+      - name: server1
         ports:
           - port: 80
             protocol: TCP
             targetPort: 80
-            name: node-80
+            name: server1-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: server1-443
     routes:
-      - name: node-80
-        host: node
-        service: node
+      - name: server1-80
+        host: server1
+        service: server1
         targetPort: 80
-        tls: false
+        tls: true
+        tls_termination: edge
+
+  - name: "server2"
+    count: 1
+    unique: false
+    public_dns: false
+    floating_ip: false
+    image: "{{ node_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ node_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel10_nodes"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: server2-fip
+        type: LoadBalancer
+        ports:
+          - port: 2222
+            protocol: TCP
+            targetPort: 22
+            name: server2-22
+      - name: server2
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: server2-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: server2-443
+    routes:
+      - name: server2-80
+        host: server2
+        service: server2
+        targetPort: 80
+        tls: true
+        tls_termination: edge
 
 # -------------------------------------------------------------------
 # Ansible Module, Collections, and Roles Requirements
@@ -168,9 +220,9 @@ pre_software_workloads:
   bastions:
     - bastion
 
-# software_workloads:
-#   bastions:
-#     - infra.aap_configuration.dispatch
+software_workloads:
+  bastions:
+    - infra.aap_configuration.dispatch
 
 post_software_final_workloads:
   localhost:
@@ -389,11 +441,52 @@ bastion_asset_injector_assets:
     cmd: pip3 install passlib
 
 # Set asset_injector_assets based on group membership
+servers_asset_injector_assets:
+  - description: Remove 50-cloud-init.conf, ssh issue
+    module: file
+    state: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    module: file
+    state: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    module: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    module: service
+    name: sshd
+    state: restarted
+
+  - description: Create SSH config for lab-user to easily SSH to nodes
+    module: copy
+    dest: /home/{{ bastion_student_user_name }}/.ssh/config
+    owner: "{{ bastion_student_user_name }}"
+    group: "{{ bastion_student_user_name }}"
+    mode: "0600"
+    content: |
+      # SSH config for easy access to nodes
+      Host *
+          User {{ student_name }}
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+          IdentityFile ~/.ssh/{{ guid }}key.pem
+
 asset_injector_modules: >-
   {{
     bastion_asset_injector_assets
-    if 'bastions' in group_names else
-    []
+    if 'bastions' in group_names
+      else servers_asset_injector_assets
   }}
 
 # -------------------------------------------------------------------
@@ -412,15 +505,15 @@ aap_configuration_dispatcher_roles:
   - {role: gateway_role_user_assignments, var: gateway_role_user_assignments, tags: gateway_role_user_assignments}
   - {role: controller_inventories, var: controller_inventories, tags: controller_inventories}
   - {role: controller_hosts, var: controller_hosts, tags: controller_hosts}
-  - {role: controller_projects, var: controller_projects, tags: controller_projects}
-  - {role: controller_job_templates, var: controller_templates, tags: controller_job_templates}
+  # - {role: controller_projects, var: controller_projects, tags: controller_projects}
+  # - {role: controller_job_templates, var: controller_templates, tags: controller_job_templates}
 
 lab_base_aap_name: "Table-{{ guid }}"
 ctf_aap_org_name: "{{ lab_base_aap_name }}-org"
 
 aap_organizations:
-  - name: "{{ lab_base_aap_name }}-org"
-    description: Org for CTF people {{ lab_base_aap_name }}-org
+  - name: "{{ ctf_aap_org_name }}"
+    description: "Org for CTF people {{ ctf_aap_org_name }}"
 
 aap_user_accounts:
   - username: "{{ lab_base_aap_name }}-user"
@@ -454,20 +547,32 @@ controller_inventories:
 controller_hosts:
   - name: server1
     inventory: "{{ lab_base_aap_name }}-inventory"
-    # variables:
-    #   ansible_host: "server1.{{ guid }}{{ subdomain_base_suffix }}"
+    variables:
+      ansible_host: "{{ hostvars['server1']['external_ip'] }}"
+      ansible_port: "2222"
+      ansible_user: "{{ student_name }}"
+      ansible_password: "{{ student_password }}"
   - name: server2
     inventory: "{{ lab_base_aap_name }}-inventory"
-    # variables:
-    #   ansible_host: "server2.{{ guid }}{{ subdomain_base_suffix }}"
+    variables:
+      ansible_host: "{{ hostvars['server2']['external_ip'] }}"
+      ansible_port: "2222"
+      ansible_user: "{{ student_name }}"
+      ansible_password: "{{ student_password }}"
   - name: "{{ lab_base_aap_name }}-server1"
     inventory: "CTF All Table Host"
-    # variables:
-    #   ansible_host: "server1.{{ guid }}{{ subdomain_base_suffix }}"
+    variables:
+      ansible_host: "{{ hostvars['server1']['external_ip'] }}"
+      ansible_port: "2222"
+      ansible_user: "{{ student_name }}"
+      ansible_password: "{{ student_password }}"
   - name: "{{ lab_base_aap_name }}-server2"
     inventory: "CTF All Table Host"
-    # variables:
-    #   ansible_host: "server2.{{ guid }}{{ subdomain_base_suffix }}"
+    variables:
+      ansible_host: "{{ hostvars['server2']['external_ip'] }}"
+      ansible_port: "2222"
+      ansible_user: "{{ student_name }}"
+      ansible_password: "{{ student_password }}"
 
 # controller_projects:
 #   - name: "{{ lab_base_aap_name }}-CTF Flags"
@@ -697,6 +802,8 @@ agnosticv_importdata:
   openshift_kubeadmin_password: "{{ openshift_kubeadmin_password }}"
   openshift_admin_user: admin
   openshift_admin_password: "{{ common_admin_password  }}"
+  server1_enternal_ip: "{{ hostvars['server1']['external_ip'] }}"
+  server2_enternal_ip: "{{ hostvars['server2']['external_ip'] }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -727,8 +834,9 @@ __meta__:
       update:
         disable: true
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      # image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
       # image: quay.io/agnosticd/ee-multicloud:chained-2025-09-30
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-12-16
       pull: missing
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
@@ -746,13 +854,13 @@ __meta__:
       Provider: RHDP
       Brand_Event: Red_Hat_One_2026
     multiuser: false
-    # parameters:
-    #   - name: ctf_leader_board_subdomain_base
-    #     description: Enter CTF Leader Board CI Subdomain Base
-    #     formLabel: "Enter CTF Leader Board CI Subdomain Base"
-    #     required: true
-    #     openAPIV3Schema:
-    #       type: string
+    parameters:
+      - name: ctf_leader_board_subdomain_base
+        description: Enter CTF Leader Board CI Subdomain Base
+        formLabel: "Enter CTF Leader Board CI Subdomain Base"
+        required: true
+        openAPIV3Schema:
+          type: string
   sandboxes:
     - kind: OcpSandbox
       namespace_suffix: ocp4-cluster
