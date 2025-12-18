@@ -94,16 +94,10 @@ workloads:
 - agnosticd.core_workloads.ocp4_workload_pipelines
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
 - agnosticd.ai_workloads.ocp4_workload_toolhive
-# - rhpds.mcp_workloads.ocp4_workload_mcp_user
-# - agnosticd.core_workloads.ocp4_workload_serverless
-# - agnosticd.ai_workloads.ocp4_workload_openshift_ai
-# - rhpds.openshift_ai.ocp4_workload_openshift_ai_dashboard_config
 - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# - rhpds.openshift_ai.ocp4_workload_openshift_ai_dashboard_config
 - agnosticd.showroom.ocp4_workload_showroom_ocp_integration
 - agnosticd.showroom.ocp4_workload_showroom
-
-# - rhpds.openshift_ai.ocp4_workload_openshift_ai_model_deployment
-# - agnosticd.ai_workloads.ocp4_workload_ols
 
 # ===================================================================
 # Variables for specific workloads
@@ -120,15 +114,16 @@ common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:
 # -------------------------------------------------------------------
 ocp4_workload_litellm_virtual_keys_duration: "7d"
 ocp4_workload_litellm_virtual_keys_models:
-- codellama-7b
-- codellama-7b-instruct
-- granite-4-0-h-tiny
-- granite-3-2-8b-instruct
 - llama-scout-17b
 - Llama-Guard-3-1B
 - nomic-embed-text-v1-5
 - qwen3-14b-gaudi
 - qwen25-7b-instruct
+
+# - codellama-7b
+# - codellama-7b-instruct
+# - granite-4-0-h-tiny
+# - granite-3-2-8b-instruct
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication_htpasswd
@@ -205,31 +200,17 @@ ocp4_workload_openshift_gitops_use_catalog_snapshot: false
 # -------------------------------------------------------------------
 # ocp4_workload_toolhive
 # -------------------------------------------------------------------
+
 ocp4_workload_toolhive_helm_chart_crds: oci://ghcr.io/stacklok/toolhive/toolhive-operator-crds:0.0.77
 ocp4_workload_toolhive_helm_chart_operator: oci://ghcr.io/stacklok/toolhive/toolhive-operator:0.5.9
+ocp4_workload_toolhive_operator_image: ghcr.io/stacklok/toolhive/operator:latest-ubi
+ocp4_workload_toolhive_runner_image: ghcr.io/stacklok/toolhive/proxyrunner:latest-ubi
+ocp4_workload_toolhive_registry_api_image: ghcr.io/stacklok/thv-registry-api:latest
 
-ocp4_workload_toolhive_operator_image: ghcr.io/stacklok/toolhive/operator:v0.6.11-ubi
-ocp4_workload_toolhive_runner_image: ghcr.io/stacklok/toolhive/proxyrunner:v0.6.11-ubi
-ocp4_workload_toolhive_registry_api_image: ghcr.io/stacklok/thv-registry-api:v0.4.2
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_mcp_user
-# -------------------------------------------------------------------
-ocp4_workload_mcp_user_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
-ocp4_workload_mcp_user_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
-
-ocp4_workload_mcp_user_openshift_image: quay.io/containers/kubernetes_mcp_server:v0.0.55
-
-ocp4_workload_mcp_user_gitea_external_url: "https://gitea.{{ openshift_cluster_ingress_domain }}"
-ocp4_workload_mcp_user_gitea_user_password: "{{ common_user_password }}"
-
-ocp4_workload_mcp_user_librechat_password: "{{ common_user_password }}"
-ocp4_workload_mcp_user_litemaas_url: "{{ lookup('agnosticd_user_data', 'litellm_api_base_url') }}"
-ocp4_workload_mcp_user_litemaas_keys: "{{ lookup('agnosticd_user_data', 'litellm_virtual_keys') }}"
-ocp4_workload_mcp_user_litemaas_models: "{{ lookup('agnosticd_user_data', 'litellm_available_models') }}"
-
-# Model to configure for the agent
-ocp4_workload_mcp_user_agent_model_name: "openai/llama-scout-17b"
+# Pinned versions (see MCP Lab)
+# ocp4_workload_toolhive_operator_image: ghcr.io/stacklok/toolhive/operator:v0.6.11-ubi
+# ocp4_workload_toolhive_runner_image: ghcr.io/stacklok/toolhive/proxyrunner:v0.6.11-ubi
+# ocp4_workload_toolhive_registry_api_image: ghcr.io/stacklok/thv-registry-api:v0.4.2
 
 # -------------------------------------------------------------------
 # ocp4_workload_serverless
@@ -237,72 +218,6 @@ ocp4_workload_mcp_user_agent_model_name: "openai/llama-scout-17b"
 ocp4_workload_serverless_channel: stable
 ocp4_workload_serverless_install_serving: false
 ocp4_workload_serverless_install_eventing: false
-
-# -------------------------------------------------------------------
-# ocp4_workload_openshift_ai
-#
-# disabled currently tony kay 2025-12-10
-# -------------------------------------------------------------------
-ocp4_workload_openshift_ai_channel: fast-3.x
-
-# DSC Configuration
-ocp4_workload_openshift_ai_dashboard: Managed
-ocp4_workload_openshift_ai_datasciencepipelines: Managed
-ocp4_workload_openshift_ai_kserve: Managed
-ocp4_workload_openshift_ai_modelmeshserving: Managed
-
-ocp4_workload_openshift_ai_modelregistry: Managed
-ocp4_workload_openshift_ai_modelregistry_namespace: rhoai-model-registries
-ocp4_workload_openshift_ai_modelregistry_config:
-  managementState: "{{ ocp4_workload_openshift_ai_modelregistry }}"
-  registriesNamespace: "{{ ocp4_workload_openshift_ai_modelregistry_namespace }}"
-
-ocp4_workload_openshift_ai_ray: Managed
-ocp4_workload_openshift_ai_trustyai: Managed
-ocp4_workload_openshift_ai_trainingoperator: Managed
-ocp4_workload_openshift_ai_workbenches: Managed
-ocp4_workload_openshift_ai_feastoperator: Managed
-ocp4_workload_openshift_ai_llamastackoperator: Managed
-ocp4_workload_openshift_ai_kueue: Removed
-ocp4_workload_openshift_ai_aipipelines: Managed
-
-# -------------------------------------------------------------------
-# rhpds.openshift_ai.ocp4_workload_openshift_ai_dashboard_config
-#
-# disabled currently tony kay 2025-12-10
-# -------------------------------------------------------------------
-ocp4_workload_openshift_ai_dashboard_config_settings:
-  disableTracking: false
-  disableModelRegistry: false
-  disableModelCatalog: false
-  disableKServeMetrics: false
-  genAiStudio: true
-  modelAsService: true
-  disableLMEval: false
-
-ocp4_workload_openshift_ai_dashboard_config_notebook_controller:
-  enabled: true
-  pvcSize: 20Gi
-
-ocp4_workload_openshift_ai_hardware_profile_gpu_identifiers:
-- defaultCount: '1'
-  displayName: CPU
-  identifier: cpu
-  maxCount: '8'
-  minCount: 1
-  resourceType: CPU
-- defaultCount: 12Gi
-  displayName: Memory
-  identifier: memory
-  maxCount: 16Gi
-  minCount: 1Gi
-  resourceType: Memory
-- defaultCount: 1
-  displayName: GPU
-  identifier: nvidia.com/gpu
-  maxCount: 4
-  minCount: 0
-  resourceType: Accelerator
 
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
