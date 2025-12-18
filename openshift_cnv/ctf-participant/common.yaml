@@ -231,22 +231,18 @@ post_software_final_workloads:
 # -------------------------------------------------------------------
 # Workload: openshift_workload_deployer
 # -------------------------------------------------------------------
-clusters:
-  - default:
-      api_url: "{{ openshift_api_url }}"
-      api_token: "{{ openshift_cluster_admin_token }}"
-
-openshift_workloads:
-  - name: agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
-    clusters:
-      - default
-
 ACTION: provision
-openshift_workload_deployer_workloads: "{{ openshift_workloads }}"
-openshift_workload_deployer_clusters: "{{ clusters }}"
+openshift_workload_deployer_clusters:
+  default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_cluster_admin_token }}"
+
+openshift_workload_deployer_workloads:
+  - name: agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+  - name: agnosticd.core_workloads.ocp4_workload_openshift_virtualization
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication_htpasswd
+# OCP Workload: ocp4_workload_authentication_htpasswd
 # -------------------------------------------------------------------
 num_users: 1
 common_admin_password: >-
@@ -271,6 +267,12 @@ ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
 ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
+# OCP Workload: ocp4_workload_openshift_virtualization
+# -------------------------------------------------------------------
+ocp4_workload_openshift_virtualization_channel: stable
+ocp4_workload_openshift_virtualization_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
 # Workload: host_satellite_repositories
 # -------------------------------------------------------------------
 install_satellite_repositories: true
@@ -292,6 +294,10 @@ bastion_host_packages:
   - httpd-tools
   - nano
   - podman
+  - python3.11
+  - python3.11-devel
+  - python3.11-pip
+  - python3.11-kubernetes
   - python3
   - python3-pip
   - python3-kubernetes
@@ -398,10 +404,27 @@ bastion_asset_injector_assets:
           UserKnownHostsFile /dev/null
           IdentityFile ~/.ssh/{{ guid }}key.pem
 
+  - description: Download virtclt cli
+    module: get_url
+    src: "{{ hostvars.localhost._ocp4_workload_openshift_virtualization_virtctl_url }}"
+    dest: /tmp/virtctl.tar.gz
+    owner: "{{ student_name }}"
+
+  - description: Unarchive virtclt cli
+    module: unarchive
+    src: /tmp/virtctl.tar.gz
+    dest: /usr/bin
+    remote_src: true
+
+  - description: Remove virtctl downloaded tar
+    module: file
+    state: remove
+    path: /tmp/virtctl.tar.gz
+
   - description: Download oc client
     module: get_url
     src: "{{ openshift_client_download_url }}"
-    dest: /tmp/
+    dest: /tmp/openshift-client-linux.tar.gz
     owner: "{{ student_name }}"
 
   - description: Unarchive oc client
@@ -409,6 +432,11 @@ bastion_asset_injector_assets:
     src: /tmp/openshift-client-linux.tar.gz
     dest: /usr/bin
     remote_src: true
+
+  - description: Remove oc downloaded tar
+    module: file
+    state: remove
+    path: /tmp/openshift-client-linux.tar.gz
 
   - description: Openshift oc login
     become: true
@@ -432,13 +460,32 @@ bastion_asset_injector_assets:
       community.general
       community.libvirt
       community.crypto
+      community.okd
       kubernetes.core
 
   - description: Install python libs
     become: true
     become_user: "{{ student_name }}"
     module: command
-    cmd: pip3 install passlib
+    cmd: pip3.11 install passlib
+
+  - description: Set python default to 3.11
+    become: true
+    module: shell
+    cmd: >-
+      sudo alternatives --install /usr/bin/python python /usr/bin/python3.9 10;
+      sudo alternatives --install /usr/bin/python python /usr/bin/python3.11 20;
+      sudo alternatives --set python /usr/bin/python3.11;
+      python --version
+
+  - description: Set python3 default to 3.11
+    become: true
+    module: shell
+    cmd: >-
+      sudo alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 10;
+      sudo alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 20;
+      sudo alternatives --set python3 /usr/bin/python3.11;
+      python3 --version
 
 # Set asset_injector_assets based on group membership
 servers_asset_injector_assets:
