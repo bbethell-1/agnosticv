@@ -119,14 +119,12 @@ instances:
     networks:
       - default
     services:
-      - name: showroom
+      - name: bastion
         ports:
           - port: 80
             protocol: TCP
             targetPort: 80
-            name: showroom
-      - name: bastion
-        ports:
+            name: bastion-80
           - port: 443
             protocol: TCP
             targetPort: 443
@@ -140,14 +138,14 @@ instances:
             targetPort: 9090
             name: bastion-9090
     routes:
-      - name: showroom
-        host: showroom
-        service: showroom
+      - name: bastion-80
+        host: ansible-1
+        service: bastion
         targetPort: 80
         tls: true
         tls_termination: edge
       - name: bastion-443
-        host: ansible-1
+        host: ansible-1-443
         service: bastion
         targetPort: 443
         tls: true
@@ -414,8 +412,8 @@ post_software_workloads:
 post_software_final_workloads:
   localhost:
     - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
-  # bastions:
-  #   - agnosticd.showroom.vm_workload_showroom
+  bastions:
+    - agnosticd.showroom.vm_workload_showroom
 
 # -------------------------------------------------------------------
 # Workload: host_satellite_repositories
@@ -500,7 +498,8 @@ asset_injector_assets:
 # ----------------------
 # Additional Vars
 # ----------------------
-ripu_project_scm_url: 'https://github.com/redhat-partner-tech/leapp-project'
+# ripu_project_scm_url: 'https://github.com/redhat-partner-tech/leapp-project'
+ripu_project_scm_url: 'https://github.com/rhpds/leapp-project.git'
 ripu_project_scm_branch: 'prod'
 
 # ----------------------
@@ -604,15 +603,15 @@ controller_hosts:
     variables:
       ansible_user: rhel
       ansible_password: ansible123!
-  - name: "rhel7"
+  - name: "node1"
     inventory: "Workshop Inventory"
     enabled: true
     state: present
-  - name: "rhel8"
+  - name: "node2"
     inventory: "Workshop Inventory"
     enabled: true
     state: present
-  - name: "rhel9"
+  - name: "node3"
     inventory: "Workshop Inventory"
     enabled: true
     state: present
@@ -627,9 +626,9 @@ controller_groups:
     inventory: "Workshop Inventory"
     state: present
     hosts:
-      - rhel7
-      - rhel8
-      - rhel9
+      - node1
+      - node2
+      - node3
 
 controller_templates:
   - name: "Z / CaC / Controller"
@@ -667,30 +666,23 @@ agnosticv_importdata:
   code_server_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
-# Role: showroom
+# Workload: agnosticd.showroom.vm_workload_showroom
 # -------------------------------------------------------------------
-# showroom_git_repo: https://github.com/rhpds/showroom-ai-driven-ansible-automation.git
-# showroom_user: showroom
-# showroom_ui: default
-# showroom_tls_provider: none
-# showroom_user_password: "{{ common_password }}"
-# showroom_ssh_method: sshkey
-# showroom_ttys_enable_tmux: false
-# showroom_tab_services:
-#   - double_tty
-#   - web1
-# showroom_lab_users:
-#   - "{{ student_name }}"
+showroom_git_repo: https://github.com/rhpds/automating-ripu-with-ansible-showroom.git
+showroom_git_ref: main
+showroom_tls_provider: none
+showroom_host: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ guid }}{{ subdomain_base_suffix }}"
+showroom_ssh_method: password
+showroom_tab_services:
+  - single_terminal
 
-# showroom_tab_double_tty_top_username: "{{ student_name }}"
-# showroom_tab_double_tty_bottom_username: "{{ student_name }}"
-# showroom_ssh_host: "{{ openshift_cnv_ssh_address }}"
-# showroom_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
-# showroom_ssh_username: "{{ student_name }}"
-# showroom_host: "showroom-{{ subdomain_base }}"
+showroom_lab_users:
+  - "{{ student_name }}"
+showroom_user_password: "{{ student_password }}"
+showroom_ssh_host: "{{ openshift_cnv_ssh_address }}"
+showroom_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+showroom_ssh_username: "{{ student_name }}"
 
-# showroom_tab_web1_url: "https://controller-{{ subdomain_base }}"
-# showroom_tab_web1_name: "AAP"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -711,6 +703,17 @@ __meta__:
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:chained-2025-09-30
       pull: missing
@@ -727,6 +730,7 @@ __meta__:
       Product: Red_Hat_Ansible_Automation_Platform
       Product_Family: Red_Hat_Automation
       Provider: RHDP
+      Brand_Event: Red_Hat_One_2026
     multiuser: false
   sandboxes:
     - kind: OcpSandbox
