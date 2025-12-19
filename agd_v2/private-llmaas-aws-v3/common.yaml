@@ -11,7 +11,6 @@
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/aws-regions-6.yaml
 
-
 #include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
@@ -28,19 +27,10 @@ config: openshift-cluster
 # ===================================================================
 requirements_content:
   collections:
-  # Core OpenShift Workloads
-  - name: https://github.com/agnosticd/core_workloads.git
-    type: git
-    version: main
-  # AI OpenShift Workloads
-  - name: https://github.com/agnosticd/ai_workloads.git
-    type: git
-    version: main
-  # Custom workloads
-  - name: https://github.com/rhpds/rhpds.openshift_ai.git
-    type: git
-  #  version: agnosticd-user-info-fix
-    version: main
+    # Core OpenShift Workloads
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: main
 
 # -------------------------------------------------------------------
 # VM configuration
@@ -49,7 +39,8 @@ control_plane_instance_type: c6a.4xlarge
 control_plane_instance_count: 3
 
 worker_instance_type: m6a.4xlarge
-worker_instance_count: "{{ [((num_users | int * 0.3) | round(0, 'ceil') | int) + 4, 5] | max\
+worker_instance_count:
+  "{{ [((num_users | int * 0.3) | round(0, 'ceil') | int) + 4, 5] | max\
   \ }}"
 
 bastion_instance_type: t3a.small
@@ -75,29 +66,12 @@ bastion_setup_student_user: true
 # List of workloads to be deployed
 # -------------------------------------------------------------------
 workloads:
-#- agnosticd.core_workloads.ocp4_workload_openshift_data_foundation
-- agnosticd.core_workloads.ocp4_workload_machinesets
-- agnosticd.core_workloads.ocp4_workload_cert_manager
-- agnosticd.core_workloads.ocp4_workload_authentication_keycloak
-- agnosticd.core_workloads.ocp4_workload_serverless
-- agnosticd.core_workloads.ocp4_workload_pipelines
-- agnosticd.core_workloads.ocp4_workload_openshift_gitops
-#- agnosticd.core_workloads.ocp4_workload_minio
-- agnosticd.core_workloads.ocp4_workload_nfd
-- agnosticd.core_workloads.ocp4_workload_authorino
-- agnosticd.core_workloads.ocp4_workload_servicemesh3
-- agnosticd.ai_workloads.ocp4_workload_nvidia_gpu_operator
-- agnosticd.core_workloads.ocp4_workload_connectivity_link
-#- agnosticd.ai_workloads.ocp4_workload_s3_model_copy_to_minio
-- agnosticd.ai_workloads.ocp4_workload_openshift_ai
-- rhpds.openshift_ai.ocp4_workload_openshift_ai_dashboard_config
-- rhpds.openshift_ai.ocp4_workload_openshift_ai_model_as_a_service
-#- rhpds.litemaas.ocp4_workload_litemaas
-#- agnosticd.core_workloads.ocp4_workload_litellm
-- agnosticd.core_workloads.ocp4_workload_devspaces
-- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
-- agnosticd.core_workloads.ocp4_workload_web_terminal
-- agnosticd.core_workloads.ocp4_workload_showroom
+  - agnosticd.core_workloads.ocp4_workload_machinesets
+  - agnosticd.core_workloads.ocp4_workload_cert_manager
+  - agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+  - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.core_workloads.ocp4_workload_showroom
 
 # -------------------------------------------------------------------
 # Workload variables
@@ -108,69 +82,31 @@ common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8
 common_admin_password: "{{ (guid[::-1][:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 common_admin_username: admin
 
-ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.20_2025_10_23
-
-# -------------------------------------------------------------------
-# ocp4_workload_openshift_data_foundation
-# -------------------------------------------------------------------
-ocp4_workload_openshift_data_foundation_channel: stable-4.18
-
-ocp4_workload_openshift_data_foundation_catalogsource_setup: false
-# ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
-ocp4_workload_openshift_data_foundation_update_default_storage_class: true
-ocp4_workload_openshift_data_foundation_new_default_storage_class_name: ocs-storagecluster-ceph-rbd
-
-ocp4_workload_openshift_data_foundation_ceph_storage_system_deploy_timeout: 1500
-ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1500
-
-ocp4_workload_openshift_data_foundation_tolerations:
-- key: nvidia.com/gpu
-  effect: NoSchedule
-  value: "True"
-
 # -------------------------------------------------------------------
 # ocp4_workload_machinesets
 # -------------------------------------------------------------------
 ocp4_workload_machinesets_wait_for_nodes: true
 gpu_instance_type_big: g6e.2xlarge
-gpu_instance_type_small: g6.2xlarge
 
 ocp4_workload_machinesets_machineset_groups:
-- name: worker-gpu-big
-  role: worker-gpu
-  instance_type: "{{ gpu_instance_type_big }}"
-  autoscale: false  # Workaround for core_workloads bug - min=max=replicas means no actual scaling
-  total_replicas: "1"
-  total_replicas_min: "1"
-  total_replicas_max: "1"
-  root_volume_size: "250"
-  taints:
-  - key: nvidia.com/gpu
-    value: l40-gpu
-    effect: NoSchedule
-
-- name: worker-gpu-small
-  role: worker-gpu
-  instance_type: "{{ gpu_instance_type_small }}"
-  autoscale: false
-  total_replicas: "1"
-  total_replicas_min: "1"
-  total_replicas_max: "1"
-  root_volume_size: "250"
-  taints:
-  - key: nvidia.com/gpu
-    value: l4-gpu
-    effect: NoSchedule
+  - name: worker-gpu-big
+    role: worker-gpu
+    instance_type: "{{ gpu_instance_type_big }}"
+    autoscale: false # Workaround for core_workloads bug - min=max=replicas means no actual scaling
+    total_replicas: "1"
+    total_replicas_min: "1"
+    total_replicas_max: "1"
+    root_volume_size: "250"
+    taints:
+      - key: nvidia.com/gpu
+        value: l40-gpu
+        effect: NoSchedule
 
 # -------------------------------------------------------------------
 # ocp4_workload_cert_manager
 # -------------------------------------------------------------------
 ocp4_workload_cert_manager_channel: stable-v1.17
 ocp4_workload_cert_manager_use_catalog_snapshot: false
-# ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 ocp4_workload_cert_manager_aws_region: "{{ aws_region }}"
 ocp4_workload_cert_manager_aws_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
@@ -191,35 +127,15 @@ ocp4_workload_authentication_keycloak_use_catalog_source: false
 ocp4_workload_authentication_keycloak_num_users: "{{ ocp4_workload_user_count }}"
 ocp4_workload_authentication_keycloak_admin_username: "{{ common_admin_username }}"
 ocp4_workload_authentication_keycloak_admin_password: "{{ common_admin_password }}"
-ocp4_workload_authentication_keycloak_user_username_base: "{{ ocp4_workload_user_base}}"
+ocp4_workload_authentication_keycloak_user_username_base: "{{ ocp4_workload_user_base }}"
 ocp4_workload_authentication_keycloak_user_password: "{{ common_user_password }}"
 ocp4_workload_authentication_keycloak_remove_kubeadmin: true
-
-# -------------------------------------------------------------------
-# ocp4_workload_serverless
-# -------------------------------------------------------------------
-ocp4_workload_serverless_channel: stable
-
-ocp4_workload_serverless_use_catalog_snapshot: false
-# ocp4_workload_serverless_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-ocp4_workload_serverless_install_serving: false
-ocp4_workload_serverless_install_eventing: false
-
-# -------------------------------------------------------------------
-# ocp4_workload_pipelines
-# -------------------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.20
-
-ocp4_workload_pipelines_use_catalog_snapshot: false
-# ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
 ocp4_workload_openshift_gitops_channel: gitops-1.18
 ocp4_workload_openshift_gitops_use_catalog_snapshot: false
-# ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_update_route_tls: true
@@ -242,502 +158,32 @@ ocp4_workload_openshift_gitops_rbac_update: true
 ocp4_workload_openshift_gitops_rbac_policy: |
   g, {{ ocp4_workload_authentication_keycloak_admin_username }}, role:admin
   g, user1, role:admin
-ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
-
-# -------------------------------------------------------------------
-# ocp4_workload_minio
-# -------------------------------------------------------------------
-ocp4_workload_minio_project: ic-shared-minio
-ocp4_workload_minio_name: minio
-ocp4_workload_minio_storage_size: 150Gi
-ocp4_workload_minio_image: quay.io/minio/minio
-ocp4_workload_minio_image_tag: RELEASE.2025-02-28T09-55-16Z
-ocp4_workload_minio_root_user: minio
-ocp4_workload_minio_root_password: minio123
-
-ocp4_workload_minio_modern_deployment: true
-ocp4_workload_minio_bucket_name:
-- llm-storage
-
-# -------------------------------------------------------------------
-# ocp4_workload_nfd
-# -------------------------------------------------------------------
-ocp4_workload_nfd_operator_channel: stable
-
-ocp4_workload_nfd_use_catalog_snapshot: false
-# ocp4_workload_nfd_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-ocp4_workload_nfd_worker_config:
-  core:
-    sleepInterval: 60s
-  sources:
-    pci:
-      deviceClassWhitelist:
-      - "0200"
-      - "03"
-      - "12"
-      deviceLabelFields:
-      - "vendor"
-
-# -------------------------------------------------------------------
-# ocp4_workload_authorino
-# -------------------------------------------------------------------
-ocp4_workload_authorino_operator_channel: stable
-
-ocp4_workload_authorino_operator_use_catalog_snapshot: false
-# ocp4_workload_authorino_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-# -------------------------------------------------------------------
-# agnosticd.core_workloads.ocp4_workload_servicemesh3
-# -------------------------------------------------------------------
-ocp4_workload_servicemesh3_channel: stable
-ocp4_workload_servicemesh3_starting_csv: ""
-ocp4_workload_servicemesh3_automatic_install_plan_approval: true
-ocp4_workload_servicemesh3_use_catalog_snapshot: false
-
-# -------------------------------------------------------------------
-# ocp4_workload_nvidia_gpu_setup
-# -------------------------------------------------------------------
-ocp4_workload_nvidia_gpu_operator_channel: v25.10
-
-ocp4_workload_nvidia_gpu_operator_use_catalog_snapshot: false
-# ocp4_workload_nvidia_gpu_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-
-ocp4_workload_nvidia_gpu_operator_create_dashboard: true
-ocp4_workload_nvidia_gpu_operator_wait_for_cluster_policy: false
-ocp4_workload_nvidia_gpu_operator_ignore_csv_error: true
-
-# -------------------------------------------------------------------
-# agnosticd.core_workloads.ocp4_workload_connectivity_link
-# -------------------------------------------------------------------
-ocp4_workload_connectivity_link_channel: stable
-ocp4_workload_connectivity_link_automatic_install_plan_approval: true
-ocp4_workload_connectivity_link_starting_csv: ""
-
-# -------------------------------------------------------------------
-# ocp4_workload_s3_model_copy_to_minio
-# -------------------------------------------------------------------
-ocp4_workload_s3_model_copy_to_minio_project: "{{ ocp4_workload_minio_project }}"
-ocp4_workload_s3_model_copy_to_minio_name: "{{ ocp4_workload_minio_name }}"
-ocp4_workload_s3_model_copy_to_minio_endpoint: "http://{{ ocp4_workload_minio_name }}.{{ ocp4_workload_minio_project }}.svc.cluster.local:9000/"
-ocp4_workload_s3_model_copy_to_minio_root_user: "{{ ocp4_workload_minio_root_user }}"
-ocp4_workload_s3_model_copy_to_minio_root_password: "{{ ocp4_workload_minio_root_password }}"
-
-ocp4_workload_s3_model_copy_to_minio_s3_access_key: !vault |
-  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
-  37393362653231343836356262616562363137653333373533373966636664333137316132623138
-  6262346238313531656531643030323935393034653961380a323865343931333431646433613637
-  38633263306539346137626639303664336566633339323432386534376239313266386637373939
-  3466363061613963360a656464633563346637313937366431316164636662323865353665633366
-  63303534353532303537343632646566336230353662646664363865373136663461
-ocp4_workload_s3_model_copy_to_minio_s3_secret_key: !vault |
-  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
-  39363536383835326665623462623737396632383134353562613533366366613035353265306466
-  3633323635626130373961373664623363386431636662640a373164616238363632633161326538
-  61366462396231646333626262313064626239356663323736363936656263306266666535623362
-  3162356434396364300a613565313032626462303636306664333738663562333138346630306463
-  39336538353164396163343530353936346234353338363035393662323363373534306231313238
-  3631663265346531653836306564366336376139333663663865
-
-ocp4_workload_s3_model_copy_to_minio_s3_region: us-east-1
-ocp4_workload_s3_model_copy_to_minio_s3_bucket: model-serve
-ocp4_workload_s3_model_copy_to_minio_s3_folders:
-- rh-llama-3.3-70B-instruct-quantized
-- granite-3.3-2b-instruct
-
-# -------------------------------------------------------------------
-# ocp4_workload_openshift_ai
-# -------------------------------------------------------------------
-ocp4_workload_openshift_ai_channel: fast-3.x
-
-# DSC Configuration
-ocp4_workload_openshift_ai_dashboard: Managed
-ocp4_workload_openshift_ai_datasciencepipelines: Managed
-ocp4_workload_openshift_ai_kserve: Managed
-ocp4_workload_openshift_ai_modelmeshserving: Managed
-
-ocp4_workload_openshift_ai_modelregistry: Managed
-ocp4_workload_openshift_ai_modelregistry_namespace: rhoai-model-registries
-ocp4_workload_openshift_ai_modelregistry_config:
-  managementState: "{{ ocp4_workload_openshift_ai_modelregistry }}"
-  registriesNamespace: "{{ ocp4_workload_openshift_ai_modelregistry_namespace }}"
-
-ocp4_workload_openshift_ai_ray: Managed
-ocp4_workload_openshift_ai_trustyai: Managed
-ocp4_workload_openshift_ai_trainingoperator: Managed
-ocp4_workload_openshift_ai_workbenches: Managed
-ocp4_workload_openshift_ai_feastoperator: Managed
-ocp4_workload_openshift_ai_llamastackoperator: Managed
-ocp4_workload_openshift_ai_kueue: Removed
-ocp4_workload_openshift_ai_aipipelines: Managed
-
-# -------------------------------------------------------------------
-# ocp4_workload_devspaces
-# -------------------------------------------------------------------
-ocp4_workload_devspaces_channel: stable
-ocp4_workload_devspaces_catalogsource_setup: true
-ocp4_workload_devspaces_catalogsource_name: devspaces-catalogsource
-ocp4_workload_devspaces_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_devspaces_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
-ocp4_workload_devspaces_startingcsv: ""
-ocp4_workload_devspaces_namespace: openshift-devspaces
-ocp4_workload_devspaces_user_base: "{{ ocp4_workload_user_base }}"
-ocp4_workload_devspaces_user_count: "{{ ocp4_workload_user_count }}"
-ocp4_workload_devspaces_devworkspace: false
-ocp4_workload_devspaces_devworkspace_name: llmaas
-ocp4_workload_devspaces_devworkspace_namespace: devworkspaces
-ocp4_workload_devspaces_devworkspace_username: user1
-ocp4_workload_devspaces_devworkspace_project: llama-stack-on-ocp
-ocp4_workload_devspaces_devworkspace_git_repo: https://github.com/taylorjordanNC/coding-exercises
-# FIXME create revision tag
-ocp4_workload_devspaces_devworkspace_git_revision: main
-ocp4_workload_devspaces_devworkspace_components:
-- name: tooling
-  container:
-    image: registry.redhat.io/devspaces/udi-rhel9:3.21
-ocp4_workload_devspaces_devworkspace_devfile: >-
-  http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
-
-# -------------------------------------------------------------------
-# rhpds.openshift_ai.ocp4_workload_openshift_ai_dashboard_config
-# -------------------------------------------------------------------
-ocp4_workload_openshift_ai_dashboard_config_settings:
-  disableTracking: false
-  disableModelRegistry: false
-  disableModelCatalog: false
-  disableKServeMetrics: false
-  genAiStudio: true
-  modelAsService: true
-  disableLMEval: false
-
-ocp4_workload_openshift_ai_dashboard_config_notebook_controller:
-  enabled: true
-  pvcSize: 20Gi
-
-ocp4_workload_openshift_ai_hardware_profile_gpu_identifiers:
-- defaultCount: '1'
-  displayName: CPU
-  identifier: cpu
-  maxCount: '8'
-  minCount: 1
-  resourceType: CPU
-- defaultCount: 12Gi
-  displayName: Memory
-  identifier: memory
-  maxCount: 16Gi
-  minCount: 1Gi
-  resourceType: Memory
-- defaultCount: 1
-  displayName: GPU
-  identifier: nvidia.com/gpu
-  maxCount: 4
-  minCount: 1
-  resourceType: Accelerator
-
-# -------------------------------------------------------------------
-# ocp4_workload_openshift_ai_model_as_a_service
-# -------------------------------------------------------------------
-ocp4_workload_openshift_ai_model_as_a_service_helm_repo: https://github.com/rhpds/model-as-a-service.git
-ocp4_workload_openshift_ai_model_as_a_service_helm_repo_target_revision: main
-ocp4_workload_openshift_ai_model_as_a_service_username_base: "{{ ocp4_workload_user_base}}"
-ocp4_workload_openshift_ai_model_as_a_service_user_count: "{{ ocp4_workload_user_count }}"
-ocp4_workload_openshift_ai_model_as_a_service_api_image_repository: quay.io/redhat-gpte/maas-api
-ocp4_workload_openshift_ai_model_as_a_service_api_image_repository_tag: odh-stable
-ocp4_workload_openshift_ai_model_as_a_service_api_users:
-  tierFreeUsers:
-    count: "{{ ocp4_workload_user_count }}"
-    usernamePrefix: "{{ ocp4_workload_user_base}}"
-  tierEnterpriseUsers:
-    count: 1
-    usernamePrefix: "{{ common_admin_username }}"
-ocp4_workload_openshift_ai_model_as_a_service_models:
-- apiVersion: serving.kserve.io/v1alpha1
-  kind: LLMInferenceService
-  metadata:
-    annotations:
-      alpha.maas.opendatahub.io/tiers: '[]'
-      openshift.io/display-name: granite-3dot2-8b-instruct
-      argocd.argoproj.io/sync-wave: "2"
-    labels:
-      opendatahub.io/dashboard: 'true'
-      opendatahub.io/genai-asset: 'true'
-    name: granite-3dot2-8b-instruct
-    namespace: llm
-  spec:
-    model:
-      name: granite-3dot2-8b-instruct
-      uri: 'oci://quay.io/redhat-ai-services/modelcar-catalog:granite-3.2-8b-instruct'
-    replicas: 1
-    router:
-      gateway:
-        refs:
-        - name: maas-default-gateway
-          namespace: openshift-ingress
-      route: {}
-    template:
-      containers:
-      - resources:
-          limits:
-            cpu: '2'
-            memory: 16Gi
-            nvidia.com/gpu: '1'
-          requests:
-            cpu: '2'
-            memory: 8Gi
-            nvidia.com/gpu: '1'
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-            scheme: HTTPS
-        name: main
-        command:
-        - python
-        - '-m'
-        - vllm.entrypoints.openai.api_server
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-            scheme: HTTPS
-        env:
-        - name: HF_HOME
-          value: /tmp/hf_home
-        - name: VLLM_ATTENTION_BACKEND
-          value: XFORMERS
-        - name: VLLM_USE_V1
-          value: '0'
-        - name: VLLM_PORT
-          value: '8000'
-        ports:
-        - containerPort: 8000
-          name: http
-          protocol: TCP
-        volumeMounts:
-        - mountPath: /dev/shm
-          name: shm
-        image: 'quay.io/modh/vllm:rhoai-2.23-cuda'
-        args:
-        - '--served-model-name={{ "{{.Name}}" }}'
-        - '--model=/mnt/models'
-        - '--enable-auto-tool-choice'
-        - '--tool-call-parser'
-        - granite
-        - '--chat-template'
-        - /app/data/template/tool_chat_template_granite.jinja
-        - '--max-model-len'
-        - '120000'
-        - '--enable-ssl-refresh'
-        - '--ssl-certfile'
-        - /var/run/kserve/tls/tls.crt
-        - '--ssl-keyfile'
-        - /var/run/kserve/tls/tls.key
-      nodeSelector:
-        nvidia.com/gpu.present: 'true'
-      tolerations:
-      - effect: NoSchedule
-        key: nvidia.com/gpu
-        operator: Equal
-        value: l40-gpu
-      volumes:
-      - emptyDir:
-          medium: Memory
-          sizeLimit: 2Gi
-        name: shm
-- apiVersion: serving.kserve.io/v1alpha1
-  kind: LLMInferenceService
-  metadata:
-    name: llama-guard-3-1b
-    namespace: llm
-    annotations:
-      openshift.io/display-name: llama-guard-3-1b
-      alpha.maas.opendatahub.io/tiers: '[]'
-      argocd.argoproj.io/sync-wave: "2"
-    labels:
-      opendatahub.io/dashboard: 'true'
-      opendatahub.io/genai-asset: 'true'
-  spec:
-    model:
-      name: llama-guard-3-1b
-      uri: 'oci://quay.io/rh-aiservices-bu/llama-guard-3-1b-modelcar:2.0.0'
-    replicas: 1
-    router:
-      route: { }
-      # Connect to MaaS-enabled gateway
-      gateway:
-        refs:
-        - name: maas-default-gateway
-          namespace: openshift-ingress
-    template:
-      # Ensure the pod is scheduled on GPU nodes
-      nodeSelector:
-        nvidia.com/gpu.present: "true"
-      tolerations:
-      - effect: NoSchedule
-        key: nvidia.com/gpu
-        operator: "Equal"
-        value: "l4-gpu"
-      containers:
-      - name: main
-        image: 'quay.io/modh/vllm:rhoai-2.23-cuda'
-        command:
-        - python
-        - '-m'
-        - vllm.entrypoints.openai.api_server
-        args:
-        - '--served-model-name=llama-guard-3-1b-v1'
-        - '--model=/mnt/models'
-        - '--distributed-executor-backend=mp'
-        - '--max-model-len'
-        - '6048'
-        - '--dtype=half'
-        - '--enable-chunked-prefill'
-        - '--enable-ssl-refresh'
-        - '--ssl-certfile'
-        - /var/run/kserve/tls/tls.crt
-        - '--ssl-keyfile'
-        - /var/run/kserve/tls/tls.key
-        env:
-        - name: HF_HOME
-          value: /tmp/hf_home
-        - name: VLLM_ATTENTION_BACKEND
-          value: XFORMERS
-        - name: VLLM_USE_V1
-          value: '0'
-        - name: VLLM_PORT
-          value: '8000'
-        ports:
-        - containerPort: 8000
-          name: http
-          protocol: TCP
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-            scheme: HTTPS
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-            scheme: HTTPS
-        volumeMounts:
-        - mountPath: /dev/shm
-          name: shm
-        resources:
-          limits:
-            cpu: '12'
-            memory: 64Gi
-            nvidia.com/gpu: '1'
-          requests:
-            cpu: '1'
-            memory: '1Gi'
-            nvidia.com/gpu: '1'
-      volumes:
-      - emptyDir:
-          medium: Memory
-          sizeLimit: 2Gi
-        name: shm
-
+ocp4_workload_openshift_gitops_rbac_scopes: "[name,groups]"
 # -------------------------------------------------------------------
 # ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/private-llmaas-multitenant.git
-ocp4_workload_gitops_bootstrap_repo_revision: multi-user-update
+ocp4_workload_gitops_bootstrap_repo_revision: v1.0.1
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap
 
 ocp4_workload_gitops_bootstrap_helm_values:
+  bootstrap:
+    targetRevision: "{{ ocp4_workload_gitops_bootstrap_repo_revision }}"
   user:
     count: "{{ ocp4_workload_user_count }}"
     prefix: "{{ ocp4_workload_user_base }}"
-  workspace:
-    git:
-      url: https://github.com/rhpds/private-llmaas-multitenant
-      revision: multi-user-update
-      path: workspace
-    devworkspace:
-      # name will be auto-generated as llmaas-{username} if not specified
-      devfile: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
-      projects:
-        repoUrl: https://github.com/taylorjordanNC/coding-exercises
-        revision: main
-      components:
-      - name: tooling
-        container:
-          image: registry.redhat.io/devspaces/udi-rhel9:3.21
-          sourceMapping: /projects
-  llmaas:
-    repoURL: https://github.com/rhpds/private-llmaas-multitenant.git
-    targetRevision: multi-user-update
-  llamaStack:
-    repoURL: https://github.com/rhpds/private-llmaas-multitenant.git
-    targetRevision: multi-user-update
-    granite:
-      modelName: granite-3dot2-8b-instruct
-      endpoint: "{{ granite_3dot2_8b_instruct_endpoint }}"
-      apiToken: "{{ admin_api_token }}"
-    llamaguard:
-      modelName: llama-guard-3-1b
-      endpoint: "{{ llama_guard_3_1b_endpoint }}"
-      apiToken: "{{ admin_api_token }}"
-  llamaStackInstance:
-    repoURL: https://github.com/rhpds/private-llmaas-multitenant
-    targetRevision: multi-user-update
-    path: llama-stack-instance
-    granite:
-      modelName: granite-3dot2-8b-instruct
-      endpoint: "{{ granite_3dot2_8b_instruct_endpoint }}"
-      apiToken: "{{ admin_api_token }}"
-      tlsverify: false
-    llamaguard:
-      modelName: llama-guard-3-1b
-      endpoint: "{{ llama_guard_3_1b_endpoint }}"
-      apiToken: "{{ admin_api_token }}"
-      tlsverify: false
-    mcp:
-      openshiftServerUrl: http://ocp-mcp-server.lls-demo.svc.cluster.local:8000/sse
-      slackServerUrl: http://slack-mcp-server.lls-demo.svc.cluster.local:80/sse
   slackMcpSecret:
     slackBotToken: !vault |
-          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
-          62363230306465333938333130666363303938343561363165376135356236353133323932386161
-          3233666266323737353762656564376239316238383830610a346537616639363636646637323134
-          34373632323631653537653438663266303739343936646261666363363431366431316133376564
-          6235313061656463630a663634383261306466326638633237623933306465333036656631326662
-          39383434396236376261666161393036663764646238663661356437636238633961326166303034
-          32356133616136396638363663323366336465366532303039353064316239633362616661636466
-          646133316634366263373039356332303666
-    slackTeamId: !vault |
-          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
-          39613930383639643837613930653164636563333233653030363037653365616532616234643265
-          3930326138346662366261656531303662383639666463340a633733393362323931356461376632
-          34633562323937303164633562363935373233303432626639623264613761353633356465316634
-          6336626666383437370a633137366531366361336636383234303732313562303430353264383132
-          6436
-    graniteToken: "{{ admin_api_token }}"
-    llamaToken: "{{ admin_api_token }}"
-#    graniteToken: !vault |
-#          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
-#          32656339353764616534626362303832646332313739633339653232616236396534316537343030
-#          3330653462643633306564383265363537373838323536370a663931393231323736633933643639
-#          30656539646135643638626135373361393765313330616463396133336130633864303761303738
-#          3564353235323832340a373365353063356239313764653364336263613665383365376262616236
-#          63306538636663366663353663303362316339656462613235333761316331393561616331323734
-#          3366656635333439633638666433363233646565353931303666
-#    llamaToken: !vault |
-#          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
-#          62343737623935643866353733336135396634356564303833626339623365393261306261333637
-#          3833346361386437363664336331303866643931373932620a316665316164663938326661373735
-#          35373961323031303133653466643265333862316632613733366538326565373938386237343062
-#          3733616633343361310a363564656261316634636534663561393233623966363036376131316131
-#          36613630386334363864323064383739613332393164633362353565663464316533333331633332
-#          3561333633383530396433333231306530633065316163393238
-
-admin_api_token: "{{ lookup('agnosticd_user_data', 'api-admin').api_key }}"
-granite_3dot2_8b_instruct_endpoint: "{{ lookup('agnosticd_user_data', 'granite-3dot2-8b-instruct').model_url }}"
-llama_guard_3_1b_endpoint: "{{ lookup('agnosticd_user_data', 'llama-guard-3-1b').model_url }}"
+      $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+      62363230306465333938333130666363303938343561363165376135356236353133323932386161
+      3233666266323737353762656564376239316238383830610a346537616639363636646637323134
+      34373632323631653537653438663266303739343936646261666363363431366431316133376564
+      6235313061656463630a663634383261306466326638633237623933306465333036656631326662
+      39383434396236376261666161393036663764646238663661356437636238633961326166303034
+      32356133616136396638363663323366336465366532303039353064316239633362616661636466
+      646133316634366263373039356332303666
 
 ocp4_workload_gitops_bootstrap_health_retries: 2
-
 
 # -------------------------------------------------------------------
 # Role: ocp4_workload_showroom
@@ -748,8 +194,10 @@ ocp4_workload_showroom_deployment_type: helm
 ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
 ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
 ocp4_workload_showroom_deployer_chart_version: 1.3.4
-ocp4_workload_showroom_terminal_type: showroom
-ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2025-07-29
+# Only display the content pane, no other tabs will be available
+ocp4_workload_showroom_content_only: true
+#ocp4_workload_showroom_terminal_type: showroom
+#ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2025-07-29
 
 # -------------------------------------------------------------------
 # Babylon Meta Variables
@@ -758,15 +206,15 @@ __meta__:
   asset_uuid: 3b5205de-bafa-11f0-a7d6-d7115377719d
   owners:
     maintainer:
-    - name: Ritesh Shah
-      email: rshah@redhat.com
-    - name: Taylor Smith
-      email: tsmith@redhat.com
+      - name: Ritesh Shah
+        email: rshah@redhat.com
+      - name: Taylor Smith
+        email: tsmith@redhat.com
     instructions:
-    - name: Ritesh Shah
-      email: rshah@redhat.com
-    - name: Taylor Smith
-      email: tsmith@redhat.com
+      - name: Ritesh Shah
+        email: rshah@redhat.com
+      - name: Taylor Smith
+        email: tsmith@redhat.com
   anarchy:
     namespace: babylon-anarchy-5
   deployer:
@@ -783,24 +231,24 @@ __meta__:
     display_name: "Private LLM as a Service - A Practical Introduction with OpenShift AI - on AWS"
     category: Workshops
     keywords:
-    - openshift
-    - agentic
-    - ai
-    - llamastack
-    - maas
-    - mcp
+      - openshift
+      - agentic
+      - ai
+      - llamastack
+      - maas
+      - mcp
     labels:
       Provider: RHDP
       Product: Red_Hat_OpenShift_AI
       Product_Family: Red_Hat_AI
     parameters:
-    - name: num_users
-      description: Number of users to provision within the cluster.
-      formLabel: OpenShift User Count
-      openAPIV3Schema:
-        type: integer
-        default: 5
-        minimum: 5
-        maximum: 60
+      - name: num_users
+        description: Number of users to provision within the cluster.
+        formLabel: OpenShift User Count
+        openAPIV3Schema:
+          type: integer
+          default: 5
+          minimum: 5
+          maximum: 60
   tower:
     timeout: 21600
