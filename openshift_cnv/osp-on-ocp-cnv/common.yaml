@@ -38,7 +38,7 @@ platform: RHPDS
 # OpenShift Version
 # -------------------------------------------------------------------
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-ocp4_installer_version: "4.16"
+ocp4_installer_version: "4.18"
 
 # -------------------------------------------------------------------
 # Repos
@@ -61,7 +61,7 @@ student_sudo: true
 # -------------------------------------------------------------------
 # CNV Specific
 # -------------------------------------------------------------------
-bastion_instance_image: rhel-9.3
+bastion_instance_image: rhel-9.6
 bastion_cores: 2
 bastion_memory: 4Gi
 
@@ -110,6 +110,7 @@ infra_workloads:
 - ocp4_workload_external_odf
 - ocp4_workload_authentication
 - ocp4_workload_cert_manager
+- ocp4_workload_ansible_automation_platform_25
 - ocp4_workload_openshift_gitops
 - ocp4_workload_web_terminal
 - ocp4_workload_kubevirt
@@ -123,6 +124,10 @@ remove_workloads:
 # -------------------------------------------------------------------
 # Workload variables
 # -------------------------------------------------------------------
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits')
+  }}
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhoso_ipam4lab_service_url
@@ -134,7 +139,7 @@ ocp4_workload_rhoso_ipam4lab_cluster_name: "{{ sandbox_openshift_cluster }}"
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_external_odf
 # -------------------------------------------------------------------
-odf_channel: stable-4.16
+odf_channel: stable-4.18
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -168,9 +173,22 @@ ocp4_workload_cert_manager_install_ingress_certificates: true
 ocp4_workload_cert_manager_install_api_certificates: false
 
 # -------------------------------------------------------------------
+# ocp4_workload_ansible_automation_platform_25
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_admin_password: "{{ common_password }}"
+ocp4_workload_ansible_automation_platform_inject_manifest: true
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+ocp4_workload_ansible_automation_platform_create_eda_rolebinding: true
+ocp4_workload_ansible_automation_platform_ocp_cluster_role: cluster-reader
+
+ocp4_workload_ansible_automation_platform_use_catalog_snapshot: false
+ocp4_workload_ansible_automation_platform_automatic_install_plan_approval: false
+
+# -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.13
+ocp4_workload_openshift_gitops_channel: gitops-1.18
 ocp4_workload_openshift_gitops_use_catalog_snapshot: false
 
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
@@ -454,36 +472,25 @@ __meta__:
     - name: Pedro Navarro Perez
       email: pperez@redhat.com
 
-  anarchy:
-    namespace: babylon-anarchy-ocp-wksp
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:2025-02-14
+      image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.1
       pull: missing
+
   sandbox_api:
     actions:
       destroy:
         catch_all: false
-  sandboxes:
-  - kind: OcpSandbox
-    namespace_suffix: ocp4-cluster
-    cloud_selector:
-      cloud: cnv
-      purpose: prod
-      virt: "yes"
+
   catalog:
     display_name: Red Hat OpenStack Services on OpenShift Lab
     category: Workshops
     namespace: babylon-catalog-{{ stage | default('?') }}
     multiuser: false
     keywords:
-    - workshop
+    - openstack
+    - rhoso
     - openshift
-    - ocp
-    - ocp416
-    - cnv
-    - cnvocp
-    - ocpcnv
     labels:
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: Red_Hat_Cloud
