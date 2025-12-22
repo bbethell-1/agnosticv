@@ -45,14 +45,10 @@ common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + '
 # ------------------------
 bastion_instance_image: rhel-9.6
 default_instance_image: rhel-10.0
-# controller_instance_image: base-zero-aap-2.5-container-ce
 controller_instance_image: aap-2.6-2-ceh-20251103
 
 default_rootfs_size: 50Gi
 controller_rootfs_size: 100Gi
-# showroom_tls_provider: none
-# openshift_cnv_legacy_routes: true
-# openshift_cnv_route_remove_x_frame_options_header: true
 
 # ------------------------
 # Instances (VMs)
@@ -324,16 +320,6 @@ requirements_content:
     - name: https://github.com/rhpds/rhpds.manage_host.git
       type: git
       version: main
-  # roles:
-  #   - name: rh1-lab30-ctf-participants-ar
-  #     src: https://github.com/opentraining-labs-customizations/rh1-lab30-ctf-participants-ar.git
-  #     version: 1.0.2
-  #   - name: rh1-lab30-ctf-ocp-ar
-  #     src: https://github.com/opentraining-labs-customizations/rh1-lab30-ctf-ocp-ar.git
-  #     version: 1.0.1
-  #   - name: rh1-lab30-ctf-infra-ar
-  #     src: https://github.com/opentraining-labs-customizations/rh1-lab30-ctf-infra-ar.git
-  #     version: 1.0.1
 
 # -------------------------------------------------------------------
 # Workloads
@@ -505,11 +491,12 @@ aap_configuration_dispatcher_roles:
   - {role: gateway_users, var: aap_user_accounts, tags: gateway_users}
   - {role: controller_credentials, var: controller_credentials, tags: controller_credentials}
   - {role: controller_execution_environments, var: controller_execution_environments, tags: controller_execution_environments}
+  - {role: controller_projects, var: controller_projects, tags: controller_projects}
   - {role: controller_inventories, var: controller_inventories, tags: controller_inventories}
   - {role: controller_hosts, var: controller_hosts, tags: controller_hosts}
   - {role: controller_host_groups, var: controller_groups, tags: controller_groups}
-  - {role: controller_projects, var: controller_projects, tags: controller_projects}
   - {role: controller_job_templates, var: controller_templates, tags: controller_job_templates}
+  - {role: controller_job_launch, var: controller_launch_jobs, tags: controller_launch_jobs}
 
 ctf_ssh_private_key: |
   -----BEGIN OPENSSH PRIVATE KEY-----
@@ -566,9 +553,14 @@ aap_user_accounts:
     first_name: "lab"
     last_name: User
 
+
 controller_credentials:
-  - name: "CTF Host Credential"
-    description: "Machine Credential with become_method for hosts"
+  - name: "Demo Credential"
+    credential_type: "Machine"
+    state: absent
+
+  - name: "CTF Participant Host"
+    description: "Machine Credential with become_method for CTF Participant hosts"
     organization: Default
     credential_type: Machine
     inputs:
@@ -576,8 +568,8 @@ controller_credentials:
       ssh_key_data: "{{ ctf_ssh_private_key }}"
       become_method: sudo
 
-  - name: "CTFd Instance Credential"
-    description: "Machine Credential with become_method for hosts"
+  - name: "CTF Leader Board Host"
+    description: "Machine Credential with become_method for CTF Leader Board hosts"
     organization: Default
     credential_type: Machine
     inputs:
@@ -585,70 +577,14 @@ controller_credentials:
       ssh_key_data: "{{ lookup('file', hostvars.localhost.ssh_provision_key_path) }}"
       become_method: sudo
 
-  - name: "CTF Git Credential"
-    description: "CTF Git repo Credential"
+  - name: "RHO CTF Repo Cred"
+    description: "RHO CTF Repo Cred"
     organization: Default
     credential_type: Source Control
     inputs:
-      username: "rhctfgit@gmail.com"
-      password: "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"
-      # password: "s1DF#%F@SDF#%F@"
+      username: "castawayegr"
+      password: "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"
 
-controller_inventories:
-  - name: "CTFd Instance Server"
-    description: "Only the ctfdashboard hostname"
-    organization: "Default"
-    prevent_instance_group_fallback: false
-    state: present
-
-  - name: "CTF All Table Host"
-    description: "CTF All Table Host"
-    organization: "Default"
-    prevent_instance_group_fallback: false
-    state: present
-
-controller_hosts:
-  - name: ctfdashboard
-    inventory: "CTFd Instance Server"
-
-controller_projects:
-  - name: "CTFd Instance Installation"
-    description: "Installs CTFd on ctfdashboard"
-    organization: "Default"
-    scm_type: git
-    scm_url: "https://github.com/opentraining-labs-customizations/rh1-lab30-servers-for-ctf"
-    scm_branch: main
-    scm_clean: 'no'
-    scm_delete_on_update: 'no'
-
-  - name: "CTF Flags Repo For All Table Host"
-    description: "CTF Flags Repo For All Table Host"
-    organization: "Default"
-    scm_type: git
-    scm_url: "https://github.com/Red-Hat-CTF/prep"
-    scm_branch: main
-    scm_clean: 'no'
-    scm_delete_on_update: 'no'
-    credential: "CTF Git Credential"
-
-controller_templates:
-  - name: CTFd Instance Installation
-    job_type: run
-    inventory: CTFd Instance Server
-    project: CTFd Instance Installation
-    playbook: ctfd_provisioning_playbook.yml
-    execution_environment: Default execution environment
-    credentials:
-      - "CTFd Instance Credential"
-
-  - name: CTF Flags Setup For All Table Host
-    job_type: run
-    inventory: "CTF All Table Host"
-    project: CTF Flags Repo For All Table Host
-    playbook: main.yml
-    execution_environment: Default execution environment
-    credentials:
-      - "CTF Host Credential"
 
 controller_execution_environments:
   - name: "Custom RHO EE"
@@ -662,6 +598,157 @@ controller_execution_environments:
     image: quay.io/mknittel/rh-ctf-platform:1.0.1
     pull: "missing"
     state: present
+
+
+controller_projects:
+  - name: "Demo Project"
+    organization: Default
+    state: absent
+
+  - name: "RHO CTF 2026"
+    description: "CTF Leader Board ctfd setup repo"
+    organization: "Default"
+    credential: "RHO CTF Repo Cred"
+    scm_type: git
+    scm_url: "https://github.com/Red-Hat-CTF/rho-ctf-2026.git"
+    scm_branch: main
+    scm_clean: 'no'
+    scm_delete_on_update: 'no'
+
+
+controller_inventories:
+  - name: "Demo Inventory"
+    organization: Default
+    state: absent
+
+  - name: "CTF Leader Board CTFd Server"
+    description: "Only the ctfdashboard hostname"
+    organization: "Default"
+    prevent_instance_group_fallback: false
+    state: present
+
+  - name: "CTF Leader Board All Host"
+    description: "CTF Leader Board All Host"
+    organization: "Default"
+    prevent_instance_group_fallback: false
+    state: present
+
+  - name: "CTF Participant All Table Host"
+    description: "CTF Participant All Table Host"
+    organization: "Default"
+    prevent_instance_group_fallback: false
+    state: present
+
+
+controller_hosts:
+  - name: ctfdashboard
+    inventory: "CTF Leader Board CTFd Server"
+
+  - name: ctfdashboard
+    inventory: "CTF Leader Board All Host"
+
+  - name: misc
+    inventory: "CTF Leader Board All Host"
+
+  - name: audit
+    inventory: "CTF Leader Board All Host"
+
+
+controller_templates:
+  - name: "Demo Job Template"
+    organization: Default
+    state: absent
+
+  - name: "Deploy CTFd and Gitea"
+    job_type: run
+    inventory: "CTF Leader Board CTFd Server"
+    project: "RHO CTF 2026"
+    playbook: "setup/playbooks/complete-ctfd.yml"
+    execution_environment: Default execution environment
+    credentials:
+      - "CTF Leader Board Host"
+    extra_vars:
+      gitea_root_url: "https://gitea-{{ subdomain_base }}"
+      ctfd_admin_user: ctfadmin
+      ctfd_admin_password: "{{ common_password }}"
+      ctfd_admin_email: "admin@ctf.local"
+
+  - name: "Configure Gitea users and repos"
+    job_type: run
+    inventory: "CTF Leader Board CTFd Server"
+    project: "RHO CTF 2026"
+    playbook: "setup/playbooks/configure-gitea-lite.yml"
+    execution_environment: Default execution environment
+    ask_variables_on_launch: true
+    ask_extra_vars: true
+    credentials:
+      - "CTF Leader Board Host"
+    extra_vars:
+      gitea_admin_user: ctfadmin
+      gitea_admin_password: "{{ common_password }}"
+      gitea_root_url: "https://gitea-{{ subdomain_base }}"
+      teams:
+        - name: "<participant_aap_username>"
+          password: "<participant_aap_password>"
+
+  - name: "Prepare Ansible servers"
+    job_type: run
+    inventory: "CTF Participant All Table Host"
+    project: "RHO CTF 2026"
+    playbook: "setup/playbooks/prepare-targets-lite.yml"
+    execution_environment: Default execution environment
+    credentials:
+      - "CTF Leader Board Host"
+
+  - name: "Prepare OpenShift Virt"
+    job_type: run
+    inventory: "CTF Participant All Table Host"
+    project: "RHO CTF 2026"
+    playbook: "setup/playbooks/deploy-ovirt-ctf.yml"
+    execution_environment: Custom RHO EE
+    ask_inventory_on_launch: true
+    ask_variables_on_launch: true
+    ask_extra_vars: true
+    credentials:
+      - "CTF Leader Board Host"
+    extra_vars:
+      number_of_teams: 1
+      challenges_per_team: 8
+      openshift_api_url: "<check_ctf_participant_env>"
+      openshift_username: "<check_ctf_participant_env>"
+      openshift_password: "<check_ctf_participant_env>"
+      bastion_host: "<check_ctf_participant_env>"
+      bastion_user: "<check_ctf_participant_env>"
+      bastion_password: "<check_ctf_participant_env>"
+      bastion_port: "<check_ctf_participant_env>"
+
+  - name: "Prepare RHEL servers"
+    job_type: run
+    inventory: "CTF Participant All Table Host"
+    project: "RHO CTF 2026"
+    playbook: "setup/playbooks/prepare-rhel-targets.yml"
+    credentials:
+      - "CTF Leader Board Host"
+
+  - name: "Prepare OpenShift"
+    job_type: run
+    inventory: "CTF Participant All Table Host"
+    project: "RHO CTF 2026"
+    playbook: "setup/playbooks/prepare-ocp.yml"
+    execution_environment: Custom RHO EE
+    ask_variables_on_launch: true
+    ask_extra_vars: true
+    credentials:
+      - "CTF Leader Board Host"
+    extra_vars:
+      openshift_api_url: "<check_ctf_participant_env>"
+      openshift_cluster_admin_user: "<check_ctf_participant_env>"
+      openshift_cluster_admin_token: "<check_ctf_participant_env>"
+
+
+controller_launch_jobs:
+  - name: "Deploy CTFd and Gitea"
+    wait: true
 
 # -------------------------------------------------------------------
 # Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
@@ -692,8 +779,6 @@ __meta__:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
     execution_environment:
-      # image: quay.io/agnosticd/ee-multicloud:chained-2025-06-30
-      # image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
       image: quay.io/agnosticd/ee-multicloud:chained-2025-09-30
       pull: missing
   catalog:

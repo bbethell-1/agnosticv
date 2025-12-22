@@ -578,10 +578,12 @@ aap_configuration_dispatcher_roles:
   - {role: gateway_organizations, var: aap_organizations, tags: gateway_organizations}
   - {role: gateway_users, var: aap_user_accounts, tags: gateway_users}
   - {role: gateway_role_user_assignments, var: gateway_role_user_assignments, tags: gateway_role_user_assignments}
+  - {role: controller_credentials, var: controller_credentials, tags: controller_credentials}
   - {role: controller_inventories, var: controller_inventories, tags: controller_inventories}
   - {role: controller_hosts, var: controller_hosts, tags: controller_hosts}
   # - {role: controller_projects, var: controller_projects, tags: controller_projects}
   # - {role: controller_job_templates, var: controller_templates, tags: controller_job_templates}
+  - {role: controller_job_launch, var: controller_launch_jobs, tags: controller_launch_jobs}
 
 lab_base_aap_name: "Table-{{ guid }}"
 ctf_aap_org_name: "{{ lab_base_aap_name }}-org"
@@ -612,12 +614,25 @@ gateway_role_user_assignments:
           ) | map(attribute='id') | join(', ') | int
       }}
 
+
+controller_credentials:
+  - name: "{{ lab_base_aap_name }} OpenShift Credential"
+    description: "OpenShift API Bearer Token"
+    organization: Default
+    credential_type: "OpenShift or Kubernetes API Bearer Token"
+    inputs:
+      host: "{{ openshift_api_url }}"
+      bearer_token: "{{ openshift_cluster_admin_token }}"
+      verify_ssl: true
+
+
 controller_inventories:
   - name: "{{ lab_base_aap_name }}-inventory"
     description: "Inventory {{ lab_base_aap_name }}"
     organization: "{{ lab_base_aap_name }}-org"
     prevent_instance_group_fallback: false
     state: present
+
 
 controller_hosts:
   - name: server1
@@ -627,6 +642,7 @@ controller_hosts:
       ansible_port: "2222"
       ansible_user: "{{ student_name }}"
       ansible_password: "{{ student_password }}"
+
   - name: server2
     inventory: "{{ lab_base_aap_name }}-inventory"
     variables:
@@ -634,20 +650,45 @@ controller_hosts:
       ansible_port: "2222"
       ansible_user: "{{ student_name }}"
       ansible_password: "{{ student_password }}"
+
   - name: "{{ lab_base_aap_name }}-server1"
-    inventory: "CTF All Table Host"
+    inventory: "CTF Participant All Table Host"
     variables:
       ansible_host: "{{ hostvars['server1']['external_ip'] }}"
       ansible_port: "2222"
       ansible_user: "{{ student_name }}"
       ansible_password: "{{ student_password }}"
+
   - name: "{{ lab_base_aap_name }}-server2"
-    inventory: "CTF All Table Host"
+    inventory: "CTF Participant All Table Host"
     variables:
       ansible_host: "{{ hostvars['server2']['external_ip'] }}"
       ansible_port: "2222"
       ansible_user: "{{ student_name }}"
       ansible_password: "{{ student_password }}"
+
+
+controller_launch_jobs:
+  - name: "Configure Gitea users and repos"
+    wait: true
+    extra_vars:
+      teams:
+        - name: "{{ lab_base_aap_name }}-user"
+          password: "{{ common_password }}"
+
+  - name: "Prepare OpenShift Virt"
+    # wait: true
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    extra_vars:
+      number_of_teams: 1
+      challenges_per_team: 8
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_username: admin
+      openshift_password: "{{ common_admin_password }}"
+      bastion_host: "{{ openshift_cnv_ssh_address }}"
+      bastion_user: "{{ bastion_ansible_user }}"
+      bastion_password: "{{ bastion_ansible_ssh_pass }}"
+      bastion_port: "{{ bastion_ansible_port }}"
 
 # controller_projects:
 #   - name: "{{ lab_base_aap_name }}-CTF Flags"
@@ -909,8 +950,6 @@ __meta__:
       update:
         disable: true
     execution_environment:
-      # image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
-      # image: quay.io/agnosticd/ee-multicloud:chained-2025-09-30
       image: quay.io/agnosticd/ee-multicloud:chained-2025-12-16
       pull: missing
   catalog:
