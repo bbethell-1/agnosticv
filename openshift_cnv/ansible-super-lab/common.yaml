@@ -12,6 +12,7 @@
 #include /includes/parameters/salesforce-id.yaml
 
 #include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/secrets/litemaas-master_api.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: Ansible Super Lab
@@ -70,6 +71,10 @@ requirements_content:
   - name: https://github.com/agnosticd/ai_workloads.git
     type: git
     version: "{{ tag }}"
+  # LiteLLM Virtual Keys Collection
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "{{ tag }}"
   - name: https://github.com/agnosticd/cloud_vm_workloads.git
     type: git
     version: "cnv_instances"
@@ -78,6 +83,7 @@ requirements_content:
 # List of workloads to be deployed
 # -------------------------------------------------------------------
 workloads:
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
 - agnosticd.core_workloads.ocp4_workload_pipelines
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
@@ -90,6 +96,17 @@ workloads:
 - sabre1041.rh1_ansible_superlab.kafka
 - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
 - agnosticd.core_workloads.ocp4_workload_showroom
+- sabre1041.rh1_ansible_superlab.librechat
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_models:
+- llama-scout-17b
+# Enable user.info messages and data
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication_htpasswd
@@ -169,7 +186,7 @@ ocp4_workload_ansible_automation_platform_admin_password: "{{ common_admin_passw
 ocp4_workload_ansible_automation_platform_disable_controller: false
 ocp4_workload_ansible_automation_platform_disable_eda: false
 ocp4_workload_ansible_automation_platform_disable_hub: false
-ocp4_workload_ansible_automation_platform_disable_lightspeed: false
+ocp4_workload_ansible_automation_platform_disable_lightspeed: true
 ocp4_workload_ansible_automation_platform_inject_manifest: true
 ocp4_workload_ansible_automation_platform_manifest:
   url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
@@ -179,11 +196,11 @@ ocp4_workload_ansible_automation_platform_ocp_cluster_role: cluster-reader
 ocp4_workload_ansible_automation_platform_catalog_snapshot_image_tag: "v4.20_2025_12_29"
 ocp4_workload_ansible_automation_platform_hub_file_storage_file_class: ocs-external-storagecluster-cephfs
 ocp4_workload_ansible_automation_platform_hub_file_storage_access_mode: ReadWriteMany
-ocp4_workload_ansible_automation_platform_aap_manifest_overrides:
-  spec:
-    mcp:
-      disabled: false
-      allow_write_operations: false
+# ocp4_workload_ansible_automation_platform_aap_manifest_overrides:
+#   spec:
+#     mcp:
+#       disabled: false
+#       allow_write_operations: false
 
 # --------------------------------------------------------------------
 # ansible_automation_platform_configuration
@@ -250,6 +267,14 @@ kafka_operator_starting_csv: 'amqstreams.v3.1.0-6'
 kafka_operator_channel: stable
 kafka_operator_operator_name: amq-streams
 kafka_operator_csv_name_prefix: amqstreams
+
+librechat_username: admin
+librechat_password: "{{ common_user_password }}"
+librechat_litemaas_url: "{{ lookup('agnosticd_user_data', 'litellm_api_base_url') }}"
+librechat_litemaas_api_key: "{{ lookup('agnosticd_user_data', 'litellm_virtual_key') }}"
+librechat_litemaas_models: "{{ lookup('agnosticd_user_data', 'litellm_available_models') }}"
+librechat_repo_tag: v0.8.1
+
 
 ## CheCluster Spec
 agp_devspaces_che_cluster_spec:
