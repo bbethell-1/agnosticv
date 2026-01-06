@@ -9,7 +9,9 @@
 
 #include /includes/access-restriction-rh1-2026-devs.yaml
 #include /includes/secrets/quay-openshift-virtualization-migration.yaml
-#
+
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+
 # -------------------------------------------------------------------
 # Purpose - Cost tag. One of development, ilt, production, event
 # -------------------------------------------------------------------
@@ -54,6 +56,7 @@ workloads:
 - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
 - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.core_workloads.ocp4_workload_gitea_operator
 - agnosticd.core_workloads.ocp4_workload_nmstate
 - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
 - agnosticd.core_workloads.ocp4_workload_mtv
@@ -62,6 +65,17 @@ workloads:
 - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
 #- agnosticd.showroom.ocp4_workload_showroom_ocp_integration
 - agnosticd.showroom.ocp4_workload_showroom
+
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_admin_password length=12 chars=ascii_letters,digits')
+  }}
+common_user_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_user_password length=12 chars=ascii_letters,digits')
+  }}
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_nmstate
@@ -123,11 +137,6 @@ ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
 ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
 
 # -------------------------------------------------------------------
-# ocp4_workload_ansible_automation_platform
-# -------------------------------------------------------------------
-ocp4_workload_ansible_automation_platform_operator_channel: stable-2.6
-
-# -------------------------------------------------------------------
 # ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/etx-virt-vma-factory-gitops.git
@@ -141,6 +150,36 @@ ocp4_workload_gitops_bootstrap_application_health_retries: 150
 # 3scale requires RWX storage, so disable it for now.
 ocp4_workload_gitops_bootstrap_helm_values:
   guid: "{{ guid }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.1.0
+
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.24.6"
+
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: opentlc-mgr
+ocp4_workload_gitea_operator_admin_email: opentlc-mgr@opentlc.com
+ocp4_workload_gitea_operator_admin_password: "{{ common_admin_password }}"
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_authentication_htpasswd_user_base }}1"
+ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
+
+ocp4_workload_gitea_operator_migrate_repositories: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_ansible_automation_platform
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_operator_channel: stable-2.6
 
 # -------------------------------------------------------------------
 # ocp4_workload_showroom
