@@ -1,6 +1,5 @@
 ---
 # -------------------------------------------------------------------
-# --- Catalog: Red Workshops
 # --- Catalog Item: Red Hat OpenShift Container Platform
 #                   Cluster (CNV) - AgdV2
 # -------------------------------------------------------------------
@@ -18,6 +17,7 @@
 #include /includes/parameters/num-users-salesforce.yaml
 
 #include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/secrets/ocp4_workload_ols_api_token.yaml
 
 # -------------------------------------------------------------------
 # AgnosticDv2 variables
@@ -38,9 +38,12 @@ requirements_content:
   - name: https://github.com/rhpds/assisted_installer.git
     type: git
     version: v0.0.8
-
   # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: main
+  # AI Workloads (for OpenShift Lightspeed)
+  - name: https://github.com/agnosticd/ai_workloads.git
     type: git
     version: main
 
@@ -57,6 +60,7 @@ ai_workers_memory: "{{ ai_workers_memory }}"
 # ===================================================================
 workloads:
 - agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+- agnosticd.ai_workloads.ocp4_workload_ols
 
 # ===================================================================
 # Workload: agnosticd.core_workloads.ocp4_workload_authentication_keycloak
@@ -79,6 +83,21 @@ ocp4_workload_authentication_keycloak_user_username_base: user
 ocp4_workload_authentication_keycloak_user_password: ''
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_ols (OpenShift Lightspeed)
+# -------------------------------------------------------------------
+# Use Azure AI as the backend for OpenShift Lightspeed
+ocp4_workload_ai_platform: azure
+
+# Automatically create and manage Azure AI tokens
+ocp4_workload_ols_get_token: true
+
+# ===================================================================
+# Workloads to remove on destroy
+# ===================================================================
+remove_workloads:
+- agnosticd.ai_workloads.ocp4_workload_ols
+
+# -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
@@ -87,9 +106,6 @@ __meta__:
     maintainer:
     - name: Wolfgang Kulhanek
       email: wkulhane@redhat.com
-
-  anarchy:
-    namespace: babylon-anarchy-4
 
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2
@@ -136,7 +152,6 @@ __meta__:
         - 'multinode'
       components:
       - name: all
-
     - name: host_ocp4_installer_version
       description: OpenShift version to install
       formLabel: OpenShift Version
@@ -153,7 +168,6 @@ __meta__:
       variable: host_ocp4_installer_version
       components:
       - name: openshift_base
-
     - name: worker_instance_count_param
       description: OpenShift Worker count
       formLabel: OpenShift Worker count
@@ -166,7 +180,6 @@ __meta__:
         maximum: 10
       components:
       - name: current
-
     - name: ai_workers_memory
       description: OpenShift Worker memory
       formLabel: OpenShift Worker memory
@@ -185,7 +198,6 @@ __meta__:
         maximum: 128Gi
       components:
       - name: current
-
     - name: ai_workers_cores
       description: OpenShift Worker CPU
       formLabel: OpenShift Worker CPU
@@ -202,14 +214,12 @@ __meta__:
         - 64
       components:
       - name: current
-
     - name: create_multi_user
       description: Create multiple users on cluster?
       formLabel: Create multiple users on cluster
       openAPIV3Schema:
         type: boolean
         default: false
-
     - name: num_users
       description: >-
         Number of users to provision within the environment.
