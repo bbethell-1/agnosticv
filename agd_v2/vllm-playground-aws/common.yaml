@@ -1,0 +1,375 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: Building Self-contained Appliances with Red Hat Image Mode (bootc) & MicroShift
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-rh-ai-2025.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/aws-regions-gpu.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+#include /includes/secrets/demosat-rhel-10.yaml
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+#include /includes/secrets/zerossl.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: aws
+cloud_provider_version: main
+config: cloud-vms-base
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  - name: https://github.com/agnosticd/cloud_vm_workloads.git
+    type: git
+    version: main
+  # For Showroom
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: main
+
+# -------------------------------------------------------------------
+# Instance Variables
+# -------------------------------------------------------------------
+default_instance_image: RHEL-10.0-GOLD-latest
+default_instance_type: "t3a.large"
+default_rootfs_size: 200
+
+# -----------------
+# Security Groups
+# -----------------
+security_groups:
+- name: BastionSG
+  rules:
+  - name: BastionSSHPorts
+    description: "Bastion ssh"
+    from_port: 22
+    to_port: 22
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+- name: NodeSG
+  rules:
+  - name: FromNodeSGtcp
+    description: "Allow everything from HostSG nodes"
+    from_port: 0
+    to_port: 65535
+    protocol: -1
+    from_group: NodeSG
+    rule_type: Ingress
+
+- name: ShowroomSG
+  rules:
+  - name: ShowroomHTTPS
+    description: "Primary showroom endpoint - for reverse proxy"
+    from_port: 443
+    to_port: 443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+  - name: LEChallange
+    description: LEChallange Port
+    from_port: 80
+    to_port: 80
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+  - name: Jupyter
+    description: "Jupyter Port"
+    from_port: 9443
+    to_port: 9443
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+- name: AIServicesSG
+  rules:
+  - name: VLLMPort
+    description: "Default VLLM Port if exposed"
+    from_port: 8000
+    to_port: 8000
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+  - name: BonusPorts
+    description: "Extra ports for additional services"
+    from_port: 8001
+    to_port: 8010
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+  - name: VLLMPlayground
+    description: "VLLM Playground UI"
+    from_port: 7860
+    to_port: 7860
+    protocol: tcp
+    cidr: "0.0.0.0/0"
+    rule_type: Ingress
+
+
+# -------------------------------------------------------------------
+# Instances
+# -------------------------------------------------------------------
+instances:
+- name: "vllm"
+  count: 1
+  unique: true
+  public_dns: true
+  floating_ip: true
+  image: "{{ default_instance_image }}"
+  flavor:
+    ec2: "{{ default_instance_type }}"
+  tags:
+  - key: "AnsibleGroup"
+    value: "bastions"
+  - key: "ostype"
+    value: "linux"
+  rootfs_size: "{{ default_rootfs_size }}"
+  security_groups:
+  - BastionSG
+  - NodeSG
+  - ShowroomSG
+  - AIServicesSG
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  all:
+  - host_satellite_repositories
+  bastions:
+  - host_common_packages
+  - bastion
+  # - agnosticd.cloud_vm_workloads.control_user
+
+software_workloads:
+  bastions:
+  - agnosticd.cloud_vm_workloads.asset_injector
+
+# post_software_final_workloads:
+#   bastions:
+#   - agnosticd.showroom.vm_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload Variables
+# -------------------------------------------------------------------
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits')
+  }}
+student_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: host_common_packages
+# -------------------------------------------------------------------
+host_common_packages_el10:
+- python3.12
+- python3.12-devel
+- unzip
+- bash-completion
+- tmux
+- bind-utils
+- wget
+- git
+- vim-enhanced
+- httpd-tools
+- tree
+- jq
+- ansible-core
+- podman
+- buildah
+- wget
+
+host_common_packages_update_all: true
+
+# -------------------------------------------------
+# Workload: bastion
+# -------------------------------------------------
+install_bastion: true
+bastion_setup_student_user: true
+bastion_student_user_name: lab-user
+bastion_student_user_password: "{{ common_password }}"
+# bastion_remove_cloud_init_conf: false
+openshift_cnv_route_remove_x_frame_options_header: true
+
+# -------------------------------------------------
+# Workload: control-user
+# -------------------------------------------------
+env_authorized_key: "{{guid}}key"
+install_control_user: true
+# student_name: "{{ bastion_student_user_name }}"
+# student_password: "{{ common_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ bastion_student_user_password }}"
+control_user_private_group: "{{ omit }}"
+control_user_ssh_config: ./files/ssh_config.j2
+
+# -------------------------------------------------------------------
+# Workload: asset_injector
+# -------------------------------------------------------------------
+asset_injector_assets:
+- description: Remove 50-cloud-init.conf, ssh issue
+  type: remove
+  path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+- description: Remove 50-redhat.conf, ssh issue
+  type: remove
+  path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+- description: Update sshd_config for password auth
+  type: blockinfile
+  path: /etc/ssh/sshd_config
+  state: present
+  marker: "# {mark} Our custom SSH settings via Ansible"
+  block: |
+    # Our custom SSH settings via Ansible
+    ChallengeResponseAuthentication no
+    PasswordAuthentication yes
+    UsePAM yes
+
+- description: Restart sshd to pick up new password support configuration
+  type: service
+  name: sshd
+  state: restarted
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.ai.setup_nvidia_cuda
+# -------------------------------------------------------------------
+
+setup_nvidia_cuda_python_version: '3.12'
+setup_nvidia_cuda_cuda_version: '12.8'
+setup_nvidia_cuda_cuda_major_version: '12'
+setup_nvidia_cuda_cuda_minor_version: '8'
+setup_nvidia_cuda_nvidia_rhel_dnf_packages:
+- "@nvidia-driver:open-dkms"
+- "cuda-toolkit-{{ setup_nvidia_cuda_cuda_major_version }}-{{ setup_nvidia_cuda_cuda_minor_version }}"
+- nvidia-gds
+- libcudnn8
+- libcudnn8-devel
+- "cuda-cccl-{{ setup_nvidia_cuda_cuda_major_version }}-{{ setup_nvidia_cuda_cuda_minor_version }}"
+- "libnccl-2.26.2-1+cuda12.8.x86_64"        # Make sure you choosle the correct version...
+- nvidia-container-toolkit
+
+# -------------------------------------------------------------------
+# Workload: setup_python_env_python_version
+# -------------------------------------------------------------------
+
+setup_python_env_python_version: "3.12"
+setup_python_env_default_user: "{{ student_name }}"
+setup_python_env_create_default_venv: true
+setup_python_env_create_default_venv_name: venv
+
+# -------------------------------------------------------------------
+# Workload: showroom
+# -------------------------------------------------------------------
+# showroom_git_repo: https://github.com/rhpds/edge-applicances-rhim-microshift-showroom.git
+# showroom_git_ref: main
+# # Setting TLS provider to none and tls_termination for bastion route to edge
+# showroom_tls_provider: none
+
+# showroom_tab_services:
+#   - "single_terminal"
+
+# showroom_ssh_method: password
+
+# showroom_ssh_host: "host.containers.internal"
+# showroom_ssh_username: "{{ bastion_student_user_name }}"
+# showroom_ssh_password: "{{ common_password }}"
+# showroom_ssh_port: 22
+
+# -------------------------------------------------
+# Role: control-user
+# -------------------------------------------------
+# env_authorized_key: "{{guid}}key"
+# install_control_user: true
+# student_name: "{{ bastion_student_user_name }}"
+# student_password: "{{ bastion_student_user_password }}"
+# control_user_name: "{{ student_name }}"
+# control_user_password: "{{ bastion_student_user_password }}"
+# control_user_private_group: "{{ omit }}"
+# control_user_ssh_config: ./files/ssh_config.j2
+
+# # Disable control_user's user_data reporting (bastion role handles it)
+# control_user_enable_user_data: false
+
+# -------------------------------------------------------------------
+# AgnosticV User Data to be displayed
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  openshift_cnv_ssh_address: "{{ openshift_cnv_ssh_address }}"
+  bastion_public_hostname: "{{ bastion_public_hostname }}"
+  bastion_url: "https://{{ bastion_public_hostname }}"
+  bastion_ssh_user_name: "{{ bastion_student_user_name }}"
+  bastion_ssh_password: "{{ bastion_student_user_password }}"
+
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 41cfcd4c-00e2-4531-803f-0d586b96a66a
+  owners:
+    maintainer:
+    - name: Nate Stephany
+      email: nstephan@redhat.com
+    sme:
+    - name: Michael Yang
+      email: micyang@redhat.com
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-12-17
+      pull: missing
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: VLLM Playground
+    category: Labs
+    keywords:
+    - vllm
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHDP
+    parameters:
+    - name: default_instance_type
+      description: GPU Selection
+      formLabel: GPU Selection
+      openAPIV3Schema:
+        type: string
+        default: t3a.large
+        enum:
+        - t3a.large
+        - g4dn.xlarge
+        - g5.xlarge
+        - g6.xlarge
+        - g6e.xlarge
+
+  # sandboxes:
+  #   - kind: OcpSandbox
+  #     namespace_suffix: ocp4-cluster
+  #     cloud_selector:
+  #       cloud: cnv
+  #       purpose: prod
+  #       virt: "yes"
+  #     quota:
+  #       requests.storage: "2000Gi"
