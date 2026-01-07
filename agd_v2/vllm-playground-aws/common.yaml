@@ -35,8 +35,10 @@ requirements_content:
   - name: https://github.com/agnosticd/cloud_vm_workloads.git
     type: git
     version: main
-  # For Showroom
   - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: main
+  - name: https://github.com/rhpds/vllm-playground.git
     type: git
     version: main
 
@@ -162,6 +164,8 @@ pre_software_workloads:
 software_workloads:
   bastions:
   - agnosticd.cloud_vm_workloads.asset_injector
+  - vllm_playground.demo.rhel_workload_accelerator_config
+  - vllm_playground.demo.rhel_workload_vllm_playground
 
 # post_software_final_workloads:
 #   bastions:
@@ -250,31 +254,20 @@ asset_injector_assets:
   state: restarted
 
 # -------------------------------------------------------------------
-# Workload: agnosticd.ai.setup_nvidia_cuda
+# Workload: rhel_workload_accelerator_config
 # -------------------------------------------------------------------
-
-setup_nvidia_cuda_python_version: '3.12'
-setup_nvidia_cuda_cuda_version: '12.8'
-setup_nvidia_cuda_cuda_major_version: '12'
-setup_nvidia_cuda_cuda_minor_version: '8'
-setup_nvidia_cuda_nvidia_rhel_dnf_packages:
-- "@nvidia-driver:open-dkms"
-- "cuda-toolkit-{{ setup_nvidia_cuda_cuda_major_version }}-{{ setup_nvidia_cuda_cuda_minor_version }}"
-- nvidia-gds
-- libcudnn8
-- libcudnn8-devel
-- "cuda-cccl-{{ setup_nvidia_cuda_cuda_major_version }}-{{ setup_nvidia_cuda_cuda_minor_version }}"
-- "libnccl-2.26.2-1+cuda12.8.x86_64"        # Make sure you choosle the correct version...
-- nvidia-container-toolkit
+rhel_workload_accelerator_config_type: >-
+  {{ 'nvidia' if default_instance_type.startswith('g') else 'none' }}
 
 # -------------------------------------------------------------------
-# Workload: setup_python_env_python_version
+# Workload: rhel_workload_vllm_playground
 # -------------------------------------------------------------------
-
-setup_python_env_python_version: "3.12"
-setup_python_env_default_user: "{{ student_name }}"
-setup_python_env_create_default_venv: true
-setup_python_env_create_default_venv_name: venv
+rhel_workload_vllm_playground_accelerator_type: >-
+  {{ 'nvidia' if default_instance_type.startswith('g') else 'none' }}
+rhel_workload_vllm_playground_pull_images_mode: >-
+  {{ 'gpu' if default_instance_type.startswith('g') else 'cpu' }}
+rhel_workload_vllm_playground_install_benchmark: false
+rhel_workload_vllm_playground_enable_service: true
 
 # -------------------------------------------------------------------
 # Workload: showroom
@@ -293,21 +286,6 @@ setup_python_env_create_default_venv_name: venv
 # showroom_ssh_username: "{{ bastion_student_user_name }}"
 # showroom_ssh_password: "{{ common_password }}"
 # showroom_ssh_port: 22
-
-# -------------------------------------------------
-# Role: control-user
-# -------------------------------------------------
-# env_authorized_key: "{{guid}}key"
-# install_control_user: true
-# student_name: "{{ bastion_student_user_name }}"
-# student_password: "{{ bastion_student_user_password }}"
-# control_user_name: "{{ student_name }}"
-# control_user_password: "{{ bastion_student_user_password }}"
-# control_user_private_group: "{{ omit }}"
-# control_user_ssh_config: ./files/ssh_config.j2
-
-# # Disable control_user's user_data reporting (bastion role handles it)
-# control_user_enable_user_data: false
 
 # -------------------------------------------------------------------
 # AgnosticV User Data to be displayed
