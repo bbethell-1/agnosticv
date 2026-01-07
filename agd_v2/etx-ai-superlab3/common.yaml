@@ -1,7 +1,7 @@
 ---
 # -------------------------------------------------------------------
 # --- Catalog: Red Workshops
-# --- Catalog Item: ETX - Private LLM as a Service
+# --- Catalog Item: ETX AI Super Lab 3 (VLLM Inference Optimization & Evaluation)
 # -------------------------------------------------------------------
 #include /includes/agd-v2-mapping.yaml
 #include /includes/catalog-icon-openshift-data-science.yaml
@@ -36,7 +36,10 @@ requirements_content:
   - name: https://github.com/agnosticd/ai_workloads.git
     type: git
     version: main
-
+  # Showroom
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.3.7
 # -------------------------------------------------------------------
 # VM configuration
 # -------------------------------------------------------------------
@@ -59,6 +62,7 @@ update_packages: true
 # OpenShift Version
 # -------------------------------------------------------------------
 host_ocp4_installer_version: "4.19.9"
+openshift_cluster_admin_service_account_enable: true
 
 # -------------------------------------------------------------------
 # Student User on Bastion
@@ -84,7 +88,8 @@ workloads:
 - agnosticd.ai_workloads.ocp4_workload_s3_model_copy_to_minio
 - agnosticd.ai_workloads.ocp4_workload_openshift_ai
 - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
-- agnosticd.core_workloads.ocp4_workload_showroom
+- agnosticd.showroom.ocp4_workload_showroom_ocp_integration
+- agnosticd.showroom.ocp4_workload_showroom
 
 # -------------------------------------------------------------------
 # Workload variables
@@ -331,29 +336,38 @@ ocp4_workload_openshift_ai_kserve: Managed
 # ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/etx-llm-optimization-and-inference-manifest.git
-ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_revision: no-3scale
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap
 
 ocp4_workload_gitops_bootstrap_helm_values:
-  threeScale:
-    repoURL: https://github.com/rhpds/ocp-cluster-addons
-    targetRevision: v1.3.0
-    channel: threescale-2.15
-    startingCSV: 3scale-operator.v0.12.3
   llmaas:
     repoURL: https://github.com/rhpds/etx-llm-optimization-and-inference-manifest
-
+    targetRevision: no-3scale
+    path: model-serving
 ocp4_workload_gitops_bootstrap_health_retries: 2
+ocp4_workload_gitops_bootstrap_health_ignore: true
+
+ocp4_workload_gitops_bootstrap_application_wait: false
+ocp4_workload_gitops_bootstrap_application_health_retries: 90
+ocp4_workload_gitops_bootstrap_application_health_ignore: true
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_showroom_ocp_integration
+# -------------------------------------------------------------------
+ocp4_workload_showroom_ocp_integration_openshift_api_url: "{{ openshift_api_url }}"
+ocp4_workload_showroom_ocp_integration_openshift_api_token: "{{ openshift_cluster_admin_token }}"
+
+# -------------------------------------------------------------------
+# Safe defaults for missing tokens
+# -------------------------------------------------------------------
+openshift_cluster_admin_token: "{{ lookup('agnosticd_user_data', 'openshift_cluster_admin_token') | default('') }}"
+openshift_api_key: "{{ openshift_cluster_admin_token }}"
 
 #-------------------------------------------------------------------
 #ocp4_workload_showroom
 #-------------------------------------------------------------------
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/etx-llm-optimization-and-inference-showroom
 #ocp4_workload_showroom_content_git_repo_ref: v1.1.1
-ocp4_workload_showroom_deployment_type: helm
-ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
-ocp4_workload_showroom_terminal_enable: true
-ocp4_workload_showroom_content_only: false
 ocp4_workload_showroom_terminal_type: wetty
 ocp4_workload_showroom_wetty_ssh_bastion_login: true
 
