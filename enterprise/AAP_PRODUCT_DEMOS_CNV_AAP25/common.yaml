@@ -100,11 +100,15 @@ infra_workloads:
   - ansible_automation_platform_configuration
   - automation_platform_bastion
 
+# --------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# --------------------------------------------------------------------
+odf_channel: "stable-4.18"
+
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager
 # -------------------------------------------------------------------
 ocp4_workload_cert_manager_cloud_provider: ec2
-# ocp4_workload_cert_manager_ec2_region: "{{ aws_region }}"
 ocp4_workload_cert_manager_ec2_region: us-east-2
 ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
 ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
@@ -112,11 +116,6 @@ ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
 ocp4_workload_cert_manager_channel: stable-v1
 ocp4_workload_cert_manager_use_catalog_snapshot: false
 ocp4_workload_cert_manager_install_api_certificates: false
-
-# --------------------------------------------------------------------
-# Workload: ocp4_workload_external_odf
-# --------------------------------------------------------------------
-odf_channel: "stable-4.18"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_ansible_automation_platform_25
@@ -149,6 +148,8 @@ ansible_automation_platform_configuration_generate_ocp_token: true
 # Config values
 # ------------------------
 apd_bootstrap_scm_branch: main
+apd_git_repo: https://github.com/ansible/product-demos
+apd_git_repo_branch: jce/apd-org
 
 # ------------------------
 # AAP2.5 Dispatcher Role
@@ -161,20 +162,31 @@ aap_password: "{{ ansible_automation_platform_configuration_password }}"
 aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
 
 aap_configuration_dispatcher_roles:
+  - {role: gateway_organizations, var: aap_organizations, tags: organizations}
   - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
+  - {role: gateway_users, var: aap_user_accounts, tags: users}
+  - {role: gateway_role_user_assignments, var: gateway_role_user_assignments, tags: role_user_assignments }
   - {role: controller_settings, var: controller_settings, tags: controller_settings}
   - {role: eda_decision_environments, var: eda_decision_environments, tags: eda_decision_environments}
   - {role: controller_credentials, var: controller_credentials, tags: controller_credentials}
+  - {role: controller_execution_environments, var: controller_execution_environments, tags: controller_execution_environments}
   - {role: controller_projects, var: controller_projects, tags: controller_projects}
+  - {role: controller_inventories, var: controller_inventories, tags: inventories}
   - {role: controller_job_templates, var: controller_templates, tags: controller_templates}
   - {role: controller_job_launch, var: controller_launch_jobs, tags: controller_job_launch}
+
+aap_organizations:
+  - name: Ansible Product Demos (APD)
+
+aap_user_accounts:
+  - username: apd-admin
+    email: apd-admin@example.com
+    password: "{{ ansible_automation_platform_configuration_password }}"
 
 gateway_settings:
   SESSION_COOKIE_AGE: 9000
 
-controller_settings:
-  - name: TOWER_URL_BASE
-    value: "{{ ansible_automation_platform_configuration_host }}"
+controller_settings: []
 
 eda_decision_environments:
   - name: "Default Decision Environment"
@@ -183,25 +195,29 @@ eda_decision_environments:
 
 controller_configuration_credentials_secure_logging: false
 controller_credentials:
-  - name: Demo Credential
+  - name: AAP Credential
+    description: AAP credential for applying configuration as code
+    credential_type: Red Hat Ansible Automation Platform
+    organization: Ansible Product Demos (APD)
+    state: exists
+    inputs:
+      host: "{{ ansible_automation_platform_configuration_host }}"
+      username: "{{ ansible_automation_platform_configuration_username }}"
+      password: "{{ ansible_automation_platform_configuration_password }}"
+
+  - name: APD Machine Credential
+    description: Machine credential for Windows (username/password) and Linux (SSH key) instances
     credential_type: Machine
+    organization: Ansible Product Demos (APD)
     update_secrets: true
     inputs:
       username: admin
       ssh_key_data: "{{ ssh_privatekey }}"
       password: "{{ common_password }}"
 
-  - name: Controller Credential
-    credential_type: Red Hat Ansible Automation Platform
-    organization: Default
-    inputs:
-      host: "{{ ansible_automation_platform_configuration_host }}"
-      username: "{{ ansible_automation_platform_configuration_username }}"
-      password: "{{ ansible_automation_platform_configuration_password }}"
-
   - name: OpenShift Credential
-    description: Credentials for OpenShift
-    organization: Default
+    description: Credential for OpenShift cluster
+    organization: Ansible Product Demos (APD)
     credential_type: "OpenShift or Kubernetes API Bearer Token"
     inputs:
       host: "{{ openshift_api_url }}"
@@ -210,33 +226,80 @@ controller_credentials:
 
   - name: AWS
     credential_type: Amazon Web Services
-    organization: Default
+    organization: Ansible Product Demos (APD)
     update_secrets: false
     inputs:
       username: "{{ aws_access_key_id }}"
       password: "{{ aws_secret_access_key }}"
 
+controller_inventories:
+  - name: Ansible Product Demos Inventory
+    organization: Ansible Product Demos (APD)
+
+controller_execution_environments:
+  - name: Product Demos EE
+    image: quay.io/ansible-product-demos/apd-ee-25:latest
+
 controller_projects:
-  - name: Demo Project
-    organization: Default
+  - name: Ansible Product Demos
+    organization: Ansible Product Demos (APD)
     scm_type: git
-    scm_url: https://github.com/ansible/product-demos-bootstrap.git
-    scm_branch: "{{ apd_bootstrap_scm_branch }}"
+    scm_url: '{{ apd_git_repo }}'
+    scm_branch: '{{ apd_git_repo_branch }}'
+    default_environment: Product Demos EE
     wait: true
 
 controller_templates:
-  - name: Demo Job Template
+  - name: "APD | Single demo setup"
     job_type: run
-    inventory: Demo Inventory
-    project: Demo Project
-    playbook: install_product_demos.yml
-    credentials: Controller Credential
-    extra_vars:
-      apd_ee_image_version: '25'
+    inventory: Ansible Product Demos Inventory
+    project: Ansible Product Demos
+    playbook: setup_demo.yml
+    credentials: AAP Credential
+    execution_environment: Product Demos EE
+    allow_simultaneous: true
+    survey_enabled: true
+    survey_spec:
+      name: ''
+      description: ''
+      spec:
+        - type: multiplechoice
+          question_name: Demo Category
+          variable: demo
+          required: true
+          choices:
+            - linux
+            - windows
+            - cloud
+            - network
+            - openshift
+            - satellite
 
-controller_launch_jobs:
-  - name: Demo Job Template
-    wait: true
+  - name: "APD | Multi-demo setup"
+    project: Ansible Product Demos
+    playbook: multi_select_setup.yml
+    inventory: Ansible Product Demos Inventory
+    credentials: AAP Credential
+    execution_environment: Product Demos EE
+    survey_enabled: true
+    survey:
+      name: ''
+      description: ''
+      spec:
+        - question_name: "Which demos do you want to configure?"
+          type: multiselect
+          variable: demos
+          required: true
+          default: "cloud\nlinux\nnetwork\nopenshift\nwindows"
+          choices:
+            - cloud
+            - linux
+            - network
+            - openshift
+            - satellite
+            - windows
+
+controller_launch_jobs: []
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -247,8 +310,12 @@ __meta__:
     maintainer:
       - name: Mitesh Sharma
         email: msharma@redhat.com
-  anarchy:
-    namespace: babylon-anarchy-0
+    sme:
+      - name: Chris Edillon
+        email: cedillon@redhat.com
+      - name: Matthew Fernandez
+        email: matferna@redhat.com
+
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: "Ansible Product Demos"
@@ -272,12 +339,6 @@ __meta__:
           enum:
             - "stable-2.5"
             - "stable-2.6"
-      # - name: aws_open_environment_type
-      #   formLabel: AWS
-      #   formGroup: Open Environments
-      #   openAPIV3Schema:
-      #     default: true
-      #     type: boolean
       - name: azure_open_environment_type
         formLabel: Azure
         formGroup: Open Environments
@@ -290,13 +351,13 @@ __meta__:
         openAPIV3Schema:
           default: false
           type: boolean
+
   components:
     - name: aws
       display_name: AWS Open Environment
       item: sandboxes-gpte/SANDBOX_OPEN
       propagate_provision_data:
         - var: aws_provision_data
-      # when: aws_open_environment_type | default('false') | bool
     - name: azure
       display_name: Azure Open Environment
       item: azure_gpte/OPEN_ENVIRONMENT_AZURE_SUBSCRIPTION
@@ -309,7 +370,18 @@ __meta__:
       propagate_provision_data:
         - var: ibm_provision_data
       when: ibm_open_environment_type | default('false') | bool
+
   deployer:
+    scm_url: https://github.com/redhat-cop/agnosticd.git
+    scm_ref: development
     execution_environment:
-      image: quay.io/agnosticd/ee-ubi9-aap2.5:2.0.1
+      image: quay.io/agnosticd/ee-ubi9-aap2.5:2.1.0
       pull: always
+
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: apd
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
