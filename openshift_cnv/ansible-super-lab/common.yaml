@@ -78,6 +78,9 @@ requirements_content:
   - name: https://github.com/agnosticd/cloud_vm_workloads.git
     type: git
     version: "cnv_instances"
+  - name: https://github.com/rhpds/rhpds.manage_host.git
+    type: git
+    version: universal
 
 # -------------------------------------------------------------------
 # List of workloads to be deployed
@@ -91,6 +94,7 @@ workloads:
 - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
 - agnosticd.cloud_vm_workloads.cnv_instances
 - infra.aap_configuration.dispatch
+- rhpds.manage_host.aap_api
 - jeffcpullen.agnosticp.agp_devspaces
 - jeffcpullen.agnosticp.agp_devspaces_samples
 - sabre1041.rh1_ansible_superlab.kafka
@@ -226,25 +230,57 @@ aap_configuration_dispatcher_roles:
 - role: gateway_settings
   var: gateway_settings
   tags: gateway_settings
-- role: controller_credentials
-  var: controller_credentials
-  tags: controller_credentials
-- role: controller_inventories
-  var: controller_inventories
-  tags: controller_inventories
 
 gateway_settings:
   SESSION_COOKIE_AGE: 9000
 
-# controller_credentials:
-# - name: "OpenShift Credential"
-#   description: "OpenShift API Bearer Token"
-#   organization: Default
-#   credential_type: "OpenShift or Kubernetes API Bearer Token"
-#   inputs:
-#     host: "{{ openshift_api_url }}"
-#     bearer_token: "{{ openshift_bearer_token }}"
-#     verify_ssl: true
+# -------------------------------------------------------------------
+# Workload: rhpds.manage_host.aap_api
+# -------------------------------------------------------------------
+aap_api_controller_url: "{{ ansible_automation_platform_configuration_host }}"
+aap_api_controller_username: "{{ ansible_automation_platform_configuration_username }}"
+aap_api_controller_password: "{{ ansible_automation_platform_configuration_password }}"
+aap_api_controller_verify_ssl: "{{ ansible_automation_platform_configuration_verify_ssl }}"
+
+# AAP API endpoints configuration
+aap_api_endpoints:
+- name: "OpenShift Credential"
+  endpoint: credentials
+  description: "OpenShift API Bearer Token"
+  organization: Default
+  credential_type: OpenShift or Kubernetes API Bearer Token
+  attributes:
+    inputs:
+      host: "{{ openshift_api_url }}"
+      bearer_token: "{{ openshift_bearer_token }}"
+      verify_ssl: true
+
+- name: Windows
+  description: Administrator account for Windows Server
+  endpoint: credentials
+  organization: "Default"
+  credential_type: Machine
+  attributes:
+    inputs:
+      username: "{{ windows_admin_user }}"
+      password: "{{ windows_admin_password }}"
+
+- name: "super-lab"
+  endpoint: inventories
+  description: AWS production account
+  organization: Default
+
+- name: windows
+  endpoint: hosts
+  description: "Windows Server 2019"
+  inventory: "super-lab"
+  attributes:
+    variables: |
+      ---
+      ansible_connection: psrp
+      ansible_psrp_auth: negotiate
+      ansible_psrp_cert_validation: ignore
+    enabled: true
 
 # -------------------------------------------------------------------
 # jeffcpullen.agnosticp.agp_devspaces
@@ -504,7 +540,8 @@ __meta__:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-12-17
+      # image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
       # image: quay.io/agnosticd/ee-multicloud:chained-2025-09-30
       pull: missing
     actions:
