@@ -15,37 +15,41 @@
 # -------------------------------------------------------------------
 # Configuration
 # -------------------------------------------------------------------
-# Uses CNV pool (SNO 4.20) - no cloud provider needed
+# Uses CNV pool (SNO 4.20) via components
 cloud_provider: none
-config: namespace
+config: openshift-workloads
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_cluster_admin_token }}"
 
 # -------------------------------------------------------------------
 # Collections
 # -------------------------------------------------------------------
 requirements_content:
   collections:
-    - name: "https://github.com/rhpds/rhpds.litellm_virtual_keys.git"
-      type: git
-      version: main
-    - name: "https://github.com/rhpds/rhpds.litemaas.git"
-      type: git
-      version: add-benchmark-role  # ← Use new branch until merged
-    - name: kubernetes.core
-      version: 2.3.1
+  - name: "https://github.com/rhpds/rhpds.litellm_virtual_keys.git"
+    type: git
+    version: main
+  - name: "https://github.com/rhpds/rhpds.litemaas.git"
+    type: git
+    version: main
+  - name: kubernetes.core
+    version: 2.3.1
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 workloads:
-  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
-  - rhpds.litemaas.ocp4_workload_litemaas_benchmark
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- rhpds.litemaas.ocp4_workload_litemaas_benchmark
 
 # -------------------------------------------------------------------
 # Remove Workloads (cleanup on destroy)
 # -------------------------------------------------------------------
 remove_workloads:
-  - rhpds.litemaas.ocp4_workload_litemaas_benchmark
-  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- rhpds.litemaas.ocp4_workload_litemaas_benchmark
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 
 # -------------------------------------------------------------------
 # Virtual Keys Configuration
@@ -86,31 +90,66 @@ __meta__:
   asset_uuid: c9d8e7f6-5a4b-3c2d-1e0f-9a8b7c6d5e4f
   owners:
     maintainer:
-      - name: Prakhar Srivastava
-        email: psrivast@redhat.com
+    - name: Prakhar Srivastava
+      email: psrivast@redhat.com
 
   anarchy:
-    namespace: babylon-anarchy-sandboxes-gpte
+    namespace: babylon-anarchy-ocp-wksp
 
+  # Components to include in template and catalog item
+  components:
+  - name: openshift
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools/prod
+    parameter_values:
+      cluster_size: sno
+      host_ocp4_installer_version: "4.20"
+      ocp4_fips_enable: false
+    # Propagate agnosticd_user_info data set by this component to variables
+    propagate_provision_data:
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: openshift_api_url
+      var: openshift_api_url
+
+  # Disable actions on chained config that are handled by base
+  # EXCEPT destroy - needed to cleanup benchmark resources and virtual keys
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
       pull: missing
+    actions:
+      destroy:
+        disable: false  # Enable to cleanup benchmark and virtual keys
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
 
   catalog:
-    namespace: babylon-catalog-gpte
+    namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: "LiteMaaS Benchmark - Performance Testing"
     category: Demos
     multiuser: false
     keywords:
-      - litemaas
-      - benchmark
-      - performance
-      - ci
-      - load-testing
-      - ai
+    - litemaas
+    - benchmark
+    - performance
+    - ci
+    - load-testing
+    - ai
     labels:
       Product: Red_Hat_AI
       Provider: RHDP
@@ -119,155 +158,269 @@ __meta__:
 
     parameters:
       # Models
-      - name: benchmark_model_granite_3_2_8b
-        formLabel: Granite 3.2 8B Instruct
-        formGroup: Models to Benchmark
-        description: IBM Granite 3.2 8B - General purpose
-        openAPIV3Schema:
-          type: boolean
-          default: true
+    - name: benchmark_model_granite_3_2_8b
+      formLabel: Granite 3.2 8B Instruct
+      formGroup: Models to Benchmark
+      description: IBM Granite 3.2 8B - General purpose
+      openAPIV3Schema:
+        type: boolean
+        default: true
 
-      - name: benchmark_model_granite_4_0_h_tiny
-        formLabel: Granite 4.0 H Tiny
-        formGroup: Models to Benchmark
-        description: Compact with tool calling
-        openAPIV3Schema:
-          type: boolean
-          default: false
+    - name: benchmark_model_granite_4_0_h_tiny
+      formLabel: Granite 4.0 H Tiny
+      formGroup: Models to Benchmark
+      description: Compact with tool calling
+      openAPIV3Schema:
+        type: boolean
+        default: false
 
-      - name: benchmark_model_llama_scout_17b
-        formLabel: Llama 4 Scout 17B
-        formGroup: Models to Benchmark
-        description: Advanced function calling
-        openAPIV3Schema:
-          type: boolean
-          default: false
+    - name: benchmark_model_llama_scout_17b
+      formLabel: Llama 4 Scout 17B
+      formGroup: Models to Benchmark
+      description: Advanced function calling
+      openAPIV3Schema:
+        type: boolean
+        default: false
 
-      - name: benchmark_model_codellama_7b_instruct
-        formLabel: CodeLlama 7B Instruct
-        formGroup: Models to Benchmark
-        description: Code generation and completion
-        openAPIV3Schema:
-          type: boolean
-          default: false
+    - name: benchmark_model_codellama_7b_instruct
+      formLabel: CodeLlama 7B Instruct
+      formGroup: Models to Benchmark
+      description: Code generation and completion
+      openAPIV3Schema:
+        type: boolean
+        default: false
 
-      - name: benchmark_model_qwen3_14b
-        formLabel: Qwen 3 14B
-        formGroup: Models to Benchmark
-        description: Large multilingual model
-        openAPIV3Schema:
-          type: boolean
-          default: false
+    - name: benchmark_model_qwen3_14b
+      formLabel: Qwen 3 14B
+      formGroup: Models to Benchmark
+      description: Large multilingual model
+      openAPIV3Schema:
+        type: boolean
+        default: false
 
-      - name: benchmark_model_deepseek_r1_distill_qwen_14b
-        formLabel: DeepSeek R1 Distill Qwen 14B
-        formGroup: Models to Benchmark
-        description: Reasoning-focused distilled model
-        openAPIV3Schema:
-          type: boolean
-          default: false
+    - name: benchmark_model_deepseek_r1_distill_qwen_14b
+      formLabel: DeepSeek R1 Distill Qwen 14B
+      formGroup: Models to Benchmark
+      description: Reasoning-focused distilled model
+      openAPIV3Schema:
+        type: boolean
+        default: false
 
-      - name: benchmark_model_llama_guard_3_1b
-        formLabel: Llama Guard 3 1B
-        formGroup: Models to Benchmark
-        description: Safety and content moderation
-        openAPIV3Schema:
-          type: boolean
-          default: false
+    - name: benchmark_model_llama_guard_3_1b
+      formLabel: Llama Guard 3 1B
+      formGroup: Models to Benchmark
+      description: Safety and content moderation
+      openAPIV3Schema:
+        type: boolean
+        default: false
 
-      - name: benchmark_model_microsoft_phi_4
-        formLabel: Microsoft Phi-4
-        formGroup: Models to Benchmark
-        description: Small language model for reasoning
-        openAPIV3Schema:
-          type: boolean
-          default: false
+    - name: benchmark_model_microsoft_phi_4
+      formLabel: Microsoft Phi-4
+      formGroup: Models to Benchmark
+      description: Small language model for reasoning
+      openAPIV3Schema:
+        type: boolean
+        default: false
 
-      - name: benchmark_model_nomic_embed
-        formLabel: Nomic Embed v1.5
-        formGroup: Models to Benchmark
-        description: Text embeddings
-        openAPIV3Schema:
-          type: boolean
-          default: false
+    - name: benchmark_model_nomic_embed
+      formLabel: Nomic Embed v1.5
+      formGroup: Models to Benchmark
+      description: Text embeddings
+      openAPIV3Schema:
+        type: boolean
+        default: false
 
-      # Benchmark Config
-      - name: benchmark_conversations_count
-        description: Number of concurrent conversations (simulates concurrent users)
-        formLabel: Concurrent Conversations
-        formGroup: Load Configuration
-        required: true
-        openAPIV3Schema:
-          type: integer
-          default: 20
-          minimum: 1
-          maximum: 200
+      # Benchmark Config - User-Friendly Parameters
+    - name: benchmark_conversations_count
+      description: |
+          How many people per session?
 
-      - name: benchmark_turns_count
-        description: Conversation turns (follow-up questions)
-        formLabel: Turns per Conversation
-        formGroup: Load Configuration
-        required: true
-        openAPIV3Schema:
-          type: integer
-          default: 10
-          minimum: 1
-          maximum: 50
+          Enter the number of attendees for ONE session.
+          Example: 60 people in each session → Enter 60
 
-      - name: benchmark_parallel
-        description: Parallel workers (concurrency)
-        formLabel: Parallel Workers
-        formGroup: Load Configuration
-        required: true
-        openAPIV3Schema:
-          type: integer
-          default: 4
-          minimum: 1
-          maximum: 16
+          Common sizes:
+          • 120 people = Large event
+          • 60-90 people = Typical workshop
+          • 30 people = Small session
+          • 10 people = Quick demo
 
-      - name: benchmark_max_tokens_count
-        description: Max tokens per response
-        formLabel: Max Tokens
-        formGroup: Load Configuration
-        required: true
-        openAPIV3Schema:
-          type: integer
-          default: 500
-          minimum: 50
-          maximum: 2000
+          Minimum: 5 attendees required for meaningful benchmark results.
+          If running multiple sessions, set "Number of Sessions" below.
+      formLabel: "Attendees Per Session"
+      formGroup: Workshop Configuration
+      required: true
+      openAPIV3Schema:
+        type: integer
+        default: 60
+        minimum: 5
+        maximum: 200
 
-      - name: benchmark_min_delay_seconds
-        description: Min delay between requests (seconds)
-        formLabel: Min Request Delay
-        formGroup: Request Timing
-        required: true
-        openAPIV3Schema:
-          type: number
-          default: 0.5
-          minimum: 0.1
-          maximum: 10.0
+    - name: benchmark_sessions_count
+      description: |
+          How many sessions will run during the day?
 
-      - name: benchmark_max_delay_seconds
-        description: Max delay between requests (seconds)
-        formLabel: Max Request Delay
-        formGroup: Request Timing
-        required: true
-        openAPIV3Schema:
-          type: number
-          default: 2.0
-          minimum: 0.1
-          maximum: 10.0
+          Examples:
+          • 1 session = Standard single workshop
+          • 3 sessions = Three separate 60-person sessions
+          • 5 sessions = Maximum capacity test (full day)
 
-      - name: benchmark_key_duration
-        description: Virtual key validity duration
-        formLabel: Key Duration
-        formGroup: Virtual Key Configuration
-        required: true
-        openAPIV3Schema:
-          type: string
-          default: '3d'
-          enum:
-            - '3d'
-            - '7d'
-            - '10d'
-            - '30d'
+          Note: Test runs once but validates capacity for your configuration.
+      formLabel: "Number of Sessions Per Day"
+      formGroup: Workshop Configuration
+      required: true
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 5
+
+    - name: benchmark_turns_count
+      description: |
+          How many times will each person ask the AI a question?
+
+          Example: 90-min workshop where people ask ~10 questions → Enter 10
+
+          Typical scenarios:
+          • 90 minutes → Enter 10
+          • 2 hours → Enter 15
+          • 30 minutes → Enter 5
+
+          Minimum: 5 questions required for meaningful benchmark results.
+          Using LibreChat/MCP with tool calling?
+          Check the box below - it automatically multiplies this by 3x.
+
+          Test duration: ~10-15 min for 10 queries
+      formLabel: "Questions Per Person"
+      formGroup: Workshop Configuration
+      required: true
+      openAPIV3Schema:
+        type: integer
+        default: 10
+        minimum: 5
+        maximum: 50
+
+    - name: benchmark_model_supports_mcp
+      description: |
+          Does your workshop use LibreChat/MCP with AI tool calling?
+
+          ✓ Check this if:
+          • Using LibreChat interface
+          • AI can call tools/functions
+          • Using Model Context Protocol (MCP)
+
+          What happens:
+          Automatically multiplies questions by 3x
+          (tool calls create 2-3x more requests)
+
+          Example: 10 questions becomes 30 test queries
+      formLabel: "Workshop Uses Tool Calling (LibreChat/MCP)"
+      formGroup: Workshop Configuration
+      required: true
+      openAPIV3Schema:
+        type: boolean
+        default: false
+
+    - name: benchmark_parallel
+      description: |
+          How many people ask questions simultaneously during the test?
+
+          AUTO-CALCULATED based on attendees:
+          • 1-30 people   → 2 parallel workers
+          • 31-60 people  → 4 parallel workers
+          • 61-100 people → 8 parallel workers
+          • 101+ people   → 16 parallel workers
+
+          What this means:
+          With 60 attendees and 4 parallel workers:
+          • 4 people asking questions at the same time
+          • When one finishes, the next person starts
+          • Continues until all 60 have been tested
+
+          Leave blank for auto-calculation (recommended).
+          Only enter 1-16 if you need custom stress testing.
+      formLabel: "Parallel Workers (optional)"
+      formGroup: Advanced Settings (Optional)
+      required: false
+      openAPIV3Schema:
+        type: integer
+        minimum: 1
+        maximum: 16
+
+    - name: benchmark_max_tokens_count
+      description: |
+          How long should the AI's answers be?
+
+          Default: 500 tokens (2-3 paragraphs)
+
+          What is a token?
+          • 1 token ≈ 1 word
+          • 500 tokens = 2-3 paragraphs (typical answer length)
+
+          Common settings:
+          • 200-300 = Short answers (1 paragraph)
+          • 500 = Standard answers (2-3 paragraphs) ← DEFAULT
+          • 1000+ = Long explanations (full page)
+
+          Leave blank to use default (500).
+      formLabel: "Response Length (optional)"
+      formGroup: Advanced Settings (Optional)
+      required: false
+      openAPIV3Schema:
+        type: integer
+        default: 500
+        minimum: 50
+        maximum: 2000
+
+    - name: benchmark_min_delay_seconds
+      description: |
+          Minimum pause between questions (simulates real people thinking/typing).
+
+          Default: 0.5 seconds
+
+          What this does:
+          Real people pause to read answers and type questions.
+          The test randomly waits between MIN (0.5s) and MAX (2.0s).
+
+          Leave blank to use default (0.5).
+      formLabel: "Min Delay (optional)"
+      formGroup: Advanced Settings (Optional)
+      required: false
+      openAPIV3Schema:
+        type: number
+        default: 0.5
+        minimum: 0.1
+        maximum: 10.0
+
+    - name: benchmark_max_delay_seconds
+      description: |
+          Maximum pause between questions (simulates real people thinking/typing).
+
+          Default: 2.0 seconds
+
+          What this does:
+          Test randomly waits between MIN (0.5s) and MAX (2.0s).
+          Example: Q1 → wait 1.2s → Q2 → wait 0.8s → Q3
+
+          Leave blank to use default (2.0).
+      formLabel: "Max Delay (optional)"
+      formGroup: Advanced Settings (Optional)
+      required: false
+      openAPIV3Schema:
+        type: number
+        default: 2.0
+        minimum: 0.1
+        maximum: 10.0
+
+    - name: benchmark_key_duration
+      description: Virtual key validity duration
+      formLabel: Key Duration
+      formGroup: Virtual Key Configuration
+      required: true
+      openAPIV3Schema:
+        type: string
+        default: '3d'
+        enum:
+        - '3d'
+        - '7d'
+        - '10d'
+        - '30d'
