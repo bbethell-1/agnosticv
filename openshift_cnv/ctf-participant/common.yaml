@@ -581,8 +581,8 @@ aap_configuration_dispatcher_roles:
   - {role: controller_credentials, var: controller_credentials, tags: controller_credentials}
   - {role: controller_inventories, var: controller_inventories, tags: controller_inventories}
   - {role: controller_hosts, var: controller_hosts, tags: controller_hosts}
-  # - {role: controller_projects, var: controller_projects, tags: controller_projects}
-  # - {role: controller_job_templates, var: controller_templates, tags: controller_job_templates}
+  - {role: controller_projects, var: controller_projects, tags: controller_projects}
+  - {role: controller_job_templates, var: controller_templates, tags: controller_job_templates}
   - {role: controller_job_launch, var: controller_launch_jobs, tags: controller_launch_jobs}
 
 lab_base_aap_name: "Table-{{ guid }}"
@@ -614,7 +614,6 @@ gateway_role_user_assignments:
           ) | map(attribute='id') | join(', ') | int
       }}
 
-
 controller_credentials:
   - name: "{{ lab_base_aap_name }} OpenShift Credential"
     description: "OpenShift API Bearer Token"
@@ -625,6 +624,13 @@ controller_credentials:
       bearer_token: "{{ openshift_cluster_admin_token }}"
       verify_ssl: true
 
+  - name: "{{ lab_base_aap_name }} Repo Cred"
+    description: "{{ lab_base_aap_name }} Repo Cred"
+    organization: Default
+    credential_type: Source Control
+    inputs:
+      username: "{{ lab_base_aap_name }}-user"
+      password: "{{ common_password }}"
 
 controller_inventories:
   - name: "{{ lab_base_aap_name }}-inventory"
@@ -632,7 +638,6 @@ controller_inventories:
     organization: "{{ lab_base_aap_name }}-org"
     prevent_instance_group_fallback: false
     state: present
-
 
 controller_hosts:
   - name: server1
@@ -667,6 +672,356 @@ controller_hosts:
       ansible_user: "{{ student_name }}"
       ansible_password: "{{ student_password }}"
 
+controller_projects:
+  - name: "{{ lab_base_aap_name }}-project"
+    description: "CTF Leader Board ctfd setup repo"
+    organization: "{{ lab_base_aap_name }}-org"
+    credential: "RHO CTF Repo Cred"
+    scm_type: git
+    scm_url: "https://github.com/Red-Hat-CTF/rho-ctf-2026.git"
+    scm_branch: main
+    scm_clean: 'no'
+    scm_delete_on_update: 'no'
+
+  - name: "{{ lab_base_aap_name }} RHO CTF 2026"
+    description: "{{ lab_base_aap_name }} RHO CTF 2026"
+    organization: "{{ lab_base_aap_name }}-org"
+    credential: "{{ lab_base_aap_name }} Repo Cred"
+    scm_type: git
+    scm_url: "https://gitea-{{ ctf_leader_board_subdomain_base }}/{{ lab_base_aap_name }}-user/ansible-ctf-challenges.git"
+    scm_branch: main
+    scm_clean: 'no'
+    scm_delete_on_update: 'no'
+    scm_update_on_launch: true
+    wait: false
+
+controller_templates:
+  - name: "( {{ lab_base_aap_name }} ) AAP  - Verify Challenge 01"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-aap-01/verify.yml"
+    allow_simultaneous: true
+    limit: server2
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) AAP  - Verify Challenge 02"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-aap-02/verify.yml"
+    allow_simultaneous: true
+    limit: server2
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) AAP  - Verify Challenge 03"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-aap-03/verify.yml"
+    allow_simultaneous: true
+    limit: server2
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) AAP  - Verify Challenge 04"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-aap-04/verify.yml"
+    allow_simultaneous: true
+    limit: server2
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) AAP  - Verify Challenge 05"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-aap-05/verify.yml"
+    allow_simultaneous: true
+    limit: server2
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) AAP  - Verify Challenge 06"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-aap-06/verify.yml"
+    allow_simultaneous: true
+    limit: server2
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) OpenShift Virt - Verify Challenge 01"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-ovirt-01-ocpvirt/verify.yml"
+    allow_simultaneous: true
+    limit: server2
+    credentials:
+      - "CTF Participant Host"
+    extra_vars:
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_username: admin
+      openshift_password: "{{ common_admin_password }}"
+  - name: "( {{ lab_base_aap_name }} ) OpenShift Virt - Verify Challenge 02"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-ovirt-02-ocpvirt/verify.yml"
+    allow_simultaneous: true
+    limit: server2
+    credentials:
+      - "CTF Participant Host"
+    extra_vars:
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_username: admin
+      openshift_password: "{{ common_admin_password }}"
+  - name: "( {{ lab_base_aap_name }} ) OpenShift Virt - Verify Challenge 03"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-ovirt-03-ocpvirt/verify.yml"
+    allow_simultaneous: true
+    limit: server2
+    credentials:
+      - "CTF Participant Host"
+    extra_vars:
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_username: admin
+      openshift_password: "{{ common_admin_password }}"
+  - name: "( {{ lab_base_aap_name }} ) OpenShift Virt - Verify Challenge 04"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-ovirt-04-ocpvirt/verify.yml"
+    allow_simultaneous: true
+    limit: server2
+    credentials:
+      - "CTF Participant Host"
+    extra_vars:
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_username: admin
+      openshift_password: "{{ common_admin_password }}"
+  - name: "( {{ lab_base_aap_name }} ) OpenShift Virt - Verify Challenge 05"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-ovirt-05-ocpvirt/verify.yml"
+    allow_simultaneous: true
+    limit: server2
+    credentials:
+      - "CTF Participant Host"
+    extra_vars:
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_username: admin
+      openshift_password: "{{ common_admin_password }}"
+  - name: "( {{ lab_base_aap_name }} ) OpenShift Virt - Verify Challenge 06"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-ovirt-06-ocpvirt/verify.yml"
+    allow_simultaneous: true
+    limit: server2
+    credentials:
+      - "CTF Participant Host"
+    extra_vars:
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_username: admin
+      openshift_password: "{{ common_admin_password }}"
+  - name: "( {{ lab_base_aap_name }} ) OpenShift Virt - Verify Challenge 07"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-ovirt-07-ocpvirt/verify.yml"
+    allow_simultaneous: true
+    limit: server2
+    credentials:
+      - "CTF Participant Host"
+    extra_vars:
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_username: admin
+      openshift_password: "{{ common_admin_password }}"
+  - name: "( {{ lab_base_aap_name }} ) OpenShift Virt - Verify Challenge 08"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-ovirt-08-ocpvirt/verify.yml"
+    allow_simultaneous: true
+    limit: server2
+    credentials:
+      - "CTF Participant Host"
+    extra_vars:
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_username: admin
+      openshift_password: "{{ common_admin_password }}"
+  - name: "( {{ lab_base_aap_name }} ) OpenShift Virt - Verify Challenge 09"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-ovirt-09-ocpvirt/verify.yml"
+    allow_simultaneous: true
+    limit: server2
+    credentials:
+      - "CTF Participant Host"
+    extra_vars:
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_username: admin
+      openshift_password: "{{ common_admin_password }}"
+
+  - name: "( {{ lab_base_aap_name }} ) RHEL - Verify Challenge 01"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-rhel-01/verify.yml"
+    allow_simultaneous: true
+    limit: server1
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) RHEL - Verify Challenge 02"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-rhel-02/verify.yml"
+    allow_simultaneous: true
+    limit: server1
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) RHEL - Verify Challenge 03"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-rhel-03/verify.yml"
+    allow_simultaneous: true
+    limit: server1
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) RHEL - Verify Challenge 04"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-rhel-04/verify.yml"
+    allow_simultaneous: true
+    limit: server1
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) RHEL - Verify Challenge 05"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-rhel-05/verify.yml"
+    allow_simultaneous: true
+    limit: server1
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) RHEL - Verify Challenge 06"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-rhel-06/verify.yml"
+    allow_simultaneous: true
+    limit: server1
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) RHEL - Verify Challenge 07"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-rhel-07/verify.yml"
+    allow_simultaneous: true
+    limit: server1
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) RHEL - Verify Challenge 08"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-rhel-08/verify.yml"
+    allow_simultaneous: true
+    limit: server1
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) RHEL - Verify Challenge 09"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-rhel-09/verify.yml"
+    allow_simultaneous: true
+    limit: server1
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) RHEL - Verify Challenge 10"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-rhel-10/verify.yml"
+    allow_simultaneous: true
+    limit: server1
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) RHEL - Verify Challenge 11"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-rhel-11/verify.yml"
+    allow_simultaneous: true
+    limit: server1
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) RHEL - Verify Challenge 12"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-rhel-12/verify.yml"
+    allow_simultaneous: true
+    limit: server1
+    credentials:
+      - "CTF Participant Host"
+  - name: "( {{ lab_base_aap_name }} ) RHEL - Verify Challenge 13"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-rhel-13/verify.yml"
+    allow_simultaneous: true
+    limit: server1
+    credentials:
+      - "CTF Participant Host"
+
+  - name: "( {{ lab_base_aap_name }} ) OpenShift - Verify Challenge 01"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-ocp-01/verify.yml"
+    allow_simultaneous: true
+    credentials:
+      - "CTF Participant Host"
+    extra_vars:
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_username: admin
+      openshift_password: "{{ common_admin_password }}"
+  - name: "( {{ lab_base_aap_name }} ) OpenShift - Verify Challenge 02"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-ocp-02/verify.yml"
+    allow_simultaneous: true
+    credentials:
+      - "CTF Participant Host"
+    extra_vars:
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_username: admin
+      openshift_password: "{{ common_admin_password }}"
+  - name: "( {{ lab_base_aap_name }} ) OpenShift - Verify Challenge 03"
+    job_type: run
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    project: "{{ lab_base_aap_name }}-project"
+    playbook: "verification/challenge-ocp-03/verify.yml"
+    allow_simultaneous: true
+    credentials:
+      - "CTF Participant Host"
+    extra_vars:
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_username: admin
+      openshift_password: "{{ common_admin_password }}"
 
 controller_launch_jobs:
   - name: "Configure Gitea users and repos"
@@ -676,229 +1031,38 @@ controller_launch_jobs:
         - name: "{{ lab_base_aap_name }}-user"
           password: "{{ common_password }}"
 
-  - name: "Prepare OpenShift Virt"
+  - name: "Prepare Ansible servers"
+    wait: true
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    limit: server2
+
+  - name: "Prepare RHEL servers"
     # wait: true
     inventory: "{{ lab_base_aap_name }}-inventory"
+    limit: server1
+
+  - name: "Prepare OpenShift Virt"
+    wait: true
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    credentials:
+      - "{{ lab_base_aap_name }} OpenShift Credential"
+      - "CTF Participant Host"
     extra_vars:
-      number_of_teams: 1
-      challenges_per_team: 8
       openshift_api_url: "{{ openshift_api_url }}"
       openshift_username: admin
       openshift_password: "{{ common_admin_password }}"
       bastion_host: "{{ openshift_cnv_ssh_address }}"
-      bastion_user: "{{ bastion_ansible_user }}"
-      bastion_password: "{{ bastion_ansible_ssh_pass }}"
-      bastion_port: "{{ bastion_ansible_port }}"
+      bastion_user: "{{ student_name }}"
+      bastion_password: "{{ common_password }}"
+      bastion_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+      credentials_dir: /tmp/ctf-credentials
 
-# controller_projects:
-#   - name: "{{ lab_base_aap_name }}-CTF Flags"
-#     description: CTF Flags repo
-#     organization: "{{ lab_base_aap_name }}-org"
-#     execution_environment: "Default execution environment"
-#     scm_type: git
-#     scm_url: "https://github.com/Red-Hat-CTF/flags"
-#     scm_branch: main
-#     scm_clean: 'no'
-#     scm_delete_on_update: 'no'
-#     credential: "CTF Git Credential"
-
-# controller_templates:
-#   - name: "{{ lab_base_aap_name }} - Ansible 1 - Users and Groups"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: ANSIBLE_Users-and-groups_check.yml
-#     execution_environment: Default execution environment
-#     limit: server2
-#     credentials:
-#       - "CTF Host Credential"
-
-#   - name: "{{ lab_base_aap_name }} - Ansible 2 - Permissions and Files"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: ANSIBLE_Permissions-and-Files_check.yml
-#     execution_environment: Default execution environment
-#     limit: server2
-#     credentials:
-#       - "CTF Host Credential"
-
-#   - name: "{{ lab_base_aap_name }} - Ansible 3 - Storage Management"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: ANSIBLE_Storage-Management_check.yml
-#     execution_environment: Default execution environment
-#     limit: server2
-#     credentials:
-#       - "CTF Host Credential"
-
-#   - name: "{{ lab_base_aap_name }} - Ansible 4 - Scheduling and Network Management"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: ANSIBLE_Scheduling-and-Networking_check.yml
-#     execution_environment: Default execution environment
-#     limit: server2
-#     credentials:
-#       - "CTF Host Credential"
-
-#   - name: "{{ lab_base_aap_name }} - OCP 1 - Adding Users and Assigning Permissions"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: OCP_users.yaml
-#     execution_environment: "Custom RHO EE"
-#     credentials:
-#       - "CTF Host Credential"
-#     extra_vars:
-#       cluster_api_url: "{{ lookup('agnosticd_user_data', 'openshift_api_server_url') }}"
-
-#   - name: "{{ lab_base_aap_name }} - OCP 2 - Resolving connectivity issues to a website hosted in OpenShift"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: OCP_connectivity.yaml
-#     execution_environment: "Custom RHO EE"
-#     credentials:
-#       - "CTF Host Credential"
-#     extra_vars:
-#       cluster_api_url: "{{ lookup('agnosticd_user_data', 'openshift_api_server_url') }}"
-#       # cluster_api_url: "{{ openshift_api_server_url | default('<Replace with OCP API URL e.g. api.example.opentlc.com:6443>') }}"
-
-#   - name: "{{ lab_base_aap_name }} - OCP 3 - Deploy MySQL DB and PHP Application"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: OCP_php_mysql.yaml
-#     execution_environment: "Custom RHO EE"
-#     credentials:
-#       - "CTF Host Credential"
-#     extra_vars:
-#       cluster_api_url: "{{ lookup('agnosticd_user_data', 'openshift_api_server_url') }}"
-#       # "{{ openshift_api_server_url | default('<Replace with OCP API URL e.g. api.example.opentlc.com:6443>') }}"
-
-#   - name: "{{ lab_base_aap_name }} - OCP 4 - Scheduling Issues"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: OCP_scheduling_issues.yaml
-#     execution_environment: "Custom RHO EE"
-#     credentials:
-#       - "CTF Host Credential"
-#     extra_vars:
-#       cluster_api_url: "{{ lookup('agnosticd_user_data', 'openshift_api_server_url') }}"
-#       # cluster_api_url: "{{ openshift_api_server_url | default('<Replace with OCP API URL e.g. api.example.opentlc.com:6443>') }}"
-
-#   - name: "{{ lab_base_aap_name }} - RHEL_1_funny_file_check"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: RHEL_1_funny_file_check.yaml
-#     execution_environment: "Default execution environment"
-#     limit: server1
-#     credentials:
-#       - "CTF Host Credential"
-
-#   - name: "{{ lab_base_aap_name }} - RHEL_2_ssh_key_check"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: RHEL_2_ssh_key_check.yaml
-#     execution_environment: "Default execution environment"
-#     limit: server1
-#     credentials:
-#       - "CTF Host Credential"
-
-#   - name: "{{ lab_base_aap_name }} - RHEL_3_sos_report_check"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: RHEL_3_sos_report_check.yaml
-#     execution_environment: "Default execution environment"
-#     limit: server1
-#     credentials:
-#       - "CTF Host Credential"
-
-#   - name: "{{ lab_base_aap_name }} - RHEL_4_install_a_webserver_check.yaml"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: RHEL_4_install_a_webserver_check.yaml
-#     execution_environment: "Default execution environment"
-#     limit: server1
-#     credentials:
-#       - "CTF Host Credential"
-
-#   - name: "{{ lab_base_aap_name }} - RHEL_5_manage_local_user_check"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: RHEL_5_manage_local_user_check.yaml
-#     execution_environment: "Default execution environment"
-#     limit: server1
-#     credentials:
-#       - "CTF Host Credential"
-
-#   - name: "{{ lab_base_aap_name }} - RHEL_6_analyze_logs_check"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: RHEL_6_analyze_logs_check.yaml
-#     execution_environment: "Default execution environment"
-#     limit: server1
-#     credentials:
-#       - "CTF Host Credential"
-
-#   - name: "{{ lab_base_aap_name }} - RHEL_7_podman_sandbox_check"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: RHEL_7_podman_sandbox_check.yaml
-#     execution_environment: "Default execution environment"
-#     limit: server1
-#     credentials:
-#       - "CTF Host Credential"
-
-#   - name: "{{ lab_base_aap_name }} - RHEL_8_sos_scrub_check"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: RHEL_8_sos_scrub_check.yaml
-#     execution_environment: "Default execution environment"
-#     limit: server1
-#     credentials:
-#       - "CTF Host Credential"
-
-#   - name: "{{ lab_base_aap_name }} - RHEL_9_podman_playground_check"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: RHEL_9_podman_playground_check.yaml
-#     execution_environment: "Default execution environment"
-#     limit: server1
-#     credentials:
-#       - "CTF Host Credential"
-
-#   - name: "{{ lab_base_aap_name }} - RHEL_10_Install_MySQL"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: RHEL_10_Install_MySQL.yaml
-#     execution_environment: "Platform EE CTF"
-#     limit: server1
-#     credentials:
-#       - "CTF Host Credential"
-
-#   - name: "{{ lab_base_aap_name }} - RHEL_11_lvm_fun"
-#     job_type: run
-#     inventory: "{{ lab_base_aap_name }}-inventory"
-#     project: "{{ lab_base_aap_name }}-CTF Flags"
-#     playbook: RHEL_11_lvm_fun.yaml
-#     execution_environment: "Default execution environment"
-#     limit: server1
-#     credentials:
-#       - "CTF Host Credential"
+  - name: "Prepare OpenShift"
+    wait: true
+    inventory: "{{ lab_base_aap_name }}-inventory"
+    credentials:
+      - "{{ lab_base_aap_name }} OpenShift Credential"
+      - "CTF Participant Host"
 
 # -------------------------------------------------------------------
 # Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
