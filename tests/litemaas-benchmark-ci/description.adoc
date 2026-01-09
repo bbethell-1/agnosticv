@@ -1,0 +1,267 @@
+:markup-in-source: verbatim,attributes,quotes
+
+= LiteMaaS Benchmark - Performance Testing & Load Validation
+
+[WARNING]
+====
+*INTERNAL USE ONLY - GPTE Admins & Platform Engineering Team*
+
+This is a performance testing and capacity validation tool.
+Not intended for general user access.
+====
+
+== Overview
+
+Self-service performance testing and capacity validation for LiteMaaS deployments. Run multi-turn conversation benchmarks to validate TTFT (Time to First Token) performance, prefix caching effectiveness, and load capacity.
+
+== What You Get
+
+* **Performance Metrics**: TTFT P50/P95/P99, mean latency, throughput
+* **Cache Validation**: Prefix caching speedup ratio and effectiveness
+* **Model Selection**: Benchmark any available LiteMaaS model
+* **Load Testing**: Configurable concurrent conversations and turns
+* **Automatic Results**: Metrics displayed in service info page
+
+== Use Cases
+
+=== Pre-Event Validation (RH1 Labs)
+
+Test if LiteMaaS can handle expected workshop load:
+
+[source,yaml]
+----
+Models: granite-3-2-8b-instruct
+Concurrent Conversations: 100 (expected attendees)
+Turns: 10
+Result: P95 = 320ms ✓ (under 500ms threshold)
+----
+
+=== Model Comparison
+
+Compare different models to choose best for your use case:
+
+[source,yaml]
+----
+Order 1: Granite 3.2 8B → P95: 320ms, Speedup: 4.2x
+Order 2: Llama Scout 17B → P95: 280ms, Speedup: 3.8x
+Order 3: Granite 4.0 H Tiny → P95: 180ms, Speedup: 5.1x
+----
+
+=== Load Testing
+
+Find breaking point for capacity planning:
+
+[source,yaml]
+----
+10 users:  P95 = 120ms ✓
+20 users:  P95 = 180ms ✓
+50 users:  P95 = 350ms ✓
+100 users: P95 = 1200ms ✗ (too slow)
+Conclusion: Limit lab to 50 users
+----
+
+== Available Models
+
+Choose from these models for benchmarking:
+
+[cols="1,3"]
+|===
+|Model |Description
+
+|*Granite 3.2 8B Instruct*
+|IBM Granite 3.2 8B - General purpose (default)
+
+|*Granite 4.0 H Tiny*
+|Compact with tool calling
+
+|*Llama 4 Scout 17B*
+|Advanced function calling with 400k context
+
+|*CodeLlama 7B Instruct*
+|Code generation and completion
+
+|*Qwen 3 14B*
+|Large multilingual model
+
+|*DeepSeek R1 Distill Qwen 14B*
+|Reasoning-focused distilled model
+
+|*Llama Guard 3 1B*
+|Safety and content moderation
+
+|*Microsoft Phi-4*
+|Small language model for reasoning
+
+|*Nomic Embed v1.5*
+|Text embeddings
+|===
+
+== Configuration Parameters
+
+=== Load Configuration
+
+* **Concurrent Conversations**: Number of parallel users (1-200)
+* **Turns per Conversation**: Follow-up questions (1-50)
+* **Parallel Workers**: Concurrency level (1-16)
+* **Max Tokens**: Response size (50-2000)
+
+=== Request Timing
+
+* **Min Delay**: Minimum seconds between requests (0.1-10.0)
+* **Max Delay**: Maximum seconds between requests (0.1-10.0)
+
+Delays simulate realistic user behavior (reading responses, typing).
+
+=== Virtual Key Configuration
+
+* **Key Duration**: How long the test key is valid (3d, 7d, 10d, 30d)
+
+== Benchmark Results
+
+After provisioning, results appear in the **Information** tab:
+
+[source,text]
+----
+════════════════════════════════════════════════════════════════
+LiteMaaS Benchmark Results
+════════════════════════════════════════════════════════════════
+
+Time to First Token (TTFT):
+  • Mean:           120.98 ms
+  • P50 (Median):   92.09 ms
+  • P95:            271.60 ms
+  • P99:            674.21 ms
+
+Cache Performance:
+  • Speedup Ratio:  3.84x
+  • Status:         EXCELLENT ✓
+
+Load Testing Results:
+  • Total Time:     242.75 seconds
+  • Total Requests: 110
+  • Requests/sec:   0.45
+
+Overall Status: PASS ✓
+════════════════════════════════════════════════════════════════
+----
+
+== Performance Interpretation
+
+=== TTFT Thresholds
+
+[cols="1,1,2"]
+|===
+|P95 TTFT |Status |Action
+
+|< 500ms
+|✓ Excellent
+|Good for production
+
+|500-1000ms
+|⚠ Good
+|Acceptable
+
+|> 1000ms
+|✗ Poor
+|Needs optimization
+|===
+
+=== Cache Effectiveness
+
+[cols="1,1,2"]
+|===
+|Speedup |Status |Interpretation
+
+|> 3x
+|✓ Excellent
+|Strong prefix caching
+
+|2-3x
+|✓ Good
+|Cache working
+
+|< 2x
+|✗ Poor
+|Cache issues
+|===
+
+**Speedup Ratio** = First turn TTFT / Later turns TTFT
+
+Higher values indicate better KV cache effectiveness.
+
+== How It Works
+
+1. **Virtual Keys**: Creates temporary LiteMaaS API key for selected models
+2. **Seed Documents**: Uses 11 real-world documents (code + text)
+3. **Multi-Turn**: First turn = full document, later turns = follow-ups
+4. **Parallel**: Multiple workers simulate concurrent users
+5. **Metrics**: Parses output for TTFT, speedup, throughput
+
+== Technical Details
+
+=== Benchmark Tool
+
+* Tool: https://github.com/rh-aiservices-bu/multi-turn-benchmarking
+* Container: `quay.io/hayesphilip/multi-turn-benchmark:0.0.1`
+* Runs as Kubernetes Job in your namespace
+
+=== What Gets Tested
+
+* **TTFT (Time to First Token)**: Response latency
+* **Prefix Caching**: KV cache effectiveness across conversation turns
+* **Throughput**: Requests per second
+* **Concurrency**: Multiple parallel users
+* **Realistic Load**: Random delays, diverse prompts
+
+=== Cleanup
+
+All resources are automatically removed when you destroy the catalog item:
+
+* Benchmark Job deleted
+* Benchmark Pods deleted
+* Virtual keys removed
+* Namespace preserved (shared with other resources)
+
+== Example Scenarios
+
+=== Quick Smoke Test
+[source,yaml]
+----
+Conversations: 5
+Turns: 3
+Parallel: 2
+Duration: ~2 minutes
+----
+
+=== Standard Workshop Test
+[source,yaml]
+----
+Conversations: 50
+Turns: 10
+Parallel: 8
+Duration: ~15 minutes
+----
+
+=== Heavy Load Test
+[source,yaml]
+----
+Conversations: 100
+Turns: 10
+Parallel: 16
+Duration: ~30 minutes
+----
+
+== Important Notes
+
+[WARNING]
+====
+* Benchmark runs in your namespace on shared CNV pool
+* Uses real LiteMaaS cluster resources
+* Results may vary based on cluster load
+* Auto-cleanup on destroy
+====
+
+== Support
+
+For issues or questions, contact RHDP support or open an issue at:
+https://github.com/rhpds/rhpds.litemaas/issues

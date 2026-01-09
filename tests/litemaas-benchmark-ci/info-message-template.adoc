@@ -1,0 +1,232 @@
+= LiteMaaS Benchmark Results
+
+ifdef::litellm_api_base_url[]
+
+== Your Virtual API Key
+
+[%autowidth,cols="a,a"]
+|===
+| *API Endpoint* | `{litellm_api_base_url}`
+| *Your Virtual Key* | `{litellm_virtual_key}`
+| *Available Models* | {litellm_available_models_list}
+| *Key Duration* | {litellm_key_duration}
+|===
+
+IMPORTANT: Keep your virtual key secure. Do not share it with others.
+
+endif::[]
+
+ifdef::litemaas_benchmark_p95_ms[]
+
+== Performance Test Results
+
+[%autowidth,cols="a,a"]
+|===
+| *Overall Status* | {litemaas_benchmark_status}
+| *Cache Status* | {litemaas_benchmark_cache_status}
+|===
+
+=== Time to First Token (TTFT)
+
+[%autowidth,cols="a,a"]
+|===
+| *Mean* | {litemaas_benchmark_mean_ms} ms
+| *P50 (Median)* | {litemaas_benchmark_p50_ms} ms
+| *P95* | {litemaas_benchmark_p95_ms} ms
+| *P99* | {litemaas_benchmark_p99_ms} ms
+|===
+
+=== Cache Performance
+
+[%autowidth,cols="a,a"]
+|===
+| *Speedup Ratio* | {litemaas_benchmark_speedup_ratio}x
+| *Status* | {litemaas_benchmark_cache_status}
+|===
+
+The **speedup ratio** measures prefix caching effectiveness by comparing first turn TTFT (full document processing) vs later turns (cached prefix).
+
+* *> 3x*: Excellent prefix caching ✓
+* *> 2x*: Good prefix caching
+* *< 2x*: Poor cache effectiveness ✗
+
+=== Load Testing Results
+
+[%autowidth,cols="a,a"]
+|===
+| *Total Time* | {litemaas_benchmark_total_time_seconds} seconds
+| *Total Requests* | {litemaas_benchmark_total_requests}
+| *Requests/sec* | {litemaas_benchmark_requests_per_second}
+|===
+
+=== Test Configuration
+
+[%autowidth,cols="a,a"]
+|===
+| *Conversations* | {litemaas_benchmark_conversations}
+| *Turns* | {litemaas_benchmark_turns}
+|===
+
+=== Performance Interpretation
+
+[cols="1,1,2"]
+|===
+|Metric |Threshold |Status
+
+|*TTFT P95*
+|< 500ms
+|Excellent user experience ✓
+
+|*TTFT P95*
+|< 1000ms
+|Good user experience
+
+|*TTFT P95*
+|> 1000ms
+|May need optimization ✗
+
+|*Speedup*
+|> 3x
+|Excellent prefix caching ✓
+
+|*Speedup*
+|> 2x
+|Good prefix caching
+
+|*Speedup*
+|< 2x
+|Poor cache effectiveness ✗
+|===
+
+endif::[]
+
+ifndef::litemaas_benchmark_p95_ms[]
+
+== Benchmark Status
+
+The benchmark is currently running or has not yet completed.
+
+To check progress:
+
+[source,bash,subs="attributes+"]
+----
+oc logs -n {guid} -l app=litemaas-benchmark -f
+----
+
+To check job status:
+
+[source,bash,subs="attributes+"]
+----
+oc get job litemaas-benchmark -n {guid}
+----
+
+endif::[]
+
+== Advanced Usage
+
+=== View Full Benchmark Logs
+
+[source,bash,subs="attributes+"]
+----
+# View complete benchmark output
+oc logs -n {guid} -l app=litemaas-benchmark
+
+# Follow live progress
+oc logs -n {guid} -l app=litemaas-benchmark -f
+
+# Check job status
+oc get job litemaas-benchmark -n {guid}
+
+# Describe job for events
+oc describe job litemaas-benchmark -n {guid}
+----
+
+=== Re-run Benchmark
+
+To re-run the benchmark with different parameters:
+
+1. Destroy this catalog item
+2. Order a new one with updated configuration
+
+=== Troubleshooting
+
+If the benchmark fails:
+
+[source,bash,subs="attributes+"]
+----
+# Check pod status
+oc get pods -n {guid} -l app=litemaas-benchmark
+
+# View error logs
+oc logs -n {guid} -l app=litemaas-benchmark
+
+# Describe pod for events
+oc describe pod -n {guid} -l app=litemaas-benchmark
+----
+
+*Common Issues:*
+
+* **LiteMaaS endpoint unreachable**: Check network connectivity
+* **Invalid API key**: Ensure virtual keys workload succeeded
+* **Model not available**: Verify model is deployed in LiteMaaS
+* **Context length exceeded**: Reduce max_tokens parameter
+* **Timeout**: Reduce conversation count or turns
+
+== Using Your API Key
+
+=== Example curl Request
+
+[source,bash,subs="attributes+"]
+----
+curl {litellm_api_base_url}/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer {litellm_virtual_key}" \
+  -d '{
+    "model": "granite-3-2-8b-instruct",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Explain what TTFT means in LLM inference."
+      }
+    ],
+    "max_tokens": 200
+  }'
+----
+
+=== Example Python Code
+
+[source,python,subs="attributes+"]
+----
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="{litellm_api_base_url}",
+    api_key="{litellm_virtual_key}"
+)
+
+response = client.chat.completions.create(
+    model="granite-3-2-8b-instruct",
+    messages=[
+        {"role": "user", "content": "What is prefix caching in LLMs?"}
+    ],
+    max_tokens=200
+)
+
+print(response.choices[0].message.content)
+----
+
+== Key Lifecycle
+
+Your virtual key is automatically synchronized with this catalog item:
+
+* ✓ Key expires when catalog item expires
+* ✓ Key extends automatically when you click "Extend" in RHDP
+* ✓ Key is removed when catalog item is destroyed
+
+== Support
+
+For issues or questions:
+
+* RHDP Support: Contact via Red Hat support channels
+* GitHub Issues: https://github.com/rhpds/rhpds.litemaas/issues
+* Documentation: https://github.com/rhpds/rhpds.litemaas
