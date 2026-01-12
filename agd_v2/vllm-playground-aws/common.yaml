@@ -1,6 +1,6 @@
 ---
 # -------------------------------------------------------------------
-# --- Catalog Item: Building Self-contained Appliances with Red Hat Image Mode (bootc) & MicroShift
+# --- Catalog Item: VLLM Playground with Showroom Integration
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
@@ -39,6 +39,9 @@ requirements_content:
     type: git
     version: main
   - name: https://github.com/rhpds/vllm-playground.git
+    type: git
+    version: main
+  - name: https://github.com/agnosticd/showroom.git
     type: git
     version: main
 
@@ -167,9 +170,9 @@ software_workloads:
   - vllm_playground.demo.rhel_workload_accelerator_config
   - vllm_playground.demo.rhel_workload_vllm_playground
 
-# post_software_final_workloads:
-#   bastions:
-#   - agnosticd.showroom.vm_workload_showroom
+post_software_final_workloads:
+  bastions:
+  - agnosticd.showroom.vm_workload_showroom
 
 # -------------------------------------------------------------------
 # Workload Variables
@@ -272,30 +275,22 @@ rhel_workload_vllm_playground_enable_service: true
 # -------------------------------------------------------------------
 # Workload: showroom
 # -------------------------------------------------------------------
-# showroom_git_repo: https://github.com/rhpds/edge-applicances-rhim-microshift-showroom.git
-# showroom_git_ref: main
-# # Setting TLS provider to none and tls_termination for bastion route to edge
-# showroom_tls_provider: none
-
-# showroom_tab_services:
-#   - "single_terminal"
-
-# showroom_ssh_method: password
-
-# showroom_ssh_host: "host.containers.internal"
-# showroom_ssh_username: "{{ bastion_student_user_name }}"
-# showroom_ssh_password: "{{ common_password }}"
-# showroom_ssh_port: 22
+showroom_git_repo: https://github.com/rhpds/showroom-vllm-playground.git
+showroom_git_ref: main
+showroom_host: "{{ lookup('agnosticd_user_data', 'hostname') }}"
 
 # -------------------------------------------------------------------
 # AgnosticV User Data to be displayed
 # -------------------------------------------------------------------
 agnosticv_importdata:
   openshift_cnv_ssh_address: "{{ openshift_cnv_ssh_address }}"
-  bastion_public_hostname: "{{ bastion_public_hostname }}"
-  bastion_url: "https://{{ bastion_public_hostname }}"
-  bastion_ssh_user_name: "{{ bastion_student_user_name }}"
-  bastion_ssh_password: "{{ bastion_student_user_password }}"
+  bastion_public_hostname: "{{ lookup('agnosticd_user_data', 'hostname') }}"
+  bastion_url: "https://{{ lookup('agnosticd_user_data', 'hostname') }}"
+  bastion_ssh_user_name: "{{ lookup('agnosticd_user_data', 'ssh_username') }}"
+  bastion_ssh_password: "{{ lookup('agnosticd_user_data', 'ssh_password') }}"
+  ssh_command: "{{ lookup('agnosticd_user_data', 'ssh_command') }}"
+  showroom_url: "{{ lookup('agnosticd_user_data', 'showroom_primary_view_url') | default('') }}"
+  vllm_playground_url: "http://{{ lookup('agnosticd_user_data', 'hostname') }}:7860"
 
 
 # -------------------------------------------------------------------
@@ -325,8 +320,8 @@ __meta__:
     keywords:
     - vllm
     labels:
-      Product: Red_Hat_Enterprise_Linux
-      Product_Family: Red_Hat_Enterprise_Linux
+      Product: Red_Hat_AI
+      Product_Family: Red_Hat_AI
       Provider: RHDP
     parameters:
     - name: default_instance_type
@@ -341,6 +336,16 @@ __meta__:
         - g5.xlarge
         - g6.xlarge
         - g6e.xlarge
+
+    - name: showroom_git_ref
+      description: Content Version
+      formLabel: Content Version
+      openAPIV3Schema:
+        type: string
+        default: main
+        enum:
+        - main
+        - workshop-to-demo
 
   # sandboxes:
   #   - kind: OcpSandbox
