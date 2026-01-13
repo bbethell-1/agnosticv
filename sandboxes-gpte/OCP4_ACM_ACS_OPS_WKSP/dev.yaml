@@ -5,16 +5,52 @@ purpose: development
 install_lets_encrypt_certificates: true
 
 # -------------------------------------------------------------------
-# Infra Workloads - Override common.yaml for dev environment
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# Infra Workloads - Complete Ops 101 + HCP Workshop
+# IMPORTANT: Order matters - dependencies must deploy first
 # -------------------------------------------------------------------
 infra_workloads:
-  - ocp4_workload_showroom
-  - ocp4-workload-workshop-admin-storage  # Grant cluster-admin to Showroom
-  - studentvm_ocp4
-  - ocp4_workload_pipelines
-  - ocp4_workload_rhacs
-  - ocp4_workload_rhacm
-  - ocp4_workload_cert_manager
+  # Phase 1: Foundation
+  - ocp4_workload_cert_manager                     # Certificates (required early)
+  - ocp4_workload_rhsso_authentication             # Red Hat SSO authentication (replaces basic auth)
+  - ocp4_workload_openshift_data_foundation        # Storage (REQUIRED for CNV, OADP, Loki, HCP)
+
+  # Phase 2: Workshop Infrastructure
+  - ocp4_workload_showroom                         # Workshop UI
+  - ocp4-workload-workshop-admin-storage           # Grant cluster-admin to Showroom
+  - studentvm_ocp4                                 # Student VMs
+  - ocp4_workload_web_terminal                     # Web-based terminal
+  - ocp4_workload_kubernetes_image_puller          # Pre-pull images for faster startup
+
+  # Phase 3: CI/CD & Security
+  - ocp4_workload_pipelines                        # OpenShift Pipelines
+  - ocp4_workload_rhacs                            # ACS/Security scanning
+
+  # Phase 4: Multi-cluster Management
+  - ocp4_workload_rhacm                            # ACM base operator
+  - ocp4_workload_rhacm_cloud_credentials          # ACM cloud credentials (for HCP)
+  - ocp4_workload_acm_multicluster_observability   # ACM observability features
+
+  # Phase 5: Virtualization & HCP Infrastructure
+  - ocp4_workload_kubevirt                         # OpenShift Virtualization
+  - ocp4_workload_metallb                          # Load balancer (REQUIRED for HCP)
+  - ocp4_workload_lvms                             # Local volume storage (REQUIRED for HCP)
+  - ocp4_workload_hcp_kubevirt                     # Hosted Control Planes on KubeVirt
+
+  # Phase 6: Backup & Observability
+  - ocp4_workload_oadp                             # Backup/DR
+  - ocp4_workload_performance_monitoring           # Observability (Loki, Grafana, monitoring)
+
+  # Phase 7: Developer Experience (Red Hat Developer Hub)
+  - ocp4_workload_minio                            # S3-compatible storage for Dev Hub
+  - ocp4_workload_gitops_gitlab                    # GitLab + ArgoCD
+  - ocp4_workload_rhdh_orchestrator                # Workflow orchestrator
+  - ocp4_workload_redhat_developer_hub_bootstrap   # Bootstrap Developer Hub with ArgoCD
+  - ocp4_workload_redhat_developer_hub             # Red Hat Developer Hub
 
 
 # -------------------------------------------------------------------
@@ -24,12 +60,15 @@ ocp4_workload_showroom_content_git_repo: https://github.com/jnewsome97/openshift
 ocp4_workload_showroom_content_git_repo_ref: appmod
 ocp4_workload_showroom_user_is_admin: true
 
+# -------------------------------------------------------------------
+# Instance sizing - increased for HCP + all workloads
+# -------------------------------------------------------------------
 master_instance_type: m5a.2xlarge
 #master_instance_count: 1
 #master_storage_type: io1
 #master_storage_size: 250
-worker_instance_type: m6a.4xlarge
-#worker_instance_count: 2
+worker_instance_type: m6a.8xlarge  # 32 vCPU, 128GB RAM (sufficient for HCP + workloads)
+worker_instance_count: 3           # ODF requires minimum 3 workers
 #worker_storage_type: gp3
 #worker_storage_size: 250
 
@@ -39,14 +78,47 @@ worker_instance_type: m6a.4xlarge
 ocp4_installer_version: "4.20.1"
 ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
 
+# -------------------------------------------------------------------
+# Catalog Snapshot Configuration (shared across operators)
+# -------------------------------------------------------------------
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.20_2025_10_23
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhsso_authentication (Red Hat SSO)
+# -------------------------------------------------------------------
+ocp4_workload_rhsso_authentication_namespace: rhsso
+ocp4_workload_rhsso_authentication_target_namespaces: ["rhsso"]
+ocp4_workload_rhsso_authentication_channel: stable
+ocp4_workload_rhsso_authentication_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_rhsso_authentication_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_rhsso_authentication_admin_create: true
+ocp4_workload_rhsso_authentication_admin_username: admin
+ocp4_workload_rhsso_authentication_admin_password: "{{ common_password }}"
+ocp4_workload_rhsso_authentication_remove_kubeadmin: false  # Keep kubeadmin
+
+ocp4_workload_rhsso_authentication_user_count: 1
+ocp4_workload_rhsso_authentication_user_name_base: user
+ocp4_workload_rhsso_authentication_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1.15
+ocp4_workload_cert_manager_use_catalog_snapshot: true
+ocp4_workload_cert_manager_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+
 # ---------------------------------------------------------
 # OpenShift Pipelines
 # ---------------------------------------------------------
 ocp4_workload_pipelines_channel: pipelines-1.17
 
 ocp4_workload_pipelines_use_catalog_snapshot: true
-ocp4_workload_pipelines_catalog_snapshot_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.20_2025_10_23
+ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm
@@ -54,8 +126,14 @@ ocp4_workload_pipelines_catalog_snapshot_image_tag: v4.20_2025_10_23
 ocp4_workload_rhacm_acm_channel: release-2.14
 ocp4_workload_rhacm_use_catalog_snapshot: true
 ocp4_workload_rhacm_catalogsource_name: catalogsource-rhacm
-ocp4_workload_rhacm_catalog_source_image: "quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog"
-ocp4_workload_rhacm_catalog_source_tag: "v4.20_2025_10_23"
+ocp4_workload_rhacm_catalog_source_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_rhacm_catalog_source_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacm_cloud_credentials
+# -------------------------------------------------------------------
+ocp4_workload_rhacm_cloud_credentials_kubevirt: true
+ocp4_workload_rhacm_cloud_credentials_kubevirt_secret_name: kubevirt-secret
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacs
@@ -63,8 +141,279 @@ ocp4_workload_rhacm_catalog_source_tag: "v4.20_2025_10_23"
 ocp4_workload_rhacs_install_operator_namespace: "rhacs-operator"
 ocp4_workload_rhacs_install_operator_channel: "rhacs-4.8"
 ocp4_workload_rhacs_install_operator_use_catalog_snapshot: true
-ocp4_workload_rhacs_install_operator_catalog_source_tag: "v4.20_2025_10_23"
+ocp4_workload_rhacs_install_operator_catalog_source_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_data_foundation (Storage)
+# -------------------------------------------------------------------
+# CRITICAL: Required for CNV VM storage, OADP S3 backend, Loki persistent storage, and HCP
+ocp4_workload_openshift_data_foundation_channel: stable-4.18
+ocp4_workload_openshift_data_foundation_catalogsource_setup: true
+ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
+ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_old_default_storage_class_name: gp3-csi
+# Explicitly set underlying storage class for Ceph OSDs
+ocp4_workload_openshift_data_foundation_ceph_storage_class_name: gp3-csi
+# Standard size across most workshops
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
+ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1200
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_kubevirt (OpenShift Virtualization)
+# -------------------------------------------------------------------
+ocp4_workload_kubevirt_channel: stable
+ocp4_workload_kubevirt_use_catalog_snapshot: true
+ocp4_workload_kubevirt_catalogsource_name: redhat-operators-snapshot-kubevirt
+ocp4_workload_kubevirt_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_kubevirt_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+# Deploy HyperConverged CR automatically
+ocp4_workload_kubevirt_deploy_hyperconverged: true
+# Install virtctl CLI tool
+ocp4_workload_kubevirt_install_virtctl: true
+# Enable nested KVM for AWS (allows VMs without metal nodes)
+ocp4_workload_kubevirt_enabled_nested_kvm: true
+# Use snapshots for boot sources (default, works with ODF/Ceph)
+ocp4_workload_kubevirt_boot_sources_snapshot: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_metallb (Load Balancer for HCP)
+# -------------------------------------------------------------------
+ocp4_workload_metallb_channel: stable
+ocp4_workload_metallb_use_catalog_snapshot: true
+ocp4_workload_metallb_catalogsource_name: redhat-operators-snapshot-metallb
+ocp4_workload_metallb_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_metallb_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_metallb_enable_ipaddresspool: true
+ocp4_workload_metallb_enable_l2advertisement: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_lvms (Local Storage for HCP)
+# -------------------------------------------------------------------
+ocp4_workload_lvms_channel: stable-4.18
+ocp4_workload_lvms_use_catalog_snapshot: true
+ocp4_workload_lvms_catalogsource_name: redhat-operators-snapshot-lvms
+ocp4_workload_lvms_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_lvms_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_hcp_kubevirt (Hosted Control Planes)
+# -------------------------------------------------------------------
+# HCP on KubeVirt provider - enables creating hosted clusters on VMs
+# Requires: ACM, KubeVirt, MetalLB, LVMS
+# Note: Configuration may need tuning based on specific HCP requirements
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_oadp (Backup/DR)
+# -------------------------------------------------------------------
+ocp4_workload_oadp_channel: stable-1.3
+ocp4_workload_oadp_use_catalog_snapshot: true
+ocp4_workload_oadp_catalogsource_name: redhat-operators-snapshot-oadp
+ocp4_workload_oadp_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_oadp_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_oadp_automatic_install_plan_approval: true
+# Storage configuration - uses ODF/OCS S3 backend
+ocp4_workload_oadp_storage: ocs
+# Don't auto-configure DPA - let workshop guide students through it
+ocp4_workload_oadp_configure_dpa: false
+ocp4_workload_oadp_multi_user: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_performance_monitoring (Observability)
+# -------------------------------------------------------------------
+# Enables Loki for logging, Grafana for dashboards, and enhanced monitoring
+enable_loki: true
+enable_infra_nodes: false  # Dev environment, no infra nodes
+
+# Operators' catalog sources configuration
+ocp4_workload_performance_monitoring_automatic_install_plan_approval: true
+ocp4_workload_performance_monitoring_catalogsource_setup: true
+ocp4_workload_performance_monitoring_redhat_catalogsource_name: "olm-snapshot-redhat-catalog"
+ocp4_workload_performance_monitoring_certified_catalogsource_name: "olm-snapshot-certified-catalog"
+ocp4_workload_performance_monitoring_community_catalogsource_name: "olm-snapshot-community-catalog"
+ocp4_workload_performance_monitoring_catalogsource_namespace: "openshift-marketplace-snapshot"
+ocp4_workload_performance_monitoring_redhat_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_performance_monitoring_certified_catalogsource_image: "quay.io/gpte-devops-automation/olm_snapshot_certified_catalog"
+ocp4_workload_performance_monitoring_community_catalogsource_image: "quay.io/gpte-devops-automation/olm_snapshot_community_catalog"
+ocp4_workload_performance_monitoring_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# Logging configuration - uses ODF storage
+cluster_logging_storage_class: ocs-storagecluster-ceph-rbd  # ODF storage class
+cluster_logging_storage_size: 10G
+cluster_logging_loki_size: "1x.extra-small"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_web_terminal
+# -------------------------------------------------------------------
+ocp4_workload_web_terminal_channel: fast
+ocp4_workload_web_terminal_use_catalog_snapshot: true
+ocp4_workload_web_terminal_catalogsource_name: redhat-operators-snapshot-web-terminal
+ocp4_workload_web_terminal_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_web_terminal_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_kubernetes_image_puller
+# -------------------------------------------------------------------
+ocp4_workload_kubernetes_image_puller_node_selector: '{"node-role.kubernetes.io/worker": ""}'
+ocp4_workload_kubernetes_image_puller_images:
+  - quay.io/devfile/universal-developer-image:ubi8-277c10c
+ocp4_workload_kubernetes_image_puller_instance_namespace: default
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_minio (S3 Storage for Developer Hub)
+# -------------------------------------------------------------------
+ocp4_workload_minio_project: ic-shared-minio
+ocp4_workload_minio_storage_size: 256Gi
+ocp4_workload_minio_modern_deployment: true
+ocp4_workload_minio_expose_route: true
+ocp4_workload_minio_root_user: minio
+ocp4_workload_minio_root_password: "{{ common_password }}"
+ocp4_workload_minio_image: quay.io/minio/minio
+ocp4_workload_minio_image_tag: RELEASE.2024-05-28T17-19-04Z
+ocp4_workload_minio_bucket_setup: true
+ocp4_workload_minio_bucket_name:
+  - backstage-bucket
+ocp4_workload_minio_bucket_multi_user: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_gitlab (GitLab + ArgoCD)
+# -------------------------------------------------------------------
+ocp4_workload_gitops_gitlab_gitops_type: argocd
+ocp4_workload_gitops_gitlab_config_email_display_name: Ops Workshop Admin
+ocp4_workload_gitops_gitlab_config_email_reply_to: "noreply@redhat.com"
+ocp4_workload_gitops_gitlab_config_smtp_enabled: "false"
+ocp4_workload_gitops_gitlab_config_smtp_domain: "example.com"
+ocp4_workload_gitops_gitlab_config_smtp_port: "587"
+ocp4_workload_gitops_gitlab_config_smtp_user: "gitlab"
+ocp4_workload_gitops_gitlab_config_smtp_password: "gitlab"
+ocp4_workload_gitops_gitlab_config_ssh_port: "22"
+ocp4_workload_gitops_gitlab_config_rootPassword: "{{ common_password }}"
+ocp4_workload_gitops_gitlab_config_https: "true"
+ocp4_workload_gitops_gitlab_config_root_email: "root@demo.redhat.com"
+ocp4_workload_gitops_gitlab_config_keybase_db: "0123456789"
+ocp4_workload_gitops_gitlab_config_keybase_otp: "0123456789"
+ocp4_workload_gitops_gitlab_config_keybase_secret: "0123456789"
+
+ocp4_workload_gitops_gitlab_db_user_name: gitlab
+ocp4_workload_gitops_gitlab_db_password: passw0rd
+ocp4_workload_gitops_gitlab_db_name: gitlab_production
+
+ocp4_workload_gitops_gitlab_gitops_repo: https://github.com/redhat-gpte-devopsautomation/agnosticg.git
+
+ocp4_workload_gitops_gitlab_import_repos:
+  - name: rhdh
+    repo:
+      - name: software-templates
+        url: https://github.com/redhat-gpte-devopsautomation/software-templates.git
+  - name: summit-lab
+    repo:
+      - name: backstage-workshop
+        url: https://github.com/redhat-gpte-devopsautomation/backstage-workshop.git
+  - name: gitops
+    repo:
+      - name: janus-idp-gitops
+        url: https://github.com/prakhar1985/developer-hub-idp-gitops.git
+  - name: rhdh-entities
+    repo:
+      - name: rhdh-demo-entities
+        url: https://github.com/redhat-gpe/rhdh-demo-entities.git
+
+ocp4_workload_gitops_gitlab_users_count: 1
+ocp4_workload_gitops_gitlab_users_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhdh_orchestrator (Workflow Orchestrator)
+# -------------------------------------------------------------------
+ocp4_workload_rhdh_orchestrator_helm_installer: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+ocp4_workload_rhdh_orchestrator_helm_chart: https://github.com/rhdhorchestrator/orchestrator-helm-chart.git
+ocp4_workload_rhdh_orchestrator_helm_chart_version: orchestrator-k8s-0.3.17
+ocp4_workload_rhdh_orchestrator_sonataflow_pgsql_version: "12.12.10"
+
+ocp4_workload_rhdh_orchestrator_sonataflow_namespace: sonataflow-infra
+ocp4_workload_rhdh_orchestrator_serverless_enabled: true
+
+ocp4_workload_rhdh_orchestrator_rhdh_name: backstage
+ocp4_workload_rhdh_orchestrator_rhdh_namespace: backstage
+
+ocp4_workload_rhdh_orchestrator_workflows:
+  repo: https://rhdhorchestrator.io/serverless-workflows-config
+  chart:
+    - name: greeting
+      location: orchestrator-workflows/greeting
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_redhat_developer_hub_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_redhat_developer_hub_bootstrap_janus_bootstrap_repo: https://github.com/redhat-gpte-devopsautomation/janus-idp-bootstrap.git
+orchestrator_enabled: false  # Disable orchestrator for simplified setup
+ocp4_workload_redhat_developer_hub_bootstrap_orchestrator_enabled: "{{ orchestrator_enabled }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_redhat_developer_hub (Main Developer Hub)
+# -------------------------------------------------------------------
+ocp4_workload_redhat_developer_hub_gitlab_root_password: "{{ common_password }}"
+ocp4_workload_redhat_developer_hub_janus_bootstrap_repo: https://github.com/redhat-gpte-devopsautomation/janus-idp-bootstrap.git
+ocp4_workload_redhat_developer_hub_janus_bootstrap_repo_target_revision: main
+ocp4_workload_redhat_developer_hub_admin_user: admin
+ocp4_workload_redhat_developer_hub_admin_password: "{{ common_password }}"
+
+ocp4_workload_redhat_developer_hub_gitlab_template_locations:
+  - group: rhdh
+    project: software-templates
+    branch: main
+    file: showcase-templates.yaml
+    rules:
+      allow: Template
+    templates:
+      - scaffolder-templates/quarkus-web-template/template.yaml
+  - group: rhdh
+    project: software-templates
+    branch: main
+    file: org.yaml
+    rules:
+      allow: Group, User
+    templates: []
+  - group: summit-lab
+    project: backstage-workshop
+    branch: master
+    file: showcase-templates.yaml
+    rules:
+      allow: Template
+    templates:
+      - scaffolder-templates/poi-map/template.yaml
+      - scaffolder-templates/poi-gateway/template.yaml
+      - scaffolder-templates/poi-backend/template.yaml
+  - group: rhdh-entities
+    project: rhdh-demo-entities
+    branch: main
+    file: locations.yaml
+    rules:
+      allow: Domain, Component, System, API, Resource, Location
+    templates:
+      - resources/developer-hub.yaml
+      - resources/gitlab.yaml
+      - resources/janus-gitops.yaml
+      - resources/openshift-devspaces.yaml
+      - resources/openshift-gitops.yaml
+      - resources/quay.yaml
+      - systems/openshift-dev-cluster.yaml
+
+ocp4_workload_redhat_developer_hub_users_count: 1
+ocp4_workload_redhat_developer_hub_users_password: "{{ common_password }}"
+
+ocp4_workload_redhat_developer_hub_backstage_helm_chart_repo: https://charts.openshift.io
+ocp4_workload_redhat_developer_hub_backstage_helm_chart: redhat-developer-hub
+ocp4_workload_redhat_developer_hub_backstage_helm_chart_version: 1.7.1
+ocp4_workload_redhat_developer_hub_backstage_image_registry: quay.io
+ocp4_workload_redhat_developer_hub_backstage_image_repository: rhdh/rhdh-hub-rhel9
+ocp4_workload_redhat_developer_hub_backstage_image_tag: "1.7"
+
+ocp4_workload_redhat_developer_hub_minio_namespace: ic-shared-minio
+ocp4_workload_redhat_developer_hub_minio_username: minio
+ocp4_workload_redhat_developer_hub_minio_password: "{{ common_password }}"
+ocp4_workload_redhat_developer_hub_minio_bucket_name: backstage-bucket
 
 # -------------------------------------------------------------------
 # Babylon meta variables - Use forked AgnosticD repo
