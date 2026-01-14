@@ -1,0 +1,141 @@
+---
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/access-restriction-devs-only.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/secrets/rhelbu_password.yaml
+#
+platform: ZT-RHEL
+
+
+# Showroom image, temporary
+ocp4_workload_showroom_content_image: ghcr.io/agonzalezrh/showroom-content:latest
+
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+
+env_type: zero-touch-base-rhel
+cloud_provider: openshift_cnv
+
+# -------------------------------------------------------------------
+# Demo Config
+# -------------------------------------------------------------------
+
+git_config_directory: |-
+  {{ ocp4_workload_showroom_content_git_repo  |
+    replace('.git','/' + ocp4_workload_showroom_content_git_repo_ref + '/config/') |
+    replace('github.com','raw.githubusercontent.com') }}
+
+zero_touch_egress_lockdown_rules: "{{ (lookup('ansible.builtin.url', git_config_directory + 'firewall.yaml', split_lines=False, errors='warn') | default('{}') | from_yaml).egress | default([]) }}"
+zero_touch_ingress_lockdown_rules: "{{ (lookup('ansible.builtin.url', git_config_directory + 'firewall.yaml', split_lines=False, errors='warn') | default('{}') | from_yaml).ingress | default([]) }}"
+containers: "{{ (lookup('ansible.builtin.url', git_config_directory + 'instances.yaml', split_lines=False, errors='warn') | default('[]') | from_yaml).containers | default([]) }}"
+instances: "{{ (lookup('ansible.builtin.url', git_config_directory + 'instances.yaml', split_lines=False, errors='warn') | default('[]') | replace('INSTANCEGUID', guid) | from_yaml).virtualmachines | default([]) }}"
+networks: "{{ lookup('ansible.builtin.url', git_config_directory + 'networks.yaml', split_lines=False, errors='warn') | default('[]') | from_yaml | default([]) }}"
+#
+# Zero Touch
+#
+
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/zt-ans-bu-hashi-aap.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_antora_playbook: site.yml
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+ocp4_workload_showroom_terminal_type: wetty
+
+ocp4_workload_showroom_zero_touch_bundle: "https://github.com/rhpds/nookbag/releases/download/nookbag-v0.0.5/nookbag-v0.0.5.zip"
+ocp4_workload_showroom_zero_touch_ui_enabled: "true"
+
+ocp4_workload_showroom_chart_package_url: https://agonzalezrh.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: "1.9.6"
+
+
+bastion_prefix: "{{ groups['bastions'][0] | default('undefined') | regex_replace('\\..*$') }}"
+ansible_service_account_user_name: rhel
+ansible_service_account_user_password: "{{ common_password }}"
+_showroom_user_data:
+  bastion_ssh_command: "ssh {{ ansible_service_account_user_name }}@{{ groups['bastions'][0] | default('undefined') }}"
+  bastion_ssh_user_name: "{{ ansible_service_account_user_name }}"
+  bastion_ssh_password: "{{ ansible_service_account_user_password }}"
+  bastion_public_hostname: "{{ bastion_prefix }}"
+  guid: "{{ guid }}"
+  domain: "{{ sandbox_openshift_apps_domain }}"
+  vault_password: "{{ rhelbu_vault_password }}"
+  dns_domain: "{{ sandbox_openshift_apps_domain }}"
+  environment_variables:
+    guid: "{{ guid }}"
+    domain: "{{ sandbox_openshift_apps_domain }}"
+
+# -------------------------------------------------------------------
+# Enable or disable DNS availablity on the VPC after the deployment
+# Enable lock_bastion_security_group
+# -------------------------------------------------------------------
+dns_support_state: true
+lock_env_security_groups: true
+
+# -------------------------------------------------------------------
+# Config Pre/Software/Post Workloads
+# -------------------------------------------------------------------
+#software_workloads:
+#  bastions:
+#    - vscode-server
+post_software_final_workloads:
+  bastions:
+    - showroom
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+#student_name: rhel
+student_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Role: set-repositories
+# -------------------------------------------------------------------
+repo_method: satellite
+use_content_view: true
+install_common: false
+agd_install_common: false
+agd_install_bastion_base: false
+# Only used allow Password authentication on SSH
+zero_touch_rhel_user: true
+
+ansible_user: cloud-user
+remote_user: cloud-user
+
+student_name: rhel
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: 6B0DA392-7DD0-4513-B690-F89CFF5E07F9
+  owners:
+    maintainer:
+      - name: Wilson Harris
+        email: wharris@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-sandboxes-gpte
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Ansible Automation Platform and HashiCorp. Terraform, Vault, and AAP
+    category: Brand_Events
+    keywords:
+      - rh1-2026
+    parameters: []
+    labels:
+      Sales_Play: Cloud_Operating_System
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+      pull: missing
