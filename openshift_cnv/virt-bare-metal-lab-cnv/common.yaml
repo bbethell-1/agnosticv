@@ -47,7 +47,7 @@ requirements_content:
   # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
-    version: main
+    version: bm-lab-8-jan
 
 # -------------------------------------------------------------------
 # Bastion VM settings
@@ -82,8 +82,8 @@ ai_control_plane_cores: 16
 ai_control_plane_memory: 32Gi
 
 worker_instance_count: 3
-ai_workers_cores: 16
-ai_workers_memory: 32Gi
+ai_workers_cores: 8
+ai_workers_memory: 96Gi
 
 # -------------------------------------------------------------------
 # OpenShift Networking
@@ -111,6 +111,8 @@ workloads:
 - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
 - agnosticd.core_workloads.ocp4_workload_metallb
 - agnosticd.core_workloads.ocp4_workload_virt_network_config
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 # - agnosticd.core_workloads.ocp4_workload_showroom
 
 # -------------------------------------------------------------------
@@ -188,7 +190,6 @@ ocp4_workload_nmstate_channel: stable
 # -------------------------------------------------------------------
 ocp4_workload_openshift_virtualization_channel: stable
 # Use PVCs for KubeVirt boot images
-ocp4_workload_openshift_virtualization_boot_sources_shapshot: false
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_metallb
@@ -202,6 +203,38 @@ ocp4_workload_metallb_enable_l2advertisement: false
 # -------------------------------------------------------------------
 ocp4_workload_virt_network_config_multi_user: false
 ocp4_workload_virt_network_config_networks: "{{ ai_attach_workers_networks | default([]) }}"
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.core_workloads.ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: latest
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, admin, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/raffaelespazzoli/openshift-baremetal-lab.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: charts/bootstrap
+
+ocp4_workload_gitops_bootstrap_application_wait: false
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  # valid values are connected, disconnected, proxied
+  environmentConnectivity: connected
+  # valid values are simple, bonds
+  environmentNetworking: simple
+  # allowed values is 1 for now.
+  numStudents: 1
+  clusterBaseDomain: "cluster-{{ guid }}.dynamic.redhatworkshops.io"
+  storageClassName: ocs-external-storagecluster-ceph-rbd
 
 # ------------------------------------------------------
 # Showroom
