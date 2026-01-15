@@ -22,8 +22,7 @@
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 #include /includes/secrets/demosat-rhel-9-10-latest.yaml
-#include /includes/secrets/zerossl.yaml
-#include /includes/secrets/ocp4_workload_ols_api_token.yaml
+#include /includes/secrets/letsencrypt_with_zerossl_fallback.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -46,15 +45,10 @@ requirements_content:
   # Assisted Installer Collection
   - name: https://github.com/rhpds/assisted_installer.git
     type: git
-    version: main
+    version: v0.0.9
 
   # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
-    type: git
-    version: main
-
-  # AI Workloads (for OpenShift Lightspeed)
-  - name: https://github.com/agnosticd/ai_workloads.git
     type: git
     version: main
 
@@ -131,7 +125,6 @@ ai_control_plane_memory: "{{ '128Gi' if cluster_size == 'sno' else '64Gi' }}"
 workloads:
 - agnosticd.core_workloads.ocp4_workload_external_odf
 - agnosticd.core_workloads.ocp4_workload_cert_manager
-- "{{ 'agnosticd.ai_workloads.ocp4_workload_ols' if ols_enable | default(true) | bool else '' }}"
 
 # ===================================================================
 # Variables for specific workloads
@@ -150,9 +143,21 @@ ocp4_workload_external_odf_channel: >-
     }.get(host_ocp4_installer_version, 'stable-' + host_ocp4_installer_version)
   }}
 ocp4_workload_external_odf_operator_automatic_install_plan_approval: true
-# the rest of the settings were commented out for SNO
-# the full settings are in test.yaml
-# use test.yaml for multinode
+ocp4_workload_external_odf_operator_starting_csv: ""
+ocp4_workload_external_odf_operator_use_catalog_snapshot: false
+ocp4_workload_external_odf_operator_catalog_source_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_external_odf_operator_catalog_source_tag: "v4.18_2025_10_23"
+ocp4_workload_external_odf_backingstore_custom_resources: true
+ocp4_workload_external_odf_backingstore_cpu_limits: 1000m
+ocp4_workload_external_odf_backingstore_cpu_requests: 800m
+ocp4_workload_external_odf_backingstore_memory_limits: 4000Mi
+ocp4_workload_external_odf_backingstore_memory_requests: 800Mi
+ocp4_workload_external_odf_backingstore_storage_requests: 50Gi
+ocp4_workload_external_odf_noobaa_custom_resources: true
+ocp4_workload_external_odf_noobaa_memory_limits: 4Gi
+ocp4_workload_external_odf_noobaa_memory_requests: 4Gi
+ocp4_workload_external_odf_noobaa_cpu_limits: 3
+ocp4_workload_external_odf_noobaa_cpu_requests: 3
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager
@@ -171,30 +176,6 @@ ocp4_workload_cert_manager_aws_secret_access_key: "{{ route53_aws_secret_access_
 ocp4_workload_cert_manager_aws_hostedzoneid: "{{ route53_aws_zone_id }}"
 
 ocp4_workload_cert_manager_use_catalog_snapshot: false
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_ols (OpenShift Lightspeed)
-# -------------------------------------------------------------------
-# Enabled by default (ols_enable: true)
-# Use Azure AI as the backend for OpenShift Lightspeed
-ocp4_workload_ai_platform: azure
-
-# Automatically create and manage Azure AI tokens
-ocp4_workload_ols_get_token: true
-
-# Disable RAG (Retrieval-Augmented Generation) for pool clusters
-ocp4_workload_ols_enable_rag: false
-
-# Do not create broken pod - not needed in pool clusters
-ocp4_workload_ols_create_broken_pod: false
-
-# ===================================================================
-# Workloads to remove on destroy
-# ===================================================================
-remove_workloads: >-
-  {{
-    ['agnosticd.ai_workloads.ocp4_workload_ols'] if ols_enable | default(true) | bool else []
-  }}
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -256,15 +237,6 @@ __meta__:
         - '4.20'
       annotation: demo.redhat.com/ocp-version
       variable: host_ocp4_installer_version
-    - name: ols_enable
-      description: Enable OpenShift Lightspeed (OLS with RAG disabled for pool clusters)
-      formLabel: Enable OpenShift Lightspeed
-      required: false
-      openAPIV3Schema:
-        type: boolean
-        default: true
-      annotation: demo.redhat.com/ols-enable
-      variable: ols_enable
   sandboxes:
   - kind: OcpSandbox
     namespace_suffix: ocp4-cluster
