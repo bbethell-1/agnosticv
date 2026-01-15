@@ -48,9 +48,11 @@ platform: RHPDS
 # OpenShift Nodes
 # -------------------------------------------------------------------
 
-worker_instance_count: "{{ [(num_users | int / 10) | round(0, 'ceil') | int, 3] | max }}"
-ai_workers_cores: 48
-ai_workers_memory: "96Gi"
+worker_instance_count: "{{ [(num_users | int / 10) | round(0, 'ceil') | int, 1] | max }}"
+ai_workers_memory: "126Gi"
+ai_workers_cores: 64
+ai_workers_sockets: 2
+ai_workers_threads: 2
 
 # ===================================================================
 # List of workloads to be deployed
@@ -71,8 +73,8 @@ requirements_content:
   # Assisted Installer Collection
   - name: https://github.com/rhpds/assisted_installer.git
     type: git
-    # version: v0.0.9
     version: main
+    # version: v0.0.9
   # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
@@ -80,24 +82,27 @@ requirements_content:
   # Showroom
   - name: https://github.com/agnosticd/showroom.git
     type: git
-    version: v1.3.4
+    version: v1.3.9
 
 # -------------------------------------------------------------------
 # Workload variables
 # -------------------------------------------------------------------
+
 num_users: 2
+
+admin_username: "admin"
 admin_password: >-
   {{
     lookup('password', output_dir ~ '/admin_password length=12 chars=ascii_letters,digits')
   }}
-# user_password: >-
-#   {{
-#     lookup('password', output_dir ~ '/user_password length=12 chars=ascii_letters,digits')
-#   }}
-# TODO: Change this back to randomized password
-user_password: edgeLB2517
 
-ocp4_workload_user_base: user
+user_password: >-
+  {{
+    lookup('password', output_dir ~ '/user_password length=12 chars=ascii_letters,digits')
+  }}
+
+# TODO: This is the old user password
+# user_password: edgeLB2517
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -138,6 +143,11 @@ ocp4_workload_gitea_operator_postgresql_image_tag: latest
 ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
 ocp4_workload_gitea_operator_postgresql_volume_storage_class: ocs-external-storagecluster-cephfs
 ocp4_workload_gitea_operator_ssl_route: true
+#
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: rhemadmin
+ocp4_workload_gitea_operator_admin_email: rhemadmin@redhat.com
+ocp4_workload_gitea_operator_admin_password: "{{ ocp4_workload_admin_password}}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
@@ -175,7 +185,16 @@ ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/edge-fleet-git
 ocp4_workload_gitops_bootstrap_repo_revision: rh1-2026
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap
 
+# ocp4_workload_gitops_bootstrap_repo_path: bootstrap # this is now set by the workload
+ocp4_workload_gitops_bootstrap_application_name: bootstrap
+# don't wait for the gitops application to deploy.  This is for testing ONLY.
+# must be removed for prod.
+ocp4_workload_gitops_bootstrap_application_wait: false
+
 ocp4_workload_gitops_bootstrap_helm_values:
+  gitea_admin_password: "{{ ocp4_workload_gitea_operator_admin_password }}"
+  gitea_admin_username: "{{ ocp4_workload_gitea_operator_admin_user }}"
+  guid: "{{ guid }}"
   user_password: "{{ user_password }}"
   admin_password: "{{ admin_password }}"
   user:
@@ -189,6 +208,7 @@ ocp4_workload_gitops_bootstrap_helm_values:
   set_repositories_satellite_ha: true
   satellite_activationkey: "{{ satellite_activationkey }}"
   set_repositories_satellite_activationkey: "{{ satellite_activationkey }}"
+  bastion_ssh_password: "{{ bastion_ssh_password }}"
 
 # -------------------------------------------------------------------
 # ocp4_workload_showroom
@@ -201,6 +221,9 @@ ocp4_workload_showroom_content_only: false
 ocp4_workload_showroom_second_terminal_tab_enable: true
 ocp4_workload_showroom_passthrough_user_data: true
 ocp4_workload_showroom_deployer_chart_version: 2.0.3
+
+agnosticd_passthrough_user_data:
+  openshift_cluster_ingress_domain: "{{ openshift_cluster_ingress_domain }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -245,7 +268,7 @@ __meta__:
         type: integer
         default: 2
         minimum: 2
-        maximum: 122
+        maximum: 60
     labels:
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: Red_Hat_Cloud
@@ -271,11 +294,12 @@ __meta__:
   components:
   - name: openshift
     display_name: OpenShift Cluster
-    item: agd-v2/ocp-cluster-cnv-pools/dev
+    item: agd-v2/ocp-virt-labs-pool/test
     parameter_values:
       cluster_size: multinode
       host_ocp4_installer_version: '4.20'
-    # Propagate agnosticd_user_info data set by this component to variables.
+      ocp4_fips_enable: false
+      ols_enable: true
     propagate_provision_data:
     # guest cluster credentials
     - name: openshift_api_ca_cert
@@ -309,3 +333,5 @@ __meta__:
       var: bastion_ssh_password
     - name: bastion_ssh_port
       var: bastion_ssh_port
+    - name: openshift_cluster_ingress_domain
+      var: openshift_cluster_ingress_domain
