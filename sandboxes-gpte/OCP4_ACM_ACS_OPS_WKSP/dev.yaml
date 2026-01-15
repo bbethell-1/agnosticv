@@ -17,7 +17,7 @@ infra_workloads:
   # Phase 1: Foundation
   - ocp4_workload_cert_manager                     # Certificates (required early)
   - ocp4_workload_rhsso_authentication             # Red Hat SSO authentication (replaces basic auth)
-  # - ocp4_workload_openshift_data_foundation      # REMOVED: Install manually via OperatorHub after deployment
+  - ocp4_workload_openshift_data_foundation        # Storage (uses LIVE catalog with stable-4.19)
 
   # Phase 2: Workshop Infrastructure
   - ocp4_workload_showroom                         # Workshop UI
@@ -33,7 +33,7 @@ infra_workloads:
   # Phase 4: Multi-cluster Management
   - ocp4_workload_rhacm                            # ACM base operator
   - ocp4_workload_rhacm_cloud_credentials          # ACM cloud credentials (for HCP)
-  - ocp4_workload_acm_multicluster_observability   # ACM observability features
+  - ocp4_workload_acm_multicluster_observability   # ACM observability features (requires ODF)
 
   # Phase 5: Virtualization & HCP Infrastructure
   - ocp4_workload_kubevirt                         # OpenShift Virtualization
@@ -149,21 +149,20 @@ ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_data_foundation (Storage)
 # -------------------------------------------------------------------
-# REMOVED FROM AUTOMATED DEPLOYMENT - Install manually via OperatorHub after cluster is ready
-# Reason: Catalog snapshot corruption causing storagesystems CRD timeout (400+ retries)
-# To install manually: Operators → OperatorHub → search "OpenShift Data Foundation" → Install
-# Use channel: stable-4.18 (tested to work with OCP 4.20)
-#
-# ocp4_workload_openshift_data_foundation_channel: stable-4.18
-# ocp4_workload_openshift_data_foundation_catalogsource_setup: true
-# ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
-# ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
-# ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-# ocp4_workload_openshift_data_foundation_update_default_storage_class: true
-# ocp4_workload_openshift_data_foundation_old_default_storage_class_name: gp3-csi
-# ocp4_workload_openshift_data_foundation_ceph_storage_class_name: gp3-csi
-# ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
-# ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1200
+# CRITICAL: Required for CNV VM storage, OADP S3 backend, Loki persistent storage, and HCP
+# SPECIAL CONFIGURATION: Uses LIVE catalog instead of snapshot (like working OPP deployment)
+# Reason: ODF stable-4.18 incompatible with OCP 4.20 (need 4.19+), and snapshot may have packaging issues
+ocp4_workload_openshift_data_foundation_channel: stable-4.19  # Compatible with OCP 4.20
+ocp4_workload_openshift_data_foundation_catalogsource_setup: false  # Use LIVE RedHat catalog (not snapshot)
+# catalogsource_setup: false means use default redhat-operators catalog source
+# This matches the working OPP deployment approach
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_old_default_storage_class_name: gp3-csi
+# Explicitly set underlying storage class for Ceph OSDs
+ocp4_workload_openshift_data_foundation_ceph_storage_class_name: gp3-csi
+# Standard size across most workshops
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 1500Gi
+ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1200
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_kubevirt (OpenShift Virtualization)
@@ -219,8 +218,8 @@ ocp4_workload_oadp_catalogsource_name: redhat-operators-snapshot-oadp
 ocp4_workload_oadp_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_oadp_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_oadp_automatic_install_plan_approval: true
-# Storage configuration - ODF removed, students will configure S3 backend manually in workshop
-# ocp4_workload_oadp_storage: ocs  # Commented out - requires ODF which was removed
+# Storage configuration - uses ODF/OCS S3 backend
+ocp4_workload_oadp_storage: ocs
 # Don't auto-configure DPA - let workshop guide students through it
 ocp4_workload_oadp_configure_dpa: false
 ocp4_workload_oadp_multi_user: false
@@ -244,8 +243,8 @@ ocp4_workload_performance_monitoring_certified_catalogsource_image: "quay.io/gpt
 ocp4_workload_performance_monitoring_community_catalogsource_image: "quay.io/gpte-devops-automation/olm_snapshot_community_catalog"
 ocp4_workload_performance_monitoring_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
-# Logging configuration - uses AWS EBS storage (was ODF, changed to gp3-csi since ODF removed)
-cluster_logging_storage_class: gp3-csi  # AWS EBS storage class
+# Logging configuration - uses ODF storage
+cluster_logging_storage_class: ocs-storagecluster-ceph-rbd  # ODF storage class
 cluster_logging_storage_size: 10G
 cluster_logging_loki_size: "1x.extra-small"
 
