@@ -65,13 +65,11 @@ ocp4_workload_showroom_user_is_admin: true
 # Instance sizing - increased for HCP + all workloads
 # -------------------------------------------------------------------
 master_instance_type: m5a.2xlarge
-#master_instance_count: 1
-#master_storage_type: io1
-#master_storage_size: 250
-worker_instance_type: m6id.8xlarge  # 32 vCPU, 128GB RAM + 1x 1900GB NVMe SSD (required for LVMS)
-worker_instance_count: 3           # ODF requires minimum 3 workers
-#worker_storage_type: gp3
-#worker_storage_size: 250
+worker_instance_type: m6id.8xlarge  # 32 vCPU, 128GB RAM + 1x 1900GB NVMe SSD
+worker_instance_count: 3            # ODF requires minimum 3 workers
+# Dedicated EBS volume for LVMS (500Gi) - separate from ODF's 1500Gi volumes
+worker_storage_type: gp3
+worker_storage_size: 500
 
 #-------------------------------------------------------------------
 #OpenShift Installer Version
@@ -197,20 +195,23 @@ ocp4_workload_metallb_enable_l2advertisement: true
 # -------------------------------------------------------------------
 # LVMS via ocp4-workload-workshop-admin-storage (Local Storage for HCP)
 # -------------------------------------------------------------------
-# Deployed by admin-storage role with optionalPaths for AWS NVMe handling
+# Deployed by admin-storage role
+# Uses LIVE catalog (not snapshot) - LVMS not reliably in all snapshots
 workshop_deploy_lvms: true
 workshop_lvms_channel: stable-4.20
 workshop_lvms_use_catalog_snapshot: false
-workshop_lvms_catalogsource_name: redhat-operators-snapshot-lvms
-workshop_lvms_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
-workshop_lvms_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-# optionalPaths handles AWS NVMe device ordering variability
+# Size-based filtering to target the 500Gi dedicated EBS volume
+# This avoids ODF's 1500Gi volumes and the root disk
+workshop_lvms_min_size: 400Gi
+workshop_lvms_max_size: 600Gi
+workshop_lvms_force_wipe: true
+# Keep optionalPaths as fallback for instance store if it exists
 workshop_lvms_optional_paths:
   - /dev/nvme0n1
   - /dev/nvme1n1
   - /dev/nvme2n1
   - /dev/nvme3n1
-workshop_lvms_force_wipe: true
+  - /dev/nvme4n1
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_hcp_kubevirt (Hosted Control Planes)
