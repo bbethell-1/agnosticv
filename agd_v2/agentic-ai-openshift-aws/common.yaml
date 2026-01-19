@@ -1,0 +1,319 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog: Red Workshops
+# --- Catalog Item: Agentic AI with Llama Stack and 3rd party Frameworks
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/access-restriction-rh1-2026-devs.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+#include /includes/secrets/litemaas-master_api.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# Repository Tag
+# Tag for all repositories that are used in this config.
+# ===================================================================
+tag: main
+# -------------------------------------------------------------------
+cloud_provider: none
+# cloud_provider_version: main
+config: openshift-workloads
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# -------------------------------------------------------------------
+# Autoscaling cluster
+# -------------------------------------------------------------------
+openshift_aws_scale_cluster: true
+worker_instance_type: "m5a.4xlarge"
+worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+
+  # AWS Cloud Provider
+  # Only used with openshift_aws_scale_cluster
+  - name: https://github.com/agnosticd/cloud_provider_aws.git
+    type: git
+    version: "{{ tag }}"
+
+  # Assisted Installer Collection
+  # Only used with openshift_cnv_scale_cluster
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.9
+
+  # LiteLLM Virtual Keys Collection
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "{{ tag }}"
+
+  # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # AI Workloads
+  - name: https://github.com/agnosticd/ai_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # Custom AI workloads
+  # - name: https://github.com/rhpds/rhpds.openshift_ai.git
+  #   type: git
+  #   version: main
+
+  # RHPDS MCP Workloads
+  - name: https://github.com/rhpds/mcp_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # Showroom
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.3.7 # picking up mermaid and other fixes, was v1.3.5 before (and main)
+
+  # Showroom AI
+  - name: https://github.com/jamesfalkner/showroom-ai-assistant-collection.git
+    type: git
+    version: main
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+- agnosticd.core_workloads.ocp4_workload_gitea_operator
+- agnosticd.core_workloads.ocp4_workload_pipelines
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+# - agnosticd.ai_workloads.ocp4_workload_toolhive
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# - agnosticd.showroom.ocp4_workload_showroom_ocp_integration
+- agnosticd.showroom.ocp4_workload_showroom
+- agnosticd.showroom_ai_assistant.ocp4_workload_showroom_ai_assistant
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:10] }}"
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:16] }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_models:
+- llama-scout-17b
+- Llama-Guard-3-1B
+- nomic-embed-text-v1-5
+- qwen3-14b
+- granite-4-0-h-tiny
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_htpasswd
+# -------------------------------------------------------------------
+ocp4_workload_authentication_htpasswd_admin_user: admin
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password}}"
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+ocp4_workload_authentication_htpasswd_user_base: user
+# Generate user password
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_password_randomized: false
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('2')) | int }}"
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+
+ocp4_workload_authentication_admin_user: admin
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image_tag: v2.1.0
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+
+ocp4_workload_gitea_operator_repositories_list:
+- name: mcp
+  repo: https://github.com/burrsutter/fantaco-redhat-one-2026
+  private: false
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.25.2"
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
+# ocp4_workload_gitea_operator_gitea_volume_storage_class: ocs-external-storagecluster-cephfs
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel10/postgresql-16
+ocp4_workload_gitea_operator_postgresql_image_tag: latest
+ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
+# ocp4_workload_gitea_operator_postgresql_volume_storage_class: ocs-external-storagecluster-cephfs
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: mcpadmin
+ocp4_workload_gitea_operator_admin_email: mcpadmin@redhat.com
+ocp4_workload_gitea_operator_admin_password: "{{ common_admin_password}}"
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_authentication_htpasswd_user_base }}%d"
+ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
+ocp4_workload_gitea_operator_migrate_repositories: true
+
+# ---------------------------------------------------------
+# OpenShift Pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.20
+ocp4_workload_pipelines_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.18
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+# # -------------------------------------------------------------------
+# # ocp4_workload_toolhive
+# # -------------------------------------------------------------------
+#
+# ocp4_workload_toolhive_helm_chart_crds: oci://ghcr.io/stacklok/toolhive/toolhive-operator-crds:0.0.77
+# ocp4_workload_toolhive_helm_chart_operator: oci://ghcr.io/stacklok/toolhive/toolhive-operator:0.5.9
+# ocp4_workload_toolhive_operator_image: ghcr.io/stacklok/toolhive/operator:latest-ubi
+# ocp4_workload_toolhive_runner_image: ghcr.io/stacklok/toolhive/proxyrunner:latest-ubi
+# ocp4_workload_toolhive_registry_api_image: ghcr.io/stacklok/thv-registry-api:latest
+#
+# # Pinned versions (see MCP Lab)
+# # ocp4_workload_toolhive_operator_image: ghcr.io/stacklok/toolhive/operator:v0.6.11-ubi
+# # ocp4_workload_toolhive_runner_image: ghcr.io/stacklok/toolhive/proxyrunner:v0.6.11-ubi
+# # ocp4_workload_toolhive_registry_api_image: ghcr.io/stacklok/thv-registry-api:v0.4.2
+#
+# -------------------------------------------------------------------
+# ocp4_workload_serverless
+# -------------------------------------------------------------------
+ocp4_workload_serverless_channel: stable
+ocp4_workload_serverless_install_serving: false
+ocp4_workload_serverless_install_eventing: false
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/agentic-ai-openshift-gitops
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  user:
+    count: "{{ num_users | default(1) }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom-agentic-ai-llamastack
+ocp4_workload_showroom_content_git_repo_ref: main
+
+# Adding terminals. Links are configured in ui-config.yaml in the showroom repo.
+
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_terminal_image: quay.io/juliaaano/openshift-showroom-terminal-ocp:2025-12-02
+
+ocp4_workload_showroom_passthrough_user_data: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: e0ffc45b-d7b0-4b86-a669-3aada227319d
+  owners:
+    maintainer:
+    - name: Tony Kay
+      email: ankay@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-7
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1688: Agentic AI with Llama Stack and 3rd party Frameworks (AWS)"
+    workshopLabUiRedirect: true
+    category: Brand_Events
+    keywords:
+    - lb1688
+    - rh1-2026
+    - openshift-ai
+    - llamastack
+    - mcp
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+      Brand_Event: Red_Hat_One_2026
+    multiuser: true
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters:
+    - name: num_users
+      description: Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 40
+
+  components:
+  - name: openshift_aws
+    display_name: OpenShift Container Platform Cluster (AWS Pools)
+    item: agd-v2/ocp-cluster-aws-pools
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: "4.20"
+      agnosticd_open_environment: false
+      aws_region: us-east-2
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
