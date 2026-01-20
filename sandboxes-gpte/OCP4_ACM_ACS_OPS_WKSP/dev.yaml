@@ -46,6 +46,11 @@ infra_workloads:
   - ocp4_workload_oadp                             # Backup/DR
   - ocp4_workload_performance_monitoring           # Observability (Loki, Grafana, monitoring)
 
+  # DIAGNOSTICS CHECKPOINT (TEMPORARY - remove after troubleshooting)
+  # Runs BEFORE Phase 7 to capture state after Phases 1-6 complete
+  # If Phase 7 fails, we'll have visibility into what was deployed up to this point
+  - ocp4_workload_phase7_diagnostics               # Comprehensive cluster state debugging
+
   # Phase 7: Developer Experience (Red Hat Developer Hub)
   - ocp4_workload_minio                            # S3-compatible storage for Dev Hub
   - ocp4_workload_gitops_gitlab                    # GitLab + ArgoCD
@@ -229,8 +234,10 @@ enable_infra_nodes: false  # Dev environment, no infra nodes
 ocp4_workload_performance_monitoring_install_nexus: false
 
 # Operators' catalog sources configuration
+# FIXED: Use LIVE catalog (not snapshot) - loki-operator in snapshot uses stable-6.4 channel
+# but role hardcodes channel: "stable" which only exists in live catalog
 ocp4_workload_performance_monitoring_automatic_install_plan_approval: true
-ocp4_workload_performance_monitoring_catalogsource_setup: true
+ocp4_workload_performance_monitoring_catalogsource_setup: false
 ocp4_workload_performance_monitoring_redhat_catalogsource_name: "olm-snapshot-redhat-catalog"
 ocp4_workload_performance_monitoring_certified_catalogsource_name: "olm-snapshot-certified-catalog"
 ocp4_workload_performance_monitoring_community_catalogsource_name: "olm-snapshot-community-catalog"
@@ -415,6 +422,19 @@ ocp4_workload_redhat_developer_hub_minio_namespace: ic-shared-minio
 ocp4_workload_redhat_developer_hub_minio_username: minio
 ocp4_workload_redhat_developer_hub_minio_password: "{{ common_password }}"
 ocp4_workload_redhat_developer_hub_minio_bucket_name: backstage-bucket
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_quay_operator (used by rhdh_bootstrap)
+# -------------------------------------------------------------------
+# FIXED: Update channel from stable-3.6 to stable-3.10 for OCP 4.20 compatibility
+# Uses live catalog (not snapshot), stable-3.10 is safer than very old 3.6
+ocp4_workload_quay_operator_channel: stable-3.10
+
+# -------------------------------------------------------------------
+# Workload: gitlab-runner-operator (used by redhat_developer_hub)
+# -------------------------------------------------------------------
+# FIXED: Use certified-operators catalog instead of old GitLab registry catalog
+ocp4_workload_redhat_developer_hub_gitlab_runner_catalog_setup: false
 
 # -------------------------------------------------------------------
 # Babylon meta variables - Use forked AgnosticD repo
