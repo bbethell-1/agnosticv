@@ -44,7 +44,7 @@ infra_workloads:
 
   # Phase 6: Backup & Observability
   - ocp4_workload_oadp                             # Backup/DR
-  - ocp4_workload_performance_monitoring           # Observability (Loki, Grafana, monitoring)
+  - ocp4_days_workload_performance_monitoring      # Observability (Loki, Grafana, monitoring) - DAYS version with fixes
 
   # DIAGNOSTICS CHECKPOINT (TEMPORARY - remove after troubleshooting)
   # Runs BEFORE Phase 7 to capture state after Phases 1-6 complete
@@ -52,11 +52,12 @@ infra_workloads:
   - ocp4_workload_phase7_diagnostics               # Comprehensive cluster state debugging
 
   # Phase 7: Developer Experience (Red Hat Developer Hub)
-  - ocp4_workload_minio                            # S3-compatible storage for Dev Hub
-  - ocp4_workload_gitops_gitlab                    # GitLab + ArgoCD
-  - ocp4_workload_rhdh_orchestrator                # Workflow orchestrator
-  - ocp4_workload_redhat_developer_hub_bootstrap   # Bootstrap Developer Hub with ArgoCD
-  - ocp4_workload_redhat_developer_hub             # Red Hat Developer Hub
+  # Using DAYS (self-contained) workloads with idempotency fixes
+  - ocp4_days_workload_minio                            # S3-compatible storage for Dev Hub
+  - ocp4_days_workload_gitops_gitlab                    # GitLab + ArgoCD
+  - ocp4_days_workload_rhdh_orchestrator                # Workflow orchestrator
+  - ocp4_days_workload_redhat_developer_hub_bootstrap   # Bootstrap Developer Hub with ArgoCD
+  - ocp4_days_workload_redhat_developer_hub             # Red Hat Developer Hub
 
 
 # -------------------------------------------------------------------
@@ -225,17 +226,20 @@ ocp4_workload_oadp_configure_dpa: false
 ocp4_workload_oadp_multi_user: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_performance_monitoring (Observability)
+# Workload: ocp4_days_workload_performance_monitoring (Observability)
 # -------------------------------------------------------------------
-# Enables Loki for logging, Grafana for dashboards, and enhanced monitoring
+# DAYS version with fixes for OCP 4.20:
+# - loki-operator channel: stable-6.4 (not deprecated "stable")
+# - cluster-logging channel: stable-6.4
+# - ClusterLogForwarder API for Logging 6.x
+# - Grafana SA token secret creation for K8s 1.24+
+# - Tekton Pipeline cluster resolver for deprecated ClusterTask
 enable_loki: true
 enable_infra_nodes: false  # Dev environment, no infra nodes
 # Disable Nexus - certified catalog snapshot doesn't have it for OCP 4.20
 ocp4_workload_performance_monitoring_install_nexus: false
 
 # Operators' catalog sources configuration
-# FIXED: Use LIVE catalog (not snapshot) - loki-operator in snapshot uses stable-6.4 channel
-# but role hardcodes channel: "stable" which only exists in live catalog
 ocp4_workload_performance_monitoring_automatic_install_plan_approval: true
 ocp4_workload_performance_monitoring_catalogsource_setup: false
 ocp4_workload_performance_monitoring_redhat_catalogsource_name: "olm-snapshot-redhat-catalog"
@@ -270,9 +274,9 @@ ocp4_workload_kubernetes_image_puller_images:
 ocp4_workload_kubernetes_image_puller_instance_namespace: default
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_minio (S3 Storage for Developer Hub)
+# Workload: ocp4_days_workload_minio (S3 Storage for Developer Hub)
 # -------------------------------------------------------------------
-ocp4_workload_minio_project: ic-shared-minio
+ocp4_workload_minio_project: gpte-minio
 ocp4_workload_minio_storage_size: 256Gi
 ocp4_workload_minio_modern_deployment: true
 ocp4_workload_minio_expose_route: true
@@ -286,7 +290,7 @@ ocp4_workload_minio_bucket_name:
 ocp4_workload_minio_bucket_multi_user: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_gitops_gitlab (GitLab + ArgoCD)
+# Workload: ocp4_days_workload_gitops_gitlab (GitLab + ArgoCD)
 # -------------------------------------------------------------------
 ocp4_workload_gitops_gitlab_gitops_type: argocd
 ocp4_workload_gitops_gitlab_config_email_display_name: Ops Workshop Admin
@@ -332,7 +336,7 @@ ocp4_workload_gitops_gitlab_users_count: 1
 ocp4_workload_gitops_gitlab_users_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_rhdh_orchestrator (Workflow Orchestrator)
+# Workload: ocp4_days_workload_rhdh_orchestrator (Workflow Orchestrator)
 # -------------------------------------------------------------------
 ocp4_workload_rhdh_orchestrator_helm_installer: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
 ocp4_workload_rhdh_orchestrator_helm_chart: https://github.com/rhdhorchestrator/orchestrator-helm-chart.git
@@ -352,14 +356,16 @@ ocp4_workload_rhdh_orchestrator_workflows:
       location: orchestrator-workflows/greeting
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_redhat_developer_hub_bootstrap
+# Workload: ocp4_days_workload_redhat_developer_hub_bootstrap
 # -------------------------------------------------------------------
 ocp4_workload_redhat_developer_hub_bootstrap_janus_bootstrap_repo: https://github.com/redhat-gpte-devopsautomation/janus-idp-bootstrap.git
 orchestrator_enabled: false  # Disable orchestrator for simplified setup
 ocp4_workload_redhat_developer_hub_bootstrap_orchestrator_enabled: "{{ orchestrator_enabled }}"
+# Skip Quay setup - ODF is already deployed in Phase 1
+ocp4_workload_redhat_developer_hub_skip_quay: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_redhat_developer_hub (Main Developer Hub)
+# Workload: ocp4_days_workload_redhat_developer_hub (Main Developer Hub)
 # -------------------------------------------------------------------
 ocp4_workload_redhat_developer_hub_gitlab_root_password: "{{ common_password }}"
 ocp4_workload_redhat_developer_hub_janus_bootstrap_repo: https://github.com/redhat-gpte-devopsautomation/janus-idp-bootstrap.git
@@ -418,7 +424,7 @@ ocp4_workload_redhat_developer_hub_backstage_image_registry: quay.io
 ocp4_workload_redhat_developer_hub_backstage_image_repository: rhdh/rhdh-hub-rhel9
 ocp4_workload_redhat_developer_hub_backstage_image_tag: "1.7"
 
-ocp4_workload_redhat_developer_hub_minio_namespace: ic-shared-minio
+ocp4_workload_redhat_developer_hub_minio_namespace: gpte-minio
 ocp4_workload_redhat_developer_hub_minio_username: minio
 ocp4_workload_redhat_developer_hub_minio_password: "{{ common_password }}"
 ocp4_workload_redhat_developer_hub_minio_bucket_name: backstage-bucket
