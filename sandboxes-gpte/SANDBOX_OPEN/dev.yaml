@@ -5,9 +5,59 @@
 # -------------------------------------------------------------------
 purpose: dev
 
+sandbox_aws_admin_user_policy: "{{ sandbox_aws_admin_user_policy_options[sandbox_aws_admin_user_policy_type] }}"
+sandbox_aws_admin_user_policy_options:
+  default:
+    Statement:
+      - Effect: Allow
+        Action: "*"
+        Resource: "*"
+
+  zerotouch:
+    Statement:
+      - Sid: EC2DefaultAllow
+        Effect: Allow
+        Action:
+          - 'ec2:*'
+        Resource: '*'
+      - Sid: LimitInstanceTypeRun
+        Action:
+          - 'ec2:RunInstances'
+        Effect: Deny
+        Resource: 'arn:aws:ec2:*:*:instance/*'
+        Condition:
+          StringNotEquals:
+            'ec2:InstanceType': t3.micro
+      - Sid: LimitInstanceTypeModify
+        Action:
+          - 'ec2:ModifyInstanceAttribute'
+        Effect: Deny
+        Resource: 'arn:aws:ec2:*:*:instance/*'
+        Condition:
+          StringNotEquals:
+            'ec2:InstanceType': t3.micro
+      - Sid: DisableMarketPlace
+        Action:
+          - 'aws-marketplace:Subscribe'
+          - 'aws-marketplace:Unsubscribe'
+          - 'aws-marketplace:CreatePrivateMarketplac'
+        Effect: Deny
+        Resource: '*'
+
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
+  catalog:
+    parameters:
+      - name: sandbox_aws_admin_user_policy_type
+        description: >-
+          Configure the admin user policy.
+        openAPIV3Schema:
+          type: string
+          default: default
+          enum:
+            - default
+            - zerotouch
   deployer:
     scm_ref: development
