@@ -1,0 +1,300 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: OpenShift Field Sourced Assets
+#
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/secrets/ocp4_workload_ols_api_token.yaml
+
+# -------------------------------------------------------------------
+# AgnosticDv2 variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # Assisted Installer Collection
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: main
+  # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: main
+
+# ===================================================================
+# Autoscaling cluster
+# ===================================================================
+openshift_cnv_scale_cluster: "{{ false if cluster_size == 'sno' else true }}"
+worker_instance_count: "{{ 0 if cluster_size == 'sno' else worker_instance_count_param }}"
+ai_workers_cores: "{{ ai_workers_cores }}"
+ai_workers_memory: "{{ ai_workers_memory }}"
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_field_content
+
+# ===================================================================
+# Workload: agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+# ===================================================================
+# Red Hat Build of Keycloak (RHBK) - User Authentication
+# Creates Keycloak instance and manages user accounts
+
+# Operator configuration
+ocp4_workload_authentication_keycloak_namespace: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_keycloak_use_catalog_source: false
+
+ocp4_workload_authentication_keycloak_admin_create: true
+ocp4_workload_authentication_keycloak_admin_username: admin
+ocp4_workload_authentication_keycloak_admin_password: ''
+ocp4_workload_authentication_keycloak_remove_kubeadmin: true
+
+ocp4_workload_authentication_keycloak_num_users: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_keycloak_user_username_base: user
+ocp4_workload_authentication_keycloak_user_password: ''
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: latest
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, system:cluster-admins, role:admin
+  g, admin, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+ocp4_workload_openshift_gitops_resource_tracking_method: annotation
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_field_content
+# -------------------------------------------------------------------
+# Leave variables as a reminder, but they are set from parameters
+# ocp4_workload_field_content_gitops_repo_url: ""
+# ocp4_workload_field_content_gitops_repo_revision: main
+# ocp4_workload_field_content_gitops_repo_path: ""
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 92c4259f-a4b9-4824-9e59-998d5e6e439b
+  owners:
+    maintainer:
+    - name: Nate Stephany
+      email: nstephan@redhat.com
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: false
+      status:
+        disable: true
+      stop:
+        disable: false
+      update:
+        disable: true
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: Field Sourced Content - OpenShift
+    category: Workshops
+    keywords:
+    - workshop
+    - openshift
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    multiuser: true
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters:
+    - name: cluster_size
+      description: Single Node or Full Cluster
+      formLabel: cluster_size
+      required: true
+      openAPIV3Schema:
+        type: string
+        default: 'sno'
+        enum:
+        - 'sno'
+        - 'multinode'
+      components:
+      - name: all
+
+    - name: host_ocp4_installer_version
+      description: OpenShift version to install
+      formLabel: OpenShift Version
+      required: false
+      openAPIV3Schema:
+        type: string
+        default: '4.20'
+        enum:
+        - '4.18'
+        - '4.20'
+      annotation: demo.redhat.com/ocp-version
+      variable: host_ocp4_installer_version
+      components:
+      - name: openshift_base
+
+    - name: worker_instance_count_param
+      description: OpenShift Worker count
+      formLabel: OpenShift Worker count
+      formHideCondition: >-
+        cluster_size != 'multinode'
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 10
+      components:
+      - name: current
+
+    - name: ai_workers_memory
+      description: OpenShift Worker memory
+      formLabel: OpenShift Worker memory
+      formHideCondition: >-
+        cluster_size != 'multinode'
+      openAPIV3Schema:
+        type: string
+        default: 8Gi
+        enum:
+        - '8Gi'
+        - '16Gi'
+        - '32Gi'
+        - '64Gi'
+        - '128Gi'
+        minimum: 8Gi
+        maximum: 128Gi
+      components:
+      - name: current
+
+    - name: ai_workers_cores
+      description: OpenShift Worker CPU
+      formLabel: OpenShift Worker CPU
+      formHideCondition: >-
+        cluster_size != 'multinode'
+      openAPIV3Schema:
+        type: integer
+        default: 4
+        enum:
+        - 4
+        - 8
+        - 16
+        - 32
+        - 64
+      components:
+      - name: current
+
+    - name: create_multi_user
+      description: Create multiple users on cluster?
+      formLabel: Create multiple users on cluster
+      openAPIV3Schema:
+        type: boolean
+        default: false
+
+    - name: num_users
+      description: >-
+        Number of users to provision within the environment.
+      formLabel: User Count
+      formHideCondition: create_multi_user == false
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 50
+      components:
+      - name: current
+
+    - name: ocp4_workload_field_content_gitops_repo_url
+      description: >-
+        The URL to the GitOps repo containing automation
+      formLabel: GitOps Repo
+      openAPIV3Schema:
+        type: string
+      components:
+      - name: current
+
+    - name: ocp4_workload_field_content_gitops_repo_revision
+      description: >-
+        The branch or tag of the repo that you want to use
+      formLabel: GitOps Revision
+      openAPIV3Schema:
+        type: string
+        default: "main"
+      components:
+      - name: current
+
+    - name: ocp4_workload_field_content_gitops_repo_path
+      description: >-
+        The path in your GitOps repo that contains the initial application
+      formLabel: GitOps Path
+      openAPIV3Schema:
+        type: string
+      components:
+      - name: current
+
+  components:
+  - name: openshift_base
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools/prod
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
