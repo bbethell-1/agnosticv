@@ -10,53 +10,72 @@ install_lets_encrypt_certificates: true
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
 # -------------------------------------------------------------------
-# Infra Workloads - Complete Ops 101 + HCP Workshop
-# IMPORTANT: Order matters - dependencies must deploy first
+# Infra Workloads - WITH MODULE SELECTION
+# Uses list concatenation - workloads are actually skipped when disabled
 # -------------------------------------------------------------------
-infra_workloads:
+
+# ============================================
+# BASE WORKLOADS (Always deployed)
+# ============================================
+_base_workloads:
   # Phase 1: Foundation
-  - ocp4_workload_cert_manager                     # Certificates (required early)
-  # - ocp4_workload_rhsso_authentication           # DEPRECATED: Removed from OCP 4.20 catalog
-  # - ocp4_workload_rhbk                           # TODO: Red Hat Build of Keycloak (RHSSO replacement) - add when needed for OIDC demos
-  - ocp4_days_workload_openshift_data_foundation   # Storage (Days version - OCP 4.20 fixes)
-
+  - ocp4_workload_cert_manager
+  - ocp4_days_workload_openshift_data_foundation
   # Phase 2: Workshop Infrastructure
-  - ocp4_workload_showroom                         # Workshop UI
-  - ocp4-workload-days-ops-track                    # Grant cluster-admin to Showroom + diagnostics
-  - studentvm_ocp4                                 # Student VMs
-  - ocp4_workload_web_terminal                     # Web-based terminal
-  - ocp4_workload_kubernetes_image_puller          # Pre-pull images for faster startup
-
+  - ocp4_workload_showroom
+  - ocp4-workload-days-ops-track
+  - studentvm_ocp4
+  - ocp4_workload_web_terminal
+  - ocp4_workload_kubernetes_image_puller
   # Phase 3: CI/CD & Security
-  - ocp4_workload_pipelines                        # OpenShift Pipelines (Tekton)
-  - ocp4_workload_rhacs                            # ACS/Security scanning
+  - ocp4_workload_pipelines
+  - ocp4_workload_rhacs
+  # Diagnostics (temporary)
+  - ocp4_workload_phase7_diagnostics
 
-  # Phase 4: Multi-cluster Management
-  - ocp4_days_workload_rhacm                       # ACM base operator (Days version - alert fixes)
-  - ocp4_workload_rhacm_cloud_credentials          # ACM cloud credentials (for HCP)
-  - ocp4_workload_acm_multicluster_observability   # ACM observability features (requires ODF)
+# ============================================
+# OPTIONAL WORKLOAD GROUPS
+# ============================================
 
-  # Phase 5: Virtualization & HCP Infrastructure
-  - ocp4_workload_kubevirt                         # OpenShift Virtualization
-  - ocp4_days_workload_metallb                     # Load balancer (Days version - DNS fixes)
-  - ocp4_workload_hcp_kubevirt                     # Hosted Control Planes on KubeVirt
+# Virtualization module workloads
+_virt_workloads:
+  - ocp4_workload_kubevirt
 
-  # Phase 6: Backup & Observability
-  - ocp4_workload_oadp                             # Backup/DR
-  # NOTE: Logging NOT pre-installed - students will install during workshop
+# ACM multi-cluster module workloads
+_acm_workloads:
+  - ocp4_days_workload_rhacm
+  - ocp4_workload_rhacm_cloud_credentials
+  - ocp4_workload_acm_multicluster_observability
+  - ocp4_days_workload_metallb
 
-  # DIAGNOSTICS CHECKPOINT (TEMPORARY - remove after troubleshooting)
-  # Runs BEFORE Phase 7 to capture state after Phases 1-6 complete
-  # If Phase 7 fails, we'll have visibility into what was deployed up to this point
-  - ocp4_workload_phase7_diagnostics               # Comprehensive cluster state debugging
+# HCP requires BOTH ACM and Virt
+_hcp_workloads:
+  - ocp4_workload_hcp_kubevirt
 
-  # Phase 7: Developer Experience (Red Hat Developer Hub)
-  # Using DAYS (self-contained) workloads with idempotency fixes
-  - ocp4_days_workload_minio                            # S3-compatible storage for Dev Hub
-  - ocp4_days_workload_gitops_gitlab                    # GitLab + ArgoCD
-  - ocp4_days_workload_rhdh_orchestrator                # Workflow orchestrator
-  - ocp4_days_workload_redhat_developer_hub_bootstrap   # Bootstrap Developer Hub with ArgoCD
-  - ocp4_days_workload_redhat_developer_hub             # Red Hat Developer Hub
+# Backup module workloads
+_backup_workloads:
+  - ocp4_workload_oadp
+
+# Developer Hub module workloads
+_devhub_workloads:
+  - ocp4_days_workload_minio
+  - ocp4_days_workload_gitops_gitlab
+  - ocp4_days_workload_rhdh_orchestrator
+  - ocp4_days_workload_redhat_developer_hub_bootstrap
+  - ocp4_days_workload_redhat_developer_hub
+
+# ============================================
+# BUILD INFRA_WORKLOADS DYNAMICALLY
+# ============================================
+infra_workloads: >-
+  {{
+    _base_workloads +
+    (_virt_workloads if module_enable_virt | default(true) | bool else []) +
+    (_acm_workloads if module_enable_acm | default(true) | bool else []) +
+    (_hcp_workloads if (module_enable_acm | default(true) | bool) and (module_enable_virt | default(true) | bool) else []) +
+    (_backup_workloads if module_enable_backup | default(true) | bool else []) +
+    (_devhub_workloads if module_enable_devhub | default(true) | bool else [])
+  }}
 
 
 # -------------------------------------------------------------------
@@ -428,3 +447,37 @@ __meta__:
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:2024-08-08
       pull: missing
+
+  catalog:
+    parameters:
+      - name: module_enable_virt
+        description: Deploy OpenShift Virtualization for VM management module
+        formGroup: Modules
+        formLabel: Virtualization - OpenShift Virtualization with VMs
+        openAPIV3Schema:
+          type: boolean
+          default: true
+
+      - name: module_enable_backup
+        description: Deploy OADP for backup and restore module
+        formGroup: Modules
+        formLabel: Backup & DR - OADP Backup and Restore
+        openAPIV3Schema:
+          type: boolean
+          default: true
+
+      - name: module_enable_acm
+        description: Deploy ACM for multi-cluster management, HCP, and observability
+        formGroup: Modules
+        formLabel: Multi-Cluster - ACM, Hosted Control Planes, Observability
+        openAPIV3Schema:
+          type: boolean
+          default: true
+
+      - name: module_enable_devhub
+        description: Deploy Red Hat Developer Hub with GitOps and Orchestrator
+        formGroup: Modules
+        formLabel: Developer Hub - RHDH, GitLab, ArgoCD, Orchestrator
+        openAPIV3Schema:
+          type: boolean
+          default: true
