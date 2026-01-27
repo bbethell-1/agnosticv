@@ -27,9 +27,8 @@ _base_workloads:
   - studentvm_ocp4
   - ocp4_workload_web_terminal
   - ocp4_workload_kubernetes_image_puller
-  # Phase 3: CI/CD & Security
+  # Phase 3: CI/CD
   - ocp4_workload_pipelines
-  - ocp4_workload_rhacs
 
 # ============================================
 # OPTIONAL WORKLOAD GROUPS
@@ -58,6 +57,14 @@ _backup_workloads:
 _devhub_workloads:
   - ocp4_days_workload_rhdh
 
+# OpenShift Lightspeed module workloads
+_ols_workloads:
+  - ocp4_days_workload_ols
+
+# Security module workloads (ACS)
+_security_workloads:
+  - ocp4_workload_rhacs
+
 # ============================================
 # BUILD INFRA_WORKLOADS DYNAMICALLY
 # ============================================
@@ -68,7 +75,9 @@ infra_workloads: >-
     (_acm_workloads if module_enable_acm | default(true) | bool else []) +
     (_hcp_workloads if (module_enable_acm | default(true) | bool) and (module_enable_virt | default(true) | bool) else []) +
     (_backup_workloads if module_enable_backup | default(true) | bool else []) +
-    (_devhub_workloads if module_enable_devhub | default(true) | bool else [])
+    (_devhub_workloads if module_enable_devhub | default(true) | bool else []) +
+    (_ols_workloads if module_enable_ols | default(true) | bool else []) +
+    (_security_workloads if module_enable_security | default(true) | bool else [])
   }}
 
 
@@ -252,6 +261,16 @@ ocp4_days_workload_rhdh_enable_guest_auth: true
 ocp4_days_workload_rhdh_channel: fast
 
 # -------------------------------------------------------------------
+# Workload: ocp4_days_workload_ols (OpenShift Lightspeed)
+# -------------------------------------------------------------------
+# Uses LIVE catalog (not snapshot) - OLS operator is new/updated frequently
+ocp4_days_workload_ols_use_catalog_snapshot: false
+ocp4_days_workload_ols_catalogsource_name: redhat-operators
+ocp4_days_workload_ols_channel: alpha
+# Azure credentials come from vault include
+#include /includes/secrets/ocp4_workload_ols_api_token.yaml
+
+# -------------------------------------------------------------------
 # Babylon meta variables - Use forked AgnosticD repo
 # -------------------------------------------------------------------
 __meta__:
@@ -294,6 +313,22 @@ __meta__:
         description: Deploy Red Hat Developer Hub for platform engineering showcase
         formGroup: Modules
         formLabel: Developer Hub - Red Hat Developer Hub
+        openAPIV3Schema:
+          type: boolean
+          default: true
+
+      - name: module_enable_ols
+        description: Deploy OpenShift Lightspeed AI assistant
+        formGroup: Modules
+        formLabel: AI Assistant - OpenShift Lightspeed
+        openAPIV3Schema:
+          type: boolean
+          default: true
+
+      - name: module_enable_security
+        description: Deploy Advanced Cluster Security (ACS/RHACS)
+        formGroup: Modules
+        formLabel: Security - Advanced Cluster Security
         openAPIV3Schema:
           type: boolean
           default: true
