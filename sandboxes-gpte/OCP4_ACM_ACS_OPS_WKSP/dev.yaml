@@ -41,10 +41,12 @@ _virt_workloads:
 
 # ACM multi-cluster module workloads
 _acm_workloads:
+  - ocp4_workload_openshift_gitops  # ArgoCD for RHACM application deployment
   - ocp4_days_workload_rhacm
   - ocp4_workload_rhacm_cloud_credentials
   - ocp4_workload_acm_multicluster_observability
   - ocp4_days_workload_metallb
+  - ocp4_days_workload_compliance_operator  # For RHACM compliance (deduped via unique filter)
 
 # HCP requires BOTH ACM and Virt
 _hcp_workloads:
@@ -62,23 +64,27 @@ _devhub_workloads:
 _ols_workloads:
   - ocp4_days_workload_ols
 
-# Security module workloads (ACS)
+# Security module workloads (ACS + Compliance)
 _security_workloads:
   - ocp4_workload_rhacs
+  - ocp4_days_workload_compliance_operator  # For RHACM and RHACS compliance scanning
 
 # ============================================
 # BUILD INFRA_WORKLOADS DYNAMICALLY
+# Uses unique filter to deduplicate workloads that appear in multiple groups
 # ============================================
 infra_workloads: >-
   {{
-    _base_workloads +
-    (_virt_workloads if module_enable_virt | default(true) | bool else []) +
-    (_acm_workloads if module_enable_acm | default(true) | bool else []) +
-    (_hcp_workloads if (module_enable_acm | default(true) | bool) and (module_enable_virt | default(true) | bool) else []) +
-    (_backup_workloads if module_enable_backup | default(true) | bool else []) +
-    (_devhub_workloads if module_enable_devhub | default(true) | bool else []) +
-    (_ols_workloads if module_enable_ols | default(true) | bool else []) +
-    (_security_workloads if module_enable_security | default(true) | bool else [])
+    (
+      _base_workloads +
+      (_virt_workloads if module_enable_virt | default(true) | bool else []) +
+      (_acm_workloads if module_enable_acm | default(true) | bool else []) +
+      (_hcp_workloads if (module_enable_acm | default(true) | bool) and (module_enable_virt | default(true) | bool) else []) +
+      (_backup_workloads if module_enable_backup | default(true) | bool else []) +
+      (_devhub_workloads if module_enable_devhub | default(true) | bool else []) +
+      (_ols_workloads if module_enable_ols | default(true) | bool else []) +
+      (_security_workloads if module_enable_security | default(true) | bool else [])
+    ) | unique | list
   }}
 
 
@@ -163,6 +169,24 @@ ocp4_workload_rhacs_install_operator_channel: "rhacs-4.9"
 ocp4_workload_rhacs_install_operator_use_catalog_snapshot: true
 ocp4_workload_rhacs_install_operator_catalog_source_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops (ArgoCD)
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: latest
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false  # Use live catalog
+ocp4_workload_openshift_gitops_automatic_install_plan_approval: true
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_enable_route: true
+ocp4_workload_openshift_gitops_install_cli: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_days_workload_compliance_operator
+# -------------------------------------------------------------------
+ocp4_days_workload_compliance_operator_channel: stable
+ocp4_days_workload_compliance_operator_namespace: openshift-compliance
+ocp4_days_workload_compliance_operator_use_catalog_snapshot: false  # Use live catalog
+ocp4_days_workload_compliance_operator_automatic_install_plan_approval: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_days_workload_openshift_data_foundation (Days version - OCP 4.20 fixes)
