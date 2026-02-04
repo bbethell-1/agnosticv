@@ -22,6 +22,45 @@ sandbox_user_info_messages_enable: true
 # Disable creating SSH key and bastion inventory (like skip-tags)
 create_ssh_config: false
 
+sandbox_aws_admin_user_policy: "{{ sandbox_aws_admin_user_policy_options[sandbox_aws_admin_user_policy_type] }}"
+sandbox_aws_admin_user_policy_options:
+  default:
+    Statement:
+      - Effect: Allow
+        Action: "*"
+        Resource: "*"
+
+  zerotouch:
+    Statement:
+      - Sid: EC2DefaultAllow
+        Effect: Allow
+        Action:
+          - 'ec2:*'
+        Resource: '*'
+      - Sid: LimitInstanceTypeRun
+        Action:
+          - 'ec2:RunInstances'
+        Effect: Deny
+        Resource: 'arn:aws:ec2:*:*:instance/*'
+        Condition:
+          StringNotEquals:
+            'ec2:InstanceType': t2.micro
+      - Sid: LimitInstanceTypeModify
+        Action:
+          - 'ec2:ModifyInstanceAttribute'
+        Effect: Deny
+        Resource: 'arn:aws:ec2:*:*:instance/*'
+        Condition:
+          StringNotEquals:
+            'ec2:InstanceType': t2.micro
+      - Sid: DisableMarketPlace
+        Action:
+          - 'aws-marketplace:Subscribe'
+          - 'aws-marketplace:Unsubscribe'
+          - 'aws-marketplace:CreatePrivateMarketplac'
+        Effect: Deny
+        Resource: '*'
+
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
@@ -34,6 +73,7 @@ __meta__:
 
   anarchy:
     namespace: babylon-anarchy-5
+
   deployer:
     actions:
       stop:
@@ -55,4 +95,14 @@ __meta__:
       Product_Family: Red_Hat_Cloud
 #     Product:
       Provider: RHDP
-    parameters: []
+    parameters:
+      - name: sandbox_aws_admin_user_policy_type
+        formHideCondition: true == true
+        description: >-
+          Configure the admin user policy.
+        openAPIV3Schema:
+          type: string
+          default: default
+          enum:
+            - default
+            - zerotouch
