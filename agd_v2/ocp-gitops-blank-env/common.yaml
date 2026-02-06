@@ -1,7 +1,6 @@
 ---
 # -------------------------------------------------------------------
-# --- Catalog Item: OpenShift GitOps Blank Environment
-#                   Cluster (CNV) - AgdV2
+# --- Catalog Item: OpenShift GitOps Blank Environment (CNV)
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
@@ -15,18 +14,17 @@
 
 #include /includes/parameters/purpose.yaml
 
-#include /includes/secrets/dynamic-aws-dns.yaml
-#include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/ocp4_ai_offline_token.yaml
-#include /includes/secrets/demosat-rhel-9-10-latest.yaml
-#include /includes/secrets/zerossl.yaml
 
 # -------------------------------------------------------------------
 # Top Variables
 # -------------------------------------------------------------------
-cloud_provider: openshift_cnv
-cloud_provider_version: 1.1.0
-config: openshift-cluster
+cloud_provider: none
+config: openshift-workloads
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
 
 # ===================================================================
 # Additional Collections & roles to be installed for this config
@@ -45,57 +43,23 @@ requirements_content:
 # -------------------------------------------------------------------
 # CNV Specific
 # -------------------------------------------------------------------
-bastion_instance_image: rhel-9.6
-bastion_cores: 2
-bastion_memory: 4Gi
-
-control_plane_instance_count: "{{ control_plane_count }}"
-worker_instance_count: "{{ 0 if control_plane_count | int == 1 else [(num_users | int / 3) | round(0, 'ceil') | int, 2] | max }}"
-
-ai_control_plane_cores: "{{ control_plane_cores }}"
-ai_control_plane_memory: "{{ control_plane_memory }}"
-
+openshift_cnv_scale_cluster: "{{ true if control_plane_size == 'multinode' else false }}"
+worker_instance_count: "{{ worker_node_count }}"
 ai_workers_cores: 8
 ai_workers_memory: 16Gi
-
-# -------------------------------------------------------------------
-# OpenShift settings
-# -------------------------------------------------------------------
-host_ocp4_installer_version: "{{ ocp4_installer_version }}"
-host_ocp4_installer_root_url: https://mirror.openshift.com/pub/openshift-v4/clients
-host_ocp4_deploy_installation_method: openshift_assisted
-
-openshift_cluster_admin_service_account_enable: true
-
-cluster_name: "cluster-{{ guid }}"
-
-# -------------------------------------------------------------------
-# Student User on Bastion
-# -------------------------------------------------------------------
-install_student_user: true
 
 # ===================================================================
 # List of workloads to be deployed
 # ===================================================================
 workloads:
-- agnosticd.core_workloads.ocp4_workload_external_odf
 - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
-- agnosticd.core_workloads.ocp4_workload_cert_manager
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
 - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 
 # -------------------------------------------------------------------
 # Workload variables
 # -------------------------------------------------------------------
-ocp4_workload_user_count: "{{ num_users }}"
-ocp4_workload_user_base: user
-
 common_admin_password: "{{ lookup('password', output_dir ~ '/user_password length=12 chars=ascii_letters,digits') }}"
-
-# -------------------------------------------------------------------
-# agnosticd.core_workloads.ocp4_workload_external_odf
-# -------------------------------------------------------------------
-ocp4_workload_external_odf_channel: "stable-{{ ocp4_installer_version }}"
 
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
@@ -105,21 +69,8 @@ ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password 
 ocp4_workload_authentication_htpasswd_user_base: user
 ocp4_workload_authentication_htpasswd_user_password: ""
 ocp4_workload_authentication_htpasswd_user_password_randomized: true
-ocp4_workload_authentication_htpasswd_user_count: "{{ ocp4_workload_user_count }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ user_count }}"
 ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
-
-# -------------------------------------------------------------------
-# agnosticd.core_workloads.ocp4_workload_cert_manager
-# -------------------------------------------------------------------
-ocp4_workload_cert_manager_channel: stable-v1.18
-ocp4_workload_cert_manager_use_catalog_snapshot: false
-ocp4_workload_cert_manager_install_ingress_certificates: true
-ocp4_workload_cert_manager_install_api_certificates: false
-ocp4_workload_cert_manager_cloud_provider: aws
-ocp4_workload_cert_manager_aws_region: us-east-2
-ocp4_workload_cert_manager_aws_access_key_id: "{{ route53_aws_access_key_id }}"
-ocp4_workload_cert_manager_aws_secret_access_key: "{{ route53_aws_secret_access_key }}"
-ocp4_workload_cert_manager_aws_hostedzoneid: "{{ route53_aws_zone_id }}"
 
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_openshift_gitops
@@ -214,6 +165,27 @@ __meta__:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+  components:
+  - name: openshift
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools
+    parameter_values:
+      cluster_size: "{{ control_plane_size }}"
+      host_ocp4_installer_version: "{{ ocp4_installer_version}}"
+    propagate_provision_data:
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    # Required by host_ocp4_assisted_scale
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: >-
@@ -232,7 +204,7 @@ __meta__:
       Product_Family: Red_Hat_Cloud
       Featured_Score: '71'
     parameters:
-    - name: num_users
+    - name: user_count
       description: >-
         Number of users to provision within the environment.
       formLabel: User Count
@@ -241,37 +213,26 @@ __meta__:
         default: 1
         minimum: 1
         maximum: 25
-    - name: control_plane_count
-      description: OpenShift control plane node count
-      formLabel: Control Plane Count
+    - name: control_plane_size
+      description: OpenShift control plane size
+      formLabel: Control Plane Size
       required: false
       openAPIV3Schema:
-        type: integer
-        default: 1
-        maximum: 3
-        enum:
-        - 1
-        - 3
-    - name: control_plane_cores
-      description: OpenShift control plane nodes cores
-      formLabel: Control Plane Cores
-      openAPIV3Schema:
-        type: integer
-        default: 24
-        enum:
-        - 16
-        - 24
-        - 32
-    - name: control_plane_memory
-      description: OpenShift control plane nodes memory
-      formLabel: Control Plane Memory
-      openAPIV3Schema:
         type: string
-        default: 64Gi
+        default: 'sno'
         enum:
-        - 32Gi
-        - 64Gi
-        - 128Gi
+        - 'sno'
+        - 'multinode'
+    - name: worker_node_count
+      description: OpenShift worker node count
+      formLabel: Worker Node Count
+      formHideCondition: >-
+        control_plane_size != 'multinode'
+      openAPIV3Schema:
+        type: integer
+        default: 3
+        minimum: 3
+        maximum: 10
     - name: ocp4_installer_version
       description: OpenShift version to install
       formLabel: OpenShift Version
@@ -282,12 +243,3 @@ __meta__:
         enum:
         - '4.19'
         - '4.20'
-      annotation: demo.redhat.com/ocp-version
-      variable: ocp4_installer_version
-  sandboxes:
-  - kind: OcpSandbox
-    namespace_suffix: ocp4-cluster
-    cloud_selector:
-      cloud: cnv
-      purpose: prod
-      virt: "yes"
