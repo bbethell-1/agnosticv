@@ -1,7 +1,7 @@
 ---
 # -------------------------------------------------------------------
 # --- Catalog Item: OpenShift Field Sourced Assets
-#
+# --- Supports optional LiteMaaS/MaaS integration for AI/LLM demos
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
@@ -17,6 +17,9 @@
 
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 #include /includes/secrets/ocp4_workload_ols_api_token.yaml
+
+# LiteMaaS secret (conditional - only used if enable_litemaas_keys is true)
+#include /includes/secrets/litemaas-master_api.yaml
 
 # -------------------------------------------------------------------
 # AgnosticDv2 variables
@@ -41,6 +44,10 @@ requirements_content:
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
     version: main
+  # LiteMaaS Virtual Keys (optional - for AI/LLM demos)
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: main
 
 # ===================================================================
 # Autoscaling cluster
@@ -53,10 +60,30 @@ ai_workers_memory: "{{ ai_workers_memory }}"
 # ===================================================================
 # List of workloads to be deployed
 # ===================================================================
-workloads:
-- agnosticd.core_workloads.ocp4_workload_authentication_keycloak
-- agnosticd.core_workloads.ocp4_workload_openshift_gitops
-- agnosticd.core_workloads.ocp4_workload_field_content
+# Build workload list conditionally - only include LiteMaaS if checkbox enabled
+workloads: >-
+  {{
+    [
+      'agnosticd.core_workloads.ocp4_workload_authentication_keycloak',
+      'agnosticd.core_workloads.ocp4_workload_openshift_gitops'
+    ] +
+    (
+      ['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys']
+      if (enable_litemaas_keys | default(false) | bool)
+      else []
+    ) +
+    ['agnosticd.core_workloads.ocp4_workload_field_content']
+  }}
+
+# ===================================================================
+# Remove workloads on destroy (conditional)
+# ===================================================================
+remove_workload: >-
+  {{
+    ['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys']
+    if (enable_litemaas_keys | default(false) | bool)
+    else []
+  }}
 
 # ===================================================================
 # Workload: agnosticd.core_workloads.ocp4_workload_authentication_keycloak
@@ -96,12 +123,31 @@ ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
 ocp4_workload_openshift_gitops_resource_tracking_method: annotation
 
 # -------------------------------------------------------------------
+# Workload: rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# CONDITIONAL - Only runs if enable_litemaas_keys checkbox is checked
+# -------------------------------------------------------------------
+# Provisions temporary API keys for AI/LLM models from LiteMaaS/MaaS
+# Credentials from secret include: litellm_url, litellm_master_key
+
+ocp4_workload_litellm_virtual_keys_alias: "field-content-{{ guid }}"
+ocp4_workload_litellm_virtual_keys_models:
+- "{{ litemaas_model | default('llama-scout-17b') }}"
+ocp4_workload_litellm_virtual_keys_duration: "{{ litemaas_duration | default('7d') }}"
+
+# -------------------------------------------------------------------
 # Workload: ocp4_workload_field_content
 # -------------------------------------------------------------------
 # Leave variables as a reminder, but they are set from parameters
 # ocp4_workload_field_content_gitops_repo_url: ""
 # ocp4_workload_field_content_gitops_repo_revision: main
 # ocp4_workload_field_content_gitops_repo_path: ""
+
+# Pass LiteMaaS credentials to field content workload (if available)
+# These are set by the litellm_virtual_keys workload and stored in agnosticd_user_data
+# Prefix with workload name so they're passed to the field content role
+ocp4_workload_field_content_litemaas_api_url: "{{ lookup('agnosticd_user_data', 'litellm_api_base_url', default='') }}"
+ocp4_workload_field_content_litemaas_api_key: "{{ lookup('agnosticd_user_data', 'litellm_virtual_key', default='') }}"
+ocp4_workload_field_content_litemaas_model: "{{ litemaas_model | default('llama-scout-17b') }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -268,6 +314,65 @@ __meta__:
       formLabel: GitOps Path
       openAPIV3Schema:
         type: string
+      components:
+      - name: current
+
+    # ===================================================================
+    # LiteMaaS/MaaS Configuration (OPTIONAL - for AI/LLM demos)
+    # ===================================================================
+    - name: enable_litemaas_keys
+      description: >-
+        Enable automatic provisioning of LiteMaaS/MaaS API keys for AI/LLM demonstrations.
+        Only check this if your GitOps repository deploys AI models (RAG, chatbots, etc.).
+        This will create a temporary API key with configurable expiration.
+      formLabel: Enable LiteMaaS/MaaS API Keys (for AI/LLM demos)
+      formGroup: AI/LLM Configuration (Optional)
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: current
+
+    - name: litemaas_model
+      description: >-
+        Select the AI/LLM model to provision API access for.
+        Your GitOps deployment can use this model via the auto-generated API key.
+      formLabel: LiteMaaS Model
+      formGroup: AI/LLM Configuration (Optional)
+      formHideCondition: enable_litemaas_keys == false
+      required: false
+      openAPIV3Schema:
+        type: string
+        default: 'llama-scout-17b'
+        enum:
+        - 'codellama-7b-instruct'
+        - 'deepseek-r1-distill-qwen-14b'
+        - 'granite-3-2-8b-instruct'
+        - 'granite-4-0-h-tiny'
+        - 'Llama-Guard-3-1B'
+        - 'llama-scout-17b'
+        - 'microsoft-phi-4'
+        - 'nomic-embed-text-v1-5'
+        - 'qwen3-14b'
+      components:
+      - name: current
+
+    - name: litemaas_duration
+      description: >-
+        How long the API key remains valid.
+        The key will automatically expire after this period.
+      formLabel: API Key Validity Period
+      formGroup: AI/LLM Configuration (Optional)
+      formHideCondition: enable_litemaas_keys == false
+      required: false
+      openAPIV3Schema:
+        type: string
+        default: '7d'
+        enum:
+        - '3d'
+        - '7d'
+        - '10d'
+        - '30d'
       components:
       - name: current
 
