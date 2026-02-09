@@ -1,0 +1,256 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: OCP4 Getting Started Workshop (CNV)
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/catalog-icon-openshift.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# Required by host_ocp4_assisted_scale
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+# -------------------------------------------------------------------
+# Top Variables
+# -------------------------------------------------------------------
+cloud_provider: none
+config: openshift-workloads
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # Required by host_ocp4_assisted_scale
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.9
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: 1.2.1
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.3.10
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+cluster_size: "{{ 'sno' if num_users | int <= 2 else 'multinode' }}"
+openshift_cnv_scale_cluster: "{{ true if cluster_size == 'multinode' else false }}"
+worker_instance_count: "{{ 0 if cluster_size == 'sno' else [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max }}"
+ai_workers_cores: 16
+ai_workers_memory: 64Gi
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication_rhsso
+- agnosticd.core_workloads.ocp4_workload_pipelines
+- agnosticd.core_workloads.ocp4_workload_gitea_operator
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.showroom.ocp4_workload_showroom_ocp_integration
+- agnosticd.showroom.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_base: user
+ocp4_workload_user_count: "{{ (num_users | default('2')) | int }}"
+common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_password: "{{ (guid[::-1][:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_username: admin
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.20_2026_02_02
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_authentication_rhsso
+# -------------------------------------------------------------------
+ocp4_workload_authentication_rhsso_channel: stable
+ocp4_workload_authentication_rhsso_use_catalog_source: true
+ocp4_workload_authentication_rhsso_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_authentication_rhsso_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_authentication_rhsso_admin_username: "{{ common_admin_username }}"
+ocp4_workload_authentication_rhsso_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_rhsso_user_count: "{{ ocp4_workload_user_count }}"
+ocp4_workload_authentication_rhsso_user_name_base: "{{ ocp4_workload_user_base }}"
+ocp4_workload_authentication_rhsso_user_password: "{{ common_user_password }}"
+
+# ---------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.21
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.1.0
+
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.25.3"
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel9/postgresql-13
+ocp4_workload_gitea_operator_postgresql_image_tag: 9.7-1770309255
+
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_user_count }}"
+ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_user_base + '%d' }}"
+ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
+ocp4_workload_gitea_operator_admin_password: "{{ common_admin_password }}"
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/openshift-roadshow/nationalparks
+  name: nationalparks
+  private: false
+- repo: https://github.com/openshift-roadshow/nationalparks-py
+  name: nationalparks-py
+  private: false
+- repo: https://github.com/openshift-roadshow/nationalparks-dotnet
+  name: nationalparks-dotnet
+  private: false
+- repo: https://github.com/openshift-roadshow/nationalparks-js
+  name: nationalparks-js
+  private: false
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.18
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ common_admin_username }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+gitops_repo_revision: v1.0.0
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ocp4-getting-started-gitops
+ocp4_workload_gitops_bootstrap_repo_revision: "{{ gitops_repo_revision }}"
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  user:
+    count: "{{ ocp4_workload_user_count }}"
+    prefix: "{{ ocp4_workload_user_base }}"
+  workspace:
+    git:
+      revision: "{{ gitops_repo_revision }}"
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_showroom_ocp_integration
+# -------------------------------------------------------------------
+ocp4_workload_showroom_ocp_integration_openshift_api_url: "{{ lookup('agnosticd_user_data', 'openshift_api_url') }}"
+ocp4_workload_showroom_ocp_integration_openshift_api_token: "{{ lookup('agnosticd_user_data', 'openshift_cluster_admin_token') }}"
+
+# -------------------------------------------------------------------
+# agnosticd.showroom.ocp4_workload_showroom
+# -------------------------------------------------------------------
+showroom_repo_revision: v1.0.2
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ocp4-getting-started-showroom
+ocp4_workload_showroom_content_git_repo_ref: "{{ showroom_repo_revision }}"
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: 2.0.9
+ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2025-12-08
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: d03db366-212f-48a3-ab5e-5f73e39d3e2e
+  owners:
+    maintainer:
+    - name: Juliano Mohr
+      email: juliano@redhat.com
+    instructions:
+    - name: Juliano Mohr
+      email: juliano@redhat.com
+    - name: Natale Vinto
+      email: nvinto@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-12-17
+  components:
+  - name: openshift
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools
+    parameter_values:
+      cluster_size: "{{ 'sno' if num_users | int <= 2 else 'multinode' }}"
+      host_ocp4_installer_version: "{{ ocp4_installer_version}}"
+    propagate_provision_data:
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    # Required by host_ocp4_assisted_scale
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OCP4 Getting Started Workshop (2025)
+    category: Workshops
+    multiuser: true
+    keywords:
+    - openshift
+    - ocp
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Openshift
+      Featured_Score: '91'
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users to provision within the environment.
+      formLabel: User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 35
+    - name: ocp4_installer_version
+      description: OpenShift version to install
+      formLabel: OpenShift Version
+      formHideCondition: true == true
+      openAPIV3Schema:
+        type: string
+        default: '4.20'
+        enum:
+        - '4.20'
