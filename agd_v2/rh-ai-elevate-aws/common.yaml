@@ -1,0 +1,261 @@
+---
+# This item is restricted to devs only!
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: AI BU Roadshow (2026)
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift-ai.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+
+# Repository Tag
+# Tag for all repositories that are used in this config.
+tag: main
+
+# AgnosticD Variables
+cloud_provider: none
+# cloud_provider_version: main
+config: openshift-workloads
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# Determines whether this is a multi-user cluster or not
+# num_users > 0 means it is a multi-user cluster and user data
+# will be stored in user dictionary
+# num_users = 0 means this is not a multi-user cluster and
+# all user data will be in provision data
+num_users: "{{ num_users_param | default(1) }}"
+
+# -------------------------------------------------------------------
+# Autoscaling cluster
+# -------------------------------------------------------------------
+openshift_aws_scale_cluster: true
+worker_instance_type: "m5a.4xlarge"
+worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # AWS Cloud Provider
+  # Only used with openshift_aws_scale_cluster
+  - name: https://github.com/agnosticd/cloud_provider_aws.git
+    type: git
+    version: "{{ tag }}"
+
+  # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # AI Workloads
+  - name: https://github.com/agnosticd/ai_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # Showroom
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.3.9 # picking up mermaid and other fixes, was v1.3.5 before (and main)
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+- agnosticd.core_workloads.ocp4_workload_machinesets
+- agnosticd.core_workloads.ocp4_workload_nfd
+- agnosticd.ai_workloads.ocp4_workload_nvidia_gpu_operator
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+# - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# - agnosticd.showroom.ocp4_workload_showroom_ocp_integration
+# - agnosticd.showroom.ocp4_workload_showroom
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_user_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=16 chars=ascii_letters,digits')
+  }}
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=16 chars=ascii_letters,digits')
+  }}
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_keycloak
+# -------------------------------------------------------------------
+ocp4_workload_authentication_keycloak_admin_username: admin
+ocp4_workload_authentication_keycloak_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_keycloak_user_username_base: user
+ocp4_workload_authentication_keycloak_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_keycloak_num_users: "{{ num_users | int }}"
+ocp4_workload_authentication_keycloak_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_machinesets
+# -------------------------------------------------------------------
+ocp4_workload_machinesets_disable_default_machinesets: false
+ocp4_workload_machinesets_wait_for_nodes: true
+
+gpu_instance_type: g6.12xlarge
+
+ocp4_workload_machinesets_machineset_groups:
+- name: worker-gpu
+  autoscale: false
+  total_replicas: 1
+  total_replicas_min: 1
+  total_replicas_max: 1
+  role: worker-gpu
+  taints:
+  - key: nvidia.com/gpu
+    value: "true"
+    effect: NoSchedule
+  instance_type: "{{ gpu_instance_type }}"
+  root_volume_size: "2000"
+
+# -------------------------------------------------------------------
+# ocp4_workload_nfd
+# -------------------------------------------------------------------
+# uses role defaults
+
+# -------------------------------------------------------------------
+# ocp4_workload_nvidia_gpu_setup
+# -------------------------------------------------------------------
+ocp4_workload_nvidia_gpu_operator_channel: v25.3
+ocp4_workload_nvidia_gpu_operator_use_catalog_snapshot: false
+ocp4_workload_nvidia_gpu_operator_create_dashboard: true
+ocp4_workload_nvidia_gpu_operator_wait_for_cluster_policy: false
+ocp4_workload_nvidia_gpu_operator_ignore_csv_error: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.19
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_requests_memory: 2Gi
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/rh-ai-elevate-2026-gitops
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  user:
+    count: "{{ num_users | default(1) }}"
+
+  guid: "{{ guid }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/rh-ai-elevate-2026-showroom
+ocp4_workload_showroom_content_git_repo_ref: main
+
+# Adding terminals. Links are configured in ui-config.yaml in the showroom repo.
+
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_terminal_image: quay.io/juliaaano/openshift-showroom-terminal-ocp:2025-12-02
+
+ocp4_workload_showroom_passthrough_user_data: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 263351e0-0827-424b-9106-c0f3b6c2636f
+  owners:
+    maintainer:
+    - name: Nate Stephany
+      email: nate@redhat.com
+    sme:
+    - name: Taylor Jordan Smith
+      email: tasmith@redhat.com
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      pull: missing
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Red Hat AI Elevate (AWS)"
+    workshopLabUiRedirect: true
+    category: Workshops
+    keywords:
+    - openshift ai
+    - agentic
+    - maas
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    multiuser: true
+    reportingLabels:
+      primaryBU: Artificial_Intelligence
+    parameters:
+    - name: num_users_param
+      description: Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 30
+
+  components:
+  - name: openshift_aws
+    display_name: OpenShift Container Platform Cluster (AWS Pools)
+    item: agd-v2/ocp-cluster-aws-pools
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: "4.20"
+      agnosticd_open_environment: false
+      aws_region: us-east-2
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
