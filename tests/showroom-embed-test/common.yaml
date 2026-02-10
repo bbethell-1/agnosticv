@@ -1,0 +1,308 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: Showroom with OCP Console Embed (GitOps)
+# --- Embeds OCP Console, ArgoCD, AAP, DevSpaces, OpenShift AI
+# --- in Showroom iframe tabs via ArgoCD App of Apps.
+# ---
+# --- Repo: https://github.com/prakhar1985/showroom-ocp-console-embed
+# -------------------------------------------------------------------
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# -------------------------------------------------------------------
+# AgnosticDv2 variables
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+config: openshift-workloads
+cloud_provider: none
+openshift_cnv_scale_cluster: false
+num_users: 1
+
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_cluster_admin_token }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+requirements_content:
+  collections:
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: gitops-bootstrap-userinfo
+  - name: https://github.com/agnosticd/ai_workloads.git
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/rhpds/jeffcpullen.agnosticp
+    type: git
+    version: main
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+- jeffcpullen.agnosticp.agp_devspaces
+- agnosticd.ai_workloads.ocp4_workload_openshift_ai
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+
+# ===================================================================
+# Workload: ocp4_workload_authentication_keycloak
+# ===================================================================
+ocp4_workload_authentication_keycloak_namespace: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_keycloak_use_catalog_source: false
+
+ocp4_workload_authentication_keycloak_admin_create: true
+ocp4_workload_authentication_keycloak_admin_username: admin
+ocp4_workload_authentication_keycloak_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_keycloak_remove_kubeadmin: true
+
+ocp4_workload_authentication_keycloak_num_users: "{{ num_users | int }}"
+ocp4_workload_authentication_keycloak_user_username_base: user
+ocp4_workload_authentication_keycloak_user_password: "{{ common_password }}"
+
+# ===================================================================
+# Workload: ocp4_workload_openshift_gitops
+# ===================================================================
+ocp4_workload_openshift_gitops_channel: latest
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, system:cluster-admins, role:admin
+  g, admin, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+ocp4_workload_openshift_gitops_resource_tracking_method: annotation
+
+# ===================================================================
+# Workload: ocp4_workload_ansible_automation_platform
+# ===================================================================
+ocp4_workload_ansible_automation_platform_admin_password: "{{ common_password }}"
+ocp4_workload_ansible_automation_platform_disable_controller: false
+ocp4_workload_ansible_automation_platform_disable_eda: true
+ocp4_workload_ansible_automation_platform_disable_hub: true
+ocp4_workload_ansible_automation_platform_disable_lightspeed: true
+ocp4_workload_ansible_automation_platform_inject_manifest: true
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+ocp4_workload_ansible_automation_platform_create_eda_rolebinding: true
+ocp4_workload_ansible_automation_platform_operator_channel: stable-2.6
+ocp4_workload_ansible_automation_platform_catalog_snapshot_image_tag: "v4.20_2025_12_29"
+ocp4_workload_ansible_automation_platform_ocp_cluster_role: cluster-reader
+ocp4_workload_ansible_automation_platform_hub_file_storage_file_class: ocs-external-storagecluster-cephfs
+ocp4_workload_ansible_automation_platform_hub_file_storage_access_mode: ReadWriteMany
+
+# ===================================================================
+# Workload: jeffcpullen.agnosticp.agp_devspaces
+# ===================================================================
+agp_devspaces_namespace: 'devspaces'
+agp_devspaces_operator_catalog_name: 'olm-snapshot-redhat-catalog-20251229'
+agp_devspaces_operator_catalog_image: 'quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog'
+agp_devspaces_operator_catalog_image_tag: 'v4.20_2025_12_29'
+agp_devspaces_operator_devspaces_starting_csv: 'devspacesoperator.v3.25.0'
+agp_devspaces_operator_devworkspace_starting_csv: 'devworkspace-operator.v0.38.0'
+
+# ===================================================================
+# Workload: agnosticd.ai_workloads.ocp4_workload_openshift_ai
+# ===================================================================
+ocp4_workload_openshift_ai_channel: fast-3.x
+ocp4_workload_openshift_ai_use_catalog_snapshot: false
+ocp4_workload_openshift_ai_deploy_dsc: true
+ocp4_workload_openshift_ai_dashboard: Managed
+ocp4_workload_openshift_ai_datasciencepipelines: Managed
+ocp4_workload_openshift_ai_workbenches: Managed
+ocp4_workload_openshift_ai_modelmeshserving: Managed
+ocp4_workload_openshift_ai_kserve: Removed
+ocp4_workload_openshift_ai_ray: Removed
+ocp4_workload_openshift_ai_trustyai: Removed
+ocp4_workload_openshift_ai_trainingoperator: Removed
+ocp4_workload_openshift_ai_modelregistry: Removed
+ocp4_workload_openshift_ai_codeflare: Removed
+ocp4_workload_openshift_ai_feastoperator: Removed
+ocp4_workload_openshift_ai_llamastackoperator: Removed
+ocp4_workload_openshift_ai_kueue: Removed
+ocp4_workload_openshift_ai_aipipelines: Removed
+
+# ===================================================================
+# Workload: ocp4_workload_gitops_bootstrap
+# ===================================================================
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/prakhar1985/showroom-ocp-console-embed.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: showroom/helm
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  numUsers: "{{ num_users | int }}"
+  userPassword: "{{ common_password }}"
+  components:
+    showroom:
+      values:
+        showroom:
+          content:
+            repoUrl: "{{ showroom_content_repo }}"
+            repoRef: "{{ showroom_content_ref }}"
+          # Tabs defined here override the content repo's ui-config.yml.
+          # You can also define tabs in the content repo itself instead.
+          tabs:
+          - name: OCP Console
+            url: "https://console-openshift-console.${DOMAIN}"
+          - name: ArgoCD
+            url: "https://openshift-gitops-server-openshift-gitops.${DOMAIN}"
+          - name: AAP
+            url: "https://aap-aap.${DOMAIN}"
+          - name: DevSpaces
+            url: "https://devspaces.${DOMAIN}"
+          - name: OpenShift AI
+            url: "https://data-science-gateway.${DOMAIN}"
+          # Terminal configuration:
+          #   type: "none"  - No terminal (default)
+          #   type: "wetty" - Wetty SSH terminal to bastion host
+          #   type: "tmux"  - Wetty SSH + tmux session on bastion
+          #   type: "ocp"   - In-pod ttyd shell (no bastion needed)
+          # Bastion credentials are propagated from the OCP cluster component.
+          # For "ocp" type, no bastion config is needed -- uses the pod's SA.
+          terminal:
+            enabled: "{{ terminal_type | default('none') != 'none' }}"
+            type: "{{ terminal_type | default('none') }}"
+            bastion:
+              host: "{{ bastion_ansible_host | default('') }}"
+              user: "{{ bastion_ansible_user | default('') }}"
+              password: "{{ bastion_ansible_ssh_pass | default('') }}"
+              port: "{{ bastion_ansible_port | default('22') }}"
+          userdata: >-
+            {{ lookup('agnosticd_user_data', '*')
+               | dict2items
+               | rejectattr('key', 'eq', 'users')
+               | items2dict }}
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 14108390-6cb5-45bd-abf1-45ed0f29cd18
+  owners:
+    maintainer:
+    - name: Prakhar Srivastava
+      email: psrivast@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+
+  catalog:
+    display_name: "Showroom with OCP Console Embed"
+    category: Labs
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+    - showroom
+    - openshift
+    - gitops
+    - iframe
+    - console-embed
+    labels:
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters:
+    - name: num_users
+      description: >-
+        Number of users for multi-user mode with Keycloak SSO.
+      formLabel: Number of Users
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 5
+
+    - name: showroom_content_repo
+      description: >-
+        Git repository URL for the Showroom content (lab guide).
+      formLabel: Showroom Content Repo
+      openAPIV3Schema:
+        type: string
+        default: "https://github.com/rhpds/openshift-pipelines-demo-showroom.git"
+
+    - name: showroom_content_ref
+      description: >-
+        Branch or tag of the Showroom content repository.
+      formLabel: Showroom Content Branch
+      openAPIV3Schema:
+        type: string
+        default: "main"
+
+    - name: terminal_type
+      description: >-
+        Terminal in Showroom. 'none' disables terminal.
+        'wetty' opens Wetty SSH to bastion host.
+        'tmux' opens Wetty SSH + tmux session on bastion.
+        'ocp' opens an in-pod shell (no bastion needed).
+      formLabel: Terminal Type
+      openAPIV3Schema:
+        type: string
+        default: "ocp"
+        enum:
+        - "none"
+        - "wetty"
+        - "tmux"
+        - "ocp"
+
+  components:
+  - name: openshift
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools/prod
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: '4.20'
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-12-17
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: false
+      status:
+        disable: true
+      stop:
+        disable: false
+      update:
+        disable: true
