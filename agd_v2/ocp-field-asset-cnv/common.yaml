@@ -38,16 +38,22 @@ clusters:
 # ===================================================================
 # Additional Collections & roles to be installed for this config
 # ===================================================================
+tag: main
+
 requirements_content:
   collections:
   # Assisted Installer Collection
   - name: https://github.com/rhpds/assisted_installer.git
     type: git
-    version: main
+    version: v0.0.9
   # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
-    version: main
+    version: "{{ tag }}"
+  # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/ai_workloads.git
+    type: git
+    version: "{{ tag }}"
   # LiteMaaS Virtual Keys (optional - for AI/LLM demos)
   - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
     type: git
@@ -69,6 +75,7 @@ workloads: >-
   {{
     [
       'agnosticd.core_workloads.ocp4_workload_authentication_keycloak',
+      'agnosticd.ai_workloads.ocp4_workload_ols',
       'agnosticd.core_workloads.ocp4_workload_openshift_gitops'
     ] +
     (
@@ -82,11 +89,16 @@ workloads: >-
 # ===================================================================
 # Remove workloads on destroy (conditional)
 # ===================================================================
-remove_workload: >-
+remove_workloads: >-
   {{
-    ['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys']
-    if (enable_litemaas_keys | default(false) | bool)
-    else []
+    [
+      'agnosticd.ai_workloads.ocp4_workload_ols'
+    ] +
+    (
+      ['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys']
+      if (enable_litemaas_keys | default(false) | bool)
+      else []
+    )
   }}
 
 # ===================================================================
@@ -108,6 +120,15 @@ ocp4_workload_authentication_keycloak_remove_kubeadmin: true
 ocp4_workload_authentication_keycloak_num_users: "{{ (num_users | default('1')) | int }}"
 ocp4_workload_authentication_keycloak_user_username_base: user
 ocp4_workload_authentication_keycloak_user_password: ''
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ols (OpenShift Lightspeed)
+# -------------------------------------------------------------------
+# Use Azure AI as the backend for OpenShift Lightspeed
+ocp4_workload_ai_platform: azure
+
+# Automatically create and manage Azure AI tokens
+ocp4_workload_ols_get_token: true
 
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_openshift_gitops
@@ -172,7 +193,9 @@ __meta__:
       image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
       pull: missing
     actions:
-      # enable to allow ocp4_workload_litellm_virtual_keys removal
+      # enable to allow these workloads to cleanup:
+      # ocp4_workload_litellm_virtual_keys
+      # ocp4_workload_ols
       destroy:
         disable: false
       # these are all controlled by the base component and do not need
@@ -188,7 +211,7 @@ __meta__:
 
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: Field Sourced Content - OpenShift
+    display_name: "Field Sourced Content - OpenShift Base (CNV)"
     category: Workshops
     keywords:
     - openshift
@@ -221,8 +244,8 @@ __meta__:
         type: string
         default: '4.20'
         enum:
-        - '4.18'
         - '4.20'
+        - '4.21'
       annotation: demo.redhat.com/ocp-version
       variable: host_ocp4_installer_version
       components:
@@ -283,6 +306,8 @@ __meta__:
       openAPIV3Schema:
         type: boolean
         default: false
+      components:
+      - name: current
 
     - name: num_users
       description: >-
