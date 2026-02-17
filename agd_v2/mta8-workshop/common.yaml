@@ -1,0 +1,348 @@
+---
+# This item is restricted to devs only!
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: MTA 8 Workshop
+# --- Validation enabled by default
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+# Auto-pass user email and catalog item name to LiteLLM for better tracking
+#include /includes/parameters/litellm_metadata.yaml
+
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/secrets/litemaas-master_api.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# Repository Tag
+# Tag for all repositories that are used in this config.
+# ===================================================================
+tag: main
+# -------------------------------------------------------------------
+cloud_provider: none
+config: openshift-workloads
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# -------------------------------------------------------------------
+# Autoscaling cluster
+# -------------------------------------------------------------------
+# Only scale for more than 3 users
+openshift_cnv_scale_cluster: "{{ (num_users | int) > 3 }}"
+ai_workers_cores: 16
+ai_workers_memory: 32Gi
+# One additional worker for each 5 users (only when scaling is enabled)
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 1] | max if (num_users | int) > 3 else 0 }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # Assisted Installer Collection
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.9
+
+  # LiteLLM Virtual Keys Collection
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "{{ tag }}"
+
+  # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # RHPDS MTA Workloads
+  - name: https://github.com/rhpds/mta_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # Showroom
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.4.0
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_gitea_operator
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+- agnosticd.core_workloads.ocp4_workload_devspaces
+- rhpds.mta_workloads.ocp4_workload_mta8
+- agnosticd.showroom.ocp4_workload_showroom_ocp_integration
+- agnosticd.showroom.ocp4_workload_showroom
+
+remove_workloads:
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:10] }}"
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:16] }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_models:
+- qwen3-14b
+- llama-scout-17b
+- deepseek-r1-distill-qwen-14b
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_htpasswd
+# -------------------------------------------------------------------
+ocp4_workload_authentication_htpasswd_admin_user: admin
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password}}"
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+ocp4_workload_authentication_htpasswd_user_base: user
+# Generate user password
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_password_randomized: false
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('2')) | int }}"
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.19
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ ocp4_workload_authentication_htpasswd_admin_user }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[email,groups]'
+
+# Application Controller
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 8Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 8Gi
+
+# Sync every 30 seconds to reduce wait times between updates
+ocp4_workload_openshift_gitops_controller_app_sync: 30s
+
+# Allow invidual users to see only their own Applications in the System ArgoCD console
+ocp4_workload_openshift_gitops_per_user_access: true
+ocp4_workload_openshift_gitops_user_count: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+ocp4_workload_openshift_gitops_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_openshift_gitops_user_project_prefix: "appproject-"
+ocp4_workload_openshift_gitops_user_cluster_resource_whitelist:
+- group: ""
+  kind: Namespace
+
+# Do not use a catalog snapshot - rely on the channel version
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image_tag: v2.1.0
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.25.4"
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
+# ocp4_workload_gitea_operator_gitea_volume_storage_class: ocs-external-storagecluster-cephfs
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel10/postgresql-16
+ocp4_workload_gitea_operator_postgresql_image_tag: latest
+ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
+# ocp4_workload_gitea_operator_postgresql_volume_storage_class: ocs-external-storagecluster-cephfs
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: mtaadmin
+ocp4_workload_gitea_operator_admin_email: mtaadmin@redhat.com
+ocp4_workload_gitea_operator_admin_password: "{{ common_admin_password}}"
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_authentication_htpasswd_user_base }}%d"
+ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
+ocp4_workload_gitea_operator_migrate_repositories: true
+
+ocp4_workload_gitea_operator_repositories_list:
+- repo: https://github.com/rh-mad-workshop/modern-app-dev.git
+  name: modern-app-dev
+  branch: mta-lab
+  private: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_virtualization
+# -------------------------------------------------------------------
+ocp4_workload_openshift_virtualization_channel: stable
+
+# -------------------------------------------------------------------
+# ocp4_workload_devspaces
+# -------------------------------------------------------------------
+ocp4_workload_devspaces_catalogsource_setup: false
+
+ocp4_workload_devspaces_channel: stable
+
+ocp4_workload_devspaces_namespace: openshift-devspaces
+ocp4_workload_devspaces_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_devspaces_user_count: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+
+ocp4_workload_devspaces_devworkspace: true
+# All lowercase letters and hyphens only
+ocp4_workload_devspaces_devworkspace_name: migration-workspace
+ocp4_workload_devspaces_devworkspace_namespace: devworkspaces
+ocp4_workload_devspaces_devworkspace_username: user1
+# All lowercase letters and hyphens only
+ocp4_workload_devspaces_devworkspace_project: migration-project
+ocp4_workload_devspaces_devworkspace_git_repo: https://github.com/eclipse-che/che-docs
+ocp4_workload_devspaces_devworkspace_git_revision: main
+ocp4_workload_devspaces_devworkspace_components:
+- name: tooling
+  container:
+    image: registry.redhat.io/devspaces/udi-rhel9:latest
+ocp4_workload_devspaces_devworkspace_devfile: >-
+  http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_mta8
+# -------------------------------------------------------------------
+ocp4_workload_mta8_channel: stable-v8.0
+ocp4_workload_mta8_catalogsource_setup: false
+
+ocp4_workload_mta8_rwx_supported: false
+ocp4_workload_mta8_rwx_storage_class: ocs-external-storagecluster-ceph-rbd
+ocp4_workload_mta8_rwo_storage_class: ocs-external-storagecluster-ceph-rbd
+
+# -------------------------------------------------------------------
+# Per User configuration
+ocp4_workload_mta8_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+ocp4_workload_mta8_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+
+ocp4_workload_mta8_user_namespace_base: mta
+
+ocp4_workload_mta8_seed: true
+ocp4_workload_mta8_seed_image: quay.io/gpte-devops-automation/tackle2-setup
+ocp4_workload_mta8_seed_tag: release-0.4-mta7
+ocp4_workload_mta8_seed_pull_policy: IfNotPresent
+
+# ocp4_workload_mta_user_litemaas_url: "{{ lookup('agnosticd_user_data', 'litellm_api_base_url') }}"
+# ocp4_workload_mta_user_litemaas_keys: "{{ lookup('agnosticd_user_data', 'litellm_virtual_keys') }}"
+# ocp4_workload_mta_user_litemaas_models: "{{ lookup('agnosticd_user_data', 'litellm_available_models') }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/mta8-workshop
+ocp4_workload_showroom_content_git_repo_ref: main
+# Default antora playbook is default-site.yml, override here if needed
+# ocp4_workload_showroom_content_antora_playbook: site.yml
+
+# No terminals. Links are configured in ui-config.yaml in the showroom repo.
+ocp4_workload_showroom_content_only: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: cd74a516-6d80-4f44-a04a-9a59c9f18b1b
+  owners:
+    maintainer:
+    - name: Wolfgang Kulhanek
+      email: wkulhane@redhat.com
+    - name: Shaaf Syed
+      email: sshaaf@redhat.com
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-15
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "MTA 8 Workshop"
+    category: Workshops
+    keywords: []
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    multiuser: true
+    workshopLabUiRedirect: true
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+      secondaryBU: Artificial_Intelligence
+    parameters:
+    - name: num_users
+      description: Number of users to provision within the cluster.
+      formLabel: OpenShift User Count
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 40
+
+  components:
+  - name: openshift-base
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: "4.20"
+      ocp4_fips_enable: false
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    # Propagate bastion data for infra_add_bastion role
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    # Needed for scaling cluster with workers
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
