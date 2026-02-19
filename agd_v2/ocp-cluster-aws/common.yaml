@@ -28,6 +28,8 @@ clusters:
     api_url: "{{ openshift_api_url }}"
     api_token: "{{ openshift_api_key }}"
 
+num_users: "{{ 0 if not (create_multi_user | default(false)) else num_users_param | default(1) }}"
+
 # ===================================================================
 # Additional Collections & roles to be installed for this config
 # ===================================================================
@@ -65,28 +67,15 @@ worker_instance_count: "{{ 0 if cluster_size == 'sno' else worker_instance_count
 # List of workloads to be deployed
 # ===================================================================
 workloads:
-- agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+- agnosticd.core_workloads.ocp4_workload_authentication
 - agnosticd.ai_workloads.ocp4_workload_ols
 
 # ===================================================================
-# Workload: agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+# Workload: agnosticd.core_workloads.ocp4_workload_authentication
 # ===================================================================
-# Red Hat Build of Keycloak (RHBK) - User Authentication
-# Creates Keycloak instance and manages user accounts
-
-# Operator configuration
-ocp4_workload_authentication_keycloak_namespace: keycloak
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_multiuser: true
 ocp4_workload_authentication_keycloak_channel: stable-v26.4
-ocp4_workload_authentication_keycloak_use_catalog_source: false
-
-ocp4_workload_authentication_keycloak_admin_create: true
-ocp4_workload_authentication_keycloak_admin_username: admin
-ocp4_workload_authentication_keycloak_admin_password: ''
-ocp4_workload_authentication_keycloak_remove_kubeadmin: true
-
-ocp4_workload_authentication_keycloak_num_users: "{{ (num_users | default('1')) | int }}"
-ocp4_workload_authentication_keycloak_user_username_base: user
-ocp4_workload_authentication_keycloak_user_password: ''
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_ols (OpenShift Lightspeed)
@@ -152,7 +141,7 @@ __meta__:
 
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: Red Hat OpenShift Container Platform Cluster (AWS) - AgdV2
+    display_name: Red Hat OpenShift Container Platform Cluster (AWS)
     category: Workshops
     keywords:
     - workshop
@@ -161,7 +150,7 @@ __meta__:
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: Red_Hat_Cloud
       Provider: RHDP
-      Featured_Score: '71'
+    workshopUiDisabled: true
     multiuser: true
     reportingLabels:
       primaryBU: Hybrid_Platforms
@@ -176,6 +165,9 @@ __meta__:
         enum:
         - 'sno'
         - 'multinode'
+      components:
+      - name: all
+
     - name: host_ocp4_installer_version
       description: Version of OpenShift to Install
       formLabel: OpenShift Version
@@ -184,12 +176,14 @@ __meta__:
         type: string
         default: '4.20'
         enum:
-        - '4.16'
         - '4.18'
-        - '4.19'
         - '4.20'
+        - '4.21'
       annotation: demo.redhat.com/ocp-version
       variable: host_ocp4_installer_version
+      components:
+      - name: openshift_base
+
     - name: worker_instance_count_param
       description: OpenShift Worker count
       formLabel: OpenShift Worker count
@@ -199,6 +193,9 @@ __meta__:
         default: 2
         minimum: 2
         maximum: 10
+      components:
+      - name: current
+
     - name: worker_instance_type
       description: OpenShift Worker instance type
       formLabel: OpenShift Worker instance type
@@ -210,13 +207,19 @@ __meta__:
         - 'm5a.2xlarge'
         - 'm5a.4xlarge'
         - 'm5a.8xlarge'
+      components:
+      - name: current
+
     - name: create_multi_user
-      description: Create multiple users on cluster?
-      formLabel: Create multiple users on cluster
+      description: Create users on cluster?
+      formLabel: Create users on cluster
       openAPIV3Schema:
         type: boolean
         default: false
-    - name: num_users
+      components:
+      - name: current
+
+    - name: num_users_param
       description: >-
         Number of users to provision within the environment.
       formLabel: User Count
@@ -226,3 +229,5 @@ __meta__:
         default: 1
         minimum: 1
         maximum: 50
+      components:
+      - name: current

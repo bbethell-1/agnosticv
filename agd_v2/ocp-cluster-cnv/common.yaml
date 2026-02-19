@@ -14,7 +14,6 @@
 
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/salesforce-id.yaml
-#include /includes/parameters/num-users-salesforce.yaml
 
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 #include /includes/secrets/ocp4_workload_ols_api_token.yaml
@@ -29,6 +28,8 @@ clusters:
     api_url: "{{ openshift_api_url }}"
     api_token: "{{ openshift_api_key }}"
 
+num_users: "{{ 0 if not (create_multi_user | default(false)) else num_users_param | default(1) }}"
+
 # ===================================================================
 # Additional Collections & roles to be installed for this config
 # ===================================================================
@@ -37,7 +38,7 @@ requirements_content:
   # Assisted Installer Collection
   - name: https://github.com/rhpds/assisted_installer.git
     type: git
-    version: v0.0.8
+    version: v0.0.9
   # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
@@ -59,28 +60,15 @@ ai_workers_memory: "{{ ai_workers_memory }}"
 # List of workloads to be deployed
 # ===================================================================
 workloads:
-- agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+- agnosticd.core_workloads.ocp4_workload_authentication
 - agnosticd.ai_workloads.ocp4_workload_ols
 
 # ===================================================================
-# Workload: agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+# Workload: agnosticd.core_workloads.ocp4_workload_authentication
 # ===================================================================
-# Red Hat Build of Keycloak (RHBK) - User Authentication
-# Creates Keycloak instance and manages user accounts
-
-# Operator configuration
-ocp4_workload_authentication_keycloak_namespace: keycloak
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_multiuser: true
 ocp4_workload_authentication_keycloak_channel: stable-v26.4
-ocp4_workload_authentication_keycloak_use_catalog_source: false
-
-ocp4_workload_authentication_keycloak_admin_create: true
-ocp4_workload_authentication_keycloak_admin_username: admin
-ocp4_workload_authentication_keycloak_admin_password: ''
-ocp4_workload_authentication_keycloak_remove_kubeadmin: true
-
-ocp4_workload_authentication_keycloak_num_users: "{{ (num_users | default('1')) | int }}"
-ocp4_workload_authentication_keycloak_user_username_base: user
-ocp4_workload_authentication_keycloak_user_password: ''
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_ols (OpenShift Lightspeed)
@@ -127,7 +115,7 @@ __meta__:
 
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: Red Hat OpenShift Container Platform Cluster (CNV) - AgdV2
+    display_name: Red Hat OpenShift Container Platform Cluster (CNV)
     category: Workshops
     keywords:
     - workshop
@@ -136,6 +124,7 @@ __meta__:
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: Red_Hat_Cloud
       Provider: RHDP
+    workshopUiDisabled: true
     multiuser: true
     reportingLabels:
       primaryBU: Hybrid_Platforms
@@ -152,6 +141,7 @@ __meta__:
         - 'multinode'
       components:
       - name: all
+
     - name: host_ocp4_installer_version
       description: OpenShift version to install
       formLabel: OpenShift Version
@@ -160,14 +150,14 @@ __meta__:
         type: string
         default: '4.20'
         enum:
-        - '4.16'
         - '4.18'
-        - '4.19'
         - '4.20'
+        - '4.21'
       annotation: demo.redhat.com/ocp-version
       variable: host_ocp4_installer_version
       components:
       - name: openshift_base
+
     - name: worker_instance_count_param
       description: OpenShift Worker count
       formLabel: OpenShift Worker count
@@ -180,6 +170,7 @@ __meta__:
         maximum: 10
       components:
       - name: current
+
     - name: ai_workers_memory
       description: OpenShift Worker memory
       formLabel: OpenShift Worker memory
@@ -198,6 +189,7 @@ __meta__:
         maximum: 128Gi
       components:
       - name: current
+
     - name: ai_workers_cores
       description: OpenShift Worker CPU
       formLabel: OpenShift Worker CPU
@@ -214,13 +206,17 @@ __meta__:
         - 64
       components:
       - name: current
+
     - name: create_multi_user
-      description: Create multiple users on cluster?
-      formLabel: Create multiple users on cluster
+      description: Create users on cluster?
+      formLabel: Create users on cluster
       openAPIV3Schema:
         type: boolean
         default: false
-    - name: num_users
+      components:
+      - name: current
+
+    - name: num_users_param
       description: >-
         Number of users to provision within the environment.
       formLabel: User Count
@@ -236,7 +232,7 @@ __meta__:
   components:
   - name: openshift_base
     display_name: OpenShift Cluster
-    item: agd-v2/ocp-cluster-cnv-pools/prod
+    item: agd-v2/ocp-cluster-cnv-pools
     propagate_provision_data:
     - name: openshift_api_ca_cert
       var: openshift_api_ca_cert
