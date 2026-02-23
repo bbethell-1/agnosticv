@@ -63,6 +63,11 @@ requirements_content:
     type: git
     version: "{{ tag }}"
 
+  # LiteLLM Virtual Keys Collection
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "{{ tag }}"
+
   # Showroom
   - name: https://github.com/agnosticd/showroom.git
     type: git
@@ -78,9 +83,8 @@ requirements_content:
 # List of workloads to be deployed
 # ===================================================================
 workloads:
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
-# - agnosticd.core_workloads.ocp4_workload_nfd
-# - agnosticd.ai_workloads.ocp4_workload_nvidia_gpu_operator
 - agnosticd.core_workloads.ocp4_workload_authorino
 - agnosticd.core_workloads.ocp4_workload_amq_streams
 - agnosticd.core_workloads.ocp4_workload_pipelines
@@ -90,13 +94,25 @@ workloads:
 - agnosticd.ai_workloads.ocp4_workload_openshift_ai
 - agnosticd.core_workloads.ocp4_workload_web_terminal
 - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
-# TODO: This workload must be migrated to agnosticd v2 format
-# - lb1942.instruct_docling_lab.bootstrap
-# - agnosticd.showroom.ocp4_workload_showroom
+- agnosticd.showroom.ocp4_workload_showroom
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+
+
+remove_workloads:
+
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 
 # ===================================================================
 # Variables for specific workloads
 # ===================================================================
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_models:
+- nomic-embed-text-v1-5
+- granite-4-0-h-tiny
 
 # -------------------------------------------------------------------
 # Common Password
@@ -132,18 +148,6 @@ ocp4_workload_openshift_data_foundation_update_default_storage_class: true
 ocp4_workload_openshift_data_foundation_new_default_storage_class_name: ocs-storagecluster-ceph-rbd
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_nfd
-# -------------------------------------------------------------------
-# Using defaults from core_workloads
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_nvidia_gpu_operator
-# -------------------------------------------------------------------
-ocp4_workload_nvidia_gpu_operator_channel: v24.6
-ocp4_workload_nvidia_gpu_operator_create_dashboard: true
-ocp4_workload_nvidia_gpu_operator_use_catalog_snapshot: false
-
-# -------------------------------------------------------------------
 # Workload: ocp4_workload_authorino
 # -------------------------------------------------------------------
 # Using defaults from core_workloads
@@ -161,17 +165,19 @@ ocp4_workload_nvidia_gpu_operator_use_catalog_snapshot: false
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.16
+ocp4_workload_openshift_gitops_channel: gitops-1.18
 ocp4_workload_openshift_gitops_use_catalog_snapshot: false
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_update_resources: true
 ocp4_workload_openshift_gitops_update_route_tls: true
 
-ocp4_workload_openshift_gitops_controller_update: true
 ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
-ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
 ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
-ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_limits_memory: 8Gi
+ocp4_workload_openshift_gitops_controller_requests_memory: 8Gi
+
 
 ocp4_workload_openshift_gitops_repo_update: true
 ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
@@ -201,8 +207,8 @@ ocp4_workload_openshift_gitops_ignore_differences: |
 # Workload: ocp4_workload_serverless
 # -------------------------------------------------------------------
 ocp4_workload_serverless_channel: stable
-ocp4_workload_serverless_install_serving: false
-ocp4_workload_serverless_install_eventing: false
+ocp4_workload_serverless_install_serving: true
+ocp4_workload_serverless_install_eventing: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_servicemesh2
@@ -216,34 +222,39 @@ ocp4_workload_servicemesh2_kiali: false
 # Workload: ocp4_workload_openshift_ai
 # -------------------------------------------------------------------
 ocp4_workload_openshift_ai_automatic_install_plan_approval: false
-ocp4_workload_openshift_ai_channel: stable
-# ocp4_workload_openshift_ai_starting_csv: "rhods-operator.2.19.0"
+ocp4_workload_openshift_ai_channel: fast-3.x
+ocp4_workload_openshift_ai_starting_csv: "rhods-operator.3.2.0"
 ocp4_workload_openshift_ai_kserve: Managed
 ocp4_workload_openshift_ai_workbenches: Managed
+ocp4_workload_openshift_ai_aipipelines: Managed
 ocp4_workload_openshift_ai_modelmeshserving: Removed
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_gitops_bootstrap
+# agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
-ocp4_workload_gitops_bootstrap_repo_url: https://github.com/cnuland/hello-chris-rag-pipeline.git
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/intelligent-apps-rag-gitops
 ocp4_workload_gitops_bootstrap_repo_revision: main
-ocp4_workload_gitops_bootstrap_repo_path: bootstrap/applicationset.yaml
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+ocp4_workload_gitops_bootstrap_application_wait: false
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  user:
+    count: "{{ num_users | default(1) }}"
+  # guid: "{{ guid }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
 # -------------------------------------------------------------------
-ocp4_workload_showroom_content_git_repo: https://github.com/cnuland/hello-chris-rag-pipeline.git
-ocp4_workload_showroom_content_git_repo_ref: main
-ocp4_workload_showroom_content_only: true
-ocp4_workload_showroom_passthrough_user_data: true
 
-# -------------------------------------------------------------------
-# Bootstrap Workload variables (for lb1942.instruct_docling_lab.bootstrap)
-# TODO: These need to be reviewed when the workload is migrated
-# -------------------------------------------------------------------
-# bootstrap_rh_submit_repo: https://github.com/jhurlocker/elyra_docling_rh_summit
-# bootstrap_num_users: "{{ num_users }}"
-# bootstrap_user_name_base: user
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom-intelligent-apps-rag
+ocp4_workload_showroom_content_git_repo_ref: main
+
+# Adding terminals. Links are configured in ui-config.yaml in the showroom repo.
+
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_terminal_image: quay.io/juliaaano/openshift-showroom-terminal-ocp:2025-12-02
+
+ocp4_workload_showroom_passthrough_user_data: true
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -258,11 +269,15 @@ __meta__:
       name: Christopher Nuland
     - email: cclyburn@redhat.com
       name: Cedric Clyburn
+    - email: nvinto@redhat.com
+      name: Natale Vinto
     sme:
     - email: cnuland@redhat.com
       name: Christopher Nuland
     - email: cclyburn@redhat.com
       name: Cedric Clyburn
+    - email: nvinto@redhat.com
+      name: Natale Vinto
 
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2
