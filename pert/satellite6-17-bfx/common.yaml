@@ -28,6 +28,8 @@ pert_satellite_external_fqdn: "{{ groups['satellites'][0].split('.')[0] }}.{{ su
 # -------------------------------------------------------------------
 bastion_cores: "{{ 64 if flavor_type == 'large' else 32 if flavor_type == 'medium' else 16 if flavor_type == 'small' else 16 }}"
 bastion_memory: "{{ '64Gi' if flavor_type == 'large' else '32Gi' if flavor_type == 'medium' else '16Gi' if flavor_type == 'small' else '16Gi' }}"
+node_cores: 2
+node_memory: 4Gi
 bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}.{{ guid }}{{ subdomain_base_suffix }}"
 common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
@@ -35,7 +37,7 @@ env_type: base-infra
 cloud_provider: openshift_cnv
 
 bastion_instance_image: rhel-9.6
-rhel8_instance_image: rhel-8.7
+rhel8_instance_image: rhel-8.10
 bastion_rootfs_size: 200Gi
 project_tag: "{{ env_type }}-{{ guid }}"
 rhel_instance_image: rhel-9.6
@@ -50,7 +52,12 @@ install_bastion: false
 config_user_preferred_python: false
 ansible_user: cloud-user
 openshift_cnv_legacy_routes: true
-inventory_groups: []
+inventory_groups:
+- bastions
+- satellites
+- capsules
+- node1
+- node2
 
 requirements_content:
   collections:
@@ -172,8 +179,8 @@ instances:
   public_dns: true
   floating_ip: false
   image: "{{ rhel8_instance_image }}"
-  memory: "{{ bastion_memory }}"
-  cores: "{{ bastion_cores }}"
+  memory: "{{ node_memory }}"
+  cores: "{{ node_cores }}"
   image_size: "{{ bastion_rootfs_size }}"
   tags:
   - key: "AnsibleGroup"
@@ -189,8 +196,8 @@ instances:
   public_dns: true
   floating_ip: false
   image: "{{ bastion_instance_image }}"
-  memory: "{{ bastion_memory }}"
-  cores: "{{ bastion_cores }}"
+  memory: "{{ node_memory }}"
+  cores: "{{ node_cores }}"
   image_size: "{{ bastion_rootfs_size }}"
   tags:
   - key: "AnsibleGroup"
@@ -231,9 +238,12 @@ __meta__:
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: "Product Enablement: Red Hat Satellite 6.17 Break-fix lab"
-    category: Workshops
+    category: Labs
     keywords:
     - satellite
+    - opentraining
+    - troubleshooting
+    - rhel
     labels:
       Product: Red_Hat_Satellite
       Product_Family: Red_Hat_Enterprise_Linux
@@ -251,7 +261,7 @@ __meta__:
         - medium
         - large
     reportingLabels:
-      primaryBU: Edge
+      primaryBU: RHEL
       secondaryBU: Hybrid_Platforms
   owners:
     maintainer:
