@@ -37,10 +37,10 @@ requirements_content:
     version: v0.0.9
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
-    version: 1.2.1
+    version: 1.2.2
   - name: https://github.com/agnosticd/showroom.git
     type: git
-    version: v1.3.10
+    version: v1.5.2
 
 # -------------------------------------------------------------------
 # CNV Specific
@@ -55,12 +55,12 @@ ai_workers_memory: 64Gi
 # Workloads
 # -------------------------------------------------------------------
 workloads:
-- agnosticd.core_workloads.ocp4_workload_authentication_rhsso
+- agnosticd.core_workloads.ocp4_workload_authentication
 - agnosticd.core_workloads.ocp4_workload_pipelines
 - agnosticd.core_workloads.ocp4_workload_gitea_operator
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
 - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
-- agnosticd.showroom.ocp4_workload_showroom_ocp_integration
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
 - agnosticd.showroom.ocp4_workload_showroom
 
 # -------------------------------------------------------------------
@@ -68,26 +68,25 @@ workloads:
 # -------------------------------------------------------------------
 ocp4_workload_user_base: user
 ocp4_workload_user_count: "{{ (num_users | default('2')) | int }}"
-common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-common_admin_password: "{{ (guid[::-1][:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 common_admin_username: admin
 
-ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.20_2026_02_02
+ocp4_workload_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.21_2026_02_23
 
 # -------------------------------------------------------------------
-# agnosticd.core_workloads.ocp4_workload_authentication_rhsso
+# agnosticd.core_workloads.ocp4_workload_authentication
 # -------------------------------------------------------------------
-ocp4_workload_authentication_rhsso_channel: stable
-ocp4_workload_authentication_rhsso_use_catalog_source: true
-ocp4_workload_authentication_rhsso_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_authentication_rhsso_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_keycloak_use_catalog_source: true
+ocp4_workload_authentication_keycloak_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_authentication_keycloak_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
-ocp4_workload_authentication_rhsso_admin_username: "{{ common_admin_username }}"
-ocp4_workload_authentication_rhsso_admin_password: "{{ common_admin_password }}"
-ocp4_workload_authentication_rhsso_user_count: "{{ ocp4_workload_user_count }}"
-ocp4_workload_authentication_rhsso_user_name_base: "{{ ocp4_workload_user_base }}"
-ocp4_workload_authentication_rhsso_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_admin_username: "{{ common_admin_username }}"
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_num_users: "{{ ocp4_workload_user_count }}"
+ocp4_workload_authentication_user_basename: "{{ ocp4_workload_user_base }}"
 
 # ---------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_pipelines
@@ -115,7 +114,6 @@ ocp4_workload_gitea_operator_create_admin: true
 ocp4_workload_gitea_operator_create_users: true
 ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_user_count }}"
 ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_user_base + '%d' }}"
-ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
 ocp4_workload_gitea_operator_admin_password: "{{ common_admin_password }}"
 ocp4_workload_gitea_operator_migrate_repositories: true
 ocp4_workload_gitea_operator_repositories_list:
@@ -135,7 +133,7 @@ ocp4_workload_gitea_operator_repositories_list:
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.18
+ocp4_workload_openshift_gitops_channel: gitops-1.19
 ocp4_workload_openshift_gitops_use_catalog_snapshot: true
 ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
@@ -165,20 +163,14 @@ ocp4_workload_gitops_bootstrap_helm_values:
       revision: "{{ gitops_repo_revision }}"
 
 # -------------------------------------------------------------------
-# agnosticd.core_workloads.ocp4_workload_showroom_ocp_integration
-# -------------------------------------------------------------------
-ocp4_workload_showroom_ocp_integration_openshift_api_url: "{{ lookup('agnosticd_user_data', 'openshift_api_url') }}"
-ocp4_workload_showroom_ocp_integration_openshift_api_token: "{{ lookup('agnosticd_user_data', 'openshift_cluster_admin_token') }}"
-
-# -------------------------------------------------------------------
 # agnosticd.showroom.ocp4_workload_showroom
 # -------------------------------------------------------------------
-showroom_repo_revision: v1.0.2
+showroom_repo_revision: v1.0.3
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ocp4-getting-started-showroom
 ocp4_workload_showroom_content_git_repo_ref: "{{ showroom_repo_revision }}"
 ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
 ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
-ocp4_workload_showroom_deployer_chart_version: 2.0.9
+ocp4_workload_showroom_deployer_chart_version: 2.0.10
 ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2025-12-08
 
 # -------------------------------------------------------------------
@@ -200,7 +192,7 @@ __meta__:
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2025-12-17
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
   components:
   - name: openshift
     display_name: OpenShift Cluster
@@ -251,6 +243,6 @@ __meta__:
       formHideCondition: true == true
       openAPIV3Schema:
         type: string
-        default: '4.20'
+        default: '4.21'
         enum:
-        - '4.20'
+        - '4.21'
