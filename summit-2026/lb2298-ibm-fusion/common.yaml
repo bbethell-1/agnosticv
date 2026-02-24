@@ -15,11 +15,7 @@
 #include /includes/terms-of-service.yaml
 
 #include /includes/parameters/purpose.yaml
-#include /includes/parameters/aws-regions-standard.yaml
 
-#include /includes/secrets/ocp4_token.yaml
-#include /includes/secrets/demosat-rhel-9-10-latest.yaml
-#include /includes/secrets/letsencrypt_with_zerossl_fallback.yaml
 #include /includes/secrets/ibm-fusion.yaml
 
 # ===================================================================
@@ -30,15 +26,30 @@
 # ===================================================================
 tag: main
 # -------------------------------------------------------------------
-cloud_provider: aws
-cloud_provider_version: "{{ tag }}"
-config: openshift-cluster
+cloud_provider: none
+# cloud_provider_version: "{{ tag }}"
+config: openshift-workloads
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# -------------------------------------------------------------------
+# Autoscaling cluster
+# -------------------------------------------------------------------
+openshift_aws_scale_cluster: true
+worker_instance_count: 3
+worker_instance_type: m8i.4xlarge
 
 # ===================================================================
 # Additional Collections & roles to be installed for this config
 # ===================================================================
 requirements_content:
   collections:
+  # Add AWS cloud provider to facilitate scaling cluster with workers
+  - name: https://github.com/agnosticd/cloud_provider_aws.git
+    type: git
+    version: "{{ tag }}"
   # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
@@ -58,49 +69,11 @@ requirements_content:
 common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:16] }}"
 
 # -------------------------------------------------------------------
-# OpenShift Version
-# -------------------------------------------------------------------
-host_ocp4_installer_version: "4.20"
-host_ocp4_installer_info_set_user_data_kubeadmin_password: true
-
-openshift_cluster_admin_service_account_enable: true
-openshift_cluster_show_access_user_info: true
-
-# -------------------------------------------------------------------
-# Repos
-# -------------------------------------------------------------------
-repo_method: satellite
-update_packages: true
-
-# -------------------------------------------------------------------
-# Student User on Bastion
-# -------------------------------------------------------------------
-bastion_setup_student_user: true
-bastion_student_user_name: student
-bastion_student_user_sudo: true
-
-# -------------------------------------------------------------------
-# AWS Specific
-# -------------------------------------------------------------------
-master_instance_type: m6a.xlarge
-master_instance_count: 3
-master_storage_type: gp3
-master_storage_size: 250
-# Use c8i or m8i for nested virtualization
-worker_instance_type: m8i.4xlarge
-worker_instance_count: 3
-worker_storage_type: gp3
-worker_storage_size: 250
-bastion_instance_type: t3a.medium
-bastion_instance_image: RHEL-10-GOLD-latest
-
-# -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 workloads:
 - rhpds.ibm_workloads.ocp4_workload_ibm_fusion
 - agnosticd.core_workloads.ocp4_workload_authentication
-- agnosticd.core_workloads.ocp4_workload_cert_manager
 - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
 - agnosticd.showroom.ocp4_workload_ocp_console_embed
 - agnosticd.showroom.ocp4_workload_showroom
@@ -127,23 +100,10 @@ ocp4_workload_authentication_keycloak_channel: stable-v26.2
 ocp4_workload_authentication_keycloak_use_catalog_source: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_cert_manager
-# -------------------------------------------------------------------
-ocp4_workload_cert_manager_channel: stable-v1
-ocp4_workload_cert_manager_use_catalog_snapshot: false
-
-ocp4_workload_cert_manager_aws_region: "{{ aws_region }}"
-ocp4_workload_cert_manager_aws_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
-ocp4_workload_cert_manager_aws_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
-
-ocp4_workload_cert_manager_install_ingress_certificates: true
-ocp4_workload_cert_manager_install_api_certificates: false
-ocp4_workload_cert_manager_ignore_errors: true
-
-# -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_virtualization
 # -------------------------------------------------------------------
 ocp4_workload_openshift_virtualization_channel: stable
+ocp4_workload_openshift_virtualization_enabled_nested_kvm: true
 ocp4_workload_openshift_virtualization_use_catalog_snapshot: false
 
 # -------------------------------------------------------------------
@@ -173,7 +133,7 @@ __meta__:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-15
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
       pull: missing
   catalog:
     reportingLabels:
@@ -189,3 +149,39 @@ __meta__:
       Product_Family: Red_Hat_Cloud
       Provider: RHDP
     multiuser: false
+
+  components:
+  - name: openshift-base
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-aws-pools
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: "4.20"
+      ocp4_fips_enable: false
+      aws_region: us-east-2
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    # Propagate bastion data for infra_add_bastion role
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    # Needed for scaling cluster with workers
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
