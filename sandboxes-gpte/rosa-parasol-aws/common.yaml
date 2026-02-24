@@ -62,6 +62,13 @@ rosa_compute_worker_disk_size: 512Gi
 # billing account for HCP
 aws_billing_account_id: "017310218799"
 
+# ------------------------------------------------------
+# Workload variables
+# ------------------------------------------------------
+ocp4_workload_user_base: user
+ocp4_workload_user_count: "{{ num_users }}"
+ocp4_workload_multi_user: "{{ true if num_users | int > 1 else false }}"
+
 # -------------------------------------------------------------------
 # Bastion
 # -------------------------------------------------------------------
@@ -75,13 +82,20 @@ common_extra_packages:
   - httpd-tools
 
 # -------------------------------------------------------------------
+# Custom collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/phbergsmann/rosa-parasol-ansible.git
+      type: git
+      version: main
+
+# -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 
 infra_workloads:
-  # - ocp4_workload_authentication
   - ocp4_workload_authentication_rosa
-  # - ocp4_workload_openshift_data_foundation
   - ocp4_workload_pipelines
   - ocp4_workload_serverless
   - ocp4_workload_ossm
@@ -91,18 +105,7 @@ infra_workloads:
   - ocp4_workload_web_terminal
   - ocp4_workload_showroom
   - ocp4_workload_oai_lab_insurance_claim
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication
-# -------------------------------------------------------------------
-# ocp4_workload_authentication_idm_type: htpasswd
-# ocp4_workload_authentication_admin_user: admin
-# ocp4_workload_authentication_htpasswd_admin_password: ""
-# ocp4_workload_authentication_htpasswd_user_base: user
-# ocp4_workload_authentication_htpasswd_user_password: ""
-# ocp4_workload_authentication_htpasswd_user_count: "{{ num_users }}"
-# ocp4_workload_authentication_remove_kubeadmin: true
-# ocp4_workload_authentication_enable_user_info_data: true
+  - rosa_parasol.workshop.ocp4_workload_rosa_parasol_bedrock
 
 # -------------------------------------------------------------------
 # ocp4_workload_authentication_rosa
@@ -116,28 +119,6 @@ ocp4_workload_authentication_rosa_token: "{{ rosa_token }}"
 ocp4_workload_authentication_rosa_aws_access_key_id: "{{ lookup('env','AWS_ACCESS_KEY_ID') | default(aws_access_key_id, true) | mandatory }}"
 ocp4_workload_authentication_rosa_aws_secret_access_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') | default(aws_secret_access_key, true) | mandatory }}"
 ocp4_workload_authentication_rosa_aws_region: "{{ aws_region }}"
-
-# -----------------------------------
-# OpenShift Data Foundations Operator
-# -----------------------------------
-# ocp4_workload_openshift_data_foundation_channel: stable-4.17
-# ocp4_workload_openshift_data_foundation_catalogsource_setup: false
-# ocp4_workload_openshift_data_foundation_catalogsource_name: redhat-operators-snapshot-odf
-# ocp4_workload_openshift_data_foundation_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
-# ocp4_workload_openshift_data_foundation_catalogsource_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
-# ocp4_workload_openshift_data_foundation_ceph_storage_class_name: managed-csi
-# ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 500Gi
-# ocp4_workload_openshift_data_foundation_ceph_storage_system_deploy_timeout: 1500
-# ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1500
-
-# Install Ceph Toolbox
-# ocp4_workload_openshift_data_foundation_install_toolbox: false
-
-# --------------------------------
-# Storage Classes
-# --------------------------------
-# ocp4_workload_openshift_data_foundation_update_default_storage_class: true
-# ocp4_workload_openshift_data_foundation_new_default_storage_class_name: ocs-storagecluster-ceph-rbd
 
 # ---------------------------------------------------------
 # Workload: ocp4_workload_pipelines
@@ -261,31 +242,15 @@ ocp4_workload_openshift_ai_channel: "stable-2.19"
 ocp4_workload_openshift_ai_catalogsource_setup: false
 ocp4_workload_openshift_ai_kserve: "Managed"
 
-# No idea what these are used for, leaving disabled for now
-# ocp4_workload_openshift_ai_namespace_list:
-#   - "{{ ocp4_workload_openshift_ai_namespace }}"
-# ocp4_workload_openshift_ai_applications_namespace: "redhat-ods-applications"
-# ocp4_workload_openshift_ai_is_workshop: "false"
-# ocp4_workload_openshift_ai_workshop_num_users: "{{ num_users }}"
-# ocp4_workload_openshift_ai_workshop_username_base: "user"
-# ocp4_workload_openshift_ai_workshop_password: "openshift"
-
 # -------------------------------------------------------------------
 # Role: ocp4_workload_showroom
 # -------------------------------------------------------------------
-
-# agnosticd_passthrough_user_data: |
-#   {{ {}
-#    | combine({
-#       "azure_ai_info_url": azure_ai_info_url
-#    } if azure_ai_info_url else {})
-#   }}
-
-# ocp4_workload_showroom_passthrough_user_data: true
-# ocp4_workload_showroom_deployment_type: helm
-# ocp4_workload_showroom_content_git_repo: >-
-#   https://github.com/rh-mobb/parasol-insurance.git
-# ocp4_workload_showroom_content_git_repo_ref: dev
+ocp4_workload_showroom_passthrough_user_data: true
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_content_git_repo: >-
+  https://github.com/phbergsmann/ai-on-rosa-workshop
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_only: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_oai_lab_insurance_claim
@@ -300,8 +265,6 @@ ocp4_workload_oai_lab_insurance_claim_branch: main
 
 __meta__:
   asset_uuid: e14316d2-d76f-4a7f-97a3-51dccd101ec3
-  anarchy:
-    namespace: babylon-anarchy-3
   deployer:
     actions:
       start:
@@ -321,11 +284,12 @@ __meta__:
         catch_all: false
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: Parasol Insurance AI Workshop on ROSA
+    display_name: Parasol Insurance AI Workshop on ROSA (AWS)
     category: Labs
     keywords:
       - openshift ai
-      - rosa
+    multiuser: true
+    workshopLabUiRedirect: true
     labels:
       Product: Red_Hat_OpenShift_AI
       Provider: RHDP
@@ -339,6 +303,7 @@ __meta__:
           type: integer
           default: 2
           minimum: 2
+          maximum: 30
     reportingLabels:
       primaryBU: Artificial_Intelligence
       secondaryBU: Hybrid_Platforms
