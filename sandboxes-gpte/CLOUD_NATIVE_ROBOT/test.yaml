@@ -4,28 +4,25 @@ purpose: TEST
 # Don't update bastion packages, save some time...
 update_packages: true
 
-# Add a MachineSet for AWS Bare arm instances
-ocp4_workload_machinesets_machineset_groups:
-  - name: arm
-    role: arm
-    instance_type: m7g.2xlarge
-    root_volume_size: 250
-  #  openshift-install coreos print-stream-json | jq  -r -c '.architectures | keys '
-  # ["aarch64","ppc64le","s390x","x86_64"]
-    aws_instance_ami_architecture: aarch64
-    autoscale: false
-    total_replicas: "{{ [(num_users | int / 40) | round(0, 'ceil') | int, 1] | max }}"
-    total_replicas_min: "{{ [(num_users | int / 40) | round(0, 'ceil') | int, 1] | max }}"
-    total_replicas_max: "{{ [(num_users | int / 40) | round(0, 'ceil') | int, 3] | max }}"
-  # machineConfigPool:
-  #   setup: true
-  #   maxPodsPerNode: 250
-    taints:
-      - key: "kubernetes.io/arch"
-        value: "arm"
-        effect: NoSchedule
 
-worker_instance_count: "{{ [(num_users | int / 5 ) | round(0, 'ceil') | int, 3] | max  }}"
+ocp4_workload_catalogsource_image: "quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog"
+ocp4_workload_catalogsource_tag: v4.20_2026_01_19
+ocp4_workload_catalogsource_name: "redhat-operators-for-robots"
+
+ocp4_installer_version: 4.20.8
+
+ocp4_workload_openshift_data_foundation_channel: stable-4.20
+ocp4_workload_pipelines_channel: pipelines-1.20
+ocp4_workload_openshift_gitops_channel: gitops-1.19
+nvidia_gpu_operator_channel: v25.10
+
+
+ocp4_workload_cloud_native_robot_hubcontroller_username: "admin"
+ocp4_workload_cloud_native_robot_hubcontroller_password: "oongooDoo1Eibi4Thi3ipech5JaeTaeW"
+
+ocp4_workload_cloud_native_robot_hubcontroller_ru_enabled: "{{ update_auto_registration_repo }}"
+ocp4_workload_cloud_native_robot_hubcontroller_ru_repo_url: "{{ update_auto_registration_repo_url }}"
+ocp4_workload_cloud_native_robot_hubcontroller_ru_repo_token: "{{ update_auto_registration_repo_token }}"
 
 # ---------------------------------------------------------
 # Babylon meta variables
@@ -50,3 +47,34 @@ __meta__:
         openAPIV3Schema:
           type: string
           default: v3
+      - name: gpu_node_count
+        description: >-
+          Number of GPU Worker nodes (aws instance type g5.xlarge )
+          There is only one GPU per worker available.
+        formLabel: GPU Worker Nodes (one GPU per Worker!)
+        openAPIV3Schema:
+          type: integer
+          default: 0
+          minimum: 0
+          maximum: 3
+      - name: update_auto_registration_repo
+        description: Update Auto Registration Repo?
+        formGroup: Robot auto registration
+        formLabel: Update Auto Registration Repo?
+        openAPIV3Schema:
+          type: boolean
+          default: false
+      - name: update_auto_registration_repo_url
+        description: Git Repo to update Hub Controller URL
+        formGroup: Robot auto registration
+        formLabel: Git Repo
+        openAPIV3Schema:
+          type: string
+          default: ""
+      - name: update_auto_registration_repo_token
+        description: Git Repo Token to update Hub Controller URL
+        formGroup: Robot auto registration
+        formLabel: Git Repo Token (RW
+        openAPIV3Schema:
+          type: string
+          default: ""
