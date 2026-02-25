@@ -27,11 +27,73 @@ ocp4_workload_catalogsource_tag: v4.20_2026_02_23
 # OADP - disable catalog snapshot, use live catalog
 ocp4_workload_oadp_use_catalog_snapshot: false
 
-# RHACS - use ops_track copy with diagnostics instead of core_workloads
+# RHACS - use ops_track copy with diagnostics
 ocp4_workload_rhacs_install_operator_use_catalog_snapshot: false
 ocp4_workload_rhacs_central_storage_class: ocs-external-storagecluster-ceph-rbd-immediate
+
+# ==============================================================================
+# TEMP: Swap external roles to ops_track copies with diagnostics
+# Each temp role has pre-workload cluster state + block/rescue post-failure
+# diagnostics. Remove these overrides once deployments are stable.
+# ==============================================================================
+_base_workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+- agnosticd.showroom.ocp4_workload_showroom
+- openshift_days.ops_track.ocp4_workload_days_ops_track
+- openshift_days.ops_track.ocp4_workload_web_terminal_temp
+- openshift_days.ops_track.ocp4_workload_kubernetes_image_puller
+- openshift_days.ops_track.ocp4_workload_pipelines_temp
+- openshift_days.ops_track.ocp4_workload_quay_operator_temp
+
+_virt_workloads:
+- openshift_days.ops_track.ocp4_workload_openshift_virtualization_temp
+
+_hcp_workloads:
+- openshift_days.ops_track.ocp4_workload_openshift_virtualization_temp
+- openshift_days.ops_track.ocp4_workload_openshift_gitops_temp
+- openshift_days.ops_track.ocp4_workload_rhacm_temp
+- openshift_days.ops_track.ocp4_workload_rhacm_cloud_credentials
+- openshift_days.ops_track.ocp4_workload_metallb_temp
+- openshift_days.ops_track.ocp4_workload_hcp_kubevirt
+- rhpds.sovereign_cloud.ocp4_workload_prepare_hcp
+
+_acm_workloads:
+- openshift_days.ops_track.ocp4_workload_acm_multicluster_observability
+- openshift_days.ops_track.ocp4_days_workload_compliance_operator
+- openshift_days.ops_track.ocp4_workload_create_hcp_cluster
+
+_backup_workloads:
+- openshift_days.ops_track.ocp4_workload_oadp
+
+_devhub_workloads:
+- openshift_days.ops_track.ocp4_days_workload_rhdh
+
+_ols_workloads:
+- agnosticd.ai_workloads.ocp4_workload_ols
+
 _security_workloads:
 - openshift_days.ops_track.ocp4_workload_rhacs
+
+# End-of-deployment comprehensive diagnostics
+_diag_workloads:
+- openshift_days.ops_track.ocp4_workload_cluster_diagnostics
+
+# Override workloads to include diagnostics at the end
+workloads: >-
+  {{
+    (
+      _base_workloads +
+      (_virt_workloads if module_enable_virt | default(true) | bool else []) +
+      (_hcp_workloads if module_enable_acm | default(true) | bool else []) +
+      (_acm_workloads if module_enable_acm | default(true) | bool else []) +
+      (_backup_workloads if module_enable_backup | default(true) | bool else []) +
+      (_devhub_workloads if module_enable_devhub | default(true) | bool else []) +
+      (_ols_workloads if module_enable_ols | default(true) | bool else []) +
+      (_security_workloads if module_enable_security | default(true) | bool else []) +
+      _diag_workloads
+    ) | unique | list
+  }}
 
 # Override requirements_content to use showroom v1.5.1
 # v1.3.9 in common.yaml doesn't have ocp4_workload_ocp_console_embed
