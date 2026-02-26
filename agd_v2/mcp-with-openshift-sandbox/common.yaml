@@ -1,0 +1,473 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: MCP with OpenShift (Sandbox / Namespace)
+# --- USER PROVISIONER -- per-user resources on shared cluster
+# --- Single-user deployment on a shared pre-provisioned cluster
+# ---
+# --- Cluster provisioning (Keycloak, Gitea, Pipelines, ArgoCD,
+# --- ToolHive, monitoring, CloudNativePG) is handled separately
+# --- by the cluster provisioner playbook:
+# ---   rhpds.ocpsandbox_mcp_with_openshift/tests/e2e/cluster-provision.yml
+# ---
+# --- This file is the only AgV config needed. No extra files required
+# --- beyond common.yaml, dev.yaml, and description.adoc.
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/litellm_metadata.yaml
+
+#include /includes/secrets/litemaas-master_api.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# cloud_provider: none -- no cloud account needed, we use pre-provisioned
+# OCP clusters from the sandbox pool.
+# config: namespace -- uses AgnosticD's namespace config which:
+#   - Runs workloads on provision (software.yml)
+#   - Runs workloads in REVERSE order on destroy (destroy_env.yml)
+#   - Sets K8S_AUTH_* env vars for kubernetes.core modules
+#   - Does NOT need remove_workloads (unlike openshift-workloads config)
+# ===================================================================
+cloud_provider: none
+config: namespace
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # Sandbox user provisioning roles (argocd_user)
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: namespace-mcp-with-openshift
+
+  # LiteLLM Virtual Keys
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: main
+
+  # MCP Workloads (ocpsandbox_mcp_user)
+  - name: https://github.com/rhpds/rhpds.ocpsandbox_mcp_with_openshift.git
+    type: git
+    version: main
+
+  # Showroom
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.5.1
+
+# ===================================================================
+# List of workloads to be deployed
+#
+# These run in order on provision and in REVERSE order on destroy.
+# config: namespace handles this automatically -- no remove_workloads
+# list is needed (that's only for openshift-workloads config).
+#
+# Order matters:
+#   1. argocd_user    -- ArgoCD AppProject (needed before MCP deploys ApplicationSets)
+#   2. gitea_instance -- Deploys per-user Gitea CR (operator is cluster-level infra)
+#   3. gitea_user     -- Creates user on Gitea instance, migrates repos from GitHub
+#   4. litellm        -- LLM API key (needed by MCP role for LibreChat + Agent)
+#   5. mcp_user       -- API token + ApplicationSets (MCP servers, LibreChat, Agent)
+#                        Also writes kubeconfig for downstream roles
+#   6. console_embed  -- OpenShift console iframe integration (needs kubeconfig)
+#   7. showroom       -- Lab instructions UI (needs kubeconfig + user_info from mcp_user)
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_ocpsandbox_argocd_user
+- agnosticd.namespaced_workloads.ocp4_workload_ocpsandbox_gitea_instance
+- agnosticd.namespaced_workloads.ocp4_workload_ocpsandbox_gitea_user
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- rhpds.ocpsandbox_mcp_with_openshift.ocp4_workload_ocpsandbox_mcp_user
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+- agnosticd.showroom.ocp4_workload_showroom
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Common -- user credentials provided by OCPSandbox API
+#
+# When keycloak: "yes" is set on the cluster's cloud_selector,
+# OCPSandbox automatically creates a Keycloak user for each order.
+# The username and password are passed as sandbox variables:
+#   sandbox_openshift_user     -- e.g. "sandbox-j4mgd"
+#   sandbox_openshift_password -- auto-generated password
+#
+# No keycloak_user role is needed -- the sandbox API handles it.
+# -------------------------------------------------------------------
+sandbox_username: "{{ sandbox_openshift_user }}"
+sandbox_password: "{{ sandbox_openshift_password }}"
+
+# -------------------------------------------------------------------
+# Namespace names -- provided by sandbox API via the 'var' key on each
+# sandbox entry. These defaults are fallbacks in case sandbox API
+# doesn't create a namespace. Names use {suffix}-{sandbox_username}
+# to match the ArgoCD AppProject destination pattern *-{username}.
+# -------------------------------------------------------------------
+librechat_namespace: "librechat-{{ sandbox_username }}"
+mcp_gitea_namespace: "mcp-gitea-{{ sandbox_username }}"
+mcp_openshift_namespace: "mcp-openshift-{{ sandbox_username }}"
+gitea_namespace: "gitea-{{ sandbox_username }}"
+showroom_namespace: "showroom-{{ sandbox_username }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ocpsandbox_argocd_user
+#
+# Creates an ArgoCD AppProject scoped to this user. The MCP role
+# deploys ApplicationSets into this project.
+#
+# cluster_resource_whitelist allows ArgoCD to create Namespaces,
+# ClusterRoles, and ClusterRoleBindings (needed for MCP servers
+# and per-user Gitea instances).
+# -------------------------------------------------------------------
+ocp4_workload_ocpsandbox_argocd_user_username: "{{ sandbox_username }}"
+ocp4_workload_ocpsandbox_argocd_user_extra_destinations:
+- "{{ sandbox_openshift_namespace }}"
+- "{{ sandbox_openshift_namespace | regex_replace('-[0-9]+-[^-]+$', '') }}-*"
+ocp4_workload_ocpsandbox_argocd_user_cluster_resource_whitelist:
+- group: ""
+  kind: Namespace
+- group: rbac.authorization.k8s.io
+  kind: ClusterRole
+- group: rbac.authorization.k8s.io
+  kind: ClusterRoleBinding
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ocpsandbox_gitea_instance
+#
+# Deploys a per-user Gitea instance via the Gitea operator CR.
+# The Gitea operator itself is installed at the cluster level by
+# the cluster provisioner (infra). This role only creates the CR
+# in the user's namespace, waits for readiness, and exports
+# gitea_url and gitea_internal_url facts for downstream roles.
+#
+# NOTE: ocp4_workload_ocpsandbox_gitea_instance_namespace is NOT set
+# here. The role discovers the sandbox-created namespace at runtime
+# via label selectors (guid + created-by=sandbox-api). Setting it
+# here would make it an extra_var that set_fact cannot override.
+# -------------------------------------------------------------------
+ocp4_workload_ocpsandbox_gitea_instance_admin_password: "{{ sandbox_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ocpsandbox_gitea_user
+#
+# Creates a Gitea user on the instance deployed above and migrates
+# repositories from GitHub. Discovers admin credentials from the
+# Gitea CR automatically. Exports gitea_url, gitea_user, gitea_password
+# via agnosticd_user_info.
+# -------------------------------------------------------------------
+ocp4_workload_ocpsandbox_gitea_user_username: "{{ sandbox_username }}"
+ocp4_workload_ocpsandbox_gitea_user_password: "{{ sandbox_password }}"
+ocp4_workload_ocpsandbox_gitea_user_repositories:
+- name: mcp
+  repo: https://github.com/rhpds/ocpsandbox-mcp-with-openshift-gitops
+  private: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+#
+# Creates a LiteMaaS virtual key with access to the specified models.
+# The key and endpoint are exported as facts (litellm_virtual_key,
+# litellm_api_endpoint, litellm_available_models) and consumed by
+# the MCP role below for LibreChat and Agent configuration.
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_models:
+- qwen3-14b
+- llama-scout-17b
+ocp4_workload_litellm_virtual_keys_multi_user: false
+ocp4_workload_litellm_virtual_keys_user_count: 1
+ocp4_workload_litellm_virtual_keys_verify_ssl: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ocpsandbox_mcp_user
+#
+# MCP-specific per-user deployment. Creates:
+#   - Gitea API token for MCP server access
+#   - SCC for MCP server pods
+#   - 5 ArgoCD ApplicationSets:
+#       mcp-openshift, mcp-gitea, librechat-config, librechat, agent
+#   - Kubeconfig at ~/.kube/config for downstream roles
+#   - agnosticd_user_info with URLs and credentials for Showroom
+#
+# Gitea instance and user are provisioned by upstream roles
+# (gitea_instance + gitea_user). The gitea_url fact is exported
+# by gitea_instance and used here for API token creation.
+#
+# On destroy: cleans up ApplicationSets, SCC, and kubeconfig.
+# Sandbox API handles namespace deletion (catch_all: false ensures
+# destroy job runs first).
+# -------------------------------------------------------------------
+ocp4_workload_ocpsandbox_mcp_user_username: "{{ sandbox_username }}"
+ocp4_workload_ocpsandbox_mcp_user_gitea_user_password: "{{ sandbox_password }}"
+ocp4_workload_ocpsandbox_mcp_user_librechat_password: "{{ sandbox_password }}"
+
+# Namespace mapping -- agent namespace is the primary sandbox namespace.
+# All other namespaces are discovered by the mcp_user role at runtime
+# via label selectors (guid + created-by=sandbox-api). They are NOT
+# set here to avoid extra_var precedence blocking set_fact discovery.
+ocp4_workload_ocpsandbox_mcp_user_agent_namespace: "{{ sandbox_openshift_namespace }}"
+
+# LiteMaaS vars -- bridged from litellm role output (set_fact in same play).
+# The litellm role runs before this one (workload order) and exports these
+# facts for consumption.
+ocp4_workload_ocpsandbox_mcp_user_litemaas_url: "{{ litellm_api_endpoint }}/v1"
+ocp4_workload_ocpsandbox_mcp_user_litemaas_key: "{{ litellm_virtual_key }}"
+ocp4_workload_ocpsandbox_mcp_user_litemaas_models: "{{ litellm_available_models }}"
+
+# Model for the AI agent (must be in litellm_virtual_keys_models above)
+ocp4_workload_ocpsandbox_mcp_user_agent_model_name: "openai/qwen3-14b"
+
+# Metrics and optional components -- disabled per-user because they are
+# installed at the cluster level by the cluster provisioner. Setting these
+# to false avoids duplicate operator installs.
+ocp4_workload_ocpsandbox_mcp_user_metrics_enable: false
+ocp4_workload_ocpsandbox_mcp_user_cloud_native_postgresql_operator_enable: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ocp_console_embed + ocp4_workload_showroom
+#
+# openshift_cluster_ingress_domain is discovered by the MCP role
+# (runs before showroom) via cluster ingress config lookup and
+# exported as a fact.
+#
+# The MCP role also writes ~/.kube/config so that these downstream
+# roles (which use kubernetes.core without explicit host:/api_key:)
+# can authenticate to the cluster.
+#
+# Additionally, config: namespace sets K8S_AUTH_* env vars via
+# apply.environment on include_role (PR #117 in agnosticd-v2).
+# -------------------------------------------------------------------
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
+ocp4_workload_showroom_namespace: "{{ showroom_namespace }}"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/lb1726-mcp-showroom
+ocp4_workload_showroom_content_git_repo_ref: sandbox-login-instructions
+ocp4_workload_showroom_content_only: false
+
+# ===================================================================
+# Babylon meta variables
+# ===================================================================
+__meta__:
+  asset_uuid: 8030d69b-c145-48fa-a8a9-219ffa0f780e
+  owners:
+    maintainer:
+    - name: Wolfgang Kulhanek
+      email: wkulhane@redhat.com
+    - name: Tony Kay
+      email: ankay@redhat.com
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-12-17
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "MCP with OpenShift (Sandbox)"
+    category: Workshops
+    keywords:
+    - mcp
+    - openshift
+    - ai
+    - sovereign
+    - sre
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    multiuser: false
+    workshopLabUiRedirect: true
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+      secondaryBU: Artificial_Intelligence
+
+  # -----------------------------------------------------------------
+  # Sandbox API behavior
+  #
+  # catch_all: false -- Makes the destroy job MANDATORY.
+  #   When a user's service is deleted, the destroy job (AgnosticD)
+  #   runs FIRST to clean up external resources (e.g. LiteMaaS
+  #   virtual keys) BEFORE the Sandbox API deletes the namespaces.
+  #
+  #   If catch_all were true (default), a failed destroy job would
+  #   still result in sandbox cleanup -- potentially orphaning
+  #   external resources that only the destroy playbook knows about.
+  #
+  #   Set catch_all: false when your lab has external dependencies
+  #   beyond what lives inside the sandbox namespaces.
+  # -----------------------------------------------------------------
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+
+  # -----------------------------------------------------------------
+  # Sandbox namespace requests
+  #
+  # Each entry creates a separate namespace on the cluster.
+  # The Sandbox API names them as: {namespace_suffix}-{GUID}
+  #
+  # HOW IT WORKS:
+  #   - The first entry (alias: cluster) is the PRIMARY sandbox.
+  #     It selects which cluster from the pool to use via cloud_selector.
+  #     It also triggers Keycloak user creation (keycloak: "yes").
+  #
+  #   - All other entries use cluster_condition: same(cluster) which
+  #     tells the Sandbox API: "create this namespace on the SAME
+  #     cluster as the 'cluster' alias." This guarantees all per-user
+  #     namespaces land on one cluster.
+  #
+  #   - Without cluster_condition, each sandbox could land on a
+  #     different cluster in the pool -- breaking the lab since
+  #     ArgoCD, ToolHive, Gitea etc. all need to be co-located.
+  #
+  # QUOTAS:
+  #   Each namespace gets its own quota. The total across all
+  #   namespaces is: 10 CPU / 20Gi memory / 90Gi storage.
+  #
+  # LIFECYCLE:
+  #   - On provision: Sandbox API creates all 6 namespaces
+  #   - On destroy: destroy job runs first (catch_all: false),
+  #     then Sandbox API deletes all namespaces automatically.
+  #     Roles only need to clean up external resources (LiteMaaS).
+  #
+  # VARIABLES:
+  #   The sandbox entries are available in AgnosticD as the
+  #   'sandboxes' array variable. Use the alias to find a
+  #   specific entry: sandboxes | selectattr('alias', 'eq', 'cluster')
+  # -----------------------------------------------------------------
+  sandboxes:
+
+  # Primary sandbox -- selects the cluster and creates Keycloak user.
+  # alias: cluster -- referenced by all other entries via same(cluster).
+  # keycloak: "yes" -- Sandbox API creates a Keycloak user for this
+  # order. Credentials come back as sandbox_openshift_user/password.
+  - kind: OcpSandbox
+    alias: cluster
+    namespace_suffix: agent
+    cloud_selector:
+      cloud: cnv-dedicated-shared
+      demo: mcp-with-openshift
+      purpose: prod
+      keycloak: "yes"
+    quota:
+      limits.cpu: "2"
+      requests.cpu: "2"
+      limits.memory: 4Gi
+      requests.memory: 4Gi
+      requests.storage: 10Gi
+    limit_range:
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 50m
+        memory: 128Mi
+
+  # LibreChat + Meilisearch
+  - kind: OcpSandbox
+    var: librechat
+    namespace_suffix: librechat
+    cluster_condition: same(cluster)
+    quota:
+      limits.cpu: "4"
+      requests.cpu: "4"
+      limits.memory: 6Gi
+      requests.memory: 6Gi
+      requests.storage: 30Gi
+    limit_range:
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 50m
+        memory: 128Mi
+
+  # Gitea MCP server
+  - kind: OcpSandbox
+    var: mcp_gitea
+    namespace_suffix: mcp-gitea
+    cluster_condition: same(cluster)
+    quota:
+      limits.cpu: "1"
+      requests.cpu: "1"
+      limits.memory: 2Gi
+      requests.memory: 2Gi
+      requests.storage: 5Gi
+    limit_range:
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 50m
+        memory: 128Mi
+
+  # OpenShift MCP server
+  - kind: OcpSandbox
+    var: mcp_openshift
+    namespace_suffix: mcp-openshift
+    cluster_condition: same(cluster)
+    quota:
+      limits.cpu: "1"
+      requests.cpu: "1"
+      limits.memory: 2Gi
+      requests.memory: 2Gi
+      requests.storage: 5Gi
+    limit_range:
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 50m
+        memory: 128Mi
+
+  # Per-user Gitea instance
+  - kind: OcpSandbox
+    var: gitea
+    namespace_suffix: gitea
+    cluster_condition: same(cluster)
+    quota:
+      limits.cpu: "2"
+      requests.cpu: "2"
+      limits.memory: 4Gi
+      requests.memory: 4Gi
+      requests.storage: 30Gi
+    limit_range:
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 50m
+        memory: 128Mi
+
+  # Showroom lab UI
+  - kind: OcpSandbox
+    var: showroom
+    namespace_suffix: showroom
+    cluster_condition: same(cluster)
+    quota:
+      limits.cpu: "1"
+      requests.cpu: "1"
+      limits.memory: 2Gi
+      requests.memory: 2Gi
+      requests.storage: 10Gi
+    limit_range:
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 50m
+        memory: 128Mi
