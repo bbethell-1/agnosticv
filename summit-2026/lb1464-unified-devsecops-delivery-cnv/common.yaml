@@ -1,0 +1,500 @@
+---
+# This item is restricted to devs only!
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-project-dance.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+# Auto-pass user email and catalog item name to LiteLLM for better tracking
+#include /includes/parameters/litellm_metadata.yaml
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/secrets/rhods_git.yaml
+#include /includes/secrets/zerossl.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/access-restriction-rh1-2026-devs.yaml
+#include /includes/secrets/litemaas-master_api.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: Unifying DevSecOps: Secure, Standardized Application Delivery Across Containers and VMs
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+# Agnosticdv2 variables
+config: openshift-workloads
+cloud_provider: none
+software_to_deploy: none
+openshift_cnv_scale_cluster: true
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
+num_users: 1
+current_cluster_name: default
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.5
+bastion_cores: 2
+bastion_memory: 4Gi
+
+worker_instance_count: 2
+
+ai_workers_cores: 16
+ai_workers_memory: 64Gi
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.20"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+
+# Update RHEL to the latest packages (and reboot)
+update_packages: true
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+
+# -------------------------------------------------------------------
+# Custom collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: kubernetes.core
+      version: 2.3.1
+    - name: amazon.aws
+      version: 2.2.0
+    - name: community.general
+      version: 4.6.1
+    - name: ansible.posix
+      version: 1.3.0
+    - name: awx.awx
+      version: 21.1.0
+    - name: ansible.utils
+      version: 2.7.0
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: v0.0.8
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: main
+    - name: https://github.com/rhpds/rhpds.ads.git
+      type: git
+      version: main
+    - name: https://github.com/rhpds/rhpds.build-secured-dev-workflows.git
+      type: git
+      version: main
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: v1.3.9
+    # LiteLLM Virtual Keys Collection
+    - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+      type: git
+      version: main
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+  - rhpds.build_secured_dev_workflows.bootstrap
+  - rhpds.ads.ocp4_workload_external_secrets
+  - agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+  - rhpds.ads.ocp4_workload_kubernetes_image_puller
+  - agnosticd.core_workloads.ocp4_workload_quay_operator
+  - agnosticd.core_workloads.ocp4_workload_pipelines
+  - agnosticd.core_workloads.ocp4_workload_rhacs
+  - rhpds.build_secured_dev_workflows.openshift_gitops
+  - rhpds.ads.ocp4_workload_gitops_gitlab
+  - rhpds.ads.ocp4_workload_gitops_vault
+  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+  - rhpds.ads.ocp4_workload_openshift_devspaces
+  - rhpds.build_secured_dev_workflows.trusted_profile_analyzer
+  - rhpds.build_secured_dev_workflows.trusted_artifact_signer
+  - rhpds.build_secured_dev_workflows.developer_hub
+  - agnosticd.showroom.ocp4_workload_showroom_ocp_integration
+  - agnosticd.showroom.ocp4_workload_showroom
+  - rhpds.build_secured_dev_workflows.rhads_validation
+
+remove_workloads:
+  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+
+# -------------------------------------------------------------------
+# Workload: rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_models:
+  - nomic-embed-text-v1-5
+  - granite-3-2-8b-instruct
+ocp4_workload_litellm_virtual_keys_duration: "3d"
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# Workload: rhpds.ads.ocp4_workload_external_secrets
+# -------------------------------------------------------------------
+ocp4_workload_external_secrets_helm_cli_version: v3.18.4
+ocp4_workload_external_secrets_namespace: external-secrets
+ocp4_workload_external_secrets_helm_repo: https://charts.external-secrets.io
+ocp4_workload_external_secrets_helm_chart: external-secrets/external-secrets
+ocp4_workload_external_secrets_helm_chart_version: 0.9.2
+ocp4_workload_external_secrets_vault_namespace: vault
+
+# -------------------------------------------------------------------
+# Workload: rhpds.ads.ocp4_workload_gitops_vault
+# -------------------------------------------------------------------
+ocp4_workload_gitops_vault_gitops_repo: https://github.com/redhat-gpte-devopsautomation/agnosticg.git
+
+# -------------------------------------------------------------------
+# Workload: rhpds.build_secured_dev_workflows.openshift_gitops
+# -------------------------------------------------------------------
+rhpds_build_secured_dev_workflows_openshfit_gitops_helm_cli_version: v3.18.4
+rhpds_build_secured_dev_workflows_openshfit_gitops_infra_bootstrap_repo: https://github.com/redhat-gpte-devopsautomation/janus-idp-bootstrap.git
+rhpds_build_secured_dev_workflows_openshfit_gitops_infra_bootstrap_repo_revision: main
+rhpds_build_secured_dev_workflows_openshfit_gitops_argocd_password: "{{ common_password }}"
+rhpds_build_secured_dev_workflows_openshift_gitops_num_users: "{{ num_users }}"
+
+# -------------------------------------------------------------------
+# Workload: rhpds.build_secured_dev_workflows.developer_hub
+# -------------------------------------------------------------------
+rhpds_build_secured_dev_workflows_developer_hub_quay_namespace: quay-enterprise
+rhpds_build_secured_dev_workflows_developer_hub_gitlab_namespace: gitlab
+rhpds_build_secured_dev_workflows_developer_hub_namespace: backstage
+rhpds_build_secured_dev_workflows_developer_hub_argocd_namespace: tssc-gitops
+rhpds_build_secured_dev_workflows_developer_hub_keycloak_namespace: tssc-keycloak
+rhpds_build_secured_dev_workflows_developer_hub_devspaces_namespace: openshift-devspaces
+rhpds_build_secured_dev_workflows_developer_hub_tpa_namespace: tssc-tpa
+
+rhpds_build_secured_dev_workflows_developer_hub_keycloak_client_id: developer-hub
+rhpds_build_secured_dev_workflows_developer_hub_keycloak_client_secret: "{{ common_password }}"
+rhpds_build_secured_dev_workflows_developer_hub_authentication_realm: sso
+
+rhpds_build_secured_dev_workflows_developer_hub_quay_registry: quay.io
+rhpds_build_secured_dev_workflows_developer_hub_quay_image: rhdh/rhdh-hub-rhel9
+rhpds_build_secured_dev_workflows_developer_hub_quay_image_tag: "1.8-164"
+
+rhpds_build_secured_dev_workflows_developer_hub_catalog_locations:
+  - repository: build-secured-dev-workflows-idp-configuration
+    revision: main
+    group: rhdh
+    file:
+      - all-locations.yaml
+
+rhpds_build_secured_dev_workflows_developer_hub_templating_files:
+  - repository: build-secured-dev-workflows-idp-configuration
+    revision: main
+    group: rhdh
+    file:
+      - component-rhpds.yaml
+  - repository: build-secured-dev-workflows-idp-gitops
+    revision: main
+    group: gitops
+    file:
+      - charts/backstage/backstage-values.yaml
+
+rhpds_build_secured_dev_workflows_developer_hub_helm_chart_repo: https://charts.openshift.io
+rhpds_build_secured_dev_workflows_developer_hub_helm_chart: redhat-developer-hub
+rhpds_build_secured_dev_workflows_developer_hub_helm_chart_version: 1.7.1
+
+rhpds_build_secured_dev_workflows_developer_hub_gitlab_user_base_name: user
+rhpds_build_secured_dev_workflows_developer_hub_gitlab_user_password: "{{ common_password }}"
+rhpds_build_secured_dev_workflows_developer_hub_user_base_name: user
+rhpds_build_secured_dev_workflows_developer_hub_num_users: "{{ num_users }}"
+rhpds_build_secured_dev_workflows_developer_hub_user_password: "{{ common_password }}"
+
+rhpds_build_secured_dev_workflows_developer_hub_rhacs_namespace: stackrox
+rhpds_build_secured_dev_workflows_developer_hub_rhacs_admin_user: admin
+rhpds_build_secured_dev_workflows_developer_hub_rhacs_admin_password: "{{ common_password }}"
+
+rhpds_build_secured_dev_workflows_developer_hub_argocd_user: admin
+rhpds_build_secured_dev_workflows_developer_hub_argocd_password: "{{ common_password }}"
+
+rhpds_build_secured_dev_workflows_developer_hub_gitlab_root_user: root
+rhpds_build_secured_dev_workflows_developer_hub_gitlab_root_password: "{{ common_password }}"
+
+rhpds_build_secured_dev_workflows_developer_hub_quay_admin_user: quayadmin
+rhpds_build_secured_dev_workflows_developer_hub_quay_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_rhacs
+# -------------------------------------------------------------------
+ocp4_workload_rhacs_install_operator_channel: "rhacs-4.7"
+ocp4_workload_rhacs_install_operator_starting_csv: ""
+ocp4_workload_rhacs_automatic_install_plan_approval: true
+ocp4_workload_rhacs_install_operator_use_catalog_snapshot: false
+ocp4_workload_rhacs_central_admin_password: "{{ common_password }}"
+ocp4_workload_rhacs_enable_central_scanner_v4: true
+ocp4_workload_rhacs_enable_route_certs: true
+
+# -------------------------------------------------------------------
+# rhpds.build_secured_dev_workflows.trusted_profile_analyzer
+# -------------------------------------------------------------------
+rhpds_build_secured_dev_workflows_trusted_profile_analyzer_namespace: tssc-tpa
+rhpds_build_secured_dev_workflows_trusted_profile_analyzer_channel: stable-v1.1
+rhpds_build_secured_dev_workflows_trusted_profile_analyzer_automatic_install_plan_approval: true
+rhpds_build_secured_dev_workflows_trusted_profile_analyzer_starting_csv: ""
+rhpds_build_secured_dev_workflows_trusted_profile_analyzer_use_catalog_source: false
+rhpds_build_secured_dev_workflows_trusted_profile_analyzer_keycloak_namespace: keycloak
+rhpds_build_secured_dev_workflows_trusted_profile_analyzer_keycloak_realm: tpa
+rhpds_build_secured_dev_workflows_trusted_profile_analyzer_admin_username: "tpa-admin"
+rhpds_build_secured_dev_workflows_trusted_profile_analyzer_admin_password: "{{ common_password }}"
+rhpds_build_secured_dev_workflows_trusted_profile_analyzer_keycloak_cli_client_id: "cli"
+rhpds_build_secured_dev_workflows_trusted_profile_analyzer_keycloak_cli_client_secret: "{{ common_password }}"
+rhpds_build_secured_dev_workflows_trusted_profile_analyzer_username_base: user
+rhpds_build_secured_dev_workflows_trusted_profile_analyzer_num_users: "{{ num_users }}"
+
+# -------------------------------------------------------------------
+# rhpds.build_secured_dev_workflows.trusted_artifact_signer
+# -------------------------------------------------------------------
+rhpds_build_secured_dev_workflows_trusted_artifact_signer_namespace: tssc-tas
+rhpds_build_secured_dev_workflows_trusted_artifact_signer_channel: stable-v1.3
+rhpds_build_secured_dev_workflows_trusted_artifact_signer_automatic_install_plan_approval: true
+rhpds_build_secured_dev_workflows_trusted_artifact_signer_starting_csv: ""
+rhpds_build_secured_dev_workflows_trusted_artifact_signer_use_catalog_source: false
+rhpds_build_secured_dev_workflows_trusted_artifact_signer_chains_realm: tas-chains
+rhpds_build_secured_dev_workflows_trusted_artifact_signer_sso_realm: sso
+rhpds_build_secured_dev_workflows_trusted_artifact_signer_client_id: trusted-artifact-signer
+rhpds_build_secured_dev_workflows_trusted_artifact_signer_username_base: user
+rhpds_build_secured_dev_workflows_trusted_artifact_signer_num_users: "{{ num_users }}"
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+# -------------------------------------------------------------------
+ocp4_workload_authentication_keycloak_namespace: tssc-keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.2
+ocp4_workload_authentication_keycloak_automatic_install_plan_approval: true
+ocp4_workload_authentication_keycloak_admin_create: true
+ocp4_workload_authentication_keycloak_use_catalog_source: false
+ocp4_workload_authentication_keycloak_num_users: "{{ num_users }}"
+ocp4_workload_authentication_keycloak_admin_username: admin
+ocp4_workload_authentication_keycloak_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_keycloak_user_username_base: user
+ocp4_workload_authentication_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_authentication_keycloak_remove_kubeadmin: true
+ocp4_workload_authentication_keycloak_openshift_client_secret: "{{ common_password }}"
+
+# ------------------------------------------------
+# ocp4_workload_openshift_devspaces
+# ------------------------------------------------
+ocp4_workload_openshift_devspaces_catalogsource_setup: false
+ocp4_workload_openshift_devspaces_channel: stable
+ocp4_workload_openshift_devspaces_automatic_install_plan_approval: true
+ocp4_workload_openshift_devspaces_startingcsv: ""
+ocp4_workload_openshift_devspaces_namespace: openshift-devspaces
+
+# -------------------------------------------------------------------
+# ocp4_workload_kubernetes_image_puller
+# -------------------------------------------------------------------
+ocp4_workload_kubernetes_image_puller_node_selector: '{"node-role.kubernetes.io/worker": ""}'
+ocp4_workload_kubernetes_image_puller_images:
+  - quay.io/redhat-gpte/jenkins-inbound-agent:jdk21
+  - maven:3.8.5-openjdk-17
+  - docker.io/sonarsource/sonar-scanner-cli:10.0
+  - quay.io/redhat-appstudio/syft:v0.94.0
+  - registry.access.redhat.com/ubi9/python-311:9.5
+  - quay.io/redhat-user-workloads/rhtap-integration-tenant/yq-container/yq:5f8db9e69e824d7859b61f97596c4f3f839d6c9e
+  - quay.io/redhat-appstudio/buildah:v1.31.0@sha256:34f12c7b72ec2c28f1ded0c494b428df4791c909f1f174dd21b8ed6a57cf5ddb
+  - registry.access.redhat.com/ubi8/ubi-minimal
+  - quay.io/redhat-appstudio/appstudio-utils:5bd7d6cb0b17f9f2eab043a8ad16ba3d90551bc2@sha256:8c7fcf86af40c71aeb58e4279625c8308af5144e2f6b8e28b0ec7e795260e5f7
+  - alpine/helm:3.11.1
+  - registry.redhat.io/rhtas/gitsign-rhel9:1.1.0
+  - registry.redhat.io/rhtas/cosign-rhel9:1.1.0
+  - quay.io/devfile/universal-developer-image:ubi9-3764be6
+ocp4_workload_kubernetes_image_puller_instance_namespace: default
+
+# -----------------------------------
+# Quay Operator
+# -----------------------------------
+ocp4_workload_quay_operator_namespace: quay-registry
+ocp4_workload_quay_operator_catalogsource_namespace: quay-registry
+ocp4_workload_quay_operator_channel: stable-3.15
+ocp4_workload_quay_operator_starting_csv: ""
+ocp4_workload_quay_operator_automatic_install_plan_approval: true
+ocp4_workload_quay_operator_use_catalog_snapshot: false
+ocp4_workload_quay_operator_registry_admin_password: "{{ common_password }}"
+
+# ---------------------------------------------------------
+# Workload: OpenShift Pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.16
+ocp4_workload_pipelines_csv_nameprefix: openshift-pipelines-operator-rh
+ocp4_workload_pipelines_use_catalog_snapshot: false
+ocp4_workload_pipelines_automatic_install_plan_approval: true
+
+# -------------------------------------------------------------------
+# GitLab
+# -------------------------------------------------------------------
+ocp4_workload_gitops_gitlab_gitops_type: argocd
+ocp4_workload_gitops_gitlab_config_email_display_name: Janus Admin
+ocp4_workload_gitops_gitlab_config_email_reply_to: "noreply@redhat.com"
+ocp4_workload_gitops_gitlab_config_smtp_enabled: "false"
+ocp4_workload_gitops_gitlab_config_smtp_domain: "example.com"
+ocp4_workload_gitops_gitlab_config_smtp_port: "587"
+ocp4_workload_gitops_gitlab_config_smtp_user: "gitlab"
+ocp4_workload_gitops_gitlab_config_smtp_password: "gitlab"
+ocp4_workload_gitops_gitlab_config_ssh_port: "22"
+ocp4_workload_gitops_gitlab_config_rootPassword: "{{ common_password }}"
+ocp4_workload_gitops_gitlab_config_https: "true"
+ocp4_workload_gitops_gitlab_config_root_email: "root@demo.redhat.com"
+ocp4_workload_gitops_gitlab_config_keybase_db: "0123456789"
+ocp4_workload_gitops_gitlab_config_keybase_otp: "0123456789"
+ocp4_workload_gitops_gitlab_config_keybase_secret: "0123456789"
+
+ocp4_workload_gitops_gitlab_db_user_name: gitlab
+ocp4_workload_gitops_gitlab_db_password: passw0rd
+ocp4_workload_gitops_gitlab_db_name: gitlab_production
+
+ocp4_workload_gitops_gitlab_gitops_repo: https://github.com/redhat-gpte-devopsautomation/agnosticg.git
+ocp4_workload_gitops_gitlab_import_repos:
+  - name: rhdh
+    repo:
+      - name: build-secured-dev-workflows-idp-configuration
+        url: https://github.com/rhpds/build-secured-dev-workflows-idp-configuration.git
+      - name: build-secured-dev-workflows-sample-pipelines
+        url: https://github.com/rhpds/build-secured-dev-workflows-sample-pipelines.git
+  - name: gitops
+    repo:
+      - name: build-secured-dev-workflows-idp-gitops
+        url: https://github.com/rhpds/build-secured-dev-workflows-idp-gitops.git
+
+ocp4_workload_gitops_gitlab_users_count: "{{ num_users | default(1) }}"
+ocp4_workload_gitops_gitlab_users_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Developer Hub Pull Secret
+# -------------------------------------------------------------------
+redhat_gpte_devhub_pull_secret: !vault |
+  $ANSIBLE_VAULT;1.1;AES256;gpte_vault_0
+  34653935653266353038343830366435363532356432656235333136376639396439303236306364
+  6637366466333736643761613937643763663932316238310a383833653361323439363766373963
+  62396538333861666638326235313663343130373164633239323536356237393261663232336663
+  3733323261383839330a653865366235363038626266376366616233646564386638663535353738
+  39376332383964346237343632326332653833666236663039346333663761623133323831643336
+  66376533343031306133633564323539323263616263653563323564303733303531643534653731
+  61323762663566386139366165663531306635323365663635383033653833613662333463316334
+  35336631666333653938623866353338626332653735343438623832323665386464646435613063
+  63376339646334666639346337336235343931633530623465646639313930656236633039363830
+  33336331366131613763393534353932333735323562363239626463656665333032636339613763
+  38396639363164636163623165616137663133386361313738643333376361633830623039343831
+  36386131373066383562623861336161396336306666626433643936316562346364653536613932
+  31343935616131313134326536333565353266653538306133393637303939333434326131653637
+  34343163353433633664323463633235363130346132643230643330663662346163383732323832
+  303761656361333665383635666565373462
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.core_workloads.ocp4_workload_showroom_ocp_integration
+# -------------------------------------------------------------------
+ocp4_workload_showroom_ocp_integration_openshift_api_token: "{{ openshift_cluster_admin_token }}"
+ocp4_workload_showroom_ocp_integration_openshift_api_url: "{{ openshift_api_url }}"
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.core_workloads.ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/build-secured-dev-workflows-showroom.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 0B669164-1DEB-47CE-A218-6436DB1FAA07
+  anarchy:
+    namespace: babylon-anarchy-5
+  components:
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools
+      parameter_values:
+        cluster_size: multinode
+        host_ocp4_installer_version: "4.20"
+        ocp4_fips_enable: false
+      propagate_provision_data:
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: openshift_api_url
+          var: openshift_api_url
+          # Propagate bastion data for infra_add_bastion role
+        - name: bastion_public_hostname
+          var: bastion_ansible_host
+        - name: bastion_ssh_user_name
+          var: bastion_ansible_user
+        - name: bastion_ssh_password
+          var: bastion_ansible_ssh_pass
+        - name: bastion_ssh_port
+          var: bastion_ansible_port
+  catalog:
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Unifying DevSecOps: Secure, Standardized Application Delivery Across Containers and VMs  "
+    category: Brand_Events
+    keywords:
+      - rhads
+      - rhacs
+      - rhtas
+      - rhtpa
+      - pipelines
+      - jenkins
+      - lb1083
+      - rh1-2026
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+      Brand_Event: Red_Hat_One_2026
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-06-30
+      pull: missing
+  secrets:
+    - name: rhods-git-secret
+      namespace: gpte
+  owners:
+    maintainer:
+      - email: treddy@redhat.com
+        name: Tyrell Reddy
+      - email: psrivastw@redhat.com
+        name: Prakhar Srivastava
+    sme:
+      - email: treddy@redhat.com
+        name: Tyrell Reddy
+  tower:
+    timeout: 21600
