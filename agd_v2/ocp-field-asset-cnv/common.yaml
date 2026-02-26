@@ -70,7 +70,9 @@ ai_workers_memory: "{{ ai_workers_memory }}"
 # ===================================================================
 # List of workloads to be deployed
 # ===================================================================
-# Build workload list conditionally - only include LiteMaaS if checkbox enabled
+# Build workload list conditionally:
+# Only include LiteMaaS if checkbox enabled
+# Only include Field Content role if existing_gitops checkbox enabled
 workloads: >-
   {{
     [
@@ -83,7 +85,11 @@ workloads: >-
       if (enable_litemaas_keys | default(false) | bool)
       else []
     ) +
-    ['agnosticd.core_workloads.ocp4_workload_field_content']
+    (
+      ['agnosticd.core_workloads.ocp4_workload_field_content']
+      if (existing_gitops | default(false) | bool)
+      else []
+    )
   }}
 
 # ===================================================================
@@ -301,8 +307,8 @@ __meta__:
       - name: current
 
     - name: create_multi_user
-      description: Create multiple users on cluster?
-      formLabel: Create multiple users on cluster
+      description: Create users on cluster?
+      formLabel: Create users on cluster?
       openAPIV3Schema:
         type: boolean
         default: false
@@ -322,10 +328,22 @@ __meta__:
       components:
       - name: current
 
+    - name: existing_gitops
+      description: >-
+        Do you want to provide an existing GitOps repo to deploy from?
+      formLabel: Existing Gitops Repo?
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: current
+
     - name: ocp4_workload_field_content_gitops_repo_url
       description: >-
         The URL to the GitOps repo containing automation
       formLabel: GitOps Repo
+      formHideCondition: existing_gitops == false
+      formRequireCondition: existing_gitops == true
       openAPIV3Schema:
         type: string
       components:
@@ -335,6 +353,8 @@ __meta__:
       description: >-
         The branch or tag of the repo that you want to use
       formLabel: GitOps Revision
+      formHideCondition: existing_gitops == false
+      formRequireCondition: existing_gitops == true
       openAPIV3Schema:
         type: string
         default: "main"
@@ -345,6 +365,8 @@ __meta__:
       description: >-
         The path in your GitOps repo that contains the initial application
       formLabel: GitOps Path
+      formHideCondition: existing_gitops == false
+      formRequireCondition: existing_gitops == true
       openAPIV3Schema:
         type: string
       components:
