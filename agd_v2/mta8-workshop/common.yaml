@@ -78,14 +78,14 @@ requirements_content:
   # Showroom
   - name: https://github.com/agnosticd/showroom.git
     type: git
-    version: v1.4.0
+    version: v1.5.4
 
 # ===================================================================
 # List of workloads to be deployed
 # ===================================================================
 workloads:
 - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
-- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+- agnosticd.core_workloads.ocp4_workload_authentication
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
 - agnosticd.core_workloads.ocp4_workload_gitea_operator
 - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
@@ -117,19 +117,22 @@ ocp4_workload_litellm_virtual_keys_models:
 - deepseek-r1-distill-qwen-14b
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication_htpasswd
+# Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
-ocp4_workload_authentication_htpasswd_admin_user: admin
-# Generate admin password
-ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password}}"
-ocp4_workload_authentication_htpasswd_admin_password_length: 16
-ocp4_workload_authentication_htpasswd_user_base: user
-# Generate user password
-ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
-ocp4_workload_authentication_htpasswd_user_password_length: 16
-ocp4_workload_authentication_htpasswd_user_password_randomized: false
-ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('2')) | int }}"
-ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+ocp4_workload_authentication_admin_username: admin
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+
+ocp4_workload_authentication_num_users: "{{ (num_users | default('2')) | int }}"
+ocp4_workload_authentication_user_basename: user
+ocp4_workload_authentication_user_password: "{{ common_user_password }}"
+
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
+
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_default_realm: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.2
+ocp4_workload_authentication_keycloak_use_catalog_source: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
@@ -140,7 +143,7 @@ ocp4_workload_openshift_gitops_update_route_tls: true
 
 ocp4_workload_openshift_gitops_rbac_update: true
 ocp4_workload_openshift_gitops_rbac_policy: |
-  g, {{ ocp4_workload_authentication_htpasswd_admin_user }}, role:admin
+  g, {{ ocp4_workload_authentication_admin_username }}, role:admin
 ocp4_workload_openshift_gitops_rbac_scopes: '[email,groups]'
 
 # Application Controller
@@ -155,8 +158,8 @@ ocp4_workload_openshift_gitops_controller_app_sync: 30s
 
 # Allow invidual users to see only their own Applications in the System ArgoCD console
 ocp4_workload_openshift_gitops_per_user_access: true
-ocp4_workload_openshift_gitops_user_count: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
-ocp4_workload_openshift_gitops_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_openshift_gitops_user_count: "{{ ocp4_workload_authentication_num_users | int }}"
+ocp4_workload_openshift_gitops_user_base: "{{ ocp4_workload_authentication_user_basename }}"
 ocp4_workload_openshift_gitops_user_project_prefix: "appproject-"
 ocp4_workload_openshift_gitops_user_cluster_resource_whitelist:
 - group: ""
@@ -191,8 +194,8 @@ ocp4_workload_gitea_operator_admin_email: mtaadmin@redhat.com
 ocp4_workload_gitea_operator_admin_password: "{{ common_admin_password}}"
 
 ocp4_workload_gitea_operator_create_users: true
-ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
-ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_authentication_htpasswd_user_base }}%d"
+ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_authentication_num_users | int }}"
+ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_authentication_user_basename }}%d"
 ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
 ocp4_workload_gitea_operator_migrate_repositories: true
 
@@ -215,8 +218,8 @@ ocp4_workload_devspaces_catalogsource_setup: false
 ocp4_workload_devspaces_channel: stable
 
 ocp4_workload_devspaces_namespace: openshift-devspaces
-ocp4_workload_devspaces_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
-ocp4_workload_devspaces_user_count: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+ocp4_workload_devspaces_user_count: "{{ ocp4_workload_authentication_num_users | int }}"
+ocp4_workload_devspaces_user_base: "{{ ocp4_workload_authentication_user_basename }}"
 
 ocp4_workload_devspaces_devworkspace: true
 # All lowercase letters and hyphens only
@@ -246,8 +249,8 @@ ocp4_workload_mta8_rwo_storage_class: ocs-external-storagecluster-ceph-rbd
 
 # -------------------------------------------------------------------
 # Per User configuration
-ocp4_workload_mta8_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
-ocp4_workload_mta8_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_mta8_num_users: "{{ ocp4_workload_authentication_num_users | int }}"
+ocp4_workload_mta8_user_base: "{{ ocp4_workload_authentication_user_basename }}"
 
 ocp4_workload_mta8_user_namespace_base: mta
 
