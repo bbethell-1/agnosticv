@@ -16,6 +16,8 @@
 
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 #include /includes/secrets/ocp4_workload_ols_api_token.yaml
+# Provides ocp4_pull_secret for KubeVirt cloud credentials (HCP cluster creation)
+#include /includes/secrets/openshift_assisted_installer_icr.yaml
 
 # ===================================================================
 # Mandatory Variables
@@ -48,10 +50,10 @@ requirements_content:
     type: git
     version: "{{ tag }}"
 
-  # Showroom
+  # Showroom (v1.5.4 required for ocp4_workload_ocp_console_embed)
   - name: https://github.com/agnosticd/showroom.git
     type: git
-    version: v1.3.9
+    version: v1.5.4
 
   # Custom Workshop Workloads for Ops Track
   - name: git+https://github.com/rhpds/openshift-days-roadshow-automation.git#/ops_track
@@ -133,6 +135,10 @@ _security_workloads:
 - agnosticd.core_workloads.ocp4_workload_rhacs
 - openshift_days.ops_track.ocp4_days_workload_compliance_operator
 
+# End-of-deployment comprehensive diagnostics
+_diag_workloads:
+- openshift_days.ops_track.ocp4_workload_cluster_diagnostics
+
 # ============================================
 # BUILD WORKLOADS DYNAMICALLY
 # Uses unique filter to deduplicate workloads that appear in multiple groups
@@ -147,7 +153,8 @@ workloads: >-
       (_backup_workloads if module_enable_backup | default(true) | bool else []) +
       (_devhub_workloads if module_enable_devhub | default(true) | bool else []) +
       (_ols_workloads if module_enable_ols | default(true) | bool else []) +
-      (_security_workloads if module_enable_security | default(true) | bool else [])
+      (_security_workloads if module_enable_security | default(true) | bool else []) +
+      _diag_workloads
     ) | unique | list
   }}
 
@@ -194,7 +201,7 @@ ocp4_workload_showroom_user_data:
 # Catalog Snapshot Configuration (shared across operators)
 # -------------------------------------------------------------------
 ocp4_workload_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.20_2026_01_12
+ocp4_workload_catalogsource_tag: v4.20_2026_02_23
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication (unified auth role)
@@ -205,6 +212,7 @@ ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
 ocp4_workload_authentication_user_password: "{{ common_user_password }}"
 # ocp4_workload_authentication_user_password_length: 16
 ocp4_workload_authentication_provider: htpasswd
+ocp4_workload_authentication_enable_user_info_data: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm (Core version)
@@ -220,14 +228,15 @@ ocp4_workload_rhacm_cloud_credentials_kubevirt_secret_name: kubevirt-secret
 ocp4_workload_rhacm_cloud_credentials_install_hcp_cli: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_rhacs
+# Workload: ocp4_workload_rhacs (upstream with resource overrides)
 # -------------------------------------------------------------------
-ocp4_workload_rhacs_install_operator_namespace: rhacs-operator
 ocp4_workload_rhacs_install_operator_channel: rhacs-4.9
-ocp4_workload_rhacs_install_operator_use_catalog_snapshot: true
-ocp4_workload_rhacs_install_operator_catalog_source_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_rhacs_install_operator_namespace: rhacs-operator
+ocp4_workload_rhacs_install_operator_use_catalog_snapshot: false
 ocp4_workload_rhacs_central_admin_password: "{{ common_admin_password }}"
 ocp4_workload_rhacs_enable_central_scanner_v4: true
+# Use Immediate binding to avoid WaitForFirstConsumer PVC deadlock on multinode external Ceph
+ocp4_workload_rhacs_central_storage_class: ocs-external-storagecluster-ceph-rbd-immediate
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops (ArgoCD)
@@ -238,8 +247,40 @@ ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_update_route_tls: true
 ocp4_workload_openshift_gitops_rbac_update: true
 ocp4_workload_openshift_gitops_rbac_policy: |
-  g, {{ ocp4_workload_authentication_admin_username }}, role:admin
+  g, admin, role:admin
 ocp4_workload_openshift_gitops_rbac_scopes: '[email,groups]'
+# Reduce ArgoCD resources for compact cluster
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "100m"
+ocp4_workload_openshift_gitops_controller_requests_memory: "512Mi"
+ocp4_workload_openshift_gitops_controller_limits_cpu: "1"
+ocp4_workload_openshift_gitops_controller_limits_memory: "2Gi"
+ocp4_workload_openshift_gitops_controller_app_sync: "180s"
+ocp4_workload_openshift_gitops_server_update: true
+ocp4_workload_openshift_gitops_server_requests_cpu: "50m"
+ocp4_workload_openshift_gitops_server_requests_memory: "128Mi"
+ocp4_workload_openshift_gitops_server_limits_cpu: "500m"
+ocp4_workload_openshift_gitops_server_limits_memory: "256Mi"
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: "100m"
+ocp4_workload_openshift_gitops_repo_requests_memory: "256Mi"
+ocp4_workload_openshift_gitops_repo_limits_cpu: "500m"
+ocp4_workload_openshift_gitops_repo_limits_memory: "1Gi"
+ocp4_workload_openshift_gitops_redis_update: true
+ocp4_workload_openshift_gitops_redis_requests_cpu: "50m"
+ocp4_workload_openshift_gitops_redis_requests_memory: "64Mi"
+ocp4_workload_openshift_gitops_redis_limits_cpu: "500m"
+ocp4_workload_openshift_gitops_redis_limits_memory: "256Mi"
+ocp4_workload_openshift_gitops_dex_update: true
+ocp4_workload_openshift_gitops_dex_requests_cpu: "50m"
+ocp4_workload_openshift_gitops_dex_requests_memory: "64Mi"
+ocp4_workload_openshift_gitops_dex_limits_cpu: "500m"
+ocp4_workload_openshift_gitops_dex_limits_memory: "256Mi"
+ocp4_workload_openshift_gitops_applicationset_controller_update: true
+ocp4_workload_openshift_gitops_applicationset_controller_requests_cpu: "50m"
+ocp4_workload_openshift_gitops_applicationset_controller_requests_memory: "64Mi"
+ocp4_workload_openshift_gitops_applicationset_controller_limits_cpu: "500m"
+ocp4_workload_openshift_gitops_applicationset_controller_limits_memory: "256Mi"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_days_workload_compliance_operator
@@ -274,10 +315,7 @@ ocp4_workload_metallb_l2advertisement_interface:
 # Workload: ocp4_workload_oadp (Backup/DR)
 # -------------------------------------------------------------------
 ocp4_workload_oadp_channel: stable
-ocp4_workload_oadp_use_catalog_snapshot: true
-ocp4_workload_oadp_catalogsource_name: redhat-operators-snapshot-oadp
-ocp4_workload_oadp_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_oadp_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_oadp_use_catalog_snapshot: false
 ocp4_workload_oadp_automatic_install_plan_approval: true
 ocp4_workload_oadp_storage: ocs
 ocp4_workload_oadp_configure_dpa: false
@@ -291,7 +329,7 @@ ocp4_workload_pipelines_use_catalog_snapshot: false
 ocp4_workload_pipelines_install_tkn_cli: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_quay_operator
+# Workload: ocp4_workload_quay_operator (upstream with resource overrides)
 # -------------------------------------------------------------------
 ocp4_workload_quay_operator_channel: stable-3.15
 ocp4_workload_quay_operator_registry_namespace: quay
@@ -302,10 +340,8 @@ ocp4_workload_quay_operator_registry_hostname: quay
 # Workload: ocp4_workload_web_terminal
 # -------------------------------------------------------------------
 ocp4_workload_web_terminal_channel: fast
-ocp4_workload_web_terminal_use_catalog_snapshot: true
-ocp4_workload_web_terminal_catalogsource_name: redhat-operators-snapshot-web-terminal
-ocp4_workload_web_terminal_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
-ocp4_workload_web_terminal_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_web_terminal_use_catalog_snapshot: false
+ocp4_workload_web_terminal_catalogsource_setup: false
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_kubernetes_image_puller
@@ -336,6 +372,12 @@ ocp4_workload_ols_get_token: true
 ocp4_workload_prepare_hcp_policy_namespace: policies
 ocp4_workload_prepare_hcp_clusterset_name: managed
 ocp4_workload_prepare_hcp_gitops_operator_channel: gitops-1.19
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_create_hcp_cluster
+# -------------------------------------------------------------------
+# Use Immediate binding to avoid WaitForFirstConsumer PVC deadlock on multinode external Ceph
+ocp4_workload_create_hcp_cluster_etcd_storage_class: ocs-external-storagecluster-ceph-rbd-immediate
 
 # -------------------------------------------------------------------
 # Babylon meta variables

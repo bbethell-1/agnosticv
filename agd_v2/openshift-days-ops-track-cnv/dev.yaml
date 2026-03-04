@@ -1,6 +1,4 @@
 ---
-#include /includes/secrets/openshift_assisted_installer_icr.yaml
-
 # -------------------------------------------------------------------
 # Development overrides
 # -------------------------------------------------------------------
@@ -10,59 +8,10 @@ tag: main
 # Showroom content repo - use main for dev
 ocp4_workload_showroom_content_git_repo_ref: main
 
-# Web terminal - disable catalog snapshot, use live catalog
-ocp4_workload_web_terminal_use_catalog_snapshot: false
-ocp4_workload_web_terminal_catalogsource_setup: false
-
-# Fix gitops RBAC - common.yaml references undefined variable
-ocp4_workload_openshift_gitops_rbac_policy: |
-  g, admin, role:admin
-
-# Reduce GitOps resource requests for compact cluster
-ocp4_workload_openshift_gitops_controller_update: true
-ocp4_workload_openshift_gitops_controller_requests_cpu: "100m"
-ocp4_workload_openshift_gitops_controller_requests_memory: "512Mi"
-ocp4_workload_openshift_gitops_controller_limits_cpu: "1"
-ocp4_workload_openshift_gitops_controller_limits_memory: "2Gi"
-ocp4_workload_openshift_gitops_controller_app_sync: "180s"
-ocp4_workload_openshift_gitops_server_update: true
-ocp4_workload_openshift_gitops_server_requests_cpu: "50m"
-ocp4_workload_openshift_gitops_server_requests_memory: "128Mi"
-ocp4_workload_openshift_gitops_server_limits_cpu: "500m"
-ocp4_workload_openshift_gitops_server_limits_memory: "256Mi"
-ocp4_workload_openshift_gitops_repo_update: true
-ocp4_workload_openshift_gitops_repo_requests_cpu: "100m"
-ocp4_workload_openshift_gitops_repo_requests_memory: "256Mi"
-ocp4_workload_openshift_gitops_repo_limits_cpu: "500m"
-ocp4_workload_openshift_gitops_repo_limits_memory: "1Gi"
-ocp4_workload_openshift_gitops_redis_update: true
-ocp4_workload_openshift_gitops_redis_requests_cpu: "50m"
-ocp4_workload_openshift_gitops_redis_requests_memory: "64Mi"
-ocp4_workload_openshift_gitops_redis_limits_cpu: "500m"
-ocp4_workload_openshift_gitops_redis_limits_memory: "256Mi"
-ocp4_workload_openshift_gitops_dex_update: true
-ocp4_workload_openshift_gitops_dex_requests_cpu: "50m"
-ocp4_workload_openshift_gitops_dex_requests_memory: "64Mi"
-ocp4_workload_openshift_gitops_dex_limits_cpu: "500m"
-ocp4_workload_openshift_gitops_dex_limits_memory: "256Mi"
-ocp4_workload_openshift_gitops_applicationset_controller_update: true
-ocp4_workload_openshift_gitops_applicationset_controller_requests_cpu: "50m"
-ocp4_workload_openshift_gitops_applicationset_controller_requests_memory: "64Mi"
-ocp4_workload_openshift_gitops_applicationset_controller_limits_cpu: "500m"
-ocp4_workload_openshift_gitops_applicationset_controller_limits_memory: "256Mi"
-
-# HCP etcd storage class - use Immediate binding to avoid WaitForFirstConsumer deadlock
-ocp4_workload_create_hcp_cluster_etcd_storage_class: ocs-external-storagecluster-ceph-rbd-immediate
-
-# Fix catalog snapshot tag - v4.20_2026_01_12 does not exist in registry
-ocp4_workload_catalogsource_tag: v4.20_2026_02_23
-
-# OADP - disable catalog snapshot, use live catalog
-ocp4_workload_oadp_use_catalog_snapshot: false
-
-# RHACS - upstream role with resource override variables (core_workloads#76 merged)
-ocp4_workload_rhacs_install_operator_use_catalog_snapshot: false
-ocp4_workload_rhacs_central_storage_class: ocs-external-storagecluster-ceph-rbd-immediate
+# -------------------------------------------------------------------
+# RHACS - resource overrides for compact cluster
+# Reduces total from ~15 cores to ~4 cores
+# -------------------------------------------------------------------
 ocp4_workload_rhacs_central_resources_update: true
 ocp4_workload_rhacs_central_requests_cpu: "500m"
 ocp4_workload_rhacs_central_requests_memory: "2Gi"
@@ -99,7 +48,10 @@ ocp4_workload_rhacs_sensor_requests_memory: "1Gi"
 ocp4_workload_rhacs_sensor_limits_cpu: "2"
 ocp4_workload_rhacs_sensor_limits_memory: "4Gi"
 
-# Quay - upstream role with resource override variables (core_workloads#76 merged)
+# -------------------------------------------------------------------
+# Quay - resource overrides for compact cluster
+# Reduces replicas and resource requests
+# -------------------------------------------------------------------
 ocp4_workload_quay_operator_registry_quay_resources_update: true
 ocp4_workload_quay_operator_registry_quay_replicas: 1
 ocp4_workload_quay_operator_registry_quay_requests_cpu: "1000m"
@@ -115,93 +67,6 @@ ocp4_workload_quay_operator_registry_clair_limits_memory: "2Gi"
 ocp4_workload_quay_operator_registry_enable_clairpostgres: true
 ocp4_workload_quay_operator_registry_startup_probe_update: true
 ocp4_workload_quay_operator_registry_startup_probe_failure_threshold: 30
-
-# ==============================================================================
-# Override workload lists:
-# - Quay and RHACS now use upstream core_workloads roles with override variables
-# - Cluster diagnostics added at end
-# ==============================================================================
-_base_workloads:
-- agnosticd.core_workloads.ocp4_workload_authentication
-- agnosticd.showroom.ocp4_workload_ocp_console_embed
-- agnosticd.showroom.ocp4_workload_showroom
-- openshift_days.ops_track.ocp4_workload_days_ops_track
-- agnosticd.core_workloads.ocp4_workload_web_terminal
-- openshift_days.ops_track.ocp4_workload_kubernetes_image_puller
-- agnosticd.core_workloads.ocp4_workload_pipelines
-- agnosticd.core_workloads.ocp4_workload_quay_operator
-
-_virt_workloads:
-- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
-
-_hcp_workloads:
-- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
-- agnosticd.core_workloads.ocp4_workload_openshift_gitops
-- agnosticd.core_workloads.ocp4_workload_rhacm
-- openshift_days.ops_track.ocp4_workload_rhacm_cloud_credentials
-- agnosticd.core_workloads.ocp4_workload_metallb
-- openshift_days.ops_track.ocp4_workload_hcp_kubevirt
-- rhpds.sovereign_cloud.ocp4_workload_prepare_hcp
-
-_acm_workloads:
-- openshift_days.ops_track.ocp4_workload_acm_multicluster_observability
-- openshift_days.ops_track.ocp4_days_workload_compliance_operator
-- openshift_days.ops_track.ocp4_workload_create_hcp_cluster
-
-_backup_workloads:
-- openshift_days.ops_track.ocp4_workload_oadp
-
-_devhub_workloads:
-- openshift_days.ops_track.ocp4_days_workload_rhdh
-
-_ols_workloads:
-- agnosticd.ai_workloads.ocp4_workload_ols
-
-_security_workloads:
-- agnosticd.core_workloads.ocp4_workload_rhacs
-
-# End-of-deployment comprehensive diagnostics
-_diag_workloads:
-- openshift_days.ops_track.ocp4_workload_cluster_diagnostics
-
-# Override workloads to include diagnostics at the end
-workloads: >-
-  {{
-    (
-      _base_workloads +
-      (_virt_workloads if module_enable_virt | default(true) | bool else []) +
-      (_hcp_workloads if module_enable_acm | default(true) | bool else []) +
-      (_acm_workloads if module_enable_acm | default(true) | bool else []) +
-      (_backup_workloads if module_enable_backup | default(true) | bool else []) +
-      (_devhub_workloads if module_enable_devhub | default(true) | bool else []) +
-      (_ols_workloads if module_enable_ols | default(true) | bool else []) +
-      (_security_workloads if module_enable_security | default(true) | bool else []) +
-      _diag_workloads
-    ) | unique | list
-  }}
-
-# Override requirements_content to use showroom v1.5.1
-# v1.3.9 in common.yaml doesn't have ocp4_workload_ocp_console_embed
-requirements_content:
-  collections:
-  - name: https://github.com/rhpds/assisted_installer.git
-    type: git
-    version: v0.0.9
-  - name: https://github.com/agnosticd/core_workloads.git
-    type: git
-    version: "{{ tag }}"
-  - name: https://github.com/agnosticd/showroom.git
-    type: git
-    version: v1.5.4
-  - name: git+https://github.com/rhpds/openshift-days-roadshow-automation.git#/ops_track
-    type: git
-    version: "{{ tag }}"
-  - name: https://github.com/rhpds/sovereign_cloud.git
-    type: git
-    version: "{{ tag }}"
-  - name: https://github.com/agnosticd/ai_workloads.git
-    type: git
-    version: "{{ tag }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
