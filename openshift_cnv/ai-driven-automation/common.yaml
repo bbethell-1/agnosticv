@@ -59,6 +59,11 @@ service_rootfs_size: 50Gi
 cisco_instance_image: c8000v-rhdp-8g
 cisco_rootfs_size: 10Gi
 
+windows_instance_image: base-windows-ad-2022
+windows_rootfs_size: 60Gi
+windows_admin_user: Administrator
+windows_admin_password: "Ansible123!"
+
 networks:
   - name: default
   - name: kafka
@@ -371,6 +376,42 @@ instances:
               requests:
                 storage: "20Mi"
 
+  # Windows Server with Active Directory
+  - name: "windows"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ windows_instance_image }}"
+    memory: 16G
+    cores: 4
+    image_size: "{{ windows_rootfs_size }}"
+    interface_model: "e1000e"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+      - key: "ostype"
+        value: "windows"
+    networks:
+      - default
+    services:
+      - name: windows
+        ports:
+          - port: 5986
+            protocol: TCP
+            targetPort: 5986
+            name: windows-winrm
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: windows-http
+      - name: windows-rdp
+        ports:
+          - port: 3389
+            protocol: TCP
+            targetPort: 3389
+            name: windows-rdp
+
 # -------------------------------------------------------------------
 # Ansible Module, Collections, and Roles Requirements
 # -------------------------------------------------------------------
@@ -388,6 +429,12 @@ requirements_content:
     - name: "https://github.com/rhpds/rhpds.litellm_virtual_keys.git"
       type: git
       version: main
+    - name: ansible.windows
+      version: ">=2.0.0"
+    - name: microsoft.ad
+      version: ">=1.0.0"
+    - name: community.windows
+      version: ">=2.0.0"
 
 # -------------------------------------------------------------------
 # Workloads: Pre/Software/Post
@@ -606,6 +653,7 @@ aap_configuration_dispatcher_roles:
   - {role: controller_license, var: controller_license, tags: controller_license}
   - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
   - {role: gateway_users, var: aap_user_accounts, tags: gateway_users}
+  - {role: controller_execution_environments, var: controller_execution_environments, tags: controller_execution_environments}
   - {role: controller_credentials, var: controller_credentials, tags: controller_credentials}
   - {role: controller_inventories, var: controller_inventories, tags: controller_inventories}
   - {role: controller_hosts, var: controller_hosts, tags: controller_hosts}
@@ -615,6 +663,7 @@ aap_configuration_dispatcher_roles:
   - {role: eda_projects, var: eda_projects, tags: eda_projects}
   - {role: eda_credentials, var: eda_credentials, tags: eda_credentials}
   - {role: eda_decision_environments, var: eda_decision_environments, tags: eda_decision_environments}
+  - {role: lb2961.ai_driven_aap.eda_project_sync_wait, var: eda_projects, tags: eda_project_sync_wait}
   - {role: eda_rulebook_activations, var: eda_rulebook_activations, tags: eda_rulebook_activations}
 
 controller_license:
@@ -631,6 +680,11 @@ aap_user_accounts:
     organizations: "Default"
     first_name: "lab"
     last_name: User
+
+controller_execution_environments:
+  - name: "Windows EE"
+    image: "quay.io/nmartins/windows_ee_rs"
+    pull: missing
 
 controller_credentials:
   - name: lab-credential
@@ -672,6 +726,14 @@ controller_credentials:
       username: admin
       password: "ansible123!"
       become_method: enable
+  # Windows Credential
+  - name: "Windows"
+    description: "Windows Server Credential"
+    organization: "Default"
+    credential_type: Machine
+    inputs:
+      username: "{{ windows_admin_user }}"
+      password: "{{ windows_admin_password }}"
 
 controller_inventories:
   - name: "lab-inventory"
@@ -697,6 +759,12 @@ controller_inventories:
     state: present
   - name: "aap-controller"
     description: "AAP Controller Inventory"
+    organization: "Default"
+    prevent_instance_group_fallback: false
+    state: present
+  # Windows Inventory
+  - name: "windows-inventory"
+    description: "Windows Server Inventory"
     organization: "Default"
     prevent_instance_group_fallback: false
     state: present
@@ -729,8 +797,19 @@ controller_hosts:
       ansible_host: "cisco-rtr2.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
       ansible_network_os: cisco.ios.ios
       ansible_connection: ansible.netcommon.network_cli
+  # Windows Host
+  - name: "windows"
+    inventory: "windows-inventory"
+    variables:
+      ansible_host: "windows.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+      ansible_connection: psrp
+      ansible_psrp_auth: negotiate
+      ansible_psrp_cert_validation: ignore
 
 controller_configuration_projects_async_retries: 60
+
+# Give EDA project sync time to complete before creating rulebook activations
+eda_configuration_rulebook_activations_async_delay: 30
 
 controller_projects:
   - name: "AI-EDA"
@@ -925,20 +1004,86 @@ controller_templates:
     extra_vars:
       gitea_url: "{{ gitea_create_url }}"
       gitea_password: "{{ common_password }}"
+  # Windows Use Case Job Templates
+  - name: "Setup Winlogbeat on Windows"
+    description: "Install and configure Winlogbeat to forward Windows events to Kafka"
+    organization: "Default"
+    job_type: "run"
+    inventory: "windows-inventory"
+    project: "AI-EDA"
+    playbook: "playbooks/windows_install_winlogbeat.yml"
+    credentials:
+      - "Windows"
+    execution_environment: "Windows EE"
+    verbosity: 1
+    extra_vars:
+      winlogbeat_kafka_brokers: "service1:9092"
+      winlogbeat_kafka_topic: "windows-events"
+  - name: "Simulate AD Account Creation"
+    description: "Create a test local user account to trigger Event ID 4722"
+    organization: "Default"
+    job_type: "run"
+    inventory: "windows-inventory"
+    project: "AI-EDA"
+    playbook: "playbooks/windows_create_ad_user.yml"
+    credentials:
+      - "Windows"
+    execution_environment: "Windows EE"
+    verbosity: 1
+  - name: "Simulate Windows Firewall Toggle"
+    description: "Toggle Windows Firewall to generate firewall events"
+    organization: "Default"
+    job_type: "run"
+    inventory: "windows-inventory"
+    project: "AI-EDA"
+    playbook: "playbooks/windows_toggle_firewall.yml"
+    credentials:
+      - "Windows"
+    execution_environment: "Windows EE"
+    verbosity: 1
+  - name: "Windows: Create Mattermost Ticket"
+    description: "Create a Mattermost notification from Windows event data"
+    organization: "Default"
+    job_type: "run"
+    inventory: "Demo Inventory"
+    project: "AI-EDA"
+    playbook: "playbooks/windows_create_ticket.yml"
+    ask_variables_on_launch: true
+    verbosity: 1
+    extra_vars:
+      mattermost_instance: "https://mattermost-{{ subdomain_base }}"
+      mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
+  - name: "Windows AI: Analyze and Ticket"
+    description: "Use AI to analyze a Windows event and create an enriched Mattermost ticket"
+    organization: "Default"
+    job_type: "run"
+    inventory: "Demo Inventory"
+    project: "AI-EDA"
+    playbook: "playbooks/windows_ai_analyze_and_ticket.yml"
+    ask_variables_on_launch: true
+    verbosity: 1
+    extra_vars:
+      rhelai_url_proto: https
+      rhelai_port: 443
+      rhelai_server: "{{ litellm_api_endpoint | regex_replace('^https?://', '') }}"
+      rhelai_model_name: "openai/granite-3-2-8b-instruct"
+      rhelai_token: "{{ litellm_virtual_key }}"
+      mattermost_instance: "https://mattermost-{{ subdomain_base }}"
+      mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
 
 controller_launch_jobs:
   # Run initialization jobs first
   - name: "Initialize Lightspeed Gitea Repository"
   - name: "Create Network AIOps Workflow"
+  - name: "Setup Winlogbeat on Windows"
   - name: "Restore Apache"
 
 eda_projects:
   - name: "ai-eda"
-    description: "Event-driven Ansible rulebooks for AIOps (Web App and Network OSPF)"
+    description: "Event-driven Ansible rulebooks for AIOps"
     organization: Default
     url: "{{ eda_repo_url }}"
     tls_validation: true
-    sync: true
 
 eda_credentials:
   - name: "AAP"
@@ -987,6 +1132,17 @@ eda_rulebook_activations:
     enabled: true
     eda_credentials: "AAP"
     state: present
+  # EDA Rulebook Activation for Windows Events
+  - name: "Windows Events"
+    description: "Detect Windows security and firewall events via Kafka"
+    organization: Default
+    project: "ai-eda"
+    rulebook: "windows_events.yml"
+    decision_environment: "{{ eda_decision_environment_name }}"
+    restart_policy: "on-failure"
+    enabled: true
+    eda_credentials: "AAP"
+    state: present
 
 # -------------------------------------------------------------------
 # Workload: lb2961.ai_driven_aap.rhelai_model_serve
@@ -1001,6 +1157,12 @@ eda_rulebook_activations:
 # Workload: lb2961.ai_driven_aap.mattermost
 # -------------------------------------------------------------------
 mattermost_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: lb2961.ai_driven_aap.kafka
+# -------------------------------------------------------------------
+kafka_additional_topics:
+  - "windows-events"
 
 # -------------------------------------------------------------------
 # Workload: agnosticv_userdata_import
@@ -1028,11 +1190,13 @@ agnosticv_importdata:
   ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
   ssh_username: "{{ student_name }}"
   ssh_password: "{{ common_password }}"
+  windows_host: "windows.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
 
 # -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
 showroom_git_repo: https://github.com/rhpds/ai-driven-automation-showroom.git
+showroom_git_ref: feature/windows-usecase
 showroom_user: showroom
 showroom_ui: default
 showroom_tls_provider: none
@@ -1095,5 +1259,5 @@ __meta__:
         virt: "yes"
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.1
+      image: quay.io/agnosticd/ee-ubi9-aap2.5:2.1.0
       pull: missing
