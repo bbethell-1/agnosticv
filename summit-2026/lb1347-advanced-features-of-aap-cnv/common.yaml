@@ -1,0 +1,587 @@
+---
+# This item is restricted to devs only!
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-aap.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/secrets/demosat-rhel-9-latest-and-aap25.yaml
+#include /includes/secrets/ansible-tower-advanced-24.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: LB1347 Advanced features of Ansible Automation Platform
+#                   - Automation Controller
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+cloud_provider: openshift_cnv
+cloud_provider_version: main
+config: cloud-vms-base
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+subdomain_base_short: "{{ guid }}"
+subdomain_base_suffix: ".{{ sandbox_openshift_apps_domain }}"
+subdomain_base: "{{ subdomain_base_short }}{{ subdomain_base_suffix }}"
+subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{  subdomain }}"
+bastion_ssh_password: "{{ common_password }}"
+ansible_user: cloud-user
+remote_user: cloud-user
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + 'RM' }}"
+
+# -------------------------------------------------------------------
+# CNV-specific settings
+# -------------------------------------------------------------------
+openshift_cnv_legacy_routes: false
+openshift_cnv_route_remove_x_frame_options_header: true
+
+# -------------------------------------------------------------------
+# Instances to deploy
+# -------------------------------------------------------------------
+# ------------------------
+# Instance Images
+# ------------------------
+bastion_instance_image: rhel-9.6
+controller_instance_image: aap-2.6-2-ceh-20251103
+node_instance_image: rhel-9.6
+
+bastion_rootfs_size: 50Gi
+controller_rootfs_size: 100Gi
+node_rootfs_size: 50Gi
+
+# ------------------------
+# Instances (VMs)
+# ------------------------
+instances:
+  - name: "bastion"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ bastion_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ bastion_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+    networks:
+      - default
+    services:
+      - name: bastion
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: bastion-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: bastion-443
+          - port: 3000
+            protocol: TCP
+            targetPort: 3000
+            name: bastion-3000
+          - port: 8080
+            protocol: TCP
+            targetPort: 8080
+            name: bastion-8080
+    routes:
+      - name: bastion-80
+        host: bastion
+        service: bastion
+        targetPort: 80
+        tls: true
+        tls_termination: edge
+      - name: bastion-443
+        host: bastion-443
+        service: bastion
+        targetPort: 443
+        tls: true
+        tls_termination: edge
+      - name: bastion-3000
+        host: gitea
+        service: bastion
+        targetPort: 3000
+        tls: true
+        tls_termination: edge
+      - name: bastion-8080
+        host: vscode
+        service: bastion
+        targetPort: 8080
+        tls: true
+        tls_termination: edge
+
+  - name: "controller"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ controller_instance_image }}"
+    memory: 32G
+    cores: 8
+    image_size: "{{ controller_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+    userdata: |-
+      #cloud-config
+      user: rhel
+      password: ansible123!
+      chpasswd: { expire: False }
+      runcmd:
+        - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+        - systemctl reload sshd
+    services:
+      - name: controller
+        ports:
+          - name: controller-443
+            port: 443
+            protocol: TCP
+            targetPort: 443
+          - name: controller-5000
+            port: 5000
+            protocol: TCP
+            targetPort: 5000
+    routes:
+      - name: controller-5000
+        host: eda-webhook
+        service: controller
+        targetPort: 5000
+        tls: true
+        tls_termination: edge
+      - name: controller-443
+        host: controller
+        service: controller
+        targetPort: 443
+        tls: true
+        tls_termination: reencrypt
+        tls_destinationCACertificate: |
+          -----BEGIN CERTIFICATE-----
+          MIIF1jCCA76gAwIBAgIUASi34Lss1upPyAS1YsA8eZTJOFAwDQYJKoZIhvcNAQEL
+          BQAwgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQIDA5Ob3J0aCBDYXJvbGluYTEQMA4G
+          A1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVkIEhhdDEQMA4GA1UECwwHQW5zaWJs
+          ZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0aW9uIFBsYXRmb3JtMB4XDTI1MTEw
+          MzE5NDkyNVoXDTM1MTEwMTE5NDkyNVowgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQI
+          DA5Ob3J0aCBDYXJvbGluYTEQMA4GA1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVk
+          IEhhdDEQMA4GA1UECwwHQW5zaWJsZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0
+          aW9uIFBsYXRmb3JtMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqNju
+          44XrKsBPTqv5J+OqRz3RsY1QIemHw3NIJF3d3UvimBHt42rHnwt4Lww3mYtYMJQ0
+          nzcRpr+EnFlC5YFl2Htrfq6NzUUqknTpaCeSKNCli4aKYe9JYSocWy/8ag+H7gMf
+          oUFJ7+PDh/S8HcP7ZA15RRXhyGdjzpUK9+ry/UcMcLE4ZOW2Z4YvFyjemh+c/yYY
+          KHsNjV56TRL5q4VqsxlKQuqNQos9lWoHjz363JxC9UrvTPqvl/UbHsQmTD8NKDnB
+          xxsaYTl41kVqscLSw5KR2c6CVVgSjIn5o0iAo01Sd4gONZ0ImhrzQ5Ea9Ya2kKG7
+          OCdg84V4hVmy/fnrcBC4k9RgNthWH9k4eMHwZf3B2P1xZds3dkV1k6yF3zSrQfJd
+          VJZ0AsaeGQGw26NQw0IG17P/jmho1jBhqSLaJyT9vVM/JMOjdojbD/dSFkccID1E
+          wUZeklYiLScD13rhckVk8MxrsFv99BO91tm07lwnj5jsyLoTvUOLuI4o7yw1AlsC
+          V/OjdpAohWbL0W6YxS/elBVgZhe7Gv2lnIF9L7TxTj/UQWaarouAIgyevqbP5dnt
+          mRccxZ38YGivRA+PgWwwSL9AQCFzIJW1Q45shUR2vkTsiWEEB+Lobkj5dcyLG0CH
+          Z7fnJnlKdNDcMbm2s6U1i+nHvv1dpfyveRvOiCsCAwEAAaNCMEAwDgYDVR0PAQH/
+          BAQDAgIEMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFHAFWQy/8in8Lg2TaG9g
+          NJyRxdMfMA0GCSqGSIb3DQEBCwUAA4ICAQBT5QI+nxhpEwPVp/BxZnxJWFBotHw3
+          rROgu1GBR3clZ+c+YFygAUs3LSpCLuDGnqJnh0822sIM+5FFP2ypqHdzeKo3TQEj
+          K4QiTBGeiSgqKqwHQdqPKywgFqAuxFC+clVrmFVR7dQJ8OiUZYNk5fwYLxnOftFQ
+          pxgpJyAX7vpZKnzujc5IGEqb3apjyxUuX3TFRq4uJp8ffWR9cgykeI8WFqAi33+K
+          RW8h9UQbS9mPjkJ3lbTtd06Jx2M0V2pwtQBMlp7aTboEqs+CB5moCIq1wTXvZBqB
+          dcqcpRGppYHL+QuUguBIlZcxn/8JpfoEsYVOJszp4YLEKzr68RoXvevObbrjJxfq
+          BnEPFKqt+pQpjEJktn8JDqp8G6gMc9n+Nkx88f3MR8yr2nhMl9YL6jSZLklH4JJV
+          2UjYg+KU/u/JttFmDydmys1xN9hiFM2wtRjp+r8gAQw95pyUhMraA01qLYWP5wAO
+          KsMpndKg6rUIycxNNr+eLGNafbUNsp9qayRSull5jKok43Goi8oF8edRlPY4qpZW
+          6WvY8+YjBLTCY1rQBb6/Rfr5PHSaRlGLi3Os6xG84gt69dLtMZBz4O232fc5sG5M
+          wMQ+MKwOpgDyuy79XKvsPanlAfP8WgJi79pJdHu3BGTLlDFil9CK8l2sncM1FdaE
+          57Ys1npOUx+oxw==
+          -----END CERTIFICATE-----
+
+  - name: "node"
+    count: 2
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ node_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ node_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "linux"
+
+# -------------------------------------------------------------------
+# Collection Version Control
+# -------------------------------------------------------------------
+tag: main  # Override in prod.yaml with specific release tag
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/agnosticd/cloud_vm_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/rhpds.manage_host.git
+      type: git
+      version: "{{ tag }}"
+    - name: l3d.git
+      version: 1.1.10
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: v1.5.1
+
+# -------------------------------------------------------------------
+# Workloads: Pre/Software/Post
+# -------------------------------------------------------------------
+pre_software_workloads:
+  all:
+    - host_satellite_repositories
+    - host_common_packages
+    - agnosticd.cloud_vm_workloads.control_user
+  bastions:
+    - bastion
+    - rhpds.manage_host.vscode_server
+    - rhpds.manage_host.gitea_vm_setup
+
+software_workloads:
+  bastions:
+    - rhpds.manage_host.aap_devel_tools
+
+post_software_workloads:
+  bastions:
+    - infra.aap_configuration.dispatch
+  nodes:
+    - rhpds.manage_host.asset_injector
+
+post_software_final_workloads:
+  localhost:
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+  bastions:
+    - agnosticd.showroom.vm_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload: host_satellite_repositories
+# -------------------------------------------------------------------
+install_satellite_repositories: true
+
+# -------------------------------------------------------------------
+# Workload: host_common_packages
+# -------------------------------------------------------------------
+install_common_packages: false
+host_common_packages_update_all: false
+host_common_packages_extra:
+  - at
+  - bash-completion
+  - bind-utils
+  - buildah
+  - git
+  - httpd-tools
+  - nano
+  - podman
+  - python3
+  - python3-pip
+  - tmux
+  - tree
+  - unzip
+  - vim-enhanced
+  - wget
+  - ansible
+  - nginx
+
+# -------------------------------------------------------------------
+# Workload: control_user
+# -------------------------------------------------------------------
+env_authorized_key: "{{guid}}key"
+install_control_user: true
+student_name: lab-user
+student_password: "{{ common_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ common_password }}"
+control_user_private_group: "{{ omit }}"
+
+# -------------------------------------------------------------------
+# Workload: bastion
+# -------------------------------------------------------------------
+install_bastion_lite: true
+
+# -------------------------------------------------------------------
+# Workload: vscode-server
+# -------------------------------------------------------------------
+install_vscode_server: true
+vscode_server_install_nginx: false
+vscode_use_automationcontroller_nginx: false
+vscode_server_bind_addr_ip: 0.0.0.0
+vscode_server_bind_addr_port: 8080
+
+vscode_server_version: "4.95.3"
+vscode_server_rpm_url: >-
+  https://github.com/coder/code-server/releases/download/v{{ vscode_server_version }}/code-server-{{ vscode_server_version }}-amd64.rpm
+
+vscode_server_ansible_become: true
+vscode_user_workspace_path: "/home/{{ student_name }}"
+vscode_auth_type: password
+vscode_user_name: "{{ student_name }}"
+vscode_user_password: "{{ common_password }}"
+vscode_server_hostname: "vscode-{{ subdomain }}"
+vscode_ansible_python_interpreter: /usr/bin/python3
+vscode_server_default_extensions: []
+vscode_server_extension_urls:
+  - https://github.com/ansible/workshops/raw/devel/files/bierner.markdown-preview-github-styles-0.1.6.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/hnw.vscode-auto-open-markdown-preview-0.0.4.vsix
+  - https://github.com/ansible/workshops/raw/devel/files/redhat.ansible-0.4.5.vsix
+
+vscode_server_additional_settings: |
+  "files.exclude": {
+    "**/.git": true,
+    "**/.kube": true,
+    "**/.bash*": true,
+    "**/.vim*": true,
+    "**/.ssh": true,
+    "**/.vscode": true,
+    "**/.local": true,
+    "**/.config": true,
+    "**/.ansible": true,
+    "**/.cache": true },
+  "security.workspace.trust.enabled": false
+
+# -------------------------------------------------------------------
+# Workload: gitea_vm_setup
+# -------------------------------------------------------------------
+gitea_http_listen: "0.0.0.0"
+gitea_db_pasword: "{{ common_password }}"
+gitea_create_url: "https://gitea-{{ subdomain }}"
+gitea_require_signin: false
+gitea_vm_repos:
+  - name: playbooks-adv-controller
+    url: https://gitlab.com/ansible-labs-crew/playbooks-adv-controller-2025.git
+  - name: shared-apache-role
+    url: https://gitlab.com/ansible-labs-crew/shared-apache-role.git
+  - name: playbooks-dev
+    url: https://gitlab.com/ansible-labs-crew/playbooks-dev.git
+  - name: playbooks-ops
+    url: https://gitlab.com/ansible-labs-crew/playbooks-ops.git
+
+# -------------------------------------------------------------------
+# Workload: ansible_automation_platform_configuration
+# -------------------------------------------------------------------
+ansible_automation_platform_configuration_host: "https://controller-{{ subdomain }}"
+ansible_automation_platform_configuration_username: admin
+ansible_automation_platform_configuration_password: "ansible123!"
+ansible_automation_platform_configuration_verify_ssl: false
+ansible_automation_platform_configuration_create_controller_token: false
+ansible_automation_platform_configuration_generate_ocp_token: false
+
+controller_dependency_check: false
+
+aap_hostname: "{{ ansible_automation_platform_configuration_host }}"
+aap_username: "{{ ansible_automation_platform_configuration_username }}"
+aap_password: "{{ ansible_automation_platform_configuration_password }}"
+aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
+
+aap_configuration_dispatcher_roles:
+  - {role: controller_license, var: controller_license, tags: controller_license}
+  - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
+  - {role: gateway_users, var: aap_user_accounts, tags: gateway_users}
+
+controller_license:
+  manifest_url: "https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip"
+
+gateway_settings:
+  SESSION_COOKIE_AGE: 9000
+
+aap_user_accounts:
+  - username: "lab-user"
+    is_superuser: true
+    password: "{{ common_password }}"
+    email: "lab-user@redhat.com"
+    organizations: "Default"
+    first_name: "lab"
+    last_name: User
+
+# -------------------------------------------------------------------
+# Workload: aap_devel_tools
+# -------------------------------------------------------------------
+aap_devel_tools_users:
+  - "{{ student_name }}"
+aap_devel_tools_repos_enable: false
+aap_devel_tools_packages:
+  - ansible-lint
+  - ansible-test
+  - ansible-creator
+  - ansible-navigator
+  - ansible-builder
+
+aap_devel_tools_ee_image: "controller-{{ subdomain }}/ee-supported-rhel8:latest"
+aap_devel_tools_env_pass:
+  - GUID
+aap_devel_tools_env_set:
+  CONTROLLER_HOST: "{{ ansible_automation_platform_configuration_host }}"
+  CONTROLLER_USERNAME: "{{ student_name }}"
+  CONTROLLER_PASSWORD: "{{ common_password }}"
+  CONTROLLER_VERIFY_SSL: false
+
+# -------------------------------------------------------------------
+# Role: rhpds.manage_host.asset_injector
+# -------------------------------------------------------------------
+asset_injector_modules:
+  - description: Remove insights-client package
+    become: true
+    module: dnf
+    name: insights-client
+    state: absent
+
+  - description: Create ansible group_vars directory
+    module: file
+    path: /etc/ansible/group_vars/
+    state: directory
+
+  - description: Create ansible all directory
+    module: file
+    path: /etc/ansible/group_vars/all
+    state: directory
+
+  - description: Create user data file
+    module: file
+    path: /etc/ansible/group_vars/all/agnosticd_user_data.yml
+    state: touch
+
+  - description: Save agnosticd_user_info
+    module: lineinfile
+    path: /etc/ansible/group_vars/all/agnosticd_user_data.yml
+    state: present
+    insertafter: 'EOF'
+    line: |
+      ---
+      {{ lookup ('agnosticd_user_data', '*' ) |  to_nice_yaml }}
+
+# -------------------------------------------------------------------
+# Role: showroom
+# -------------------------------------------------------------------
+# showroom_git_repo: https://gitlab.com/ansible-labs-crew/showroom-lb1706-advance-feature-of-aap.git
+showroom_git_repo: https://github.com/rhpds/adv-feature-of-aap-showroom.git
+showroom_git_ref: main
+showroom_user: showroom
+showroom_tls_provider: none
+showroom_host: "bastion-{{ subdomain }}"
+showroom_lab_users:
+  - "{{ student_name }}"
+showroom_user_password: "{{ common_password }}"
+
+showroom_ssh_method: password
+showroom_ssh_host: "{{ openshift_cnv_ssh_address }}"
+showroom_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+showroom_ssh_username: "{{ student_name }}"
+showroom_ssh_password: "{{ common_password }}"
+showroom_tab_services:
+  - single_terminal
+
+showroom_antora_enable_dev_mode: "false"
+showroom_content_ui_config: |
+  type: showroom
+  default_width: 30
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+    - name: '>_Terminal'
+      path: /wetty
+      port: 443
+    - name: '@Codeserver'
+      url: "https://vscode-{{ subdomain }}"
+    - name: AAP
+      url: "https://controller-{{ subdomain }}"
+    - name: Gitea
+      url: "https://gitea-{{ subdomain }}"
+
+# -------------------------------------------------------------------
+# Role: agnosticv-userdata-import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{  subdomain }}"
+  bastion_ssh_password: "{{ common_password }}"
+  common_password: "{{ common_password }}"
+
+  controller_url: "https://controller-{{ subdomain }}"
+  controller_username: "{{ student_name }}"
+  controller_password: "{{ common_password }}"
+
+  gitea_url: "https://gitea-{{ subdomain}}"
+  gitea_username: "{{ student_name }}"
+  gitea_password: "{{ common_password }}"
+
+  vscode_server_url: "https://vscode-{{ subdomain }}"
+  vscode_server_password: "{{ common_password }}"
+
+  ssh_command: >-
+    ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
+    -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
+  ssh_hostname: "{{ openshift_cnv_ssh_address }}"
+  ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+  ssh_username: "{{ student_name }}"
+  ssh_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: A462B982-D3B7-4C11-ADDB-C89036545A83
+  owners:
+    maintainer:
+      - name: Christian Jung
+        email: cjung@redhat.com
+      - name: Goetz Rieger
+        email: grieger@redhat.com
+      - name: Eric Lavarde
+        email: elavarde@redhat.com
+    sme:
+      - name: Ricardo Garcia Cavero
+        email: rgarciac@redhat.com
+      - name: Mitesh Sharma
+        email: msharma@redhat.com
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1347 - Advanced Features of Ansible Automation Platform - Automation Controller"
+    category: Brand_Events
+    multiuser: false
+    keywords:
+      - summit-2026
+      - lb1347
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Automation
+      Provider: Ansible_Field_Team
+      Brand_Event: Red_Hat_Summit_2026
+    reportingLabels:
+      primaryBU: Automation
+    parameters: []
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+      quota:
+        requests.storage: "2000Gi"
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-09-30
+      # image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
+      pull: missing
