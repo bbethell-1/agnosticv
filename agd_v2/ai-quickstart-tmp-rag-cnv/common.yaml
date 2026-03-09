@@ -12,10 +12,16 @@
 #include /includes/parameters/purpose.yaml
 #include /includes/access-restriction-quickstarts-ai.yaml
 
+#include /includes/secrets/litemaas-master_api.yaml
+
+#include /includes/secrets/ai-quickstart-hugging-face-token.yaml
+#include /includes/secrets/ai-quickstart-tavily-search-api-key.yaml
+
 # -------------------------------------------------------------------
 # AgnosticDv2 variables
 # -------------------------------------------------------------------
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:10] }}"
+common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:16] }}"
 
 config: openshift-workloads
 cloud_provider: none
@@ -38,9 +44,19 @@ requirements_content:
     type: git
     version: "{{ tag }}"
 
+  # LiteLLM Virtual Keys Collection
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "{{ tag }}"
+
   - name: https://github.com/agnosticd/ai_workloads.git
     type: git
     version: "{{ tag }}"
+
+  # Showroom
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.3.7 # picking up mermaid and other fixes, was v1.3.5 before (and main)
 
 # ===================================================================
 # List of workloads to be deployed
@@ -49,7 +65,14 @@ workloads:
 
 - agnosticd.core_workloads.ocp4_workload_authentication_keycloak
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 - agnosticd.ai_workloads.ocp4_workload_openshift_ai
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.showroom.ocp4_workload_showroom
+
+remove_workloads:
+
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 
 # ===================================================================
 # Workload: ocp4_workload_authentication_keycloak
@@ -60,12 +83,23 @@ ocp4_workload_authentication_keycloak_use_catalog_source: false
 
 ocp4_workload_authentication_keycloak_admin_create: true
 ocp4_workload_authentication_keycloak_admin_username: admin
-ocp4_workload_authentication_keycloak_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_keycloak_admin_password: "{{ common_admin_password }}"
 ocp4_workload_authentication_keycloak_remove_kubeadmin: true
 
 ocp4_workload_authentication_keycloak_num_users: "{{ num_users | int }}"
 ocp4_workload_authentication_keycloak_user_username_base: user
-ocp4_workload_authentication_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_authentication_keycloak_user_password: "{{ common_user_password }}"
+
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+
+ai_quickstart_rag_llm_model: llama-scout-17b
+
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_models:
+- "{{ ai_quickstart_rag_llm_model }}"
 
 # ===================================================================
 # Workload: ocp4_workload_openshift_gitops
@@ -105,6 +139,44 @@ ocp4_workload_openshift_ai_feastoperator: Removed
 ocp4_workload_openshift_ai_llamastackoperator: Managed
 ocp4_workload_openshift_ai_kueue: Removed
 ocp4_workload_openshift_ai_aipipelines: Managed
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rh-ai-quickstart/RAG
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: "deploy/helm/rag"
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  llm-service:
+    secret:
+      hf_token: "{{ ai_quickstart_hugging_face_token }}"
+
+  global:
+    models:
+      remotellm:
+        id: "{{ ai_quickstart_rag_llm_model }}"
+        url: "{{ litellm_api_base_url }}"
+        apiToken: "{{ litellm_virtual_key }}"
+        enabled: true
+
+  llama-stack:
+    secrets:
+      TAVILY_SEARCH_API_KEY: "{{ ai_quickstart_tavily_search_key }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rh-ai-quickstart/showroom-ai-quickstart-rag
+ocp4_workload_showroom_content_git_repo_ref: main
+
+# Adding terminals. Links are configured in ui-config.yaml in the showroom repo.
+
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_terminal_image: quay.io/juliaaano/openshift-showroom-terminal-ocp:2025-12-02
+
+ocp4_workload_showroom_passthrough_user_data: true
 
 # -------------------------------------------------------------------
 # Babylon meta variables
