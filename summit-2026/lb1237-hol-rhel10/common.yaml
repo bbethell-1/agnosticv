@@ -1,0 +1,741 @@
+---
+# This item is restricted to devs only!
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+#include /includes/secrets/demosat-rhel-9-10.0-latest.yaml
+
+## include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog: OpenShift CNV
+# --- Catalog Item: LB1237 - The Definitive Red Hat Enterprise Linux 10 Hands-On Lab"
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Platform - AgnosticD v2
+# -------------------------------------------------------------------
+platform: RHPDS
+cloud_provider: openshift_cnv
+cloud_provider_version: main
+config: cloud-vms-base
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+subdomain_base_short: "{{ guid }}"
+subdomain_base_suffix: ".{{ sandbox_openshift_apps_domain }}"
+subdomain_base: "{{ subdomain_base_short }}{{ subdomain_base_suffix }}"
+subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{  subdomain }}"
+bastion_ssh_password: "{{ common_password }}"
+ansible_user: cloud-user
+remote_user: cloud-user
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + 'RM' }}"
+
+# -------------------------------------------------------------------
+# CNV-specific settings
+# -------------------------------------------------------------------
+openshift_cnv_legacy_routes: false
+openshift_cnv_route_remove_x_frame_options_header: true
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.6
+rhel_instance_image: rhel-10.0
+rootfs_size_rhel: 50Gi
+node_name: node
+pv_size_node: 4Gi
+
+instances:
+  - name: "bastion"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ bastion_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: 100Gi
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+    networks:
+      - default
+    services:
+      - name: bastion
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: bastion-22
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: bastion-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: bastion-443
+    routes:
+      - name: bastion-80
+        host: bastion
+        service: bastion
+        targetPort: 80
+        tls: true
+        tls_termination: edge
+      - name: bastion-443
+        host: bastion-443
+        service: bastion
+        targetPort: 443
+        tls: true
+        tls_termination: edge
+
+  - name: "node1"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ rootfs_size_rhel }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel10_nodes"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: node1
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: node2-22
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: node1-443
+    routes:
+      - name: node1-443
+        host: node1
+        service: node1
+        targetPort: 443
+        tls: true
+        tls_termination: edge
+    disks:
+      - metadata:
+          name: "node1{{ guid }}1"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "node1{{ guid }}2"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "node1{{ guid }}3"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "node1{{ guid }}4"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+
+  - name: "node2"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ rootfs_size_rhel }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel10_nodes"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: node2
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: node2-22
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: node2-443
+    routes:
+      - name: node2-443
+        host: node2
+        service: node2
+        targetPort: 443
+        tls: true
+        tls_termination: edge
+    disks:
+      - metadata:
+          name: "node2{{ guid }}1"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "node2{{ guid }}2"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "node2{{ guid }}3"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "node2{{ guid }}4"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+
+  - name: "node3"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ rootfs_size_rhel }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel10_nodes"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: node3
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: node3-22
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: node3-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: node3-443
+          - port: 9090
+            protocol: TCP
+            targetPort: 9090
+            name: node3-9090
+    routes:
+      - name: node3-80
+        host: node3
+        service: node3
+        targetPort: 80
+        tls: false
+      - name: node3-443
+        host: node3
+        service: node3
+        targetPort: 443
+        tls: true
+        tls_termination: edge
+      - name: node3-9090
+        host: cockpit
+        service: node3
+        targetPort: 9090
+        tls: true
+        tls_termination: edge
+    disks:
+      - metadata:
+          name: "node3{{ guid }}1"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "node3{{ guid }}2"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "node3{{ guid }}3"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+      - metadata:
+          name: "node3{{ guid }}4"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ pv_size_node }}"
+
+  - name: "leapp"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ bastion_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ rootfs_size_rhel }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: leapp
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: leapp-22
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: leapp-443
+    routes:
+      - name: leapp-443
+        host: leapp
+        service: leapp
+        targetPort: 443
+        tls: true
+
+# -------------------------------------------------------------------
+# Collection Version Control
+# -------------------------------------------------------------------
+tag: main  # Override in prod.yaml with specific release tag
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements - AgnosticD v2
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/agnosticd/cloud_vm_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: v1.5.6
+    - name: https://github.com/rhpds/rhpds.manage_host.git
+      type: git
+      version: "{{ tag }}"
+  roles:
+    - name: lb1136_rhel10_hol
+      src: https://github.com/rhpds/lb1136_rhel10_hol.git
+      version: development
+
+# -------------------------------------------------------------------
+# Infra Workloads - AgnosticD v2
+# -------------------------------------------------------------------
+pre_software_workloads:
+  # localhost:
+  #   - create_ssh_provision_key
+  all:
+    # - set_env_authorized_key
+    - host_satellite_repositories
+    - agnosticd.cloud_vm_workloads.control_user
+  bastions:
+    - host_common_packages
+    # - user-create-ansible-service-account
+
+software_workloads:
+  all:
+    - rhpds.manage_host.asset_injector
+    - lb1136_rhel10_hol
+
+post_software_final_workloads:
+  localhost:
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+  bastions:
+    - agnosticd.showroom.vm_workload_showroom
+
+
+# -------------------------------------------------------------------
+# Role: set_env_authorized_key
+# -------------------------------------------------------------------
+# set_env_authorized_key: true
+# env_authorized_key: "{{ guid }}key"
+# ansible_ssh_private_key_file: ~/.ssh/{{ env_authorized_key }}.pem
+# ansible_service_account_user_ssh_config: ssh_config.j2
+
+# -------------------------------------------------------------------
+# Workload: host_satellite_repositories
+# -------------------------------------------------------------------
+install_satellite_repositories: true
+
+# -------------------------------------------------------------------
+# Workload: host_common_packages
+# -------------------------------------------------------------------
+install_common_packages: false
+host_common_packages_update_all: false
+host_common_packages_extra:
+  - python3
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - httpd-tools
+  - openldap-clients
+  - podman
+  - tree
+  - runc
+
+# -------------------------------------------------------------------
+# Workload: control_user
+# -------------------------------------------------------------------
+env_authorized_key: "{{guid}}key"
+install_control_user: true
+student_name: lab-user
+student_password: "{{ common_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ common_password }}"
+control_user_private_group: "{{ omit }}"
+
+# # -------------------------------------------------------------------
+# # Role: ansible_service_account
+# # -------------------------------------------------------------------
+# ansible_service_account_user_name: "{{ student_name }}"
+# ansible_service_account_user_password: "{{ common_password }}"
+# ansible_service_account_user_preferred_python: "3.9"
+
+# # -------------------------------------------------------------------
+# # Role: lb1136_rhel10_hol
+# # -------------------------------------------------------------------
+lb1136_rhel10_hol_internal_domain: sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local
+rhel10_hol_config: true
+# lb1136_rhel10_hol_lecertificate_for_node3: true
+lb1136_rhel10_hol_lecertificate_for_node3: false
+lb1136_rhel10_hol_use_rhsm_for_node2: true
+lb1136_rhel10_hol_sat_org: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  65393030363536303335613363623935316561323139353665393066613863633033323238613636
+  3766313561313334376262623438323938646232663265610a346161323766306464396637363936
+  31633366633431626362313835393163396333613230363165336565353439616331383365346133
+  6332313833646537350a353063363266646363616330353866316539623261363763353263653766
+  3533
+lb1136_rhel10_hol_sat_activation_key: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  36626338666464386336353838656431643039366337313434663434613563303363303536336539
+  3362393066363930626361623564376432376562653862660a626363353462396464623135623236
+  31333338346265383830623164353935366634393931663636313462306366623964393466653834
+  6365663065626335360a663863636562666435393839396538333532353239653537643532336230
+  3136
+
+# -------------------------------------------------------------------
+# Role: rhpds.manage_host.asset_injector
+# -------------------------------------------------------------------
+bastion_asset_injector_assets:
+  - description: Remove 50-cloud-init.conf, ssh issue
+    module: file
+    state: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    module: file
+    state: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    module: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    module: service
+    name: sshd
+    state: restarted
+
+node3_asset_injector_assets:
+  - description: Setup cockpit for non ssl route
+    module: blockinfile
+    path: /etc/cockpit/cockpit.conf
+    create: true
+    state: present
+    marker: "# {mark} Allow Unencrypted"
+    block: |
+      [WebService]
+      AllowUnencrypted = true
+      Origins = https://cockpit-{{ subdomain }}
+      ProtocolHeader = X-Forwarded-Proto
+      ForwardedForHeader = X-Forwarded-For
+
+  - description: Reload systemctl
+    module: command
+    cmd: systemctl daemon-reload
+
+  - description: Restart cockpit socket
+    module: service
+    name: cockpit.socket
+    state: restarted
+
+node1_asset_injector_assets:
+  - description: Copy ssh public key
+    module: copy
+    src: "/home/{{ student_name }}/.ssh/{{ guid }}key.pub"
+    dest: /root/.ssh/
+    remote_src: true
+    group: root
+    owner: root
+    mode: 'u=r,g-rwx,o-rwx'
+
+  - description: Copy ssh private key
+    module: copy
+    src: "/home/{{ student_name }}/.ssh/{{ guid }}key.pem"
+    dest: /root/.ssh/
+    remote_src: true
+    group: root
+    owner: root
+    mode: 'u=r,g-rwx,o-rwx'
+
+  - description: Create ssh config
+    module: blockinfile
+    path: /root/.ssh/config
+    create: true
+    state: present
+    marker: "# {mark} Allow Unencrypted"
+    block: |
+      Host *
+        User {{ student_name }}
+        IdentityFile ~/.ssh/{{ guid }}key.pem
+        ForwardAgent yes
+        StrictHostKeyChecking no
+        ConnectTimeout 600
+        ConnectionAttempts 10
+        ControlMaster auto
+        ControlPath /tmp/%h-%r
+        ControlPersist 5m
+    group: root
+    owner: root
+    mode: 'u=r,g-rwx,o-rwx'
+
+# Set asset_injector_assets based on group membership
+asset_injector_modules: >-
+  {{
+    bastion_asset_injector_assets
+    if 'bastions' in group_names
+    else
+      node3_asset_injector_assets
+        if (inventory_hostname_short == 'node3')
+        else
+          node1_asset_injector_assets
+            if (inventory_hostname_short == 'node1')
+            else
+              []
+  }}
+
+# -------------------------------------------------------------------
+# Role: agnosticd.showroom.vm_workload_showroom
+# -------------------------------------------------------------------
+# showroom_git_repo: "https://github.com/rhpds/showroom-lb1136-rhel-10-hol.git"
+showroom_git_repo: https://github.com/rhpds/hol-rhel10-showroom.git
+showroom_git_ref: development
+showroom_user: showroom
+showroom_tls_provider: none
+showroom_host: "bastion-{{ subdomain }}"
+showroom_lab_users:
+  - "{{ student_name }}"
+showroom_user_password: "{{ common_password }}"
+
+showroom_ssh_method: password
+showroom_ssh_host: "{{ openshift_cnv_ssh_address }}"
+showroom_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+showroom_ssh_username: "{{ student_name }}"
+showroom_ssh_password: "{{ common_password }}"
+showroom_tab_services:
+  - single_terminal
+  - second_terminal
+
+showroom_antora_enable_dev_mode: "false"
+showroom_content_ui_config: |
+  type: showroom
+  default_width: 30
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+    - name: '>_Terminal-01'
+      path: /wetty
+      port: 443
+      secondary_name: '>_Terminal-02'
+      secondary_path: /terminal2
+      secondary_port: 443
+    - name: 'Cockpit'
+      url: "https://cockpit-{{ subdomain }}"
+
+# -------------------------------------------------------------------
+# Role: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{  subdomain }}"
+  guid: "{{ guid }}"
+
+  workshop_cockpit_url: "https://cockpit-{{ subdomain }}"
+  workshop_cockpit_user_name: "{{ student_name }}"
+  workshop_cockpit_user_password: "{{ common_password }}"
+
+  bastion_ssh_command: >-
+    ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
+    -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
+  bastion_ssh_hostname: "{{ openshift_cnv_ssh_address }}"
+  bastion_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+  bastion_ssh_user_name: "{{ student_name }}"
+  bastion_ssh_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: EA8CBFD8-D6BB-4A23-82F1-20B5A940B02F
+  owners:
+    maintainer:
+      - name: Christoph Doerbeck
+        email: cdoerbec@redhat.com
+      - name: Gordon Keegan
+        email: gkeegan@redhat.com
+    sme:
+      - name: Mitesh Sharma
+        email: msharma@redhat.com
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1237 - The Definitive Red Hat Enterprise Linux 10 Hands-On Lab"
+    workshopLabUiRedirect: true
+    category: Brand_Events
+    keywords:
+      - summit-2026
+      - lb1237
+      - leapp
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHDP
+      Brand_Event: Red_Hat_Summit_2026
+    multiuser: false
+    parameters: []
+    reportingLabels:
+      primaryBU: RHEL
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-09-30
+      pull: missing
