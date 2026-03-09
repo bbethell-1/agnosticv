@@ -1,0 +1,241 @@
+---
+# This item is restricted to devs only!
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+#include /includes/catalog-icon-openshift-data-science.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/aws-sandbox-meta.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-regions-6.yaml
+
+#include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+
+# -------------------------------------------------------------------
+# LB2861 Introducing llm-d: Your Production-Ready Path to Scalable LLM Inference (Summit 2026)
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: ec2
+env_type: ocp4-cluster
+software_to_deploy: openshift4
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# VM configuration
+# -------------------------------------------------------------------
+master_instance_type: g6.12xlarge
+master_instance_count: 1
+master_storage_type: io1
+master_storage_size: 1500
+
+worker_instance_type: m6a.4xlarge
+worker_instance_count: 0
+worker_storage_type: gp3
+worker_storage_size: 1500
+
+bastion_instance_type: t2.small
+bastion_instance_image: RHEL95GOLD-latest
+
+# -------------------------------------------------------------------
+# OpenShift Installer Version
+# -------------------------------------------------------------------
+ocp4_installer_version: "4.20.0"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_base: user
+ocp4_workload_user_count: 1
+ocp4_workload_multi_user: "{{ true if num_users | int > 1 else false }}"
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_password: "{{ common_password }}"
+common_user_password: "{{ common_password }}"
+common_admin_username: admin
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.20_2025_10_23
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+infra_workloads:
+  - ocp4_workload_authentication
+  - ocp4_workload_cert_manager
+  - ocp4_workload_openshift_gitops
+  - ocp4_workload_nvidia_gpu_setup
+  - ocp4_workload_gitops_bootstrap
+  - ocp4_workload_web_terminal
+  - agnosticv-userdata-import
+  - ocp4_workload_showroom
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_htpasswd
+# -------------------------------------------------------------------
+ocp4_workload_authentication_htpasswd_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_user_base: "{{ ocp4_workload_user_base }}"
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_user_count: "{{ ocp4_workload_user_count }}"
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+# ocp4_workload_cert_manager_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_cert_manager_aws_region: "{{ aws_region }}"
+ocp4_workload_cert_manager_aws_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
+ocp4_workload_cert_manager_aws_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
+
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.18
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+# ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_update_resources: true
+
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, user1, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+# -------------------------------------------------------------------
+# ocp4_workload_nvidia_gpu_setup
+# -------------------------------------------------------------------
+nfd_operator_channel: stable
+nfd_operator_operand_image: "registry.redhat.io/openshift4/ose-node-feature-discovery-rhel9:v4.20.0"
+nfd_operator_starting_csv: nfd.4.20.0-202509262039
+nfd_operator_use_catalog_snapshot: true
+nfd_operator_catalogsource_name: redhat-operators-snapshot-nfd
+nfd_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+nfd_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# Not implemented in the agd role.
+nvidia_gpu_operator_use_catalog_snapshot: true
+nvidia_gpu_operator_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+nvidia_gpu_operator_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+nvidia_gpu_operator_channel: v25.10
+nvidia_gpu_operator_starting_csv: gpu-operator-certified.v25.10.0
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/llm-d-intro-automation.git
+# ocp4_workload_gitops_bootstrap_repo_revision: v1.0.0
+ocp4_workload_gitops_bootstrap_repo_path: applications
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_kustomize_envvar_plugin: false
+
+ocp4_workload_gitops_bootstrap_health_retries: 2
+# control the sync behavior for child applications
+ocp4_workload_gitops_bootstrap_sync_prune: true
+ocp4_workload_gitops_bootstrap_sync_self_heal: true
+
+# this allows you to set managed applications to unmanaged after bootstrap, in case the above are also true
+ocp4_workload_gitops_bootstrap_sync_app_of_apps_allow_sync_config: true
+
+# -------------------------------------------------------------------
+# Workload: agnosticv_userdata_import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  bastion_public_hostname: "bastion.{{ guid }}{{ subdomain_base_suffix }}"
+  bastion_ssh_user_name: "{{ student_name }}"
+  bastion_ssh_password: "{{ student_password }}"
+  bastion_ssh_command: "ssh {{ student_name }}@bastion.{{ guid }}{{ subdomain_base_suffix }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/llm-d-intro-showroom.git
+#ocp4_workload_showroom_content_git_repo_ref: v1.1.1
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_terminal_enable: true
+ocp4_workload_showroom_content_only: false
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+# -------------------------------------------------------------------
+# Babylon Meta Variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 883f9a42-1b7f-11f1-8e3f-0f0fcf97ce0c
+  deployer:
+    scm_url: https://github.com/redhat-cop/agnosticd.git
+    scm_ref: development
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:2025-04-14
+  sandbox_api:
+    reservation: pgpu
+    actions:
+      start:
+        enable: false
+      stop:
+        enable: false
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB2861 Introducing llm-d: Your Production-Ready Path to Scalable LLM Inference (AWS)"
+    category: Brand_Events
+    reportingLabels:
+      primaryBU: Artificial_Intelligence
+    multiuser: false
+    keywords:
+      - summit-2026
+      - lb2861
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_AI
+      Product_Family: Red_Hat_AI
+      Brand_Event: Red_Hat_Summit_2026
+  tower:
+    timeout: 21600
+  owners:
+    maintainer:
+      - name: Ritesh Shah
+        email: rshah@redhat.com
