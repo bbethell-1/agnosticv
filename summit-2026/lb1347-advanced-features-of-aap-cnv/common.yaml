@@ -260,16 +260,15 @@ pre_software_workloads:
 software_workloads:
   bastions:
     - rhpds.manage_host.aap_devel_tools
+    - infra.aap_configuration.dispatch
 
 post_software_workloads:
-  bastions:
-    - infra.aap_configuration.dispatch
-  nodes:
+  localhost:
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+  all:
     - rhpds.manage_host.asset_injector
 
 post_software_final_workloads:
-  localhost:
-    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
   bastions:
     - agnosticd.showroom.vm_workload_showroom
 
@@ -437,7 +436,7 @@ aap_devel_tools_env_set:
 # -------------------------------------------------------------------
 # Role: rhpds.manage_host.asset_injector
 # -------------------------------------------------------------------
-asset_injector_modules:
+common_asset_injector_modules:
   - description: Remove insights-client package
     become: true
     module: dnf
@@ -454,24 +453,55 @@ asset_injector_modules:
     path: /etc/ansible/group_vars/all
     state: directory
 
-  - description: Create user data file
-    module: file
-    path: /etc/ansible/group_vars/all/agnosticd_user_data.yml
-    state: touch
-
   - description: Save agnosticd_user_info
     module: lineinfile
     path: /etc/ansible/group_vars/all/agnosticd_user_data.yml
+    create: true
     state: present
     insertafter: 'EOF'
     line: |
       ---
-      {{ lookup ('agnosticd_user_data', '*' ) |  to_nice_yaml }}
+      {{ lookup ('agnosticd.core.agnosticd_user_data', '*' ) |  to_nice_yaml }}
+
+  - description: Remove existing hosts
+    module: file
+    path: /etc/ansible/hosts
+    state: absent
+
+  - description: Create ansible inventory
+    module: lineinfile
+    path: /etc/ansible/hosts
+    create: true
+    state: present
+    insertafter: 'EOF'
+    line: |
+      {% for group_name in groups %}
+      {% if group_name == 'nodes' %}
+      [{{ group_name }}]
+      {% for host in groups[group_name] %}
+      {{ host }} ansible_user={{ student_name }}
+      {% endfor %}
+      [all]
+      {% for host in groups[group_name] %}
+      {{ host }} ansible_user={{ student_name }}
+      {% endfor %}
+      {% endif %}
+      {% endfor %}
+
+asset_injector_modules: >-
+  {{
+    common_asset_injector_modules
+    if 'bastions' in group_names
+    else
+      common_asset_injector_modules
+        if 'nodes' in group_names
+        else
+          []
+  }}
 
 # -------------------------------------------------------------------
 # Role: showroom
 # -------------------------------------------------------------------
-# showroom_git_repo: https://gitlab.com/ansible-labs-crew/showroom-lb1706-advance-feature-of-aap.git
 showroom_git_repo: https://github.com/rhpds/adv-feature-of-aap-showroom.git
 showroom_git_ref: main
 showroom_user: showroom
