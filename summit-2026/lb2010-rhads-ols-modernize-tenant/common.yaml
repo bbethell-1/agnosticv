@@ -1,0 +1,324 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: LB2010 - RHADS & OLS Modernization (Tenant/CNV)
+# --- USER PROVISIONER -- per-user resources on shared cluster
+# --- Multi-user deployment on a shared pre-provisioned cluster
+# --- Tenant pattern for Summit 2026
+# -------------------------------------------------------------------
+# --- This catalog item combines:
+# ---   - Sandbox/namespace architecture (no cluster provisioning)
+# ---   - MTA 8 workshop workloads
+# ---   - OpenShift Lightspeed (OLS)
+# ---   - Multi-user support with per-user namespaces
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/litellm_metadata.yaml
+
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/secrets/litemaas-master_api.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# cloud_provider: none -- no cloud account needed, we use pre-provisioned
+# OCP clusters from the sandbox pool.
+# config: namespace -- uses AgnosticD's namespace config which:
+#   - Runs workloads on provision (software.yml)
+#   - Runs workloads in REVERSE order on destroy (destroy_env.yml)
+#   - Sets K8S_AUTH_* env vars for kubernetes.core modules
+#   - Does NOT need remove_workloads (unlike openshift-workloads config)
+# ===================================================================
+cloud_provider: none
+config: namespace
+
+# ===================================================================
+# Repository Tag
+# ===================================================================
+tag: main
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # Tenant roles (keycloak_user, namespace, gitea)
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # GitOps bootstrap (drives all ArgoCD apps via app-of-apps)
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # RHPDS MTA Workloads
+  - name: https://github.com/rhpds/mta_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # LiteLLM Virtual Keys
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "{{ tag }}"
+
+  - name: https://github.com/rhpds/rhads_ols_modernize_automation.git
+    type: git
+    version: "{{ tag }}"
+
+  # Showroom
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.5.6
+
+# ===================================================================
+# List of workloads to be deployed
+#
+# Order matters:
+#   1. tenant_keycloak_user  -- Create RHBK user
+#   2. tenant_namespace      -- Create all per-user namespaces
+#   3. tenant_gitea          -- Per-user Gitea instance + user + repo migration
+#   4. litellm               -- LiteMaaS key
+#   5. openshift_virtualization -- VM support for MTA
+#   6. devspaces             -- Developer workspaces
+#   7. mta8                  -- Migration Toolkit for Applications
+#   8. gitops_bootstrap      -- Bootstrap ArgoCD app-of-apps
+#   9. showroom              -- Lab instructions UI
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_gitea
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_devspaces
+- rhpds.rhads_ols_modernize.ocp4_workload_tenant_mta
+- agnosticd.showroom.ocp4_workload_showroom
+
+# remove_workloads runs in the ORDER listed (explicit destroy control).
+remove_workloads:
+- agnosticd.showroom.ocp4_workload_showroom
+- rhpds.rhads_ols_modernize.ocp4_workload_tenant_mta
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_devspaces
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_gitea
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Common -- tenant username and password
+# All tenant resources reference the same username and password
+# Single-user tenant deployment
+# -------------------------------------------------------------------
+common_password: "Mta{{ (guid | hash('sha256'))[:8] }}!"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_realm: keycloak
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_namespace
+#
+# Tenant namespaces -- created by ocp4_workload_tenant_namespace.
+# Format: {suffix}-{prefix}  e.g. mta-user-guid, devspaces-user-guid
+# Each namespace gets its own quota.
+# -------------------------------------------------------------------
+ocp4_workload_tenant_namespace_prefix: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+
+ocp4_workload_tenant_namespace_namespaces:
+- suffix: devworkspace
+  quota:
+    limits.cpu: "1"
+    requests.cpu: "1"
+    limits.memory: 2Gi
+    requests.memory: 2Gi
+    requests.storage: 10Gi
+  limit_range:
+    default: { cpu: 500m, memory: 512Mi }
+    defaultRequest: { cpu: 50m, memory: 128Mi }
+- suffix: gitea
+  quota:
+    limits.cpu: "1"
+    requests.cpu: "1"
+    limits.memory: 2Gi
+    requests.memory: 2Gi
+    requests.storage: 5Gi
+  limit_range:
+    default: { cpu: 500m, memory: 512Mi }
+    defaultRequest: { cpu: 50m, memory: 128Mi }
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_gitea
+# -------------------------------------------------------------------
+ocp4_workload_tenant_gitea_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-gitea"
+ocp4_workload_tenant_gitea_admin_password: "{{ common_password }}"
+ocp4_workload_tenant_gitea_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_gitea_password: "{{ common_password }}"
+ocp4_workload_tenant_gitea_repositories:
+- name: modern-app-dev
+  repo: https://github.com/rh-mad-workshop/modern-app-dev.git
+  branch: mta-lab
+  private: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_tenant_openshift_gitops_openshift_api_url: "{{ sandbox_openshift_api_url }}"
+ocp4_workload_tenant_openshift_gitops_openshift_api_token: "{{ cluster_admin_agnosticd_sa_token | trim }}"
+ocp4_workload_tenant_openshift_gitops_user: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_openshift_gitops_user_password: "{{ common_password }}"
+ocp4_workload_tenant_openshift_gitops_user_project_prefix: "appproject"
+ocp4_workload_tenant_openshift_gitops_user_cluster_resource_whitelist:
+- group: ""
+  kind: Namespace
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_models:
+- qwen3-14b
+- llama-scout-17b
+- deepseek-r1-distill-qwen-14b
+ocp4_workload_litellm_virtual_keys_multi_user: false
+ocp4_workload_litellm_virtual_keys_user_count: 1
+ocp4_workload_litellm_virtual_keys_verify_ssl: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_virtualization
+# -------------------------------------------------------------------
+ocp4_workload_openshift_virtualization_channel: stable
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_devspaces
+# -------------------------------------------------------------------
+ocp4_workload_tenant_devspaces_openshift_api_url: "{{ openshift_api_url }}"
+ocp4_workload_tenant_devspaces_openshift_api_token: "{{ openshift_cluster_admin_token | trim }}"
+ocp4_workload_tenant_devspaces_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_devspaces_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-devworkspace"
+ocp4_workload_tenant_devspaces_devworkspace_name: "{{ ocp4_workload_tenant_keycloak_username }}-workspace"
+ocp4_workload_tenant_devspaces_devworkspace_devfile: >-
+  http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
+
+ocp4_workload_tenant_devspaces_devworkspace_projects:
+- name: modern-app-dev
+  git_repo: modern-app-dev
+  git_repo_base: http://gitea.{{ ocp4_workload_tenant_keycloak_username }}-gitea.svc:3000
+  git_revision: main
+ocp4_workload_tenant_devspaces_devworkspace_components:
+- name: tooling
+  container:
+    image: registry.redhat.io/devspaces/udi-rhel8:latest
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_mta
+# -------------------------------------------------------------------
+ocp4_workload_tenant_mta_deploy_operator: true
+ocp4_workload_tenant_mta_channel: stable-v8.0
+ocp4_workload_tenant_mta_rwx_supported: false
+ocp4_workload_tenant_mta_rwx_storage_class: ocs-external-storagecluster-ceph-rbd
+ocp4_workload_tenant_mta_rwo_storage_class: ocs-external-storagecluster-ceph-rbd
+ocp4_workload_tenant_mta_user: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_mta_namespace: "{{ ocp4_workload_tenant_mta_user }}-mta"
+ocp4_workload_tenant_mta_seed: true
+ocp4_workload_tenant_mta_seed_image: quay.io/gpte-devops-automation/tackle2-setup
+ocp4_workload_tenant_mta_seed_tag: release-0.4-mta7
+ocp4_workload_tenant_mta_seed_pull_policy: IfNotPresent
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+#
+# openshift_cluster_ingress_domain is discovered by tenant_keycloak_user
+# role via cluster ingress config lookup and exported as a fact.
+# -------------------------------------------------------------------
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/rhads-ols-modernize-showroom.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_only: false
+
+# Dev Mode is overridden in dev.yaml
+ocp4_workload_showroom_antora_enable_dev_mode: "false"
+
+# -------------------------------------------------------------------
+# Sandbox API configuration
+# -------------------------------------------------------------------
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
+# openshift_cluster_ingress_domain is set by ocp4_workload_tenant_keycloak_user via cluster discovery
+
+# ===================================================================
+# Babylon meta variables
+# ===================================================================
+__meta__:
+  asset_uuid: A3822E43-CB62-4A90-830A-0905F78A8E01
+  owners:
+    maintainer:
+    - name: Wolfgang Kulhanek
+      email: wkulhane@redhat.com
+    - name: Shaaf Syed
+      email: sshaaf@redhat.com
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-15
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB2010: Code to Cloud at Lightspeed - AI Accelerated Modernization with Red Hat Advanced Developer Suite (Tenant)"
+    category: Workshops
+    keywords:
+    - mta
+    - openshift
+    - ai
+    - lightspeed
+    - modernization
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    multiuser: false
+    workshopLabUiRedirect: true
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+      secondaryBU: Artificial_Intelligence
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: OcpSandbox
+    cloud_selector:
+      lab: lb2010-rhads-ols-modernize
+      purpose: prod
+    quota:
+      limits.cpu: "2"
+      requests.cpu: "2"
+      limits.memory: 4Gi
+      requests.memory: 4Gi
+      requests.storage: 10Gi
+    limit_range:
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 50m
+        memory: 128Mi
