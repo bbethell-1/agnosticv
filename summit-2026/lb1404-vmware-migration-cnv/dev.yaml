@@ -1,0 +1,115 @@
+---
+# reduced footprint of instances, reduced lab scope of activities
+#
+# nfs-server Configuration
+nfsserver_instance_image: rhel-8.2
+nfsserver_cores: 4
+nfsserver_memory: 4G
+nfsserver_rootfs_size: 30Gi
+
+compute_instance_image: rhel-9.4
+compute_cores: 16
+compute_memory: 16G
+compute_rootfs_size: 100Gi
+
+instances:
+  - name: bastion
+    count: 1
+    unique: true
+    alt_name: bastion
+    memory: "{{ bastion_memory }}"
+    cores: "{{ bastion_cores }}"
+    image_size: "{{ bastion_rootfs_size }}"
+    image: "{{ bastion_instance_image }}"
+    metadata:
+      - AnsibleGroup: "bastions"
+      - function: bastion
+      - user: "{{ student_name }}"
+      - project: "{{ project_tag }}"
+      - ostype: linux
+      - Purpose: "{{ purpose }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ guid }}"
+    networks:
+      - default
+      - default/networkrhovmt
+
+  - name: compute01
+    count: 1
+    unique: true
+    memory: "{{ compute_memory }}"
+    cores: "{{ compute_cores }}"
+    image_size: "{{ compute_rootfs_size }}"
+    image: "{{ compute_instance_image }}"
+    metadata:
+      - AnsibleGroup: "isolated"
+      - user: "{{ student_name }}"
+      - project: "{{ project_tag }}"
+      - ostype: linux
+      - Purpose: "{{ purpose }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ guid }}"
+    networks:
+      - default
+      - ctlplane
+      - internalapi
+      - storage
+      - tenant
+      - external
+      - default/networkrhovmt
+
+  - name: nfsserver
+    count: 1
+    unique: true
+    memory: "{{ nfsserver_memory }}"
+    cores: "{{ nfsserver_cores }}"
+    image_size: "{{ nfsserver_rootfs_size }}"
+    image: "{{ nfsserver_instance_image }}"
+    metadata:
+      - AnsibleGroup: "isolated"
+      - user: "{{ student_name }}"
+      - project: "{{ project_tag }}"
+      - ostype: linux
+      - Purpose: "{{ purpose }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ env_type }}-{{ guid }}"
+    networks:
+      - default
+      - storage
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  deployer:
+    scm_ref: osp-on-ocp-cnv-1.2.1
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: dev
+        virt: "yes"
+# __meta__:
+#   sandboxes:
+#     - kind: OcpSandbox
+#       namespace_suffix: ocp4-cluster
+#       cloud_selector:
+#         cloud: cnv
+#         purpose: dev
+#         virt: "yes"
