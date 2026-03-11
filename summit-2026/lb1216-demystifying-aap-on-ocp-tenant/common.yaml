@@ -1,0 +1,204 @@
+---
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-aap.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: LB1216 - Demystifying AAP on OCP (Tenant)
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: none
+config: namespace
+
+# ===================================================================
+# Collections
+# ===================================================================
+requirements_content:
+  collections:
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: main
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: main
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.5.6
+
+# ===================================================================
+# Workloads
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.showroom.ocp4_workload_showroom
+
+remove_workloads:
+- agnosticd.showroom.ocp4_workload_showroom
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+
+# ===================================================================
+# Common
+# ===================================================================
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+common_password: "Aap{{ (guid | hash('sha256'))[:8] }}!"
+
+# ===================================================================
+# ocp4_workload_tenant_keycloak_user
+# ===================================================================
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_namespace: keycloak
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+
+# ===================================================================
+# ocp4_workload_tenant_namespace
+# Namespace format: {prefix}-{suffix} = {username}-{suffix}
+# e.g. user-abc12-aap, user-abc12-showroom
+# ===================================================================
+ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_namespace_prefix: "{{ ocp4_workload_tenant_keycloak_username }}"
+
+ocp4_workload_tenant_namespace_namespaces:
+- suffix: aap
+  quota:
+    limits.cpu: "8"
+    requests.cpu: "8"
+    limits.memory: 16Gi
+    requests.memory: 16Gi
+    requests.storage: 50Gi
+  limit_range:
+    default: { cpu: 500m, memory: 512Mi }
+    defaultRequest: { cpu: 50m, memory: 128Mi }
+- suffix: showroom
+  quota:
+    limits.cpu: "2"
+    requests.cpu: "2"
+    limits.memory: 4Gi
+    requests.memory: 4Gi
+    requests.storage: 5Gi
+  limit_range:
+    default: { cpu: 500m, memory: 512Mi }
+    defaultRequest: { cpu: 50m, memory: 128Mi }
+
+# ===================================================================
+# ocp4_workload_gitops_bootstrap
+# ===================================================================
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/demystifying-aap-automation
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ ocp4_workload_tenant_keycloak_username }}"
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  tenant:
+    username: "{{ ocp4_workload_tenant_keycloak_username }}"
+    password: "{{ common_password }}"
+    domain: "{{ openshift_cluster_ingress_domain }}"
+    scenario: 3
+  aap:
+    hub:
+      enabled: true
+    manifest:
+      url: "https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip"
+
+# ===================================================================
+# ocp4_workload_showroom
+# ===================================================================
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token | trim | regex_replace('^Bearer ', '') }}"
+ocp4_workload_showroom_openshift_api_url: "{{ sandbox_openshift_api_url }}"
+ocp4_workload_showroom_openshift_api_token: "{{ cluster_admin_agnosticd_sa_token | trim | regex_replace('^Bearer ', '') }}"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/demystifying-aap-on-ocp-showroom
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_terminal_type: ""
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 40
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+  - name: OpenShift Console
+    url: 'https://console-openshift-console.{{ openshift_cluster_ingress_domain }}'
+  - name: Ansible Automation Platform
+    url: 'https://{{ ocp4_workload_tenant_keycloak_username }}-aap-{{ ocp4_workload_tenant_keycloak_username }}-aap.{{ openshift_cluster_ingress_domain }}'
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: eb3f23b2-11c8-4ffd-b2c1-0375ba97c451
+  owners:
+    maintainer:
+    - name: Ricardo Garcia
+      email: rgarciac@redhat.com
+
+  anarchy:
+    namespace: babylon-anarchy-events
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-12-17
+      pull: missing
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1216 - Demystifying AAP on OCP"
+    category: Brand_Events
+    multiuser: false
+    keywords: [lb1216, summit-2026, aap, ansible, openshift]
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Ansible
+      Brand_Event: Red_Hat_Summit_2026
+    reportingLabels:
+      primaryBU: Automation
+    parameters:
+    - name: scenario
+      description: "AAP troubleshooting scenario to deploy (2-7)"
+      formLabel: "Scenario"
+      openAPIV3Schema:
+        type: integer
+        default: 3
+        minimum: 2
+        maximum: 7
+
+  sandboxes:
+  - kind: OcpSandbox
+    alias: cluster
+    namespace_suffix: aap
+    cloud_selector:
+      cloud: cnv-dedicated-shared
+      demo: mcp-with-openshift
+      purpose: prod
+    quota:
+      limits.cpu: "10"
+      requests.cpu: "10"
+      limits.memory: 20Gi
+      requests.memory: 20Gi
+      requests.storage: 55Gi
+    limit_range:
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 50m
+        memory: 128Mi
+
+  tower:
+    timeout: 3600
