@@ -45,10 +45,9 @@ clusters:
 # -------------------------------------------------------------------
 # Only scale for more than 3 users
 openshift_cnv_scale_cluster: true
-ai_workers_cores: 16
-ai_workers_memory: 32Gi
-# One additional worker for each 5 users (only when scaling is enabled)
-worker_instance_count: 3
+ai_workers_cores: 32
+ai_workers_memory: 64Gi
+worker_instance_count: 4
 
 # ===================================================================
 # Additional Collections & roles to be installed for this config
@@ -62,6 +61,10 @@ requirements_content:
 
   # LiteLLM Virtual Keys Collection
   - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "{{ tag }}"
+
+  - name: https://github.com/rhpds/rhads_ols_modernize_automation.git
     type: git
     version: "{{ tag }}"
 
@@ -83,6 +86,8 @@ workloads:
 - agnosticd.core_workloads.ocp4_workload_authentication
 - agnosticd.core_workloads.ocp4_workload_pipelines
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- rhpds.rhads_ols_modernize.ocp4_workload_gitops_vault
+- rhpds.rhads_ols_modernize.ocp4_workload_external_secrets
 - agnosticd.core_workloads.ocp4_workload_gitea_operator
 - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
 - agnosticd.core_workloads.ocp4_workload_devspaces
@@ -105,6 +110,20 @@ common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:
 # ---------------------------------------------------------
 ocp4_workload_pipelines_channel: pipelines-1.18
 ocp4_workload_pipelines_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_external_secrets
+# -------------------------------------------------------------------
+ocp4_workload_external_secrets_helm_cli_version: v3.18.4
+ocp4_workload_external_secrets_namespace: external-secrets
+ocp4_workload_external_secrets_helm_repo: https://charts.external-secrets.io
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_vault
+# -------------------------------------------------------------------
+ocp4_workload_gitops_vault_gitops_repo: https://github.com/rhpds/agnosticg
+ocp4_workload_gitops_vault_gitops_repo_revision: main
+ocp4_workload_gitops_vault_namespace: vault
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_litellm_virtual_keys
@@ -237,7 +256,7 @@ __meta__:
   components:
   - name: openshift-base
     display_name: OpenShift Cluster
-    item: agd-v2/ocp-cluster-cnv-pools
+    item: agd-v2/ocp-cluster-cnv-pools/prod
     parameter_values:
       cluster_size: multinode
       host_ocp4_installer_version: "4.20"
