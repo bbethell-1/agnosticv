@@ -1,0 +1,197 @@
+---
+#include /includes/parameters/enable-cert-manager.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/num-users-salesforce.yaml
+
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/secrets/letsencrypt_with_zerossl_fallback.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+env_type: ocp4-cluster
+software_to_deploy: openshift4_assisted
+cloud_provider: openshift_cnv
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_installer_version: "4.20"
+ocp4_installer_use_dev_preview: false
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Default Networking Stack
+# -------------------------------------------------------------------
+ocp4_network_type: OVNKubernetes
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+install_student_user: true
+student_name: lab-user
+student_sudo: true
+install_ipa_client: false
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+ai_control_plane_cores: >-
+  {{ 8 if worker_instance_count|int <= 10
+  else 16 if worker_instance_count|int <= 20
+  else 32
+  }}
+ai_control_plane_memory: >-
+  {{ '16Gi' if worker_instance_count|int <= 10
+  else '32Gi' if worker_instance_count|int <= 20
+  else '64Gi'
+  }}
+worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max\
+  \ }}"
+
+bastion_instance_image: rhel-9.1
+
+ai_workers_cores: 16
+ai_workers_memory: 64Gi
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Infra Workloads (YAML List)
+infra_workloads:
+  - ocp4_workload_authentication
+  - ocp4_workload_project_request_template
+  - ocp4_workload_cert_manager
+  - ocp-workload-terminal
+  - ocp4_workload_external_odf
+  - ocp4-workload-camel-workshop
+# --- Student Workloads (YAML List)
+student_workloads: []
+
+odf_channel: >-
+  {{
+    {
+      '4.16': 'stable-4.16',
+      '4.17': 'stable-4.17',
+      '4.18': 'stable-4.18',
+      '4.20': 'stable-4.19'
+    }.get(ocp4_installer_version, 'stable-' + ocp4_installer_version)
+  }}
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_idm_type: htpasswd
+ocp4_workload_authentication_admin_user: admin
+# Always return users even with user count 1
+ocp4_workload_authentication_enable_user_info_data: true
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+ocp4_workload_authentication_htpasswd_user_base: user
+# Generate user password
+ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# -------------------------------------------------------------------
+ocp4_workload_external_odf_use_rados_namespace: true
+ocp4_workload_external_odf_backingstore_custom_resources: true
+ocp4_workload_external_odf_backingstore_cpu_limits: 1000m
+ocp4_workload_external_odf_backingstore_cpu_requests: 800m
+ocp4_workload_external_odf_backingstore_memory_limits: 4000Mi
+ocp4_workload_external_odf_backingstore_memory_requests: 800Mi
+ocp4_workload_external_odf_backingstore_storage_requests: 50Gi
+ocp4_workload_external_odf_noobaa_custom_resources: true
+ocp4_workload_external_odf_noobaa_memory_limits: 4Gi
+ocp4_workload_external_odf_noobaa_memory_requests: 4Gi
+ocp4_workload_external_odf_noobaa_cpu_limits: 3
+ocp4_workload_external_odf_noobaa_cpu_requests: 3
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+# Values from /includes/secrets/dynamic-aws-dns.yaml
+# cluster_dns_zone: dynamic.redhatworkshops.io
+# route53_aws_zone_id:
+# route53_aws_access_key_id:
+# route53_aws_secret_access_key:
+
+ocp4_workload_cert_manager_cloud_provider: ec2
+# ocp4_workload_cert_manager_ec2_region: "{{ aws_region }}"
+ocp4_workload_cert_manager_ec2_region: us-east-2
+ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+ocp4_workload_cert_manager_channel: stable-v1
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+ocp4_workload_cert_manager_install_api_certificates: false
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 6cb73c49-d6e1-4868-bc55-35f15c7d9c18
+  owners:
+    maintainer:
+      - name: Bruno Meseguer
+        email: bmeseguer@redhat.com
+  deployer:
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:v0.1.1
+      pull: missing
+  catalog:
+    reportingLabels:
+      primaryBU: Application_Developer
+      secondaryBU: Hybrid_Platforms
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB2131: Build fast and secure AI data flows with Red Hat Application Foundations and Connectivity Link"
+    category: Brand_Events
+    keywords:
+      - demo
+      - workshop
+      - camel
+      - openshift
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Provider: App_Services_BU
+      Product_Family: Red_Hat_Cloud
+      Use_Case: Accelerate_Application_Development_And_Delivery
+    multiuser: true
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+      quota:
+        limits.cpu: "256"
+        requests.cpu: "256"
+        limits.memory: "1000Gi"
+        requests.memory: "1000Gi"
+        requests.storage: "2000Gi"
+  tower:
+    timeout: 18000
