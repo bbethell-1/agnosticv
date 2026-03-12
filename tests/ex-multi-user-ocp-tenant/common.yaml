@@ -1,0 +1,264 @@
+---
+# -------------------------------------------------------------------
+# --- Example: Multi-User OpenShift Tenant CI
+# -------------------------------------------------------------------
+#include /includes/access-restriction-admins-only.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# config: namespace -- uses AgnosticD's namespace config which:
+#   - Runs workloads on provision (software.yml)
+#   - Runs workloads in REVERSE order on destroy (destroy_env.yml)
+#   - Sets K8S_AUTH_* env vars for kubernetes.core modules
+#   - Does NOT need remove_workloads (unlike openshift-workloads config)
+config: namespace
+
+# cloud_provider: none -- no cloud account needed, we use pre-provisioned
+# OCP clusters provided by the Sandbox API
+cloud_provider: none
+
+# This is not currently required with 'namespace' config
+# Leaving it for reference or in case we need to override
+# the variable names with what is emitted from Sandbox API
+clusters:
+- default:
+    api_url: "{{ sandbox_openshift_api_url }}"
+    api_token: "{{ cluster_admin_agnosticd_sa_token }}"
+
+# A password should be defined so that it can be passed to the various
+# workloads for a consistent user experience
+common_password: whatever
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+
+requirements_content:
+  collections:
+  # Tenant roles (keycloak_user, namespace, gitops)
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # GitOps bootstrap (deploys all ArgoCD apps via app-of-apps pattern)
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # Showroom
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.5.6
+
+
+# ===================================================================
+# List of workloads to be deployed
+#
+# The order matters:
+#   1. tenant_keycloak_user     -- Create RHBK user on cluster provided by Sanbox API
+#   2. tenant_namespace         -- Create a list of required namespaces
+#   3. gitops_bootstrap         -- Bootstrap ArgoCD app-of-apps (deploys all tenant apps)
+#   4. console_embed            -- OpenShift console iframe integration
+#   5. showroom                 -- Lab/Demo UI
+#
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+# - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+- agnosticd.showroom.ocp4_workload_showroom
+
+remove_workloads:
+- agnosticd.showroom.ocp4_workload_showroom
+# - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# ===================================================================
+# Workload: ocp4_workload_tenant_keycloak_user
+#
+# Find all of the defaults here:
+# https://github.com/agnosticd/namespaced_workloads/tree/main/roles/ocp4_workload_tenant_keycloak_user
+
+# Creates a single user for the lab.
+# Multiple users are not supported at this time.
+#
+# Both the tenant_namespace and tenant_openshift_gitops roles expect
+# a standard username default (user-GUID). If you override this, you must
+# set the variable for each of the namespace workloads to match.
+## ===================================================================
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+
+# ===================================================================
+# Workload: ocp4_workload_tenant_namespace
+#
+# Find all of the defaults here:
+# https://github.com/agnosticd/namespaced_workloads/tree/main/roles/ocp4_workload_tenant_namespace
+#
+# Creates one or more namespaces. The format will be:
+#   {prefix}-{suffix}
+#   ex: user-GUID-myapp
+#
+# The {prefix} will default to ocp4_workload_tenant_namespace_prefix, which
+# defaults to ocp4_workload_tenant_namespace_username, which defaults
+# to the default pattern of "user-{{ guid }}".
+#
+# Make sure this matches what # you used for ocp4_workload_tenant_keycloak_username.
+# This is the user that will be granted access to the namespaces.
+#
+# Each will receive a default quota and limitRange and this can also be
+# configured per namespace
+# ===================================================================
+# This must match the Keycloak username
+ocp4_workload_tenant_namespace_username: "user-{{ guid }}"
+
+# provide a list of suffixes and optionally a quota and limit_range
+ocp4_workload_tenant_namespace_namespaces:
+- suffix: myapp
+  quota:
+    limits.cpu: "2"
+    limits.memory: 4Gi
+- suffix: myotherapp
+  quota:
+    limits.cpu: "1"
+    limits.memory: 2Gi
+
+# If you don't need to provide specific quotas or limit_range
+# ocp4_workload_tenant_namespace_suffixes:
+# - myapp
+# - myotherapp
+
+# TODO: REVIEW THESE SECTIONS
+# ===================================================================
+# Workload: ocp4_workload_gitops_bootstrap
+#
+# Deploys a per-tenant ArgoCD bootstrap Application pointing to the
+# tenant/ directory in the GitOps repo. ArgoCD manages all tenant
+# apps from there (app-of-apps pattern).
+#
+# TODO: GitOps repo needs tenant/bootstrap/ with Application YAMLs.
+# Align with Judd's pattern before enabling.
+# ===================================================================
+# ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant"
+# ocp4_workload_gitops_bootstrap_repo_path: "tenant/bootstrap"
+# ocp4_workload_gitops_bootstrap_repo_revision: main
+# # How namespace targeting works in GitOps:
+# # The bootstrap Helm chart constructs namespace names as {suffix}-{tenant.username}
+# # e.g. librechat-mcpuser-drw4x, mcp-gitea-mcpuser-drw4x, etc.
+# # The ocp4_workload_tenant_namespace role above creates namespaces with the same formula.
+# # Both use the same username — that is the entire contract.
+# # ArgoCD uses CreateNamespace=false so it deploys into the pre-created namespaces.
+# # You never specify namespace names explicitly — they are derived from username.
+# ocp4_workload_gitops_bootstrap_helm_values:
+#   tenant:
+#     username: "{{ ocp4_workload_tenant_keycloak_username }}"
+#     password: "{{ common_password }}"
+# END TODO
+
+# ===================================================================
+# Workload: ocp4_workload_showroom
+
+# Find all of the defaults here:
+# https://github.com/agnosticd/showroom
+#
+# Find the documentation here:
+# https://rhpds.github.io/showroom_template_nookbag/modules/index.html
+#
+# In the example below, openshift_cluster_ingress domain is provided
+# by ocp4_workload_tenant_keycloak_user role in agnosticd_user_info
+# ===================================================================
+# These are required since the Showroom role doesn't natively know about
+# them like the other namespace workloads
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
+
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+# Replace with your Showroom repo
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom_template_nookbag.git
+ocp4_workload_showroom_terminal_type: ""
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 40
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+  - name: Terminal
+    path: /wetty
+    port: 443
+  - name: OpenShift Console
+    url: 'https://console-openshift-console.{{ openshift_cluster_ingress_domain }}'
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: 975db98f-3f00-4938-8816-a54b8157745c
+  owners:
+    maintainer:
+    - name: Nate Stephany
+      email: nstephan@redhat.com
+
+  sandboxes:
+  - kind: OcpSandbox
+    cloud_selector:
+      cloud: cnv-dedicated-shared # use this for CNV
+      # cloud: aws-dedicated-shared # use this for AWS
+      # Use the K:V that was provided when the cluster was
+      # onboarded to Sandbox API
+      lab: ex-multi-user-ocp
+      # This should be defined in the appropriate environment
+      # config - dev, test, event, prod
+      # purpose: prod
+
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+
+  catalog:
+    display_name: "Example Multi-User OpenShift (Tenant)"
+    category: Labs
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+    - openshift
+    labels:
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters: []
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: false
+      status:
+        disable: true
+      stop:
+        disable: false
+      update:
+        disable: true
