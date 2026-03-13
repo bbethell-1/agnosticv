@@ -28,14 +28,17 @@ cloud_provider: none
 # This is not currently required with 'namespace' config
 # Leaving it for reference or in case we need to override
 # the variable names with what is emitted from Sandbox API
-clusters:
-- default:
-    api_url: "{{ sandbox_openshift_api_url }}"
-    api_token: "{{ cluster_admin_agnosticd_sa_token }}"
+# clusters:
+# - default:
+#     api_url: "{{ sandbox_openshift_api_url }}"
+#     api_token: "{{ cluster_admin_agnosticd_sa_token }}"
 
 # A password should be defined so that it can be passed to the various
 # workloads for a consistent user experience
-common_password: whatever
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits')
+  }}
 
 # ===================================================================
 # Additional Collections & roles to be installed for this config
@@ -110,38 +113,50 @@ ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
 # Find all of the defaults here:
 # https://github.com/agnosticd/namespaced_workloads/tree/main/roles/ocp4_workload_tenant_namespace
 #
-# Creates one or more namespaces. The format will be:
-#   {prefix}-{suffix}
-#   ex: user-GUID-myapp
+# Creates one or more namespaces in the format {username}-{suffix},
+# e.g. user-GUID-myapp. If no suffixes are provided, a single namespace
+# named after the user is created instead.
 #
-# The {prefix} will default to ocp4_workload_tenant_namespace_prefix, which
-# defaults to ocp4_workload_tenant_namespace_username, which defaults
-# to the default pattern of "user-{{ guid }}".
+# A ClusterResourceQuota (CRQ) is created by default, scoped to the
+# 'tenant: {username}' label that is applied to every namespace. This
+# gives the user a shared resource pool across all their namespaces
+# rather than fixed per-namespace caps.
 #
-# Make sure this matches what # you used for ocp4_workload_tenant_keycloak_username.
-# This is the user that will be granted access to the namespaces.
+# Override default_quota and default_limit_range here to size the pool
+# for your workload. Set use_cluster_quota: false to use per-namespace
+# ResourceQuota instead.
 #
-# Each will receive a default quota and limitRange and this can also be
-# configured per namespace
+# Must match ocp4_workload_tenant_keycloak_username.
 # ===================================================================
-# This must match the Keycloak username
 ocp4_workload_tenant_namespace_username: "user-{{ guid }}"
 
-# provide a list of suffixes and optionally a quota and limit_range
-ocp4_workload_tenant_namespace_namespaces:
-- suffix: myapp
-  quota:
-    limits.cpu: "2"
-    limits.memory: 4Gi
-- suffix: myotherapp
-  quota:
-    limits.cpu: "1"
-    limits.memory: 2Gi
+# Use a ClusterResourceQuota scoped to the tenant label — gives the user
+# a shared resource pool across all namespaces rather than per-namespace caps.
+ocp4_workload_tenant_namespace_use_cluster_quota: true
 
-# If you don't need to provide specific quotas or limit_range
-# ocp4_workload_tenant_namespace_suffixes:
-# - myapp
-# - myotherapp
+# Namespaces to create. Leave empty for a single namespace = username.
+ocp4_workload_tenant_namespace_suffixes:
+- suffix: myapp
+- suffix: myotherapp
+
+# Total resource pool shared across all tenant namespaces via CRQ.
+# Adjust to match your workload's expected resource consumption.
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "8"
+  requests.cpu: "4"
+  limits.memory: 16Gi
+  requests.memory: 8Gi
+  requests.storage: 100Gi
+
+# LimitRange applied to every namespace.
+# Sets container defaults for pods that don't specify resource requests/limits.
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: "2"
+    memory: 4Gi
+  defaultRequest:
+    cpu: 250m
+    memory: 128Mi
 
 # TODO: REVIEW THESE SECTIONS
 # ===================================================================
