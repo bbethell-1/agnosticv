@@ -1,0 +1,169 @@
+---
+
+# -------------------------------------------------------------------
+# --- LB2596: Quarkus on OpenShift (Tenant)
+# -------------------------------------------------------------------
+# --- This catalog item combines:
+# ---   - Sandbox/namespace architecture (no cluster provisioning)
+# ---   - Multi-user support with per-user namespaces
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/catalog-icon-openshift.yaml
+
+#include /includes/sandbox-api.yaml
+#include /includes/agd-v2-mapping.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# ===================================================================
+# Top Variables
+# ===================================================================
+cloud_provider: none
+config: namespace
+# Sandbox API configuration
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed
+# ===================================================================
+requirements_content:
+  collections:
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: v1.0.0
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.5.7
+  - name: https://github.com/rhpds/quarkus-on-openshift-automation.git
+    type: git
+    version: v1.0.0
+
+# ===================================================================
+# Workloads
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.showroom.ocp4_workload_showroom
+- rhpds.quarkus_on_openshift.bootstrap_tenant
+
+# remove_workloads runs in the ORDER listed
+remove_workloads:
+- rhpds.quarkus_on_openshift.bootstrap_tenant
+- agnosticd.showroom.ocp4_workload_showroom
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_username: "user-{{ guid }}"
+ocp4_workload_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# -------------------------------------------------------------------
+# agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+ocp4_workload_tenant_keycloak_username: "{{ ocp4_workload_username }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ ocp4_workload_user_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+
+# -------------------------------------------------------------------
+# agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+# -------------------------------------------------------------------
+ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_username }}"
+ocp4_workload_tenant_namespace_use_cluster_quota: true
+
+ocp4_workload_tenant_namespace_suffixes:
+- suffix: quarkus
+
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "2"
+  requests.cpu: "1"
+  limits.memory: 8Gi
+  requests.memory: 8Gi
+  requests.storage: 100Gi
+
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: "2"
+    memory: 4Gi
+  defaultRequest:
+    cpu: 250m
+    memory: 1Gi
+
+# -------------------------------------------------------------------
+# agnosticd.showroom.ocp4_workload_showroom
+# -------------------------------------------------------------------
+showroom_repo_revision: v1.0.0
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/quarkus-openshift-showroom
+ocp4_workload_showroom_content_git_repo_ref: "{{ showroom_repo_revision }}"
+
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: 2.0.11
+ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-09
+
+# -------------------------------------------------------------------
+# rhpds.quarkus_on_openshift.bootstrap_tenant
+# -------------------------------------------------------------------
+quarkus_on_openshift_bootstrap_tenant_username: "{{ ocp4_workload_username }}"
+quarkus_on_openshift_bootstrap_tenant_user_password: "{{ ocp4_workload_user_password }}"
+quarkus_on_openshift_bootstrap_tenant_namespaces:
+- "quarkus-{{ ocp4_workload_username }}-{{ guid }}"
+
+# ===================================================================
+# Babylon meta variables
+# ===================================================================
+__meta__:
+  asset_uuid: 56fd74c9-3aac-4877-9249-4c8eb7cb57a9
+  owners:
+    maintainer:
+    - name: Juliano Mohr
+      email: juliano@redhat.com
+    instructions:
+    - name: Ryan Jarvinen
+      email: rjarvine@ibm.com
+    - name: Jaya Baskaran
+      email: jaya.baskaran@ibm.com
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB2596: Quarkus on OpenShift (Tenant)"
+    category: Brand_Events
+    multiuser: false
+    keywords:
+    - openshift
+    - quarkus
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_Runtimes
+      Product_Family: Red_Hat_Application_Services
+      Brand_Event: Red_Hat_Summit_2026
+    reportingLabels:
+      primaryBU: Application_Developer
+      secondaryBU: Hybrid_Platforms
+
+  # -----------------------------------------------------------------
+  # Sandbox API
+  # -----------------------------------------------------------------
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: OcpSandbox
+    alias: cluster
+    namespace_suffix: user
+    cloud_selector:
+      cloud: cnv-dedicated-shared
+      lab: lb2596-quarkus-openshift
+      purpose: prod
