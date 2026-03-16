@@ -21,9 +21,9 @@ cloud_provider: none
 num_users: 0
 
 clusters:
-- default:
-    api_url: "{{ openshift_api_url }}"
-    api_token: "{{ openshift_cluster_admin_token }}"
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
 
 # ===================================================================
 # Additional Collections & roles to be installed for this config
@@ -31,14 +31,14 @@ clusters:
 tag: main
 requirements_content:
   collections:
-  # Assisted Installer Collection
-  - name: https://github.com/rhpds/assisted_installer.git
-    type: git
-    version: v0.0.9
+    # Assisted Installer Collection
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: v0.0.9
 
-  - name: https://github.com/agnosticd/core_workloads.git
-    type: git
-    version: "{{ tag }}"
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: "{{ tag }}"
 
 # ===================================================================
 # Cluster Sizing
@@ -57,8 +57,9 @@ ai_workers_memory: 16Gi
 # List of workloads to be deployed
 # ===================================================================
 workloads:
-- agnosticd.core_workloads.ocp4_workload_authentication
-- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  - agnosticd.core_workloads.ocp4_workload_authentication
+  - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 
 # ===================================================================
 # Workload: ocp4_workload_authentication_keycloak
@@ -76,8 +77,18 @@ ocp4_workload_openshift_gitops_rbac_update: true
 ocp4_workload_openshift_gitops_rbac_policy: |
   g, system:cluster-admins, role:admin
   g, admin, role:admin
-ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
-ocp4_workload_openshift_gitops_resource_tracking_method: annotation
+ocp4_workload_openshift_gitops_rbac_scopes: "[name,groups]"
+#ocp4_workload_openshift_gitops_resource_tracking_method: annotation
+#ocp4_workload_openshift_gitops_kustomize_plugin: true
+
+# ===================================================================
+# Workload: ocp4_workload_gitops_bootstrap
+# ===================================================================
+# This is the minimum required to bootstrap the GitOps deployment
+# and make it compatible with the tenant-bootstrap pattern
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ci-template-gitops.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-infra"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -87,15 +98,17 @@ __meta__:
   asset_uuid: 6cfb314d-bdb6-44d5-ab88-3f3e1bca2836
   owners:
     maintainer:
-    - name: Nate Stephany
-      email: nstephan@redhat.com
+      - name: Nate Stephany
+        email: nstephan@redhat.com
+      - name: Judd Maltin
+        email: jmaltin@redhat.com
 
   catalog:
     display_name: "Example Multi-User OpenShift (Cluster)"
     category: Labs
     namespace: babylon-catalog-{{ stage | default('?') }}
     keywords:
-    - openshift
+      - openshift
     labels:
       Provider: RHDP
     reportingLabels:
@@ -103,35 +116,35 @@ __meta__:
     parameters: []
 
   components:
-  - name: openshift
-    display_name: OpenShift Cluster
-    item: agd-v2/ocp-cluster-cnv-pools
-    parameter_values:
-      cluster_size: multinode
-      host_ocp4_installer_version: '4.20'
-    propagate_provision_data:
-    - name: openshift_api_ca_cert
-      var: openshift_api_ca_cert
-    - name: openshift_api_url
-      var: openshift_api_url
-    - name: openshift_cluster_admin_token
-      var: openshift_api_key
-    - name: openshift_cluster_admin_token
-      var: openshift_cluster_admin_token
-    - name: bastion_public_hostname
-      var: bastion_ansible_host
-    - name: bastion_ssh_user_name
-      var: bastion_ansible_user
-    - name: bastion_ssh_password
-      var: bastion_ansible_ssh_pass
-    - name: bastion_ssh_port
-      var: bastion_ansible_port
-    - name: sandbox_openshift_api_key
-      var: sandbox_openshift_api_key
-    - name: sandbox_openshift_api_url
-      var: sandbox_openshift_api_url
-    - name: sandbox_openshift_namespace
-      var: sandbox_openshift_namespace
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools
+      parameter_values:
+        cluster_size: multinode
+        host_ocp4_installer_version: "4.20"
+      propagate_provision_data:
+        - name: openshift_api_ca_cert
+          var: openshift_api_ca_cert
+        - name: openshift_api_url
+          var: openshift_api_url
+        - name: openshift_cluster_admin_token
+          var: openshift_api_key
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: bastion_public_hostname
+          var: bastion_ansible_host
+        - name: bastion_ssh_user_name
+          var: bastion_ansible_user
+        - name: bastion_ssh_password
+          var: bastion_ansible_ssh_pass
+        - name: bastion_ssh_port
+          var: bastion_ansible_port
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
 
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2

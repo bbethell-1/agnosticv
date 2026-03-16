@@ -77,13 +77,16 @@ requirements_content:
 workloads:
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
-# - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# If you are deploying tenant workloads using GitOps, enable this
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 - agnosticd.showroom.ocp4_workload_ocp_console_embed
 - agnosticd.showroom.ocp4_workload_showroom
 
+# The AgnosticD 'namespace' config will automatically construct this list
+# as a reverse of the 'workloads' list if it is not specificied here
 remove_workloads:
 - agnosticd.showroom.ocp4_workload_showroom
-# - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
 
@@ -97,7 +100,7 @@ remove_workloads:
 # Find all of the defaults here:
 # https://github.com/agnosticd/namespaced_workloads/tree/main/roles/ocp4_workload_tenant_keycloak_user
 
-# Creates a single user for the lab.
+# Creates a single user on the cluster.
 # Multiple users are not supported at this time.
 #
 # Both the tenant_namespace and tenant_openshift_gitops roles expect
@@ -134,7 +137,8 @@ ocp4_workload_tenant_namespace_username: "user-{{ guid }}"
 # a shared resource pool across all namespaces rather than per-namespace caps.
 ocp4_workload_tenant_namespace_use_cluster_quota: true
 
-# Namespaces to create. Leave empty for a single namespace = username.
+# Namespaces to create.
+# Leave empty for a single namespace = username.
 ocp4_workload_tenant_namespace_suffixes:
 - suffix: myapp
 - suffix: myotherapp
@@ -150,6 +154,9 @@ ocp4_workload_tenant_namespace_default_quota:
 
 # LimitRange applied to every namespace.
 # Sets container defaults for pods that don't specify resource requests/limits.
+#
+# You don't need this if you set a limit range on each namespace, but it is
+# safer to leave if you're not sure.
 ocp4_workload_tenant_namespace_default_limit_range:
   default:
     cpu: "2"
@@ -158,32 +165,55 @@ ocp4_workload_tenant_namespace_default_limit_range:
     cpu: 250m
     memory: 128Mi
 
-# TODO: REVIEW THESE SECTIONS
 # ===================================================================
 # Workload: ocp4_workload_gitops_bootstrap
 #
-# Deploys a per-tenant ArgoCD bootstrap Application pointing to the
+# Deploys an ArgoCD bootstrap Application for each tenant. It pointins to the
 # tenant/ directory in the GitOps repo. ArgoCD manages all tenant
 # apps from there (app-of-apps pattern).
-#
-# TODO: GitOps repo needs tenant/bootstrap/ with Application YAMLs.
-# Align with Judd's pattern before enabling.
 # ===================================================================
-# ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant"
-# ocp4_workload_gitops_bootstrap_repo_path: "tenant/bootstrap"
-# ocp4_workload_gitops_bootstrap_repo_revision: main
-# # How namespace targeting works in GitOps:
-# # The bootstrap Helm chart constructs namespace names as {suffix}-{tenant.username}
-# # e.g. librechat-mcpuser-drw4x, mcp-gitea-mcpuser-drw4x, etc.
-# # The ocp4_workload_tenant_namespace role above creates namespaces with the same formula.
-# # Both use the same username — that is the entire contract.
-# # ArgoCD uses CreateNamespace=false so it deploys into the pre-created namespaces.
-# # You never specify namespace names explicitly — they are derived from username.
-# ocp4_workload_gitops_bootstrap_helm_values:
-#   tenant:
-#     username: "{{ ocp4_workload_tenant_keycloak_username }}"
-#     password: "{{ common_password }}"
-# END TODO
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ci-template-gitops.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+
+# This tells the ocp4_workload_gitops_bootstrap role which kind of application to deploy:
+# tenant or infra.
+# You can find the details here:
+# https://github.com/agnosticd/core_workloads/blob/main/roles/ocp4_workload_gitops_bootstrap/tasks/set_application_paths.yml
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant"
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  # For reference: The `deployer` variables are defined by the gitops_boostrap workload
+  # deployer:
+  #   domain: "{{ lookup('agnosticd_user_data', 'openshift_cluster_ingress_domain') }}"
+  #   apiUrl: "{{ lookup('agnosticd_user_data', 'openshift_api_url') }}"
+  #   guid: "{{ guid }}"
+
+  # MINIMUM REQUIRED so we're all using the same User pattern
+  tenant:
+    # This is not giving access to the Argo tenant, it is only to provide a data
+    # structure to be referenced by the Argo workloads
+    name: "{{ guid }}"
+    user:
+      name: "{{ ocp4_workload_tenant_keycloak_username }}"
+
+  # YOUR GITOPS WORKLOADS - examples in the ci-example-gitops repo:
+  # https://github.com/rhpds/ci-template-gitops
+  #
+  # In your GitOps repo you'd likely create Argo Apps for each app.
+  #
+  # First is a "GitOps App":
+  #   /tenant/bootstrap/application-myapp.yaml
+  # This references helm charts to deploy what you needed:
+  #   /tenant/myapp/Chart.yaml
+  myapp:
+    # This matches the namespaces created by the ocp4_workload_tenant_namespace role
+    namespace: "{{ ocp4_workload_tenant_keycloak_username }}-myapp"
+
+  # This is an example of creating a simple Deployment in OpenShift:
+  #   /tenant/bootstrap/myotherapp-deployment.yaml
+  myotherapp:
+    # This matches the namespaces created by the ocp4_workload_tenant_namespace role
+    namespace: "{{ ocp4_workload_tenant_keycloak_username }}-myotherapp"
 
 # ===================================================================
 # Workload: ocp4_workload_showroom
@@ -223,7 +253,6 @@ ocp4_workload_showroom_content_ui_config: |
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
-
 __meta__:
   asset_uuid: 975db98f-3f00-4938-8816-a54b8157745c
   owners:
@@ -234,13 +263,16 @@ __meta__:
   sandboxes:
   - kind: OcpSandbox
     cloud_selector:
-      cloud: cnv-dedicated-shared # use this for CNV
-      # cloud: aws-dedicated-shared # use this for AWS
+      # cnv-dedicated-shared is used for clusters running on CNV
+      # aws-dedicated-shared is used for clusters running on AWS
+      cloud: cnv-dedicated-shared
+
       # Use the K:V that was provided when the cluster was
       # onboarded to Sandbox API
       lab: ex-multi-user-ocp
-      # This should be defined in the appropriate environment
-      # config - dev, test, event, prod
+
+      # Set this to make sure you are placed in the apprpriate environment:
+      # dev, test, event, prod
       # purpose: prod
 
   sandbox_api:
@@ -252,6 +284,11 @@ __meta__:
     display_name: "Example Multi-User OpenShift (Tenant)"
     category: Labs
     namespace: babylon-catalog-{{ stage | default('?') }}
+    workshopUiDisabled: false
+    # Enabled this if you want the user to go straight to Showroom
+    # Currently disabled to allow testing of info templates
+    workshopLabUiRedirect: false
+    multiuser: false
     keywords:
     - openshift
     labels:
@@ -267,13 +304,8 @@ __meta__:
       image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
       pull: missing
     actions:
-      destroy:
-        disable: false
+      # Disabled unless we have a way to start/stop tenant workloads
       start:
-        disable: false
-      status:
         disable: true
       stop:
-        disable: false
-      update:
         disable: true
