@@ -1,177 +1,22 @@
 ---
-#include /includes/agd-v2-mapping.yaml
-#include /includes/access-restriction-devs-edge-bu.yaml
-
-#include /includes/secrets/demosat-rhel-9-10-latest.yaml
-
 # -------------------------------------------------------------------
 # Purpose - Cost tag. One of development, ilt, production, event
 # -------------------------------------------------------------------
 purpose: development
 
 # -------------------------------------------------------------------
-# Mandatory Variables
-# -------------------------------------------------------------------
-cloud_provider: openshift_cnv
-cloud_provider_version: main
-config: openshift-cluster
-clusters:
-- default:
-    api_url: "{{ openshift_api_url }}"
-    api_token: "{{ openshift_cluster_admin_token }}"
-
-# -------------------------------------------------------------------
-# CNV Specific
-# -------------------------------------------------------------------
-bastion_instance_image: rhel-9.6
-bastion_cores: 2
-bastion_memory: 2Gi
-
-master_instance_count: 3
-ai_control_plane_cores: 16
-ai_control_plane_memory: "64Gi"
-
-worker_instance_count: "{{ [(num_users | int / 10) | round(0, 'ceil') | int, 3] | max }}"
-ai_workers_cores: 48
-ai_workers_memory: "208Gi"
-
-# ===================================================================
-# List of workloads to be deployed
-# ===================================================================
-workloads:
-- agnosticd.core_workloads.ocp4_workload_external_odf
-- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
-- agnosticd.core_workloads.ocp4_workload_cert_manager
-- agnosticd.core_workloads.ocp4_workload_openshift_gitops
-- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
-- agnosticd.core_workloads.ocp4_workload_gitea_operator
-- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
-#- agnosticd.showroom.ocp4_workload_showroom_ocp_integration
-- agnosticd.showroom.ocp4_workload_showroom
-
-# need oadp
-
-# infra_workloads:
-#   - ocp4_workload_cert_manager
-#   - ocp4_workload_external_odf
-#   - ocp4_workload_authentication
-#   - ocp4_workload_openshift_gitops
-#   - ocp4_workload_web_terminal
-#   - ocp4_workload_kubevirt
-#   - ocp4_workload_oadp_gitops
-#   - ocp4_workload_gitea_operator
-#   - ocp4_workload_gitops_bootstrap
-# #  - agnosticd.showroom.ocp4_workload_showroom_ocp_integration
-#   - agnosticd.showroom.ocp4_workload_showroom
-
-# ===================================================================
-# Additional Collections & roles to be installed for this config
-# ===================================================================
-requirements_content:
-  collections:
-  # Assisted Installer Collection
-  - name: https://github.com/rhpds/assisted_installer.git
-    type: git
-    version: v0.0.9
-  # Core OpenShift Workloads
-  - name: https://github.com/agnosticd/core_workloads.git
-    type: git
-    version: main
-  # Showroom
-  - name: https://github.com/agnosticd/showroom.git
-    type: git
-    version: v1.3.4
-
-# -------------------------------------------------------------------
-# OpenShift settings
-# -------------------------------------------------------------------
-host_ocp4_installer_version: "4.20"
-host_ocp4_installer_root_url: https://mirror.openshift.com/pub/openshift-v4/clients
-host_ocp4_deploy_installation_method: openshift_assisted
-
-openshift_cluster_admin_service_account_enable: true
-
-cluster_name: "cluster-{{ guid }}"
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_cert_manager
-# -------------------------------------------------------------------
-ocp4_workload_cert_manager_channel: stable-v1
-ocp4_workload_cert_manager_cloud_provider: aws
-
-# Values from /includes/secrets/dynamic-aws-dns.yaml
-# cluster_dns_zone: dynamic.redhatworkshops.io
-# route53_aws_zone_id:
-# route53_aws_access_key_id:
-# route53_aws_secret_access_key:
-ocp4_workload_cert_manager_aws_region: us-east-2
-ocp4_workload_cert_manager_aws_access_key_id: "{{ route53_aws_access_key_id }}"
-ocp4_workload_cert_manager_aws_secret_access_key: "{{ route53_aws_secret_access_key }}"
-ocp4_workload_cert_manager_aws_hostedzoneid: "{{ route53_aws_zone_id }}"
-
-ocp4_workload_cert_manager_use_catalog_snapshot: false
-
-# -------------------------------------------------------------------
-# ocp4_workload_showroom
-# -------------------------------------------------------------------
-ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/edge-fleet-showroom.git
-ocp4_workload_showroom_content_git_repo_ref: rh1-2026
-ocp4_workload_showroom_content_antora_playbook: site.yml
-ocp4_workload_showroom_terminal_type: showroom
-
-# -------------------------------------------------------------------
 # Workload: ocp4_workload_gitea_operator
 # -------------------------------------------------------------------
-ocp4_workload_gitea_operator_project: gitea
-ocp4_workload_gitea_operator_catalog_image_tag: v2.1.0
+ocp4_workload_gitea_operator_channel: stable
 ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
-
-ocp4_workload_gitea_operator_deploy_gitea_instance: true
-ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: "1.25.2"
-ocp4_workload_gitea_operator_name: gitea
-ocp4_workload_gitea_operator_gitea_hostname: gitea
-ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
-# ocp4_workload_gitea_operator_gitea_volume_storage_class: ocs-external-storagecluster-cephfs
-ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel10/postgresql-16
-ocp4_workload_gitea_operator_postgresql_image_tag: latest
-ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
-# ocp4_workload_gitea_operator_postgresql_volume_storage_class: ocs-external-storagecluster-cephfs
-ocp4_workload_gitea_operator_ssl_route: true
-
-# -------------------------------------------------------------------
-# not enough for their own section
-# -------------------------------------------------------------------
-
-ocp4_workload_external_odf_channel: stable-4.20
-
-ocp4_workload_gitops_bootstrap_repo_revision: rh1-2026
-ocp4_workload_openshift_virtualization_channel: stable
-
-ocp4_workload_oadp_gitops_channel: stable
-
-ocp4_workload_openshift_gitops_channel: gitops-1.18
+ocp4_workload_gitea_operator_catalog_image_tag: v2.1.0
+ocp4_workload_gitea_operator_deploy_gitea_instance: false
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
   deployer:
-    scm_url: https://github.com/agnosticd/agnosticd-v2
-    scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      image: quay.io/agnosticd/ee-multicloud:v0.1.2
       pull: missing
-  sandboxes:
-  - kind: OcpSandbox
-    namespace_suffix: ocp4-cluster
-    cloud_selector:
-      cloud: cnv
-      purpose: prod
-      virt: "yes"
-    quota:
-      requests.storage: "7200Gi"
-      limits.cpu: "360"
-      requests.cpu: "360"
-      limits.memory: "1200Gi"
-      requests.memory: "1200Gi"
