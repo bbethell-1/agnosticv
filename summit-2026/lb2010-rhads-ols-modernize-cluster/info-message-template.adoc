@@ -1,78 +1,89 @@
 = LB2010: Code to Cloud at Lightspeed - Access Information
 
-== Lab Guide
+== OpenShift Container Platform
 
-Access your interactive lab guide here:
+*Console URL*: link:{openshift_console_url}[OpenShift Web Console^, window="_blank"]
 
-* link:{{ showroom_url }}[Lab Guide (Showroom)^, window="_blank"]
+*API URL*: `{openshift_api_url}`
 
-== OpenShift Console Access
+*Admin Credentials*:
 
-* OpenShift Web Console: link:{{ openshift_console_url }}[Console^, window="_blank"]
-* Admin Username: `admin`
-* Admin Password: `{{ common_admin_password }}`
+* Username: `admin`
+* Password: `{common_admin_password}`
 
-{% if num_users | int > 1 %}
-== User Accounts
+== Gitea - Git Repository
 
-{% for n in range(1, (num_users | int) + 1) %}
-* User{{ n }}: `user{{ n }}` / `{{ common_user_password }}`
-{% endfor %}
-{% endif %}
+*Console URL*: link:https://gitea.{openshift_cluster_ingress_domain}[Gitea Console^, window="_blank"]
 
-== Application URLs
+*Admin Credentials*:
 
-=== Development Tools
+* Username: `mtaadmin`
+* Password: `{common_admin_password}`
 
-* *Gitea* (Git Repository): link:https://gitea.{{ openshift_cluster_ingress_domain }}[Gitea^, window="_blank"]
-** Admin: `mtaadmin` / `{{ common_admin_password }}`
-{% if num_users | int > 1 %}
-** Users: `user1-user{{ num_users }}` / `{{ common_user_password }}`
-{% endif %}
+== OpenShift GitOps (ArgoCD)
 
-* *OpenShift GitOps (ArgoCD)*: link:https://openshift-gitops-server-openshift-gitops.{{ openshift_cluster_ingress_domain }}[ArgoCD Console^, window="_blank"]
-** Login with OpenShift credentials (admin or userN)
+*Console URL*: link:https://openshift-gitops-server-openshift-gitops.{openshift_cluster_ingress_domain}[ArgoCD Console^, window="_blank"]
 
-* *Dev Spaces*: link:https://devspaces.{{ openshift_cluster_ingress_domain }}[OpenShift Dev Spaces^, window="_blank"]
-** Login with OpenShift credentials
+*Authentication*: Login with OpenShift credentials (admin or user accounts above)
 
-=== Migration & Modernization
+== OpenShift Dev Spaces
 
-* *Migration Toolkit for Applications (MTA)*: link:https://mta-mta.{{ openshift_cluster_ingress_domain }}[MTA Console^, window="_blank"]
-** Login with OpenShift credentials
+*Console URL*: link:https://devspaces.{openshift_cluster_ingress_domain}[Dev Spaces Dashboard^, window="_blank"]
 
-{% if lookup('agnosticd_user_data', 'litellm_api_base_url', default='') %}
-=== AI Services
+*Authentication*: Login with OpenShift credentials (admin or user accounts above)
 
-* *LiteLLM API Endpoint*: `{{ lookup('agnosticd_user_data', 'litellm_api_base_url') }}`
-{% if lookup('agnosticd_user_data', 'litellm_virtual_keys', default=[]) | length > 0 %}
-* *Your Virtual API Keys*:
-{% for key in lookup('agnosticd_user_data', 'litellm_virtual_keys') %}
-** User{{ loop.index }}: `{{ key }}`
-{% endfor %}
-{% endif %}
-{% if lookup('agnosticd_user_data', 'litellm_available_models', default=[]) | length > 0 %}
-* *Available Models*: {{ lookup('agnosticd_user_data', 'litellm_available_models') | join(', ') }}
-{% endif %}
-{% endif %}
+== HashiCorp Vault
+
+*Console URL*: link:https://vault-vault.{openshift_cluster_ingress_domain}[Vault UI^, window="_blank"]
+
+*Root Token*: Available via OpenShift secret in `vault` namespace
+
+ifdef::litellm_api_base_url[]
+== LiteLLM - AI API Gateway
+
+*API Endpoint*: `{litellm_api_base_url}`
+
+ifdef::litellm_virtual_keys[]
+*Virtual API Keys*:
+
+{litellm_virtual_keys}
+
+endif::[]
+ifdef::litellm_available_models[]
+*Available Models*: {litellm_available_models}
+
+endif::[]
+*Usage Example*:
+
+[source,bash]
+----
+curl {litellm_api_base_url}/chat/completions \
+  -H "Authorization: Bearer YOUR_VIRTUAL_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-14b",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+----
+endif::[]
 
 == SSH Bastion Access
 
-{% if bastion_ansible_host is defined %}
+ifdef::bastion_ansible_host[]
 Connect to the bastion host:
 
 [source,bash]
 ----
-ssh {{ bastion_ansible_user }}@{{ bastion_ansible_host }}
+ssh {bastion_ansible_user}@{bastion_ansible_host}
 ----
 
-* Password: `{{ bastion_ansible_ssh_pass }}`
-{% endif %}
+* Password: `{bastion_ansible_ssh_pass}`
+endif::[]
 
 == Cluster Information
 
 * OpenShift Version: 4.20
-* Cluster Type: {% if num_users | int <= 3 %}Single Node OpenShift (SNO){% else %}Multi-node{% endif %}
+* Cluster Type: Multi-node (3 workers)
 * Platform: OpenShift Virtualization (CNV)
 
 == Support
