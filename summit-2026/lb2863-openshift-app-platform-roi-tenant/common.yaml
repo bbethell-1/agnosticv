@@ -1,0 +1,167 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: LB2863 - OpenShift Application Platform ROI (Tenant/CNV)
+# --- USER PROVISIONER -- per-user resources on shared cluster
+# --- Multi-user deployment on a shared pre-provisioned cluster
+# --- Tenant pattern for Summit 2026
+# -------------------------------------------------------------------
+# --- This catalog item combines:
+# ---   - Sandbox/namespace architecture (no cluster provisioning)
+# ---   - Keycloak user authentication
+# ---   - Multi-user support with per-user namespaces
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# cloud_provider: none -- no cloud account needed, we use pre-provisioned
+# OCP clusters from the sandbox pool.
+# config: namespace -- uses AgnosticD's namespace config which:
+#   - Runs workloads on provision (software.yml)
+#   - Runs workloads in REVERSE order on destroy (destroy_env.yml)
+#   - Sets K8S_AUTH_* env vars for kubernetes.core modules
+#   - Does NOT need remove_workloads (unlike openshift-workloads config)
+# ===================================================================
+cloud_provider: none
+config: namespace
+
+# ===================================================================
+# Repository Tag
+# ===================================================================
+tag: main
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+    # LiteLLM Virtual Keys
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "{{ tag }}"
+
+  # Tenant roles (keycloak_user, namespace, gitea)
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: "v1.5.7"
+
+# ===================================================================
+# List of workloads to be deployed
+#
+# Order matters:
+#   1. tenant_keycloak_user  -- Create RHBK user
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+
+# remove_workloads runs in the ORDER listed (explicit destroy control).
+remove_workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- agnosticd.showroom.ocp4_workload_showroom
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Common -- tenant username and password
+# All tenant resources reference the same username and password
+# Single-user tenant deployment
+# -------------------------------------------------------------------
+common_password: "{{ (guid | hash('sha256'))[:8] }}!"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_realm: keycloak
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_models:
+- qwen3-14b
+- llama-scout-17b
+- deepseek-r1-distill-qwen-14b
+ocp4_workload_litellm_virtual_keys_multi_user: false
+ocp4_workload_litellm_virtual_keys_user_count: 1
+ocp4_workload_litellm_virtual_keys_verify_ssl: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-app-platform-roi-showroom.git
+ocp4_workload_showroom_content_git_repo_ref: main
+
+# -------------------------------------------------------------------
+# Sandbox API configuration
+# -------------------------------------------------------------------
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
+# openshift_cluster_ingress_domain is set by ocp4_workload_tenant_keycloak_user via cluster discovery
+
+# ===================================================================
+# Babylon meta variables
+# ===================================================================
+__meta__:
+  asset_uuid: 54F27443-9C66-4304-9D59-6C196C5B43DD
+  owners:
+    maintainer:
+    - name: James Falkner
+      email: jfalkner@redhat.com
+    - name: Evan Shortiss
+      email: eshortis@redhat.com
+    - name: Tyrell Reddy
+      email: treddy@redhat.com
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-15
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB2863: Unlocking OpenShift's Full Value - Using Application Platform Capabilities that Bring Real ROI for Your Apps (Tenant)"
+    category: Workshops
+    keywords:
+    - openshift
+    - application-platform
+    - roi
+    - summit-2026
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    multiuser: false
+    workshopLabUiRedirect: true
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: OcpSandbox
+    alias: cluster
+    namespace_suffix: user
+    cloud_selector:
+      lab: lb2863-openshift-app-platform-roi
+      purpose: prod
