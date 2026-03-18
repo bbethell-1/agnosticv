@@ -1,0 +1,166 @@
+---
+# This item is restricted to devs only!
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: LB2860: Private Model as a Service - Tenant Deployer
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift-data-science.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: none
+config: namespace
+
+# ===================================================================
+# Additional collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+    # Namespaced workloads for tenant provisioning
+    - name: https://github.com/agnosticd/namespaced_workloads.git
+      type: git
+      version: main
+    # Core OpenShift Workloads
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: main
+
+# -------------------------------------------------------------------
+# List of workloads to be deployed
+# -------------------------------------------------------------------
+workloads:
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.core_workloads.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# List of workloads to remove (reverse order of workloads)
+# -------------------------------------------------------------------
+remove_workloads:
+  - agnosticd.core_workloads.ocp4_workload_showroom
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+# Single password for all tenant resources -- deterministic from guid
+# Satisfies Keycloak complexity: uppercase + lowercase + digit + special
+common_password: "Maas{{ (guid | hash('sha256'))[:8] }}!"
+
+# -------------------------------------------------------------------
+# ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+ocp4_workload_tenant_keycloak_username: "llmuser-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_tenant_namespace
+# -------------------------------------------------------------------
+ocp4_workload_tenant_namespace_prefix: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_namespace_namespaces:
+  - "wksp-{{ ocp4_workload_tenant_keycloak_username }}"
+  - "llamastack-{{ ocp4_workload_tenant_keycloak_username }}"
+  - "showroom-{{ ocp4_workload_tenant_keycloak_username }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/private-maas-automation
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ ocp4_workload_tenant_keycloak_username }}"
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  tenant:
+    username: "{{ ocp4_workload_tenant_keycloak_username }}"
+    password: "{{ common_password }}"
+    domain: "{{ sandbox_openshift_apps_domain }}"
+
+ocp4_workload_gitops_bootstrap_health_retries: 2
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_openshift_api_token: "{{ cluster_admin_agnosticd_sa_token }}"
+ocp4_workload_showroom_openshift_api_url: "{{ sandbox_openshift_api_url }}"
+ocp4_workload_showroom_namespace: "showroom-{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/private-maas-showroom
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_only: true
+ocp4_workload_showroom_namespace_display: "LB2860: Private Model as a Service"
+
+# -------------------------------------------------------------------
+# Babylon Meta Variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: ce799a79-6f58-4b18-a81a-65551fbd9048
+  owners:
+    maintainer:
+      - name: Ritesh Shah
+        email: rshah@redhat.com
+      - name: Taylor Smith
+        email: tsmith@redhat.com
+    instructions:
+      - name: Ritesh Shah
+        email: rshah@redhat.com
+      - name: Taylor Smith
+        email: tsmith@redhat.com
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+    actions:
+      status:
+        disable: true
+      update:
+        disable: true
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    reportingLabels:
+      primaryBU: Artificial_Intelligence
+    display_name: "LB2860: Private Model as a Service - Tenant Deployer"
+    category: Brand_Events
+    keywords:
+      - lb2860
+      - summit-2026
+      - openshift ai
+      - maas
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_AI
+      Product_Family: Red_Hat_AI
+      Brand_Event: Red_Hat_Summit_2026
+    multiuser: false
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: maas
+      cloud_selector:
+        cloud: aws-dedicated-shared
+        purpose: dev
+        lab: lb2860-private-maas
+      quota:
+        limits.cpu: "10"
+        requests.cpu: "10"
+        limits.memory: 20Gi
+        requests.memory: 20Gi
+        requests.storage: 100Gi
+  tower:
+    timeout: 3600
