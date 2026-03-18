@@ -54,7 +54,7 @@ requirements_content:
   # Tenant roles (keycloak_user, namespace, gitea)
   - name: https://github.com/agnosticd/namespaced_workloads.git
     type: git
-    version: "{{ tag }}"
+    version: feature-devspaces-embedded-devfile
 
   # GitOps bootstrap (drives all ArgoCD apps via app-of-apps)
   - name: https://github.com/agnosticd/core_workloads.git
@@ -160,7 +160,7 @@ ocp4_workload_tenant_gitea_username: "{{ ocp4_workload_tenant_keycloak_username 
 ocp4_workload_tenant_gitea_password: "{{ common_password }}"
 ocp4_workload_tenant_gitea_repositories:
 - name: kai-coolstore
-  repo: https://github.com/dbrugger946/kai-coolstore.git
+  repo: https://github.com/rhpds/kai-coolstore.git
   private: false
 
 # -------------------------------------------------------------------
@@ -198,17 +198,19 @@ ocp4_workload_tenant_devspaces_user_password: "{{ common_password }}"
 ocp4_workload_tenant_devspaces_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-devworkspace"
 ocp4_workload_tenant_devspaces_devworkspace_name: "{{ ocp4_workload_tenant_keycloak_username }}-workspace"
 ocp4_workload_tenant_devspaces_devworkspace_devfile: >-
-  http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
-
-ocp4_workload_tenant_devspaces_devworkspace_projects:
-- name: modern-app-dev
-  git_repo: kai-coolstore
-  git_repo_base: http://gitea.{{ ocp4_workload_tenant_keycloak_username }}-gitea.svc:3000
-  git_revision: main
-ocp4_workload_tenant_devspaces_devworkspace_components:
-- name: tooling
-  container:
-    image: registry.redhat.io/devspaces/udi-rhel8:latest
+  http://gitea-{{ ocp4_workload_tenant_keycloak_username }}-gitea.{{ openshift_cluster_ingress_domain }}/{{ ocp4_workload_tenant_keycloak_username }}/kai-coolstore/raw/branch/main/devfile.yaml
+ocp4_workload_tenant_devspaces_use_embedded_devfile: true
+ocp4_workload_tenant_devspaces_devfile_env_vars:
+- name: GIT_USERNAME
+  value: "{{ ocp4_workload_tenant_keycloak_username }}"
+- name: GIT_EMAIL
+  value: "{{ ocp4_workload_tenant_keycloak_username }}@demo.redhat.com"
+- name: GIT_PASSWORD
+  value: "{{ common_password }}"
+- name: GITEA_HOST
+  value: "gitea.{{ ocp4_workload_tenant_keycloak_username }}-gitea.svc:3000"
+- name: GIT_ORG
+  value: "{{ ocp4_workload_tenant_keycloak_username }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_tenant_mta
