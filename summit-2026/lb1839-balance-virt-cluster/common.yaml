@@ -1,0 +1,227 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item:  lb1839 - Balance Virt - CLUSTER
+# -------------------------------------------------------------------
+
+# This item is restricted to devs only!
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-virtualization.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
+
+# include this for pooled cluster
+openshift_cnv_scale_cluster: true
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# OpenShift Nodes
+# -------------------------------------------------------------------
+worker_instance_count: "10"
+ai_workers_memory: "126Gi"
+ai_workers_cores: 64
+ai_workers_sockets: 2
+ai_workers_threads: 2
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+    # Assisted Installer Collection
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: main
+      # version: v0.0.9
+    # Core OpenShift Workloads
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: main
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_authentication
+  - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+
+common_admin_username: "admin"
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/admin_password length=12 chars=ascii_letters,digits')
+  }}
+
+# ===================================================================
+# Workload: ocp4_workload_authentication_keycloak
+# ===================================================================
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_keycloak_default_realm: sso
+
+ocp4_workload_authentication_admin_username: "{{ common_admin_username }}"
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_num_users: 0
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.19
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 8Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "4"
+ocp4_workload_openshift_gitops_repo_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, system:cluster-admins, role:admin
+  g, admin, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: "[name,groups]"
+ocp4_workload_openshift_gitops_resourceTrackingMethod: annotation
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/edge-manager-automation.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: infra/bootstrap
+ocp4_workload_gitops_bootstrap_application_name: bootstrap-infra
+
+# don't wait for the gitops application to deploy.  This is for testing ONLY.
+# must be true removed for prod.
+ocp4_workload_gitops_bootstrap_application_wait: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: d432ce12-048e-4f13-ad3d-67861738e9b0
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
+      pull: missing
+    # add for pooled
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: false
+      status:
+        disable: false
+      stop:
+        disable: false
+      update:
+        disable: false
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1839 - Beyond the basics: Operationalizing Red Hat OpenShift Virtualization - CLUSTER"
+    workshopLabUiRedirect: true
+    category: Brand_Events
+    keywords:
+      - summit-2026
+      - lb1839
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Brand_Event: Red_Hat_Summit_2026
+    reportingLabels:
+      assetGroup: Virtualization
+      primaryBU: Hybrid_Platforms
+  owners:
+    maintainer:
+      - name: Judd Maltin
+        email: judd@redhat.com
+    sme:
+      - name: Alan Cowles
+        email: acowles@redhat.com
+    instructions:
+      - name: Alan Cowles
+        email: acowles@redhat.com
+  components:
+    - name: openshift
+      display_name: OpenShift Cluster (virt-labs-pool)
+      item: agd-v2/ocp-virt-labs-pool
+      parameter_values:
+        cluster_size: multinode
+        host_ocp4_installer_version: "4.21"
+        ocp4_fips_enable: false
+      propagate_provision_data:
+        # guest cluster credentials
+        - name: openshift_api_ca_cert
+          var: openshift_api_ca_cert
+        - name: openshift_api_url
+          var: openshift_api_url
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        # ocpvN cluster credentials
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        # Propagate bastion data for infra_add_bastion role
+        - name: bastion_public_hostname
+          var: bastion_ansible_host
+        - name: bastion_ssh_user_name
+          var: bastion_ansible_user
+        - name: bastion_ssh_password
+          var: bastion_ansible_ssh_pass
+        - name: bastion_ssh_port
+          var: bastion_ansible_port
+        # propogate provision data for showroom
+        - name: bastion_public_hostname
+          var: bastion_public_hostname
+        - name: bastion_ssh_user_name
+          var: bastion_ssh_user_name
+        - name: bastion_ssh_password
+          var: bastion_ssh_password
+        - name: bastion_ssh_port
+          var: bastion_ssh_port
+        - name: openshift_cluster_ingress_domain
+          var: openshift_cluster_ingress_domain

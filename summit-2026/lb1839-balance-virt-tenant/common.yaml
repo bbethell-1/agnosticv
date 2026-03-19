@@ -1,0 +1,172 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item:  lb1839 - Balance Virt - TENANT
+# -------------------------------------------------------------------
+
+# This item is restricted to devs only!
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-virtualization.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# cloud_provider: none -- no cloud account needed, we use pre-provisioned
+# OCP clusters from the sandbox pool.
+# config: namespace -- uses AgnosticD's namespace config which:
+#   - Runs workloads on provision (software.yml)
+#   - Runs workloads in REVERSE order on destroy (destroy_env.yml)
+#   - Sets K8S_AUTH_* env vars for kubernetes.core modules
+#   - Does NOT need remove_workloads (unlike openshift-workloads config)
+# ===================================================================
+cloud_provider: none
+config: namespace
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+requirements_content:
+  collections:
+    # Tenant roles (keycloak_user, namespace, gitea)
+    - name: https://github.com/agnosticd/namespaced_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+    # GitOps bootstrap (drives all ArgoCD apps via app-of-apps)
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+    # Showroom
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: "{{ tag }}"
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.showroom.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/admin_password length=12 chars=ascii_letters,digits')
+  }}
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_admin_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_realm: keycloak
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/balance-virt-automation.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ guid }}"
+ocp4_workload_gitops_bootstrap_helm_values:
+  tenant:
+    name: "{{ guid }}"
+    user:
+      name: "{{ ocp4_workload_tenant_keycloak_username }}"
+
+# don't wait for the gitops application to deploy.  This is for testing ONLY.
+# must be true removed for prod.
+ocp4_workload_gitops_bootstrap_application_wait: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+#
+# openshift_cluster_ingress_domain is discovered by tenant_keycloak_user
+# role via cluster ingress config lookup and exported as a fact.
+# -------------------------------------------------------------------
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/rhads-ols-modernize-showroom.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_terminal_type: ""
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 40
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+  - name: OpenShift Console
+    url: 'https://console-openshift-console.{{ openshift_cluster_ingress_domain }}'
+#
+# Dev Mode is overridden in dev.yaml
+ocp4_workload_showroom_antora_enable_dev_mode: "false"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 4d1156b0-d999-44a7-bd65-db3f82596088
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: false
+      status:
+        disable: false
+      stop:
+        disable: false
+      update:
+        disable: false
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1839 - Beyond the basics: Operationalizing Red Hat OpenShift Virtualization - TENANT"
+    workshopLabUiRedirect: true
+    category: Brand_Events
+    keywords:
+      - summit-2026
+      - lb1839
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Brand_Event: Red_Hat_Summit_2026
+    reportingLabels:
+      primaryBU: Edge
+      secondaryBU: Hybrid_Platforms
+  owners:
+    maintainer:
+      - name: Judd Maltin
+        email: judd@redhat.com
+    sme:
+      - name: Alan Cowles
+        email: acowles@redhat.com
+    instructions:
+      - name: Alan Cowles
+        email: acowles@redhat.com
