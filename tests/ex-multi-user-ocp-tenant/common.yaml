@@ -140,8 +140,9 @@ ocp4_workload_tenant_namespace_use_cluster_quota: true
 # Namespaces to create.
 # Leave empty for a single namespace = username.
 ocp4_workload_tenant_namespace_suffixes:
-- suffix: myapp
-- suffix: myotherapp
+- suffix: example1-lab
+- suffix: example2-lab
+- suffix: example3-lab
 
 # Total resource pool shared across all tenant namespaces via CRQ.
 # Adjust to match your workload's expected resource consumption.
@@ -168,54 +169,50 @@ ocp4_workload_tenant_namespace_default_limit_range:
 # ===================================================================
 # Workload: ocp4_workload_gitops_bootstrap
 #
-# Deploys an ArgoCD bootstrap Application for each tenant. It pointins to the
-# tenant/ directory in the GitOps repo. ArgoCD manages all tenant
-# apps from there (app-of-apps pattern).
+# Deploys an ArgoCD bootstrap Application for each tenant pointing at
+# tenant/bootstrap/ in the GitOps repo. ArgoCD manages all tenant apps
+# from there (app-of-apps pattern).
+#
+# deployer.* values (domain, apiUrl, guid) are injected automatically
+# by the role — never set them here.
 # ===================================================================
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ci-template-gitops.git
-ocp4_workload_gitops_bootstrap_repo_revision: main
-
-# This tells the ocp4_workload_gitops_bootstrap role which kind of application to deploy:
-# tenant or infra.
-# You can find the details here:
-# https://github.com/agnosticd/core_workloads/blob/main/roles/ocp4_workload_gitops_bootstrap/tasks/set_application_paths.yml
+ocp4_workload_gitops_bootstrap_repo_revision: summit-2026
 ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ guid }}"
 ocp4_workload_gitops_bootstrap_repo_path: "tenant/bootstrap"
 ocp4_workload_gitops_bootstrap_application_project: tenants
 
 ocp4_workload_gitops_bootstrap_helm_values:
-  # For reference: The `deployer` variables are defined by the gitops_boostrap workload
-  # deployer:
-  #   domain: "{{ lookup('agnosticd_user_data', 'openshift_cluster_ingress_domain') }}"
-  #   apiUrl: "{{ lookup('agnosticd_user_data', 'openshift_api_url') }}"
-  #   guid: "{{ guid }}"
-
-  # MINIMUM REQUIRED so we're all using the same User pattern
+  # tenant.name and tenant.user.name are used by all three examples
+  # to scope resource names and provision data labels to this user.
   tenant:
-    # This is not giving access to the Argo tenant, it is only to provide a data
-    # structure to be referenced by the Argo workloads
     name: "{{ guid }}"
     user:
       name: "{{ ocp4_workload_tenant_keycloak_username }}"
 
-  # YOUR GITOPS WORKLOADS - examples in the ci-example-gitops repo:
-  # https://github.com/rhpds/ci-template-gitops
-  #
-  # In your GitOps repo you'd likely create Argo Apps for each app.
-  #
-  # First is a "GitOps App":
-  #   /tenant/bootstrap/application-myapp.yaml
-  # This references helm charts to deploy what you needed:
-  #   /tenant/myapp/Chart.yaml
-  myapp:
-    # This matches the namespaces created by the ocp4_workload_tenant_namespace role
-    namespace: "{{ ocp4_workload_tenant_keycloak_username }}-myapp"
+  # Example 1: Inline manifests — Deployment, Service, Route rendered directly
+  # by the bootstrap chart. No sub-chart. Namespace must pre-exist.
+  example1InlineResource:
+    enabled: true
+    namespace: "{{ ocp4_workload_tenant_keycloak_username }}-example1-lab"
 
-  # This is an example of creating a simple Deployment in OpenShift:
-  #   /tenant/bootstrap/myotherapp-deployment.yaml
-  myotherapp:
-    # This matches the namespaces created by the ocp4_workload_tenant_namespace role
-    namespace: "{{ ocp4_workload_tenant_keycloak_username }}-myotherapp"
+  # Example 2: Helm sub-chart — bootstrap spawns a child ArgoCD Application
+  # pointing at tenant/example2-helm-basic/.
+  # git.targetRevision must match repo_revision above — the child app reads
+  # from its own git source, independent of the bootstrap's revision.
+  example2HelmBasic:
+    enabled: true
+    namespace: "{{ ocp4_workload_tenant_keycloak_username }}-example2-lab"
+
+  # Example 3: Parameterized Helm sub-chart — same pattern as Example 2 but
+  # every meaningful value is driven from the catalog into the child chart.
+  labs:
+    example3HelmParameterized:
+      enabled: true
+      namespace: "{{ ocp4_workload_tenant_keycloak_username }}-example3-lab"
+      message: "Hello, {{ ocp4_workload_tenant_keycloak_username }}!"
+      replicas: 1
+      imageTag: "latest"
 
 # ===================================================================
 # Workload: ocp4_workload_showroom
