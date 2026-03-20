@@ -36,6 +36,9 @@ requirements_content:
   - name: https://github.com/agnosticd/namespaced_workloads.git
     type: git
     version: v1.0.0
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: 1.3.0
   - name: https://github.com/agnosticd/showroom.git
     type: git
     version: v1.5.7
@@ -46,15 +49,13 @@ requirements_content:
 workloads:
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
-# - agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
-# - agnosticd.namespaced_workloads.ocp4_workload_tenant_devspaces
 - agnosticd.showroom.ocp4_workload_showroom
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 
 # remove_workloads runs in the ORDER listed
 remove_workloads:
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 - agnosticd.showroom.ocp4_workload_showroom
-# - agnosticd.namespaced_workloads.ocp4_workload_tenant_devspaces
-# - agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
 
@@ -96,39 +97,6 @@ ocp4_workload_tenant_namespace_default_limit_range:
     memory: 1Gi
 
 # -------------------------------------------------------------------
-# agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
-# -------------------------------------------------------------------
-ocp4_workload_tenant_openshift_gitops_openshift_api_url: "{{ sandbox_openshift_api_url }}"
-ocp4_workload_tenant_openshift_gitops_openshift_api_token: "{{ cluster_admin_agnosticd_sa_token | trim }}"
-ocp4_workload_tenant_openshift_gitops_user: "{{ ocp4_workload_username }}"
-ocp4_workload_tenant_openshift_gitops_user_password: "{{ ocp4_workload_user_password }}"
-ocp4_workload_tenant_openshift_gitops_user_project_prefix: "appproject"
-ocp4_workload_tenant_openshift_gitops_user_cluster_resource_whitelist:
-- group: ""
-  kind: Namespace
-
-# -------------------------------------------------------------------
-# agnosticd.namespaced_workloads.ocp4_workload_tenant_devspaces
-# -------------------------------------------------------------------
-ocp4_workload_tenant_devspaces_openshift_api_url: "{{ openshift_api_url }}"
-ocp4_workload_tenant_devspaces_openshift_api_token: "{{ openshift_cluster_admin_token | trim }}"
-ocp4_workload_tenant_devspaces_username: "{{ ocp4_workload_username }}"
-ocp4_workload_tenant_devspaces_namespace: "{{ ocp4_workload_username }}-devworkspace"
-ocp4_workload_tenant_devspaces_devworkspace_name: "{{ ocp4_workload_username }}-workspace"
-ocp4_workload_tenant_devspaces_devworkspace_devfile: >-
-  http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
-
-ocp4_workload_tenant_devspaces_devworkspace_projects:
-- name: modern-app-dev
-  git_repo: kai-coolstore
-  git_repo_base: http://gitea.{{ ocp4_workload_username }}-gitea.svc:3000
-  git_revision: main
-ocp4_workload_tenant_devspaces_devworkspace_components:
-- name: tooling
-  container:
-    image: registry.redhat.io/devspaces/udi-rhel8:latest
-
-# -------------------------------------------------------------------
 # agnosticd.showroom.ocp4_workload_showroom
 # -------------------------------------------------------------------
 showroom_repo_revision: v1.0.0
@@ -140,6 +108,19 @@ ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deplo
 ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
 ocp4_workload_showroom_deployer_chart_version: 2.0.11
 ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-09
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+gitops_repo_revision: v1.0.0
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ansible-dev-tools-automation
+ocp4_workload_gitops_bootstrap_repo_revision: "{{ gitops_repo_revision }}"
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap-tenant
+ocp4_workload_gitops_bootstrap_application_project: tenants
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ guid }}"
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  username: "{{ ocp4_workload_username }}"
 
 # ===================================================================
 # Babylon meta variables
