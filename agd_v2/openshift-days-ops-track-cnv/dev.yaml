@@ -9,7 +9,11 @@ tag: main
 ocp4_workload_showroom_content_git_repo_ref: main
 
 # -------------------------------------------------------------------
-# Remove Quay from base workloads (confirmed not needed for workshop)
+# Remove Quay and image puller from base workloads
+# Quay: confirmed not needed for workshop
+# Image puller: pre-caches 6.8 GB devfile image for web terminal but
+#   no workshop module uses the web terminal (students use Wetty).
+#   Saves 6.8 GB per node. Web terminal still works on-demand if needed.
 # -------------------------------------------------------------------
 _base_workloads:
 # Phase 1: Foundation & Authentication
@@ -19,7 +23,7 @@ _base_workloads:
 - agnosticd.showroom.ocp4_workload_showroom
 - openshift_days.ops_track.ocp4_workload_days_ops_track
 - agnosticd.core_workloads.ocp4_workload_web_terminal
-- openshift_days.ops_track.ocp4_workload_kubernetes_image_puller
+# - openshift_days.ops_track.ocp4_workload_kubernetes_image_puller  # removed: 6.8 GB unused image
 # Phase 3: CI/CD
 - agnosticd.core_workloads.ocp4_workload_pipelines
 
@@ -82,7 +86,7 @@ _ols_workloads:
 # defaults or introduces bugs.
 #
 # Snapshot: v4.20_2026_03_16 (latest weekly snapshot)
-# Operators not in the snapshot (RHDH, Image Puller) are pinned by
+# Operators not in the snapshot (RHDH) are pinned by
 # startingCSV instead.
 # -------------------------------------------------------------------
 ocp4_workload_catalogsource_tag: v4.20_2026_03_16
@@ -119,6 +123,37 @@ _security_workloads:
 - agnosticd.core_workloads.ocp4_workload_rhacs
 - openshift_days.ops_track.ocp4_workload_rhacs_console_embed
 - openshift_days.ops_track.ocp4_days_workload_compliance_operator
+
+# -------------------------------------------------------------------
+# Cluster cleanup — disable unused OLM catalogs and prune stale images.
+# Runs twice: before ACS (prevent evictions) and after (final cleanup).
+# Two role names required because the unique filter deduplicates.
+# -------------------------------------------------------------------
+_cleanup_workloads:
+- openshift_days.ops_track.ocp4_workload_cluster_cleanup
+
+_cleanup_final_workloads:
+- openshift_days.ops_track.ocp4_workload_cluster_cleanup_final
+
+# -------------------------------------------------------------------
+# Override workloads builder to insert cleanup before/after ACS
+# -------------------------------------------------------------------
+workloads: >-
+  {{
+    (
+      _base_workloads +
+      (_virt_workloads if module_enable_virt | default(true) | bool else []) +
+      (_hcp_workloads if module_enable_acm | default(true) | bool else []) +
+      (_acm_workloads if module_enable_acm | default(true) | bool else []) +
+      (_backup_workloads if module_enable_backup | default(true) | bool else []) +
+      (_devhub_workloads if module_enable_devhub | default(true) | bool else []) +
+      (_ols_workloads if module_enable_ols | default(true) | bool else []) +
+      _cleanup_workloads +
+      (_security_workloads if module_enable_security | default(true) | bool else []) +
+      _cleanup_final_workloads +
+      _diag_workloads
+    ) | unique | list
+  }}
 
 # -------------------------------------------------------------------
 # Babylon meta variables
