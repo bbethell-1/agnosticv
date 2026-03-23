@@ -1,9 +1,4 @@
 ---
-# This item is restricted to devs only!
-# It should be ordered by regular users using the Virtual CI
-# in the `published` directory.
-#include /includes/access-restriction-devs-only.yaml
-
 # -------------------------------------------------------------------
 # --- Catalog Item: LB2863: Unlocking OpenShift's Full Value - Using Application Platform Capabilities that Bring Real ROI for Your Apps (Cluster)
 # --- Validation enabled by default
@@ -20,14 +15,11 @@
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/salesforce-id.yaml
 
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
 # ===================================================================
 # Mandatory Variables
 # ===================================================================
-# Repository Tag
-# Tag for all repositories that are used in this config.
-# ===================================================================
-tag: main
-# -------------------------------------------------------------------
 cloud_provider: none
 config: openshift-workloads
 clusters:
@@ -47,8 +39,15 @@ worker_instance_count: 4
 # ===================================================================
 # Additional Collections & roles to be installed for this config
 # ===================================================================
+tag: main
+
 requirements_content:
   collections:
+  # Assisted Installer Collection
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.9
+
   # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
@@ -69,7 +68,10 @@ remove_workloads: []
 # -------------------------------------------------------------------
 # Common Password
 # -------------------------------------------------------------------
-common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:16] }}"
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -78,19 +80,18 @@ ocp4_workload_authentication_admin_username: admin
 ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
 
 ocp4_workload_authentication_remove_kubeadmin: true
-ocp4_workload_authentication_enable_user_info_data: true
+# ocp4_workload_authentication_enable_user_info_data: true
 ocp4_workload_authentication_num_users: 0
 
 ocp4_workload_authentication_provider: keycloak
 ocp4_workload_authentication_keycloak_default_realm: sso
-ocp4_workload_authentication_keycloak_channel: stable-v26.2
-ocp4_workload_authentication_keycloak_use_catalog_source: false
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
-  asset_uuid: 73711C3D-576A-421C-B87A-6A9168EC4A18
+  asset_uuid: 88d256d0-7c2a-43d1-8d6a-5ab00f5df6f8
   owners:
     maintainer:
     - name: James Falkner
@@ -107,7 +108,7 @@ __meta__:
       pull: missing
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "LB2863: Unlocking OpenShift's Full Value - Using Application Platform Capabilities that Bring Real ROI for Your Apps (Cluster)"
+    display_name: "LB2863: Unlocking OpenShift's Full Value - Real ROI for Your Apps (Cluster)"
     category: Brand_Events
     keywords:
     - summit-2026
@@ -127,7 +128,7 @@ __meta__:
   components:
   - name: openshift-base
     display_name: OpenShift Cluster
-    item: agd-v2/ocp-cluster-cnv-pools/prod
+    item: agd-v2/ocp-cluster-cnv-pools
     parameter_values:
       cluster_size: multinode
       host_ocp4_installer_version: "4.20"

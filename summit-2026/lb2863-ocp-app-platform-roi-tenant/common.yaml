@@ -36,14 +36,16 @@
 cloud_provider: none
 config: namespace
 
-# ===================================================================
-# Repository Tag
-# ===================================================================
-tag: main
+# not needed at this time - already in namespace config
+# openshift_api_url: "{{ sandbox_openshift_api_url }}"
+# openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
+# openshift_cluster_ingress_domain is set by ocp4_workload_tenant_keycloak_user via cluster discovery
 
 # ===================================================================
 # Additional Collections & roles to be installed for this config
 # ===================================================================
+tag: main
+
 requirements_content:
   collections:
     # LiteLLM Virtual Keys
@@ -72,8 +74,9 @@ workloads:
 # remove_workloads runs in the ORDER listed (explicit destroy control).
 remove_workloads:
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
-- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
-- agnosticd.showroom.ocp4_workload_showroom
+# There is no reason to remove these when they aren't enabled
+# - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# - agnosticd.showroom.ocp4_workload_showroom
 
 # ===================================================================
 # Variables for specific workloads
@@ -84,45 +87,45 @@ remove_workloads:
 # All tenant resources reference the same username and password
 # Single-user tenant deployment
 # -------------------------------------------------------------------
-common_password: "{{ (guid | hash('sha256'))[:8] }}!"
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_tenant_keycloak_user
 # -------------------------------------------------------------------
 ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
 ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
-ocp4_workload_tenant_keycloak_user_keycloak_realm: keycloak
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_litellm_virtual_keys
 # -------------------------------------------------------------------
-ocp4_workload_litellm_virtual_keys_duration: "7d"
-ocp4_workload_litellm_virtual_keys_models:
-- qwen3-14b
-- llama-scout-17b
-- deepseek-r1-distill-qwen-14b
-ocp4_workload_litellm_virtual_keys_multi_user: false
-ocp4_workload_litellm_virtual_keys_user_count: 1
-ocp4_workload_litellm_virtual_keys_verify_ssl: true
+# This workload is not currently enabled
+
+# ocp4_workload_litellm_virtual_keys_duration: "7d"
+# ocp4_workload_litellm_virtual_keys_models:
+# - qwen3-14b
+# - llama-scout-17b
+# - deepseek-r1-distill-qwen-14b
+# ocp4_workload_litellm_virtual_keys_multi_user: false
+# ocp4_workload_litellm_virtual_keys_user_count: 1
+# ocp4_workload_litellm_virtual_keys_verify_ssl: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
 # -------------------------------------------------------------------
+# This workload is not currently enabled
+
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-app-platform-roi-showroom.git
 ocp4_workload_showroom_content_git_repo_ref: main
-
-# -------------------------------------------------------------------
-# Sandbox API configuration
-# -------------------------------------------------------------------
-openshift_api_url: "{{ sandbox_openshift_api_url }}"
-openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
-# openshift_cluster_ingress_domain is set by ocp4_workload_tenant_keycloak_user via cluster discovery
 
 # ===================================================================
 # Babylon meta variables
 # ===================================================================
 __meta__:
-  asset_uuid: 54F27443-9C66-4304-9D59-6C196C5B43DD
+  asset_uuid: 6907e893-fcb1-47d7-b828-bab10737d07f
   owners:
     maintainer:
     - name: James Falkner
@@ -135,11 +138,11 @@ __meta__:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-15
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
       pull: missing
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "LB2863: Unlocking OpenShift's Full Value - Using Application Platform Capabilities that Bring Real ROI for Your Apps (Tenant)"
+    display_name: "LB2863: Unlocking OpenShift's Full Value - Real ROI for Your Apps (Tenant)"
     category: Workshops
     keywords:
     - openshift
@@ -160,8 +163,6 @@ __meta__:
         catch_all: false
   sandboxes:
   - kind: OcpSandbox
-    alias: cluster
-    namespace_suffix: user
     cloud_selector:
+      no_namespace: true
       lab: lb2863-openshift-app-platform-roi
-      purpose: prod
