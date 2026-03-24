@@ -78,6 +78,7 @@ workloads:
 - agnosticd.core_workloads.ocp4_workload_rhacs
 - agnosticd.core_workloads.ocp4_workload_quay_operator
 - agnosticd.core_workloads.ocp4_workload_builds
+- agnosticd.core_workloads.ocp4_workload_gitea_operator
 - rhpds.hummingbird.ocp4_workload_hummingbird
 - agnosticd.showroom.ocp4_workload_ocp_console_embed
 - agnosticd.showroom.ocp4_workload_showroom
@@ -95,8 +96,6 @@ common_admin_password: >-
   {{ lookup('password', output_dir ~ '/common_admin_password', length=12, chars=['ascii_letters', 'digits']) }}
 common_user_password: >-
   {{ lookup('password', output_dir ~ '/common_user_password', length=12, chars=['ascii_letters', 'digits']) }}
-common_s4_access_key: >-
-  {{ lookup('password', output_dir ~ '/common_s4_access_key', length=12, chars=['ascii_letters', 'digits']) }}
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -173,17 +172,54 @@ ocp4_workload_builds_use_catalog_snapshot: false
 ocp4_workload_builds_automatic_install_plan_approval: true
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image_tag: v2.1.0
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.25.5"
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
+# ocp4_workload_gitea_operator_gitea_volume_storage_class: ocs-external-storagecluster-cephfs
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel10/postgresql-16
+ocp4_workload_gitea_operator_postgresql_image_tag: latest
+ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
+# ocp4_workload_gitea_operator_postgresql_volume_storage_class: ocs-external-storagecluster-cephfs
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: gitea-admin
+ocp4_workload_gitea_operator_admin_email: gitea-admin@redhat.com
+ocp4_workload_gitea_operator_admin_password: "{{ common_admin_password}}"
+
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: "{{ ocp4_workload_authentication_num_users | int }}"
+ocp4_workload_gitea_operator_generate_user_format: "{{ ocp4_workload_authentication_user_base }}%d"
+ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
+
+ocp4_workload_gitea_operator_migrate_repositories: false
+ocp4_workload_gitea_operator_repositories_list: []
+# - repo: https://github.com/rh-mad-workshop/modern-app-dev.git
+#   name: modern-app-dev
+#   branch: mta-lab
+#   private: false
+
+# -------------------------------------------------------------------
 # Workload: ocp4_workload_hummingbird
 # -------------------------------------------------------------------
 ocp4_workload_hummingbird_num_users: "{{ ocp4_workload_authentication_num_users | int }}"
 ocp4_workload_hummingbird_user_base: "{{ ocp4_workload_authentication_user_base }}"
 ocp4_workload_hummingbird_user_password: "{{ common_user_password }}"
-ocp4_workload_hummingbird_namespace_base: rhel-
 
 # Settings for the RHEL VMs
-ocp4_workload_hummingbird_vm_name_base: rhel-
-ocp4_workload_hummingbird_vm_datasourcename: hummingbird
-ocp4_workload_hummingbird_vm_datasourcenamespace: openshift-virtualization-os-images
+ocp4_workload_hummingbird_vm_name: rhel
+ocp4_workload_hummingbird_vm_namespace_base: rhel
+ocp4_workload_hummingbird_vm_datasource_name: hummingbird
+ocp4_workload_hummingbird_vm_datasource_namespace: openshift-virtualization-os-images
 ocp4_workload_hummingbird_vm_user: rhel
 ocp4_workload_hummingbird_vm_password: "{{ common_user_password }}"
 ocp4_workload_hummingbird_vm_disksize: 30Gi
@@ -212,7 +248,10 @@ ocp4_workload_hummingbird_datavolume_s3_secret_access_key: !vault |
   3732386564393061373838633262383537343862323735386531
 
 # Settings for the Builds section
-ocp4_workload_hummingbird_builds_namespace_base: hummingbird-builds-
+ocp4_workload_hummingbird_namespace_base_list:
+- hummingbird-builds
+- hummingbird-production
+- hummingbird-acs-lab
 ocp4_workload_hummingbird_builds_quay_url: https://quay.{{ openshift_cluster_ingress_domain }}
 ocp4_workload_hummingbird_builds_quay_admin: quayadmin
 ocp4_workload_hummingbird_builds_quay_admin_password: "{{ common_admin_password }}"
@@ -240,6 +279,16 @@ __meta__:
     maintainer:
     - name: Wolfgang Kulhanek
       email: wkulhane@redhat.com
+    sme:
+    - name: Matt Micene
+      email: mmicene@redhat.com
+    - name: Tosin Akinosho
+      email: takinosh@redhat.com
+    instructions:
+    - name: Matt Micene
+      email: mmicene@redhat.com
+    - name: Tosin Akinosho
+      email: takinosh@redhat.com
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
