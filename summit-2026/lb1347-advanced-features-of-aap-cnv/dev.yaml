@@ -27,6 +27,21 @@ __meta__:
 
 # Should be moved to common.yaml after test
 # -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+subdomain_base_short: "{{ guid }}"
+subdomain_base_suffix: ".{{ sandbox_openshift_apps_domain }}"
+subdomain_base: "{{ subdomain_base_short }}{{ subdomain_base_suffix }}"
+subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{  subdomain }}"
+bastion_ssh_password: "{{ common_password }}"
+ansible_user: cloud-user
+remote_user: cloud-user
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=16, chars=['ascii_letters', 'digits', '@#$-_^='])
+  }}
+# -------------------------------------------------------------------
 # Instances to deploy
 # -------------------------------------------------------------------
 # ------------------------
@@ -122,7 +137,7 @@ instances:
     userdata: |-
       #cloud-config
       user: rhel
-      password: ansible123!
+      password: "{{ common_password }}"
       chpasswd: { expire: False }
       runcmd:
         - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
@@ -274,6 +289,125 @@ post_software_workloads:
 post_software_final_workloads:
   bastions:
     - agnosticd.showroom.vm_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload: ansible_automation_platform_configuration
+# -------------------------------------------------------------------
+aap_image_admin_password: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  32373239343436383338306534653935303666313835656336663537303765313731303463653934
+  3436643364366331316465643465343034633539633330380a623937623535653434393931353437
+  66353462343134626664323931396164363063636339333436653332653131343065393333373631
+  3132353739633633330a396632613537343262666530393366626461343937623330656138373131
+  3239
+ansible_automation_platform_configuration_host: "https://controller-{{ subdomain }}"
+ansible_automation_platform_configuration_username: admin
+ansible_automation_platform_configuration_password: "{{ aap_image_admin_password }}"
+ansible_automation_platform_configuration_verify_ssl: false
+ansible_automation_platform_configuration_create_controller_token: false
+ansible_automation_platform_configuration_generate_ocp_token: false
+
+controller_dependency_check: false
+
+aap_hostname: "{{ ansible_automation_platform_configuration_host }}"
+aap_username: "{{ ansible_automation_platform_configuration_username }}"
+aap_password: "{{ ansible_automation_platform_configuration_password }}"
+aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
+
+aap_configuration_dispatcher_roles:
+  - {role: controller_license, var: controller_license, tags: controller_license}
+  - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
+  - {role: gateway_users, var: aap_user_accounts, tags: gateway_users}
+
+controller_license:
+  manifest_url: "https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip"
+
+gateway_settings:
+  SESSION_COOKIE_AGE: 9000
+
+aap_user_accounts:
+  - username: "lab-user"
+    is_superuser: true
+    password: "{{ common_password }}"
+    email: "lab-user@redhat.com"
+    organizations: "Default"
+    first_name: "lab"
+    last_name: User
+
+# -------------------------------------------------------------------
+# Role: rhpds.manage_host.asset_injector
+# -------------------------------------------------------------------
+common_asset_injector_modules:
+  - description: Remove insights-client package
+    become: true
+    module: dnf
+    name: insights-client
+    state: absent
+
+  - description: Insert GUID in .bashrc
+    module: lineinfile
+    path: /home/{{ student_name }}/.bashrc
+    create: true
+    state: present
+    insertafter: 'EOF'
+    line: export GUID={{ guid }}
+
+  - description: Create ansible group_vars directory
+    module: file
+    path: /etc/ansible/group_vars/
+    state: directory
+
+  - description: Create ansible all directory
+    module: file
+    path: /etc/ansible/group_vars/all
+    state: directory
+
+  - description: Save agnosticd_user_info
+    module: lineinfile
+    path: /etc/ansible/group_vars/all/agnosticd_user_data.yml
+    create: true
+    state: present
+    insertafter: 'EOF'
+    line: |
+      ---
+      {{ lookup ('agnosticd.core.agnosticd_user_data', '*' ) |  to_nice_yaml }}
+
+  - description: Remove existing hosts
+    module: file
+    path: /etc/ansible/hosts
+    state: absent
+
+  - description: Create ansible inventory
+    module: lineinfile
+    path: /etc/ansible/hosts
+    create: true
+    state: present
+    insertafter: 'EOF'
+    line: |
+      {% for group_name in groups %}
+      {% if group_name == 'nodes' %}
+      [{{ group_name }}]
+      {% for host in groups[group_name] %}
+      {{ host }} ansible_user={{ student_name }}
+      {% endfor %}
+      [all]
+      {% for host in groups[group_name] %}
+      {{ host }} ansible_user={{ student_name }}
+      {% endfor %}
+      {% endif %}
+      {% endfor %}
+
+asset_injector_modules: >-
+  {{
+    common_asset_injector_modules
+    if 'bastions' in group_names
+    else
+      common_asset_injector_modules
+        if 'nodes' in group_names
+        else
+          []
+  }}
+
 # -------------------------------------------------------------------
 # Role: agnosticd.showroom.vm_workload_showroom
 # -------------------------------------------------------------------
@@ -325,6 +459,8 @@ agnosticv_importdata:
   controller_url: "https://controller-{{ subdomain }}"
   controller_username: "{{ student_name }}"
   controller_password: "{{ common_password }}"
+  controller_admin_username: "admin"
+  controller__admin_password: "{{ aap_image_admin_password }}"
 
   gitea_url: "https://gitea-{{ subdomain}}"
   gitea_username: "{{ student_name }}"
