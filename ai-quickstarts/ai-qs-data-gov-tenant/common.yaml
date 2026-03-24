@@ -1,9 +1,9 @@
 ---
 # -------------------------------------------------------------------
-# --- Catalog Item: AI Quickstart RAG Tenant
-# --- Per-tenant provisioning for the RAG Quickstart.
-# --- Deploys onto a shared base cluster (ai-qs-rag-cluster) via the
-# --- OpenShift Sandbox API.
+# --- Catalog Item: AI Quickstart Data Governance Copilot Tenant
+# --- Per-tenant provisioning for the Data Governance Copilot.
+# --- Deploys onto a shared base cluster (ai-qs-data-gov-cluster) via
+# --- the OpenShift Sandbox API. Workloads installed via Make.
 # -------------------------------------------------------------------
 
 #include /includes/agd-v2-mapping.yaml
@@ -13,22 +13,14 @@
 
 #include /includes/parameters/purpose.yaml
 
-#include /includes/access-restriction-quickstarts-ai.yaml
 #include /includes/secrets/litemaas-master_api.yaml
 #include /includes/parameters/litellm_metadata.yaml
-#include /includes/secrets/ai-quickstart-hugging-face-token.yaml
-#include /includes/secrets/ai-quickstart-tavily-token.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
 config: namespace
 cloud_provider: none
-
-# clusters:
-#   - default:
-#       api_url: "{{ sandbox_openshift_api_url }}"
-#       api_token: "{{ cluster_admin_agnosticd_sa_token }}"
 
 # ===================================================================
 # Additional Collections & roles to be installed for this config
@@ -49,6 +41,11 @@ requirements_content:
       type: git
       version: "{{ tag }}"
 
+    # AI Quickstart Collection (make-based deployment)
+    - name: https://github.com/agnosticd/ai_quickstarts.git
+      type: git
+      version: "{{ tag }}"
+
     # Showroom
     - name: https://github.com/agnosticd/showroom.git
       type: git
@@ -61,16 +58,9 @@ workloads:
   - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
   - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
   - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
-  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.ai_quickstarts.quickstart_deploy_via_make
   - agnosticd.showroom.ocp4_workload_ocp_console_embed
   - agnosticd.showroom.ocp4_workload_showroom
-
-remove_workloads:
-  - agnosticd.showroom.ocp4_workload_showroom
-  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
-  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
-  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
-  - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
 
 # ===================================================================
 # Common
@@ -94,7 +84,7 @@ ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
 ocp4_workload_tenant_namespace_username: "user-{{ guid }}"
 ocp4_workload_tenant_namespace_use_cluster_quota: true
 ocp4_workload_tenant_namespace_suffixes:
-  - suffix: rag
+  - suffix: data-gov
 
 # Total resource pool shared across all tenant namespaces via CRQ.
 # Adjust to match your workload's expected resource consumption.
@@ -103,7 +93,7 @@ ocp4_workload_tenant_namespace_default_quota:
   requests.cpu: "40"
   limits.memory: 64Gi
   requests.memory: 64Gi
-  requests.storage: 100Gi
+  requests.storage: 50Gi
 
 # LimitRange applied to every namespace.
 # Sets container defaults for pods that don't specify resource requests/limits.
@@ -119,54 +109,34 @@ ocp4_workload_tenant_namespace_default_limit_range:
 # Workload: ocp4_workload_litellm_virtual_keys
 # -------------------------------------------------------------------
 
-ai_quickstart_rag_llm_model: llama-scout-17b
+quickstart_llm_model: qwen3-14b
 
 ocp4_workload_litellm_virtual_keys_duration: "7d"
 ocp4_workload_litellm_virtual_keys_models:
-  - "{{ ai_quickstart_rag_llm_model }}"
+  - "{{ quickstart_llm_model }}"
 
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_gitops_bootstrap
-#
-# Deploys a per-tenant ArgoCD bootstrap Application pointing to the
-# RAG Helm chart. ArgoCD manages the RAG pipeline components.
-# -------------------------------------------------------------------
-# For reference: The `deployer` variables are defined by the gitops_boostrap workload
-# deployer:
-#   domain: "{{ lookup('agnosticd_user_data', 'openshift_cluster_ingress_domain') }}"
-#   apiUrl: "{{ lookup('agnosticd_user_data', 'openshift_api_url') }}"
-#   guid: "{{ guid }}"
-ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ guid }}"
-ocp4_workload_gitops_bootstrap_repo_path: "tenant/bootstrap"
-ocp4_workload_gitops_bootstrap_application_project: tenants
-ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rh-ai-quickstart/RAG.git
-#ocp4_workload_gitops_bootstrap_repo_revision: main
-ocp4_workload_gitops_bootstrap_repo_revision: rj_test_config
-ocp4_workload_gitops_bootstrap_helm_values:
-  tenant:
-    name: "{{ guid }}"
-    user:
-      name: "{{ ocp4_workload_tenant_keycloak_username }}"
-      password: "{{ common_password }}"
-  rag:
-    namespace: "user-{{ guid }}-rag"
-    git:
-      revision: dev
-    values:
-      llm-service:
-        enabled: false
-        secret:
-          hf_token: "{{ ai_quickstart_hugging_face_token }}"
-      llama-stack:
-        secrets:
-          TAVILY_SEARCH_API_KEY: "{{ ai_quickstart_tavily_search_key }}"
-      global:
-        models:
-          remotellm:
-            id: "{{ ai_quickstart_rag_llm_model }}"
-            url: "{{ litellm_api_endpoint }}"
-            apiToken: "{{ litellm_virtual_key }}"
-            enabled: true
+# ===================================================================
+# Workload: quickstart_deploy_via_make
+# ===================================================================
+
+#  NAMESPACE: "{{ quickstart_deploy_via_make_repo_url | basename }}-{{ guid }}"
+quickstart_deploy_via_make_repo_url: https://github.com/rh-ai-quickstart/data-governance-co-pilot
+quickstart_deploy_via_make_scm_ref: main
+quickstart_deploy_via_make_directory: helm
+quickstart_deploy_via_make_params:
+  NAMESPACE: "user-{{ guid }}-data-gov"
+  DEPLOY_MODEL: "false"
+  MODEL: "{{ quickstart_llm_model }}"
+  PROVIDER_MODE: mcp_direct
+  postgres.userId: postgres
+  postgres.password: "{{ common_password }}"
+  postgres.databaseName: postgres
+  llm.apiKey: "{{ litellm_virtual_key }}"
+  llm.baseUrl: "{{ litellm_api_endpoint }}/v1"
+  llm.model: "{{ quickstart_llm_model }}"
+
+quickstart_deploy_via_make_uninstall_params:
+  NAMESPACE: "user-{{ guid }}-data-gov"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_ocp_console_embed + ocp4_workload_showroom
@@ -180,8 +150,10 @@ openshift_api_url: "{{ sandbox_openshift_api_url }}"
 openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
 
 ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
-# Replace with your Showroom repo
-ocp4_workload_showroom_content_git_repo: https://github.com/rh-ai-quickstart/showroom-ai-quickstart-rag
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom-ai-quickstart-data-governance-co-pilot
+ocp4_workload_showroom_content_git_repo_ref: main
+
+# Adding terminals. Links are configured in ui-config.yaml in the showroom repo.
 ocp4_workload_showroom_terminal_type: showroom
 ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-11
 ocp4_workload_showroom_content_ui_config: |
@@ -192,27 +164,33 @@ ocp4_workload_showroom_content_ui_config: |
     enabled: true
     default_mode: split
   tabs:
+  - name: OpenShift Console
+    url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
+  - name: OpenShift AI
+    url: "https://data-science-gateway.{{ openshift_cluster_ingress_domain }}"
   - name: Terminal
     path: /terminal
     port: 443
     secondary_name: Terminal 2
     secondary_path: /terminal/
     secondary_port: 443
-  - name: OpenShift Console
-    url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
-  - name: OpenShift AI
-    url: "https://data-science-gateway.{{ openshift_cluster_ingress_domain }}"
-# ocp4_workload_showroom_passthrough_user_data: true
+
+ocp4_workload_showroom_passthrough_user_data: true
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
-  asset_uuid: 3e7911d5-4612-4d6c-ae6a-b162f96761d6
+  access_control:
+    allow_groups:
+      - rhpds-devs-quickstart-ai
+  asset_uuid: 30f7e590-bac1-4f88-a9e9-626f34086101
   owners:
     maintainer:
       - name: Tony Kay
         email: ankay@redhat.com
+      - name: Marcus Trujillo
+        email: matrujil@redhat.com
       - name: Nate Stephany
         email: nstephany@redhat.com
 
@@ -221,7 +199,7 @@ __meta__:
       cloud_selector:
         purpose: dev # purpose is set per stage (dev.yaml, prod.yaml)
         cloud: cnv-dedicated-shared
-        lab: ai-qs-rag
+        lab: ai-qs-data-gov
 
   sandbox_api:
     actions:
@@ -229,13 +207,14 @@ __meta__:
         catch_all: false
 
   catalog:
-    display_name: "AI Quickstart RAG (Tenant)"
+    display_name: "AI Quickstart Data Governance Copilot"
     category: Labs
     namespace: babylon-catalog-{{ stage | default('?') }}
     keywords:
       - openshift
       - quickstart
       - ai
+      - data-governance
     labels:
       Provider: RHDP
     reportingLabels:
