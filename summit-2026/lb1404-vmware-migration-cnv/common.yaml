@@ -1,7 +1,8 @@
 ---
 # -------------------------------------------------------------------
 # --- Catalog: Red Workshop SUMMIT 2026
-# --- Catalog Item: OSP on OCP
+# --- Catalog Item: From Proprietary to Powerful: VMware Migration to CNV
+# --- this is an OpenStack on OpenShift Lab
 # -------------------------------------------------------------------
 
 # SUMMIT 2026 notes:
@@ -12,37 +13,69 @@
 # AgnosticV includes
 # -------------------------------------------------------------------
 
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
 #include /includes/catalog-icon-openshift.yaml
 #include /includes/terms-of-service.yaml
-#include /includes/sandbox-api.yaml
 
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
-#include /includes/parameters/showroom-ocp-defaults.yaml
 
-#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
 #include /includes/secrets/dynamic-aws-dns.yaml
-#include /includes/secrets/openshift_assisted_installer.yaml
-#include /includes/secrets/zerossl.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/secrets/letsencrypt_with_zerossl_fallback.yaml
 #include /includes/secrets/vmware-ibm-rs-clusters-access.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-env_type: ocp4-cluster
-software_to_deploy: openshift4_assisted
 cloud_provider: openshift_cnv
+# cloud_provider_version: 1.2.3
+cloud_provider_version: fix/create-network-valid-json
+config: openshift-cluster
+project_tag: "{{ config }}-{{ guid }}"
+purpose: production
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+    - name: https://github.com/agnosticd/cloud_provider_openshift_cnv.git
+      type: git
+      version: fix/create-network-valid-json
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: v0.0.9
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: 1.1.0
+    - name: https://github.com/agnosticd/osp-on-ocp.git
+      type: git
+      version: fix/replace-vmware-rest-modules
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: v1.3.7
+    - name: https://github.com/ansible-collections/cloud.common.git
+      type: git
+      version: main
 
 # -------------------------------------------------------------------
-# Platform
+# OpenShift Settings
 # -------------------------------------------------------------------
-platform: RHPDS
+host_ocp4_installer_version: "4.18"
+host_ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+host_ocp4_deploy_installation_method: openshift_assisted
 
-# -------------------------------------------------------------------
-# OpenShift Version
-# -------------------------------------------------------------------
-ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-ocp4_installer_version: "4.18"
+openshift_cluster_admin_service_account_enable: true
+openshift_cluster_ingress_controller_allow_wildcards: true
+
+cluster_name: "cluster-{{ guid }}"
+ai_service_network_cidr: "172.231.0.0/16"
+ai_cluster_network_cidr: "10.232.0.0/14"
+ai_network_mtu: 8900
 
 # -------------------------------------------------------------------
 # Repos
@@ -51,16 +84,11 @@ repo_method: satellite
 update_packages: true
 
 # -------------------------------------------------------------------
-# Default Networking Stack
-# -------------------------------------------------------------------
-ocp4_network_type: OVNKubernetes
-
-# -------------------------------------------------------------------
 # Student User on Bastion
 # -------------------------------------------------------------------
-install_student_user: true
-student_name: lab-user
-student_sudo: true
+install_bastion: true
+bastion_setup_student_user: true
+bastion_student_user_name: lab-user
 
 # -------------------------------------------------------------------
 # CNV Specific
@@ -68,14 +96,17 @@ student_sudo: true
 bastion_instance_image: rhel-9.6
 bastion_cores: 2
 bastion_memory: 4Gi
+bastion_rootfs_size: 30Gi
 
-master_instance_count: 3
+control_plane_instance_count: 3
+control_plane_instance_type: m5a.2xlarge
+
 worker_instance_count: 0
 ai_control_plane_cores: 16
 ai_control_plane_memory: 32Gi
 
 # No users -> admin showroom
-ocp4_workload_authentication_htpasswd_user_count: 0
+ocp4_workload_authentication_num_users: 0
 
 # nfs-server Configuration
 nfsserver_instance_image: rhel-8.2
@@ -105,25 +136,24 @@ networks:
   - name: tenant
   - name: external
 
-# -------------------------------------------------------------------
-# Workloads
-# -------------------------------------------------------------------
-# --- Infra Workloads (YAML List)
-infra_workloads:
-  - ocp4_workload_rhoso_ipam4lab
-  - ocp4_workload_external_odf
-  - ocp4_workload_authentication
-  - ocp4_workload_cert_manager
-  - ocp4_workload_ansible_automation_platform_25
-  - ocp4_workload_openshift_gitops
-  - ocp4_workload_web_terminal
-  - ocp4_workload_kubevirt
-  - ocp4_workload_virt_roadshow_vms
-  - ocp4_workload_virt_roadshow_vmware # will be needed when new version of lab is released
-  - ocp4_workload_showroom
-# --- Workloads that have removal logic implemented that needs to be run (YAML List)
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+  - agnosticd.osp_on_ocp.ocp4_workload_rhoso_ipam4lab
+  - agnosticd.core_workloads.ocp4_workload_external_odf
+  - agnosticd.core_workloads.ocp4_workload_authentication
+  - agnosticd.core_workloads.ocp4_workload_cert_manager
+  - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+  #- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  - agnosticd.core_workloads.ocp4_workload_web_terminal
+  - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+  - agnosticd.osp_on_ocp.ocp4_workload_virt_roadshow_vmware
+  - agnosticd.osp_on_ocp.ocp4_workload_virt_roadshow_vms
+  - agnosticd.showroom.ocp4_workload_showroom
+
 remove_workloads:
-  - ocp4_workload_virt_roadshow_vmware # will be needed when new version of lab is released
+  - agnosticd.osp_on_ocp.ocp4_workload_virt_roadshow_vmware
 
 # -------------------------------------------------------------------
 # Workload variables
@@ -141,23 +171,25 @@ ocp4_workload_rhoso_ipam4lab_allocation_name: "cluster-{{ guid }}"
 ocp4_workload_rhoso_ipam4lab_cluster_name: "{{ sandbox_openshift_cluster }}"
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_external_odf
+# agnosticd.core_workloads.ocp4_workload_external_odf
 # -------------------------------------------------------------------
-odf_channel: stable-4.18
+ocp4_workload_external_odf_channel: stable-4.18
+ocp4_workload_external_odf_backingstore_custom_resources: true
+ocp4_workload_external_odf_operator_use_catalog_snapshot: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication
+# agnosticd.core_workloads.ocp4_workload_authentication
 # -------------------------------------------------------------------
-ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: ""
-ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_password: ""
-#ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('1') | int }}"
+ocp4_workload_authentication_provider: htpasswd
+ocp4_workload_authentication_admin_username: admin
+ocp4_workload_authentication_admin_password: ""
+ocp4_workload_authentication_user_basename: user
+ocp4_workload_authentication_user_password: ""
+#ocp4_workload_authentication_num_users: "{{ num_users | default('1') | int }}"
 ocp4_workload_authentication_remove_kubeadmin: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_cert_manager
+# agnosticd.core_workloads.ocp4_workload_cert_manager
 # -------------------------------------------------------------------
 # Values from /includes/secrets/dynamic-aws-dns.yaml
 # route53_aws_zone_id:
@@ -167,11 +199,11 @@ ocp4_workload_authentication_remove_kubeadmin: true
 ocp4_workload_cert_manager_channel: stable-v1
 ocp4_workload_cert_manager_use_catalog_snapshot: false
 
-ocp4_workload_cert_manager_cloud_provider: ec2
-ocp4_workload_cert_manager_ec2_region: us-east-2
-ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
-ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
-ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
+ocp4_workload_cert_manager_cloud_provider: aws
+ocp4_workload_cert_manager_aws_region: us-east-2
+ocp4_workload_cert_manager_aws_access_key_id: "{{ route53_aws_access_key_id }}"
+ocp4_workload_cert_manager_aws_secret_access_key: "{{ route53_aws_secret_access_key }}"
+ocp4_workload_cert_manager_aws_hostedzoneid: "{{ route53_aws_zone_id }}"
 
 ocp4_workload_cert_manager_install_ingress_certificates: true
 ocp4_workload_cert_manager_install_api_certificates: false
@@ -190,14 +222,13 @@ ocp4_workload_ansible_automation_platform_use_catalog_snapshot: false
 ocp4_workload_ansible_automation_platform_automatic_install_plan_approval: false
 
 # -------------------------------------------------------------------
-# ocp4_workload_openshift_gitops
+# agnosticd.core_workloads.ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
 ocp4_workload_openshift_gitops_channel: gitops-1.18
 ocp4_workload_openshift_gitops_use_catalog_snapshot: false
 
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 
-ocp4_workload_openshift_gitops_update_resources: true
 ocp4_workload_openshift_gitops_controller_update: true
 ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
 ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
@@ -250,24 +281,23 @@ ocp4_workload_openshift_gitops_resource_customizations: |
       return health_status
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_web_terminal
+# agnosticd.core_workloads.ocp4_workload_web_terminal
 # -------------------------------------------------------------------
 ocp4_workload_web_terminal_channel: fast
 ocp4_workload_web_terminal_catalogsource_setup: false
 ocp4_workload_web_terminal_configure: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_kubevirt
+# agnosticd.core_workloads.ocp4_workload_openshift_virtualization
 # -------------------------------------------------------------------
-ocp4_workload_kubevirt_channel: stable
+ocp4_workload_openshift_virtualization_channel: stable
 # Use PVCs for KubeVirt boot images
-ocp4_workload_kubevirt_boot_sources_shapshot: false
+ocp4_workload_openshift_virtualization_boot_sources_snapshot: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_virt_roadshow_vms
 # -------------------------------------------------------------------
 ocp4_workload_virt_roadshow_vms_start_vms: false
-ocp4_workload_virt_roadshow_vms_num_users: 1
 ocp4_workload_virt_roadshow_vms_namespace: vmimported
 # Roadshow Setup
 # When set to true (default) then the application made up from the VMs will not
@@ -276,16 +306,16 @@ ocp4_workload_virt_roadshow_vms_namespace: vmimported
 ocp4_workload_virt_roadshow_vms_roadshow_setup: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_virt_roadshow_vmware
+# agnosticd.osp_on_ocp.ocp4_workload_virt_roadshow_vmware
 # -------------------------------------------------------------------
-ocp4_workload_virt_roadshow_vmware_num_users: 1
 ocp4_workload_virt_roadshow_vmware_vcenter_folder: "ocpvirt-{{ guid }}"
 ocp4_workload_virt_roadshow_vmware_enable_mtv: false
 ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
 ocp4_workload_virt_roadshow_vmware_use_pool: false
+ocp4_workload_virt_roadshow_vsphere_ignore_pip_check: true
 
 # ------------------------------------------------------
-# Showroom
+# agnosticd.showroom.ocp4_workload_showroom
 # ------------------------------------------------------
 ocp4_workload_showroom_name: showroom
 ocp4_workload_showroom_namespace: showroom
@@ -294,10 +324,15 @@ ocp4_workload_showroom_content_only: true
 #### IF YOU UPDATE THE CONTENT_GIT_REPO, PLEASE NOTIFY kodonnel@redhat.com and andharri@redhat.com
 #### FROM SERVICES SO THEY CAN MIGRATE TO ANOTHER REPO WITH US
 #### THEY ARE DOWNSTREAM
+# ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+# openshift_api_url: "{{ sandbox_openshift_api_url }}"
+# openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token | trim | regex_replace('^Bearer ', '') }}"
+# ocp4_workload_showroom_openshift_api_url: "{{ sandbox_openshift_api_url }}"
+# ocp4_workload_showroom_openshift_api_token: "{{ cluster_admin_agnosticd_sa_token | trim | regex_replace('^Bearer ', '') }}"
 ocp4_workload_showroom_content_git_repo: https://github.com/rh-osp-demo/showroom_osp-on-ocp-day2
-# ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-virt-roadshow.git
-####
 ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_terminal_type: ""
+ocp4_workload_showroom_antora_enable_dev_mode: "false"
 
 instances:
   - name: bastion
@@ -309,19 +344,16 @@ instances:
     image_size: "{{ bastion_rootfs_size }}"
     image: "{{ bastion_instance_image }}"
     metadata:
-      - AnsibleGroup: "bastions"
-      - function: bastion
-      - user: "{{ student_name }}"
-      - project: "{{ project_tag }}"
-      - ostype: linux
-      - Purpose: "{{ purpose }}"
+      AnsibleGroup: bastions
+      function: bastion
+      user: "{{ bastion_student_user_name }}"
+      project: "{{ project_tag }}"
+      ostype: linux
     tags:
       - key: "AnsibleGroup"
         value: "bastions"
-      - key: "ostype"
-        value: "linux"
       - key: "instance_filter"
-        value: "{{ env_type }}-{{ guid }}"
+        value: "{{ project_tag }}"
     networks:
       - default
       - default/networkrhovmt
@@ -334,18 +366,18 @@ instances:
     image_size: "{{ compute_rootfs_size }}"
     image: "{{ compute_instance_image }}"
     metadata:
-      - AnsibleGroup: "isolated"
-      - user: "{{ student_name }}"
-      - project: "{{ project_tag }}"
-      - ostype: linux
-      - Purpose: "{{ purpose }}"
+      AnsibleGroup: "isolated"
+      user: "{{ bastion_student_user_name  }}"
+      project: "{{ project_tag }}"
+      ostype: linux
+      Purpose: "{{ purpose }}"
     tags:
       - key: "AnsibleGroup"
         value: "isolated"
       - key: "ostype"
         value: "linux"
       - key: "instance_filter"
-        value: "{{ env_type }}-{{ guid }}"
+        value: "{{ project_tag }}"
     networks:
       - default
       - ctlplane
@@ -362,18 +394,18 @@ instances:
     image_size: "{{ nfsserver_rootfs_size }}"
     image: "{{ nfsserver_instance_image }}"
     metadata:
-      - AnsibleGroup: "isolated"
-      - user: "{{ student_name }}"
-      - project: "{{ project_tag }}"
-      - ostype: linux
-      - Purpose: "{{ purpose }}"
+      AnsibleGroup: "isolated"
+      user: "{{ bastion_student_user_name }}"
+      project: "{{ project_tag }}"
+      ostype: linux
+      Purpose: "{{ purpose }}"
     tags:
       - key: "AnsibleGroup"
         value: "isolated"
       - key: "ostype"
         value: "linux"
       - key: "instance_filter"
-        value: "{{ env_type }}-{{ guid }}"
+        value: "{{ project_tag }}"
     networks:
       - default
       - storage
@@ -382,24 +414,47 @@ instances:
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
-  asset_uuid: f126acf8-9082-43f4-802c-fca41627afc2
+  asset_uuid: 0af9b363-5136-46c0-8deb-3f609089c4c0
   owners:
     maintainer:
       - name: Alberto Gonzalez Rodriguez
         email: josegonz@redhat.com
+      - name: Judd Maltin
+        email: jmaltin@redhat.com
     instructions:
       - name: Pedro Navarro Perez
         email: pperez@redhat.com
 
   deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.1
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
       pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
 
   sandbox_api:
     actions:
       destroy:
         catch_all: false
+
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
 
   catalog:
     display_name: "LB1404: From Proprietary to Powerful: Accelerate Your VMware Migration to the Red Hat Hybrid Cloud"
