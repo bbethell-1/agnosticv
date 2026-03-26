@@ -372,7 +372,7 @@ class BabylonChecker:
         should not greater than 52 character'''
     
         name_len = len(component.name)
-        if name_len > 52:
+        if name_len > 50:
             raise ValueError(
                 f"Component name length must not be greater than 52 characters, "
                 f"name length is {name_len}"
