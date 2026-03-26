@@ -15,6 +15,7 @@
 #include /includes/parameters/salesforce-id.yaml
 
 #include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/secrets/ocp4_workload_ols_api_token.yaml
 
 # ===================================================================
 # Mandatory Variables
@@ -43,9 +44,11 @@ num_users: 1
 # Autoscaling cluster
 # -------------------------------------------------------------------
 openshift_cnv_scale_cluster: true
+worker_instance_count: 3
+worker_only: true
+worker_drain_control_plane: false
 ai_workers_cores: 16
 ai_workers_memory: 32Gi
-worker_instance_count: 2
 
 # ===================================================================
 # Additional Collections & roles to be installed for this config
@@ -62,22 +65,29 @@ requirements_content:
     type: git
     version: "{{ tag }}"
 
+  # AI Workloads
+  - name: https://github.com/agnosticd/ai_workloads.git
+    type: git
+    version: "{{ tag }}"
+
   # Showroom
   - name: https://github.com/agnosticd/showroom.git
     type: git
-    version: v1.3.10
+    version: v1.6.0
 
 # -------------------------------------------------------------------
 # Common Password
 # -------------------------------------------------------------------
-common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:10] }}"
-common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:16] }}"
+common_admin_password: >-
+  {{ lookup('password', output_dir ~ '/common_admin_password', length=12, chars=['ascii_letters', 'digits']) }}
+common_user_password: >-
+  {{ lookup('password', output_dir ~ '/common_user_password', length=12, chars=['ascii_letters', 'digits']) }}
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 workloads:
-- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+- agnosticd.core_workloads.ocp4_workload_authentication
 - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
 - agnosticd.core_workloads.ocp4_workload_metallb
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
@@ -85,29 +95,31 @@ workloads:
 - agnosticd.core_workloads.ocp4_workload_rhacs
 - agnosticd.core_workloads.ocp4_workload_rhacm
 - agnosticd.core_workloads.ocp4_workload_quay_operator
-- agnosticd.showroom.ocp4_workload_showroom_ocp_integration
+- agnosticd.ai_workloads.ocp4_workload_ols
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
 - agnosticd.showroom.ocp4_workload_showroom
+
+remove_workloads:
+- agnosticd.ai_workloads.ocp4_workload_ols
 
 # ===================================================================
 # Variables for specific workloads
 # ===================================================================
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication_htpasswd
+# Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
-# Generate admin password
-ocp4_workload_authentication_htpasswd_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
-ocp4_workload_authentication_htpasswd_admin_password_length: 16
-# Generate user password
-ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password}}"
-ocp4_workload_authentication_htpasswd_user_password_length: 16
-ocp4_workload_authentication_htpasswd_user_password_randomized: true
-ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_admin_username: admin
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_num_users: 0
 
-ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+ocp4_workload_authentication_remove_kubeadmin: true
 ocp4_workload_authentication_enable_user_info_data: true
+
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_default_realm: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.2
+ocp4_workload_authentication_keycloak_use_catalog_source: false
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_virtualization
@@ -141,7 +153,7 @@ ocp4_workload_openshift_gitops_update_route_tls: true
 
 ocp4_workload_openshift_gitops_rbac_update: true
 ocp4_workload_openshift_gitops_rbac_policy: |
-  g, {{ ocp4_workload_authentication_htpasswd_admin_user }}, role:admin
+  g, {{ ocp4_workload_authentication_admin_username }}, role:admin
 ocp4_workload_openshift_gitops_rbac_scopes: '[email,groups]'
 
 ocp4_workload_openshift_gitops_use_catalog_snapshot: false
@@ -155,15 +167,20 @@ ocp4_workload_pipelines_use_catalog_snapshot: false
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacs
 # -------------------------------------------------------------------
-ocp4_workload_rhacs_install_operator_channel: rhacs-4.9
+ocp4_workload_rhacs_install_operator_channel: rhacs-4.10
 ocp4_workload_rhacs_install_operator_namespace: rhacs-operator
 ocp4_workload_rhacs_central_admin_password: "{{ common_admin_password }}"
 ocp4_workload_rhacs_enable_central_scanner_v4: true
+ocp4_workload_rhacs_central_enable_console_plugin: true
+ocp4_workload_rhacs_collector_config_enable: true
+ocp4_workload_rhacs_enable_route_certs: true
+ocp4_workload_rhacs_enable_vm_scanning: true
+ocp4_workload_rhacs_install_roxctl: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm
 # -------------------------------------------------------------------
-ocp4_workload_rhacm_acm_channel: release-2.15
+ocp4_workload_rhacm_acm_channel: release-2.16
 # Required for Catalog Items that will deploy hosted clusters to the local-cluster
 # Enable Wildcards to allow access to HCP Hosted Clusters console, etc.
 ocp4_workload_rhacm_enable_wildcards: true
@@ -171,10 +188,18 @@ ocp4_workload_rhacm_enable_wildcards: true
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_quay_operator
 # -------------------------------------------------------------------
-ocp4_workload_quay_operator_channel: stable-3.15
+ocp4_workload_quay_operator_channel: stable-3.16
 ocp4_workload_quay_operator_registry_namespace: quay
 ocp4_workload_quay_operator_registry_admin_password: "{{ common_admin_password }}"
 ocp4_workload_quay_operator_registry_hostname: quay
+
+# -------------------------------------------------------------------
+# agnosticd.ai_workloads.ocp4_workload_ols
+# -------------------------------------------------------------------
+# Create a child app and SP for this lab environment
+# It is removed when the environment is destroyed
+ocp4_workload_ols_get_token: true
+ocp4_workload_ai_platform: azure
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
@@ -182,9 +207,14 @@ ocp4_workload_quay_operator_registry_hostname: quay
 ocp4_workload_showroom_content_git_repo: https://github.com/mfosterrox/rhacs-demo
 ocp4_workload_showroom_content_git_repo_ref: main
 
+ocp4_workload_showroom_content_antora_playbook: default-site.yml
+
 # Enable Wetty and auto-SSH to bastion
 ocp4_workload_showroom_terminal_type: wetty
 ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+# Dev Mode is overridden in dev.yaml
+ocp4_workload_showroom_antora_enable_dev_mode: "false"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -222,7 +252,7 @@ __meta__:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2025-12-17
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
       pull: missing
     actions:
       destroy:
