@@ -1,0 +1,157 @@
+---
+# -------------------------------------------------------------------
+# --- Project Prelude
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift-ai.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/access-restriction-devs-only.yaml
+#include /includes/parameters/purpose.yaml
+
+# ===================================================================
+# Top Variables
+# ===================================================================
+cloud_provider: none
+config: namespace
+
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed
+# ===================================================================
+tag: main
+
+requirements_content:
+  collections:
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+# ===================================================================
+# Workloads
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+
+remove_workloads:
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_password: >-
+  {{ lookup('password', output_dir ~ '/ocp4_workload_user_password', length=12, chars=['ascii_letters', 'digits']) }}
+
+# -------------------------------------------------------------------
+# agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ ocp4_workload_user_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+
+# -------------------------------------------------------------------
+# agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+# -------------------------------------------------------------------
+ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_namespace_use_cluster_quota: true
+ocp4_workload_tenant_namespace_namespaces:
+- "daamclaw-{{ ocp4_workload_tenant_keycloak_username }}"
+- "mcp-openshift-{{ ocp4_workload_tenant_keycloak_username }}"
+- "mcp-weather-{{ ocp4_workload_tenant_keycloak_username }}"
+- "multimodal-chat-{{ ocp4_workload_tenant_keycloak_username }}"
+- "openclaw-{{ ocp4_workload_tenant_keycloak_username }}"
+- "openwebui-{{ ocp4_workload_tenant_keycloak_username }}"
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+gitops_repo_revision: main
+
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/eformat/rhpds-ci-gitops-demo
+ocp4_workload_gitops_bootstrap_repo_revision: "{{ gitops_repo_revision }}"
+ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
+ocp4_workload_gitops_bootstrap_application_project: tenants
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ ocp4_workload_tenant_keycloak_username }}"
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  tenant:
+    name: "{{ guid }}"
+    user:
+      name: "{{ ocp4_workload_tenant_keycloak_username }}"
+  daamclaw:
+    enabled: true
+    namespace: "daamclaw-{{ ocp4_workload_tenant_keycloak_username }}"
+  mcpOpenshift:
+    enabled: true
+    namespace: "mcp-openshift-{{ ocp4_workload_tenant_keycloak_username }}"
+  mcpWeather:
+    enabled: true
+    namespace: "mcp-weather-{{ ocp4_workload_tenant_keycloak_username }}"
+  multimodalChat:
+    enabled: true
+    namespace: "multimodal-chat-{{ ocp4_workload_tenant_keycloak_username }}"
+  openclaw:
+    enabled: true
+    namespace: "openclaw-{{ ocp4_workload_tenant_keycloak_username }}"
+  openwebui:
+    enabled: true
+    namespace: "openwebui-{{ ocp4_workload_tenant_keycloak_username }}"
+
+# ===================================================================
+# Babylon meta variables
+# ===================================================================
+__meta__:
+  asset_uuid: 791bd305-2213-4daa-ba12-0b8d70f8ba58
+  owners:
+    maintainer:
+    - name: Mike Hepburn
+      email: mhepburn@redhat.com
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
+      pull: missing
+    actions:
+      status:
+        disable: true
+      update:
+        disable: true
+
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Project Prelude"
+    category: Demos
+    multiuser: false
+    labels:
+      Product: Red_Hat_OpenShift_AI
+      Product_Family: Red_Hat_AI
+      Provider: RHDP
+  sandboxes:
+  - kind: OcpSandbox
+    no_namespace: true
+    cloud_selector:
+      cloud: cnv-dedicated-shared
+      demo: project-prelude
+      purpose: prod
+  tower:
+    timeout: 3600
