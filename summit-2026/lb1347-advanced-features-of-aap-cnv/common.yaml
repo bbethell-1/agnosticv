@@ -12,6 +12,7 @@
 #include /includes/sandbox-api.yaml
 #include /includes/secrets/demosat-rhel-9-latest-and-aap25.yaml
 #include /includes/secrets/ansible-tower-advanced-24.yaml
+#include /includes/secrets/registry-redhat.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: LB1347 Advanced features of Ansible Automation Platform
@@ -37,7 +38,10 @@ bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-
 bastion_ssh_password: "{{ common_password }}"
 ansible_user: cloud-user
 remote_user: cloud-user
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + 'RM' }}"
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=16, chars=['ascii_letters', 'digits', '@#$-_^='])
+  }}
 
 # -------------------------------------------------------------------
 # CNV-specific settings
@@ -54,7 +58,9 @@ openshift_cnv_route_remove_x_frame_options_header: true
 bastion_instance_image: rhel-9.6
 controller_instance_image: aap-2.6-2-ceh-20251103
 node_instance_image: rhel-9.6
+ssap_instance_image: ssap-11032026
 
+ssap_rootfs_size: 50Gi
 bastion_rootfs_size: 50Gi
 controller_rootfs_size: 100Gi
 node_rootfs_size: 50Gi
@@ -98,6 +104,10 @@ instances:
             protocol: TCP
             targetPort: 8080
             name: bastion-8080
+          - port: 8181
+            protocol: TCP
+            targetPort: 8181
+            name: bastion-8181
     routes:
       - name: bastion-80
         host: bastion
@@ -123,6 +133,12 @@ instances:
         targetPort: 8080
         tls: true
         tls_termination: edge
+      - name: bastion-8181
+        host: opa
+        service: bastion
+        targetPort: 8181
+        tls: true
+        tls_termination: edge
 
   - name: "controller"
     count: 1
@@ -139,7 +155,7 @@ instances:
     userdata: |-
       #cloud-config
       user: rhel
-      password: ansible123!
+      password: "{{ common_password }}"
       chpasswd: { expire: False }
       runcmd:
         - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
@@ -219,6 +235,48 @@ instances:
       - key: "ostype"
         value: "linux"
 
+  - name: "ssap"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ ssap_instance_image }}"
+    memory: 4G
+    cores: 2
+    image_size: "{{ ssap_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "servers"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: ssap
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: ssap-22
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: ssap-443
+          - port: 7007
+            protocol: TCP
+            targetPort: 7007
+            name: ssap-7007
+    routes:
+      - name: ssap-443
+        host: ssap
+        service: ssap
+        targetPort: 443
+        tls: true
+      - name: ssap-7007
+        host: ssap-portal
+        service: ssap
+        targetPort: 7007
+        tls: true
+        tls_termination: passthrough
+
 # -------------------------------------------------------------------
 # Collection Version Control
 # -------------------------------------------------------------------
@@ -242,25 +300,30 @@ requirements_content:
       version: 1.1.10
     - name: https://github.com/agnosticd/showroom.git
       type: git
-      version: v1.5.1
+      version: v1.5.6
 
 # -------------------------------------------------------------------
 # Workloads: Pre/Software/Post
 # -------------------------------------------------------------------
 pre_software_workloads:
   all:
-    - host_satellite_repositories
-    - host_common_packages
     - agnosticd.cloud_vm_workloads.control_user
   bastions:
-    - bastion
-    - rhpds.manage_host.vscode_server
-    - rhpds.manage_host.gitea_vm_setup
+    - host_satellite_repositories
+    - host_common_packages
+  nodes:
+    - host_satellite_repositories
+    - host_common_packages
 
 software_workloads:
   bastions:
+    - rhpds.manage_host.vscode_server
+    - rhpds.manage_host.gitea_vm_setup
     - rhpds.manage_host.aap_devel_tools
+    - rhpds.manage_host.opa_setup
     - infra.aap_configuration.dispatch
+  servers:
+    - rhpds.manage_host.ssap_setup
 
 post_software_workloads:
   localhost:
@@ -373,16 +436,24 @@ gitea_vm_repos:
     url: https://gitlab.com/ansible-labs-crew/playbooks-dev.git
   - name: playbooks-ops
     url: https://gitlab.com/ansible-labs-crew/playbooks-ops.git
+  - name: opa-policy-enforement
+    url: https://gitlab.com/ansible-labs-crew/policy-enforcement.git
 
 # -------------------------------------------------------------------
 # Workload: ansible_automation_platform_configuration
 # -------------------------------------------------------------------
+aap_image_admin_password: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  32373239343436383338306534653935303666313835656336663537303765313731303463653934
+  3436643364366331316465643465343034633539633330380a623937623535653434393931353437
+  66353462343134626664323931396164363063636339333436653332653131343065393333373631
+  3132353739633633330a396632613537343262666530393366626461343937623330656138373131
+  3239
 ansible_automation_platform_configuration_host: "https://controller-{{ subdomain }}"
 ansible_automation_platform_configuration_username: admin
-ansible_automation_platform_configuration_password: "ansible123!"
+ansible_automation_platform_configuration_password: "{{ aap_image_admin_password }}"
 ansible_automation_platform_configuration_verify_ssl: false
-ansible_automation_platform_configuration_create_controller_token: false
-ansible_automation_platform_configuration_generate_ocp_token: false
+
 
 controller_dependency_check: false
 
@@ -443,6 +514,14 @@ common_asset_injector_modules:
     name: insights-client
     state: absent
 
+  - description: Insert GUID in .bashrc
+    module: lineinfile
+    path: /home/{{ student_name }}/.bashrc
+    create: true
+    state: present
+    insertafter: 'EOF'
+    line: export GUID={{ guid }}
+
   - description: Create ansible group_vars directory
     module: file
     path: /etc/ansible/group_vars/
@@ -500,7 +579,7 @@ asset_injector_modules: >-
   }}
 
 # -------------------------------------------------------------------
-# Role: showroom
+# Role: agnosticd.showroom.vm_workload_showroom
 # -------------------------------------------------------------------
 showroom_git_repo: https://github.com/rhpds/adv-feature-of-aap-showroom.git
 showroom_git_ref: main
@@ -519,7 +598,6 @@ showroom_ssh_password: "{{ common_password }}"
 showroom_tab_services:
   - single_terminal
 
-showroom_antora_enable_dev_mode: "false"
 showroom_content_ui_config: |
   type: showroom
   default_width: 30
@@ -528,20 +606,27 @@ showroom_content_ui_config: |
     enabled: true
     default_mode: split
   tabs:
+    - name: '@Codeserver'
+      url: "https://vscode-{{ subdomain }}"
     - name: '>_Terminal'
       path: /wetty
       port: 443
-    - name: '@Codeserver'
-      url: "https://vscode-{{ subdomain }}"
     - name: AAP
       url: "https://controller-{{ subdomain }}"
     - name: Gitea
       url: "https://gitea-{{ subdomain }}"
+    - name: OPA
+      url: "https://opa-{{ subdomain }}"
+
+# - name: SSAP
+#   url: "https://ssap-portal-{{ subdomain }}"
 
 # -------------------------------------------------------------------
-# Role: agnosticv-userdata-import
+# Role: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
 # -------------------------------------------------------------------
 agnosticv_importdata:
+  guid: "{{ guid }}"
+  automation_hub_hostname: "controller-{{ subdomain }}"
   bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{  subdomain }}"
   bastion_ssh_password: "{{ common_password }}"
   common_password: "{{ common_password }}"
@@ -549,6 +634,10 @@ agnosticv_importdata:
   controller_url: "https://controller-{{ subdomain }}"
   controller_username: "{{ student_name }}"
   controller_password: "{{ common_password }}"
+  controller_admin_username: "admin"
+  controller_admin_password: "{{ aap_image_admin_password }}"
+
+  ssap_url: "https://ssap-portal-{{ subdomain }}"
 
   gitea_url: "https://gitea-{{ subdomain}}"
   gitea_username: "{{ student_name }}"
@@ -556,6 +645,8 @@ agnosticv_importdata:
 
   vscode_server_url: "https://vscode-{{ subdomain }}"
   vscode_server_password: "{{ common_password }}"
+
+  opa_web_url: "https://opa-{{ subdomain }}"
 
   ssh_command: >-
     ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
@@ -569,7 +660,7 @@ agnosticv_importdata:
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
-  asset_uuid: A462B982-D3B7-4C11-ADDB-C89036545A83
+  asset_uuid: a462b982-d3b7-4c11-addb-c89036545a83
   owners:
     maintainer:
       - name: Christian Jung
@@ -613,5 +704,4 @@ __meta__:
     scm_ref: main
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:chained-2025-09-30
-      # image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
       pull: missing
