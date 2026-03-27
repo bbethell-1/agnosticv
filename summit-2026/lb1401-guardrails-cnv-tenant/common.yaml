@@ -1,0 +1,195 @@
+---
+# -------------------------------------------------------------------
+# --- LB1401: Securing GenAI Applications with Guardrails as a Service (Tenant)
+# -------------------------------------------------------------------
+# --- This catalog item combines:
+# ---   - Sandbox/namespace architecture (no cluster provisioning)
+# ---   - Per-user namespaces for peachpal and showroom
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/catalog-icon-openshift-ai.yaml
+
+#include /includes/sandbox-api.yaml
+#include /includes/agd-v2-mapping.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/access-restriction-devs-only.yaml
+
+#include /includes/parameters/purpose.yaml
+
+#include /includes/secrets/maas-models-token.yaml
+
+# ===================================================================
+# Top Variables
+# ===================================================================
+cloud_provider: none
+config: namespace
+# Sandbox API configuration
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed
+# ===================================================================
+tag: main
+
+requirements_content:
+  collections:
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+# ===================================================================
+# Workloads
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.core_workloads.ocp4_workload_showroom
+
+# remove_workloads runs in the ORDER listed (reverse of workloads)
+remove_workloads:
+- agnosticd.core_workloads.ocp4_workload_showroom
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_password: >-
+  {{ lookup('password', output_dir ~ '/ocp4_workload_user_password', length=12, chars=['ascii_letters', 'digits']) }}
+
+# -------------------------------------------------------------------
+# agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ ocp4_workload_user_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+
+# -------------------------------------------------------------------
+# agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+# -------------------------------------------------------------------
+ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_namespace_use_cluster_quota: true
+
+ocp4_workload_tenant_namespace_namespaces:
+- "peachpal-{{ ocp4_workload_tenant_keycloak_username }}"
+- "showroom-{{ ocp4_workload_tenant_keycloak_username }}"
+
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "4"
+  requests.cpu: "2"
+  limits.memory: 16Gi
+  requests.memory: 16Gi
+  requests.storage: 100Gi
+
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: "2"
+    memory: 4Gi
+  defaultRequest:
+    cpu: 250m
+    memory: 1Gi
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+gitops_repo_revision: split-cluster-tenant
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/sec-genai-guardrails-automation
+ocp4_workload_gitops_bootstrap_repo_revision: "{{ gitops_repo_revision }}"
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap-tenant
+ocp4_workload_gitops_bootstrap_application_project: tenants
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ ocp4_workload_tenant_keycloak_username }}"
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  tenant:
+    username: "{{ ocp4_workload_tenant_keycloak_username }}"
+    password: "{{ ocp4_workload_user_password }}"
+    domain: "{{ sandbox_openshift_api_url | regex_replace('^https?://api\\.', '') | regex_replace(':.*$', '') }}"
+  vllm_api_key: "{{ RH1_granite_3_2_8b_instruct_predictor }}"
+  maas_endpoint: https://granite-3-2-8b-instruct-predictor-maas-apicast-production.apps.maas.redhatworkshops.io:443
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+showroom_repo_revision: main
+ocp4_workload_showroom_namespace: "showroom-{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/sec-genai-guardrails-showroom
+ocp4_workload_showroom_content_git_repo_ref: "{{ showroom_repo_revision }}"
+
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: 2.0.11
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_terminal_image: quay.io/juliaaano/openshift-showroom-terminal-ocp:2025-12-02
+
+ocp4_workload_showroom_passthrough_user_data: true
+
+# ===================================================================
+# Babylon meta variables
+# ===================================================================
+__meta__:
+  asset_uuid: fcbcf7db-db32-452c-98a3-e0340beec372
+  owners:
+    maintainer:
+    - email: rshah@redhat.com
+      name: Ritesh Shah
+    - email: ckavili@redhat.com
+      name: Cansu Kavili Oernek
+    - email: abanderb@redhat.com
+      name: Anneli Sara Banderby
+    sme:
+    - email: ckavili@redhat.com
+      name: Cansu Kavili Oernek
+    - email: abanderb@redhat.com
+      name: Anneli Sara Banderby
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      pull: missing
+    actions:
+      status:
+        disable: true
+      update:
+        disable: true
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: >-
+      LB1401: Securing GenAI Applications with Guardrails as a Service - Tenant Provisioner
+    category: Brand_Events
+    multiuser: false
+    workshopLabUiRedirect: true
+    keywords:
+    - summit-2026
+    - lb1401
+    - AIOps
+    - openshift ai
+    - guardrails
+    labels:
+      Brand_Event: Red_Hat_Summit_2026
+      Product: Red_Hat_OpenShift_AI
+      Product_Family: Red_Hat_AI
+      Provider: RHDP
+  sandboxes:
+  - kind: OcpSandbox
+    namespace_suffix: user
+    cloud_selector:
+      cloud: cnv-dedicated-shared
+      purpose: dev
+      lab: lb1401-sec-genai-guardrails-service
+  tower:
+    timeout: 3600
