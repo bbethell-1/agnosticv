@@ -1,0 +1,150 @@
+---
+# Last updated: 2026-03-31 08:10 UTC
+# -------------------------------------------------------------------
+# ZT Dedicated Grading — Bastion + OCP Lab POC
+# -------------------------------------------------------------------
+# Demonstrates 3 ZT grading patterns:
+#   1. Ansible + kubernetes.core from runner (cluster-admin)
+#   2. Bash scripts in showroom repo, run on bastion via ansible.builtin.script
+#   3. Developer user tasks using oc --as developer on bastion
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/parameters/purpose.yaml
+
+config: openshift-workloads
+cloud_provider: none
+
+tag: main
+
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_cluster_admin_token }}"
+
+# ===================================================================
+# Collections
+# ===================================================================
+requirements_content:
+  collections:
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.6.3
+  - name: https://github.com/rhpds/rhpds-ftl.git
+    type: git
+    version: "{{ tag }}"
+
+# ===================================================================
+# Workloads
+# ===================================================================
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+- agnosticd.showroom.ocp4_workload_showroom
+- rhpds.ftl.ocp4_workload_runtime_automation_k8s
+
+remove_workloads:
+- agnosticd.showroom.ocp4_workload_showroom
+- rhpds.ftl.ocp4_workload_runtime_automation_k8s
+
+# ===================================================================
+# ocp4_workload_authentication — create developer user
+# ===================================================================
+ocp4_workload_authentication_cluster_accounts:
+- name: developer
+  password_length: 16
+
+# ===================================================================
+# ocp4_workload_showroom
+# ===================================================================
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-pipelines-demo-showroom.git
+ocp4_workload_showroom_content_git_repo_ref: showroom-zt-dedicated
+ocp4_workload_showroom_content_antora_playbook: site.yml
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+ocp4_workload_showroom_zero_touch_ui_enabled: true
+
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: zerotouch
+ocp4_workload_showroom_deployer_chart_version: "1.9.18"
+ocp4_workload_showroom_runtime_automation_image: "quay.io/rhpds/zt-runner:v2.3.0"
+
+# ===================================================================
+# rhpds.ftl.ocp4_workload_runtime_automation_k8s
+# Dedicated cluster — SA gets cluster-admin ClusterRoleBinding
+# ===================================================================
+ocp4_workload_runtime_automation_k8s_cluster_admin: true
+ocp4_workload_runtime_automation_k8s_openshift_api_url: "{{ openshift_api_url }}"
+ocp4_workload_runtime_automation_k8s_openshift_api_token: "{{ openshift_cluster_admin_token }}"
+
+# ===================================================================
+# Babylon meta
+# ===================================================================
+__meta__:
+  asset_uuid: 907e2bf8-56a8-4ac8-b259-6c9e8cf90b82
+  owners:
+    maintainer:
+    - name: Prakhar Srivastava
+      email: psrivast@redhat.com
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-12-17
+      pull: missing
+    actions:
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
+  catalog:
+    display_name: "Zero Touch Grading — Dedicated OCP + Bastion (POC)"
+    category: Workshops
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+    - zerotouch
+    - grading
+    - dedicated
+    - bastion
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    multiuser: false
+    workshopLabUiRedirect: true
+    parameters: []
+
+  components:
+  - name: openshift
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools/prod
+    parameter_values:
+      cluster_size: sno
+      host_ocp4_installer_version: "4.20"
+      ocp4_fips_enable: false
+    propagate_provision_data:
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+
+  sandboxes:
+  - kind: OcpSandbox
+    alias: cluster
+    cloud_selector:
+      cloud: cnv-dedicated-shared
+      purpose: dev

@@ -1,0 +1,193 @@
+---
+# Last updated: 2026-03-31 08:10 UTC
+# -------------------------------------------------------------------
+# ZT OCP Pipelines Lab — POC Test Catalog Item
+# -------------------------------------------------------------------
+# config: namespace — per-user resources on shared pre-provisioned OCP cluster
+# Pattern: based on PR #25289 (mcp-with-openshift-sandbox)
+#
+# Workloads (in order):
+#   1. ocp4_workload_tenant_keycloak_user — create RHBK user devuser-{guid}
+#   2. ocp4_workload_tenant_namespace     — create namespace zt-test-devuser-{guid}
+#   3. ocp4_workload_showroom             — deploy showroom pod
+#   4. rhpds.ftl.ocp4_workload_zt_load_test    — load test (when zt_load_testing_enabled=true)
+#      Derives all vars from previous roles — NO extra AgV vars needed beyond checkbox.
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/purpose.yaml
+
+config: namespace
+cloud_provider: none
+
+# tag: used by non-showroom collections via version: "{{ tag }}"
+# Override in dev.yaml with branch name, prod.yaml with release tag
+tag: main
+
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+# ===================================================================
+# Collections
+# ===================================================================
+requirements_content:
+  collections:
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.6.3                       # PR #52 merged — adds runtime_automation_image var
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/rhpds/rhpds-ftl.git
+    type: git
+    version: "{{ tag }}"
+
+# ===================================================================
+# Workloads
+# zt_load_testing_enabled checkbox adds ocp4_workload_zt_load_test which triggers
+# solve + validation on all modules to verify grading engine post-deploy.
+# The ZT runner is part of the showroom ZT infrastructure — not a workload.
+# ===================================================================
+workloads: >-
+  {{
+    [
+      'agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user',
+      'agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace',
+      'agnosticd.showroom.ocp4_workload_showroom',
+      'rhpds.ftl.ocp4_workload_runtime_automation_k8s'
+    ] +
+    (
+      ['rhpds.ftl.ocp4_runtime_automation_load_test']
+      if zt_load_testing_enabled | default(false) | bool
+      else []
+    )
+  }}
+
+remove_workloads:
+- rhpds.ftl.ocp4_workload_runtime_automation_k8s
+- agnosticd.showroom.ocp4_workload_showroom
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+
+# ===================================================================
+# ocp4_workload_tenant_keycloak_user
+# ===================================================================
+ocp4_workload_tenant_keycloak_username: "devuser-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_namespace: keycloak
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+ocp4_workload_tenant_keycloak_user_keycloak_admin_secret: keycloak-initial-admin
+
+# ===================================================================
+# ocp4_workload_tenant_namespace
+# Creates: devuser-{guid}-zttest + devuser-{guid}-ztworkspace
+# ===================================================================
+ocp4_workload_tenant_namespace_username: "devuser-{{ guid }}"
+ocp4_workload_tenant_namespace_suffixes:
+- suffix: zttest
+- suffix: ztworkspace
+
+# ===================================================================
+# ocp4_workload_showroom
+# ===================================================================
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-pipelines-demo-showroom.git
+ocp4_workload_showroom_content_git_repo_ref: showroom-zt-test
+ocp4_workload_showroom_content_antora_playbook: site.yml
+ocp4_workload_showroom_terminal_type: ""
+ocp4_workload_showroom_zero_touch_ui_enabled: true
+
+# Use zerotouch chart — includes runner container natively
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: zerotouch
+ocp4_workload_showroom_deployer_chart_version: "1.9.18"
+
+# Override runner image — quay.io/rhpds/zt-runner has kubernetes.core pre-installed
+# Required for OCP-native labs (no SSH/bastion, uses kubernetes.core directly)
+# Needs agnosticd/showroom PR #52 — using branch zt-runtime-automation-image
+ocp4_workload_showroom_runtime_automation_image: "quay.io/rhpds/zt-runner:v2.3.0"
+
+# ===================================================================
+# rhpds.ftl.ocp4_workload_zt_load_test — triggered by zt_load_testing_enabled
+# Triggers solve + validation on all modules to verify grading engine
+# ===================================================================
+
+# ===================================================================
+# Babylon meta
+# ===================================================================
+__meta__:
+  asset_uuid: 4a167809-1025-49fe-8d5e-e65758cf0610
+  owners:
+    maintainer:
+    - name: Prakhar Srivastava
+      email: psrivast@redhat.com
+    - name: Wolfgang Kulhanek
+      email: wkulhane@redhat.com
+    - name: Mitesh Sharma
+      email: mitsharm@redhat.com
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-12-17
+      pull: missing
+  # anarchy.namespace must NOT be set here — controlled at AgV top level
+  catalog:
+    display_name: "Zero Touch Grading — OpenShift Pipelines (Tenant POC)"
+    category: Workshops
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+    - zerotouch
+    - grading
+    - ocp
+    - pipelines
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+    multiuser: false
+    workshopLabUiRedirect: true
+    parameters:
+    - name: zt_load_testing_enabled
+      description: >-
+        Run ZT load test — triggers solve and validate on all lab modules
+        simultaneously to verify the grading engine works end-to-end.
+        The ZT runner is always deployed regardless of this setting.
+      formLabel: "Run ZT Load Test"
+      openAPIV3Schema:
+        type: boolean
+        default: false
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+  sandboxes:
+  # Selects cluster from sandbox pool. Keycloak user created by
+  # ocp4_workload_tenant_keycloak_user workload role (NOT via keycloak: "yes").
+  - kind: OcpSandbox
+    alias: cluster
+    no_namespace: true
+    cloud_selector:
+      cloud: cnv-dedicated-shared
+      demo: mcp-with-openshift
+      purpose: prod
+    quota:
+      limits.cpu: "2"
+      requests.cpu: "2"
+      limits.memory: 4Gi
+      requests.memory: 4Gi
+      requests.storage: 5Gi
+    limit_range:
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 50m
+        memory: 128Mi
+
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
