@@ -6,7 +6,7 @@
 
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/salesforce-id.yaml
-#include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/secrets/litemaas-master_api.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: LB1216 - Demystifying AAP on OCP (Tenant)
@@ -18,6 +18,11 @@
 cloud_provider: none
 config: namespace
 
+# -------------------------------------------------------------------
+# Collection version pinning — override tag in dev/event/prod yaml
+# -------------------------------------------------------------------
+tag: main
+
 # ===================================================================
 # Collections
 # ===================================================================
@@ -25,13 +30,13 @@ requirements_content:
   collections:
   - name: https://github.com/agnosticd/namespaced_workloads.git
     type: git
-    version: main
+    version: "{{ tag }}"
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
-    version: main
+    version: "{{ tag }}"
   - name: https://github.com/agnosticd/showroom.git
     type: git
-    version: v1.5.6
+    version: v1.6.0
 
 # ===================================================================
 # Workloads
@@ -52,7 +57,10 @@ remove_workloads:
 # Common
 # ===================================================================
 ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
-common_password: "Aap{{ (guid | hash('sha256'))[:8] }}!"
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
 
 # ===================================================================
 # ocp4_workload_tenant_keycloak_user
@@ -63,33 +71,44 @@ ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
 
 # ===================================================================
 # ocp4_workload_tenant_namespace
-# Namespace format: {prefix}-{suffix} = {username}-{suffix}
-# e.g. user-abc12-aap, user-abc12-showroom
+# Namespace format: {username}-scenario-{n}
+# e.g. user-abc12-scenario-1
+# Each namespace hosts: AAP stack + ArgoCD Application + showroom (one scenario)
 # ===================================================================
 ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
-ocp4_workload_tenant_namespace_prefix: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_namespace_use_cluster_quota: true
 
-ocp4_workload_tenant_namespace_namespaces:
-- suffix: aap
-  quota:
-    limits.cpu: "40"
-    requests.cpu: "40"
-    limits.memory: 64Gi
-    requests.memory: 64Gi
-    requests.storage: 50Gi
-  limit_range:
-    default: { cpu: "2", memory: 4Gi }
-    defaultRequest: { cpu: 100m, memory: 256Mi }
-- suffix: showroom
-  quota:
-    limits.cpu: "2"
-    requests.cpu: "2"
-    limits.memory: 4Gi
-    requests.memory: 4Gi
-    requests.storage: 5Gi
-  limit_range:
-    default: { cpu: 500m, memory: 512Mi }
-    defaultRequest: { cpu: 50m, memory: 128Mi }
+ocp4_workload_tenant_namespace_suffixes:
+- suffix: "scenario-{{ scenario | default(1) }}"
+
+# Per-namespace quota math (measured on a live cluster):
+# Namespace-scoped AAP operator deploys 6 operator controllers with high limits:
+#   aap-gateway-operator:            2500m CPU limit / 4128Mi memory limit
+#   ansible-lightspeed-operator:     2500m CPU limit / 4128Mi memory limit
+#   automation-controller-operator:  2500m CPU limit / 4128Mi memory limit
+#   automation-hub-operator:         2500m CPU limit / 4128Mi memory limit
+#   eda-server-operator:             2500m CPU limit / 4128Mi memory limit
+#   resource-operator:               2000m CPU limit / 4128Mi memory limit
+#   showroom:                        2200m CPU limit / ~4.3Gi memory limit
+#   Total limits before AAP instance: ~17200m CPU / ~29Gi memory
+#   AAP instance pods add several more GBs — 64Gi/32CPU limit is safe headroom
+# Requests are much lower (~200m CPU / ~1Gi) — scheduler uses requests.
+# requests.cpu governs actual cluster utilization (~27 tenants at 6 vCPU each).
+# limits.cpu must be high enough to allow operator controllers to start.
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "32"
+  requests.cpu: "6"
+  limits.memory: 64Gi
+  requests.memory: 16Gi
+  requests.storage: 25Gi
+
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: "2"
+    memory: 4Gi
+  defaultRequest:
+    cpu: 100m
+    memory: 256Mi
 
 # ===================================================================
 # ocp4_workload_gitops_bootstrap
@@ -97,38 +116,58 @@ ocp4_workload_tenant_namespace_namespaces:
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/demystifying-aap-automation
 ocp4_workload_gitops_bootstrap_repo_revision: main
 ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
-ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ guid }}-scenario-{{ scenario | default(1) }}"
 
-# Wait for bootstrap-tenant Application to be Healthy before proceeding to Showroom.
-# bootstrap-tenant is Healthy only when aap-instance Application is Healthy,
-# which requires job-wait-for-route Job to complete (AAP gateway route active).
+# Wait for bootstrap Application to be Healthy before proceeding to Showroom.
 # 60 retries × 30s = 30 min max wait — covers AAP operator reconciliation time.
 ocp4_workload_gitops_bootstrap_application_wait: true
 ocp4_workload_gitops_bootstrap_application_health_retries: 60
 
+alia_token: "{{ litellm_master_key }}"
+
+# -------------------------------------------------------------------------
+# Helm values passed to the demystifying-aap-automation bootstrap chart.
+# These are consumed by the Helm templates in tenant/aap-instance/ to:
+#   - Name and namespace AAP resources per user
+#   - Configure the AAP admin password and manifest license
+#   - Register the OpenShift SA credential in AAP Controller so that
+#     break/fix job templates can make Kubernetes API calls against the
+#     user's own namespace (namespace-admin ServiceAccount, no cluster-admin)
+#   - Provide ALIA/LiteMaaS config for Scenario 7
+# -------------------------------------------------------------------------
 ocp4_workload_gitops_bootstrap_helm_values:
   tenant:
     username: "{{ ocp4_workload_tenant_keycloak_username }}"
+    namespace: "{{ ocp4_workload_tenant_keycloak_username }}-scenario-{{ scenario | default(1) }}"
     password: "{{ common_password }}"
     domain: "{{ openshift_cluster_ingress_domain }}"
-    scenario: 3
+    apiUrl: "{{ sandbox_openshift_api_url }}"   # cluster API URL for the break SA credential
+    scenario: "{{ scenario | default(1) }}"
   aap:
     hub:
       enabled: true
     manifest:
       url: "https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip"
+  alia:
+    token: "{{ alia_token }}"
+    model: granite-3-2-8b-instruct
+    url: https://litellm-prod.apps.maas.redhatworkshops.io/v1
 
 # ===================================================================
 # ocp4_workload_showroom
 # ===================================================================
-ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
-openshift_api_url: "{{ sandbox_openshift_api_url }}"
-openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token | trim | regex_replace('^Bearer ', '') }}"
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-scenario-{{ scenario | default(1) }}"
 ocp4_workload_showroom_openshift_api_url: "{{ sandbox_openshift_api_url }}"
 ocp4_workload_showroom_openshift_api_token: "{{ cluster_admin_agnosticd_sa_token | trim | regex_replace('^Bearer ', '') }}"
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/demystifying-aap-on-ocp-showroom
 ocp4_workload_showroom_content_git_repo_ref: main
 ocp4_workload_showroom_terminal_type: ""
+ocp4_workload_showroom_content_vars:
+  scenario: "{{ scenario | default(1) }}"
+  aap_url: "https://{{ ocp4_workload_tenant_keycloak_username }}-aap-{{ ocp4_workload_tenant_keycloak_username }}-scenario-{{ scenario | default(1) }}.{{ openshift_cluster_ingress_domain }}"
+  alia_token: "{{ alia_token }}"
+  alia_model: granite-3-2-8b-instruct
+  alia_url: https://litellm-prod.apps.maas.redhatworkshops.io/v1
 ocp4_workload_showroom_content_ui_config: |
   type: showroom
   default_width: 40
@@ -140,7 +179,7 @@ ocp4_workload_showroom_content_ui_config: |
   - name: OpenShift Console
     url: 'https://console-openshift-console.{{ openshift_cluster_ingress_domain }}'
   - name: Ansible Automation Platform
-    url: 'https://{{ ocp4_workload_tenant_keycloak_username }}-aap-{{ ocp4_workload_tenant_keycloak_username }}-aap.{{ openshift_cluster_ingress_domain }}'
+    url: 'https://{{ ocp4_workload_tenant_keycloak_username }}-aap-{{ ocp4_workload_tenant_keycloak_username }}-scenario-{{ scenario | default(1) }}.{{ openshift_cluster_ingress_domain }}'
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -151,15 +190,15 @@ __meta__:
     maintainer:
     - name: Ricardo Garcia
       email: rgarciac@redhat.com
-
-  anarchy:
-    namespace: babylon-anarchy-events
+    instructions:
+    - name: Ryan Laroy
+      email: laroy@redhat.com
 
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2025-12-17
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
       pull: missing
 
   catalog:
@@ -167,7 +206,13 @@ __meta__:
     display_name: "LB1216 - Demystifying AAP on OCP"
     category: Brand_Events
     multiuser: false
-    keywords: [lb1216, summit-2026, aap, ansible, openshift]
+    workshopLabUiRedirect: true
+    keywords:
+    - lb1216
+    - summit-2026
+    - aap
+    - ansible
+    - openshift
     labels:
       Provider: RHDP
       Product: Red_Hat_Ansible_Automation_Platform
@@ -177,35 +222,22 @@ __meta__:
       primaryBU: Automation
     parameters:
     - name: scenario
-      description: "AAP troubleshooting scenario to deploy (2-7)"
+      description: "AAP troubleshooting scenario to deploy"
       formLabel: "Scenario"
       openAPIV3Schema:
         type: integer
-        default: 3
-        minimum: 2
-        maximum: 7
-
-  sandboxes:
-  - kind: OcpSandbox
-    alias: cluster
-    namespace_suffix: aap
-    cloud_selector:
-      cloud: cnv-dedicated-shared
-      demo: mcp-with-openshift
-      purpose: prod
-    quota:
-      limits.cpu: "10"
-      requests.cpu: "10"
-      limits.memory: 20Gi
-      requests.memory: 20Gi
-      requests.storage: 55Gi
-    limit_range:
-      default:
-        cpu: 500m
-        memory: 512Mi
-      defaultRequest:
-        cpu: 50m
-        memory: 128Mi
-
-  tower:
-    timeout: 3600
+        default: 1
+        enum:
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        x-enumNames:
+        - "Scenario 1: Hub PVC issue"
+        - "Scenario 2: Wrong admin password / Database service missing"
+        - "Scenario 3: Wrong node-selector / High resource requests"
+        - "Scenario 4: Job template with EE with wrong credentials"
+        - "Scenario 5: Hub community sync limits / Hub sync storage issue"
+        - "Scenario 6: ALIA troubleshooting wrong model"

@@ -4,10 +4,6 @@
 #include /includes/terms-of-service.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
-#include /includes/secrets/demosat-rhel-9-10-latest.yaml
-#include /includes/secrets/zerossl.yaml
-#include /includes/secrets/dynamic-aws-dns.yaml
-#include /includes/secrets/s3-rhpds-private-bucket.yaml
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 
 # -------------------------------------------------------------------
@@ -34,21 +30,13 @@ platform: rhpds
 # -------------------------------------------------------------------
 # CNV Specific
 # -------------------------------------------------------------------
-bastion_instance_image: rhel-9.5
-bastion_cores: 2
-bastion_memory: 4Gi
-
-
-# 20-worker cluster — only tagged as workers (no infra/other roles)
-worker_instance_count: 20
+# Workers: 4 per cluster → ~40 tenants per cluster (1 scenario namespace per tenant at a time).
+# Measured: ~3,675m CPU / ~7.9 Gi per tenant; CPU and memory balanced at 48vCPU/128Gi nodes.
+# Scale out by adding more clusters for prod. Register each cluster with ~40 placements.
+worker_instance_count: 4
 worker_only: true
-ai_workers_cores: 32
+ai_workers_cores: 48
 ai_workers_memory: 128Gi
-
-# -------------------------------------------------------------------
-# Common Password
-# -------------------------------------------------------------------
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
 
 # -------------------------------------------------------------------
 # Repos
@@ -57,37 +45,21 @@ repo_method: satellite
 update_packages: true
 
 # -------------------------------------------------------------------
-# Student User on Bastion
+# Collection version pinning — override tag in dev/event/prod yaml
 # -------------------------------------------------------------------
-install_student_user: true
-student_name: lab-user
-student_sudo: true
-
-# -------------------------------------------------------------------
-# Workload variables
-# -------------------------------------------------------------------
-ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.20_2025_10_23
+tag: main
 
 # -------------------------------------------------------------------
 # Custom collections for this environment
 # -------------------------------------------------------------------
 requirements_content:
   collections:
-    - name: kubernetes.core
-      version: 2.3.1
-    - name: community.general
-      version: 4.6.1
-    - name: ansible.posix
-      version: 1.3.0
-    - name: ansible.utils
-      version: 2.7.0
     - name: https://github.com/rhpds/assisted_installer.git
       type: git
-      version: v0.0.8
+      version: "{{ tag }}"
     - name: https://github.com/agnosticd/core_workloads.git
       type: git
-      version: main
+      version: "{{ tag }}"
 
 # -------------------------------------------------------------------
 # Workloads
@@ -99,31 +71,25 @@ workloads:
 # ===================================================================
 # Workload: agnosticd.core_workloads.ocp4_workload_authentication
 # ===================================================================
-# New unified authentication role (replaces ocp4_workload_authentication_keycloak)
 # Installs Keycloak/RHBK operator + realm — zero users at cluster provision time
-# Users are created per-order by the user provisioner (Phase 4)
+# Users are created per-order by the user provisioner
 
 ocp4_workload_authentication_provider: keycloak
 ocp4_workload_authentication_num_users: 0          # no users — created per order
-ocp4_workload_authentication_admin_create: true
-ocp4_workload_authentication_remove_kubeadmin: true
-ocp4_workload_authentication_keycloak_channel: stable-v26.2
-ocp4_workload_authentication_keycloak_namespace: keycloak
-ocp4_workload_authentication_keycloak_use_catalog_source: false
-ocp4_workload_authentication_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
 
 # ===================================================================
 # Workload: agnosticd.core_workloads.ocp4_workload_openshift_gitops
 # ===================================================================
-ocp4_workload_openshift_gitops_channel: gitops-1.18
+ocp4_workload_openshift_gitops_channel: gitops-1.19
 ocp4_workload_openshift_gitops_use_catalog_snapshot: false
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_update_route_tls: true
 ocp4_workload_openshift_gitops_rbac_update: true
 ocp4_workload_openshift_gitops_rbac_policy: |
+  g, system:cluster-admins, role:admin
   g, admin, role:admin
 ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
-
 
 # -------------------------------------------------------------------
 # Metadata
@@ -133,7 +99,7 @@ __meta__:
   components:
     - name: openshift
       display_name: OpenShift Cluster
-      item: agd-v2/ocp-cluster-cnv-pools/prod
+      item: agd-v2/ocp-cluster-cnv-pools
       parameter_values:
         cluster_size: multinode
         host_ocp4_installer_version: "4.20"
@@ -149,16 +115,6 @@ __meta__:
           var: openshift_cluster_admin_token
         - name: openshift_api_url
           var: openshift_api_url
-        - name: bastion_public_hostname
-          var: bastion_ansible_host
-        - name: bastion_ssh_user_name
-          var: bastion_ansible_user
-        - name: bastion_ssh_password
-          var: bastion_ansible_ssh_pass
-        - name: bastion_ssh_port
-          var: bastion_ansible_port
-  anarchy:
-    namespace: babylon-anarchy-events   # inherited from account.yaml but must be explicit here
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: "LB1216 - Demystifying AAP on OCP - Cluster Provisioner"
@@ -181,11 +137,12 @@ __meta__:
     maintainer:
       - email: rgarciac@redhat.com
         name: Ricardo Garcia
-  tower:
-    timeout: 18000  # 5 hours — accommodates cluster build + infra installs
+    instructions:
+      - name: Ryan Laroy
+        email: laroy@redhat.com
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
       pull: missing
