@@ -104,7 +104,6 @@ requirements_content:
     - name: https://github.com/agnosticd/showroom.git
       type: git
       version: v1.5.4
-    # LiteLLM Virtual Keys Collection
     - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
       type: git
       version: "1.0.0"
@@ -122,7 +121,7 @@ workloads:
   - agnosticd.core_workloads.ocp4_workload_quay_operator
   - agnosticd.core_workloads.ocp4_workload_pipelines
   - agnosticd.core_workloads.ocp4_workload_rhacs
-  - rhpds.ads.ocp4_workload_gitops_gitlab
+  - agnosticd.core_workloads.ocp4_workload_gitlab
   - rhpds.ads.ocp4_workload_gitops_vault
   - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
   - rhpds.ads.ocp4_workload_openshift_devspaces
@@ -157,6 +156,8 @@ rhpds_build_secured_dev_workflows_lab_scripts_developer_email: user1@demo.redhat
 rhpds_build_secured_dev_workflows_lab_scripts_developer_firstname: User1
 rhpds_build_secured_dev_workflows_lab_scripts_developer_lastname: Demo
 rhpds_build_secured_dev_workflows_lab_scripts_developer_password: "{{ common_password }}"
+rhpds_build_secured_dev_workflows_lab_scripts_acs_namespace: stackrox
+rhpds_build_secured_dev_workflows_lab_scripts_gitlab_root_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
 # Workload: rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
@@ -387,43 +388,55 @@ ocp4_workload_pipelines_use_catalog_snapshot: false
 ocp4_workload_pipelines_automatic_install_plan_approval: true
 
 # -------------------------------------------------------------------
-# GitLab
+# Workload: ocp4_workload_gitlab
 # -------------------------------------------------------------------
-ocp4_workload_gitops_gitlab_gitops_type: argocd
-ocp4_workload_gitops_gitlab_config_email_display_name: Janus Admin
-ocp4_workload_gitops_gitlab_config_email_reply_to: "noreply@redhat.com"
-ocp4_workload_gitops_gitlab_config_smtp_enabled: "false"
-ocp4_workload_gitops_gitlab_config_smtp_domain: "example.com"
-ocp4_workload_gitops_gitlab_config_smtp_port: "587"
-ocp4_workload_gitops_gitlab_config_smtp_user: "gitlab"
-ocp4_workload_gitops_gitlab_config_smtp_password: "gitlab"
-ocp4_workload_gitops_gitlab_config_ssh_port: "22"
-ocp4_workload_gitops_gitlab_config_rootPassword: "{{ common_password }}"
-ocp4_workload_gitops_gitlab_config_https: "true"
-ocp4_workload_gitops_gitlab_config_root_email: "root@demo.redhat.com"
-ocp4_workload_gitops_gitlab_config_keybase_db: "0123456789"
-ocp4_workload_gitops_gitlab_config_keybase_otp: "0123456789"
-ocp4_workload_gitops_gitlab_config_keybase_secret: "0123456789"
+ocp4_workload_gitlab_namespace: gitlab
+ocp4_workload_gitlab_auth_mode: native
+ocp4_workload_gitlab_root_password: "{{ common_password }}"
 
-ocp4_workload_gitops_gitlab_db_user_name: gitlab
-ocp4_workload_gitops_gitlab_db_password: passw0rd
-ocp4_workload_gitops_gitlab_db_name: gitlab_production
+# Native integration
+ocp4_workload_gitlab_user_base: user
+ocp4_workload_gitlab_user_count: "{{ num_users | default(0) }}"
+ocp4_workload_gitlab_user_password: "{{ common_password }}"
 
-ocp4_workload_gitops_gitlab_gitops_repo: https://github.com/redhat-gpte-devopsautomation/agnosticg.git
-ocp4_workload_gitops_gitlab_import_repos:
-  - name: rhdh
-    repo:
+# Root repositories - groups owned by root user
+ocp4_workload_gitlab_root_repositories:
+  - group: rhdh
+    path: rhdh
+    visibility: public
+    repositories:
       - name: build-secured-dev-workflows-idp-configuration
         url: https://github.com/rhpds/build-secured-dev-workflows-idp-configuration.git
+        visibility: public
       - name: build-secured-dev-workflows-sample-pipelines
         url: https://github.com/rhpds/build-secured-dev-workflows-sample-pipelines.git
-  - name: gitops
-    repo:
+        visibility: public
+  - group: gitops
+    path: gitops
+    visibility: public
+    repositories:
       - name: build-secured-dev-workflows-idp-gitops
         url: https://github.com/rhpds/build-secured-dev-workflows-idp-gitops.git
+        visibility: public
 
-ocp4_workload_gitops_gitlab_users_count: "{{ num_users | default(1) }}"
-ocp4_workload_gitops_gitlab_users_password: "{{ common_password }}"
+# User repositories - groups owned by users
+ocp4_workload_gitlab_user_repositories:
+  - group: development
+    path: development
+    visibility: public
+    access_level: maintainer
+    repositories: []
+
+# User repositories - groups that users can access
+# Users will be added to all groups matching ocp4_workload_gitlab_user_default_access_levels
+ocp4_workload_gitlab_user_default_access_levels:
+  - maintainer
+
+# Storage configuration
+ocp4_workload_gitlab_volume_size: 50Gi
+ocp4_workload_gitlab_postgresql_volume_size: 20Gi
+
+ocp4_workload_gitlab_runner_enabled: true
 
 # -------------------------------------------------------------------
 # Developer Hub Pull Secret
