@@ -48,6 +48,7 @@ requirements_content:
 workloads:
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_gitea_user
 - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 - agnosticd.showroom.ocp4_workload_showroom
 
@@ -67,17 +68,29 @@ remove_workloads:
 ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
 ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
 
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_gitea_user
+# Creates the student's Gitea account. Repo seeding is handled by
+# the gitea-user-repos GitOps Job (via ocp4_workload_gitops_bootstrap).
+# -------------------------------------------------------------------
+ocp4_workload_tenant_gitea_user_namespace: gitea
+ocp4_workload_tenant_gitea_user_name: gitea
+ocp4_workload_tenant_gitea_user_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_gitea_user_password: "{{ common_password }}"
+ocp4_workload_tenant_gitea_user_repositories: []
+
 # ===================================================================
 # Workload: ocp4_workload_tenant_namespace
 #
 # Single namespace "lab" with shared pool (ClusterResourceQuota).
 # ===================================================================
-ocp4_workload_tenant_namespace_username: "user-{{ guid }}"
+ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
 ocp4_workload_tenant_namespace_use_cluster_quota: true
 
 ocp4_workload_tenant_namespace_suffixes:
-- suffix: lab                    # Empty workspace for lab instructions
-- suffix: lab-hello-world        # Hello-world app deployment namespace
+- suffix: datasphere             # Pre-deployed DataSphere — students see the finished app at lab start
+- suffix: lab                    # Empty workspace for CLI/console lab exercises (Module 2 Sections 1-2)
+- suffix: lab-helm               # Empty workspace for Helm deployment exercise (Module 2 Section 3)
 
 # Total resource pool shared across all tenant namespaces via CRQ.
 ocp4_workload_tenant_namespace_default_quota:
@@ -95,28 +108,13 @@ ocp4_workload_tenant_namespace_default_limit_range:
     cpu: 250m
     memory: 128Mi
 
-# Per-namespace quota (reference only — we use shared pool above).
-# Set ocp4_workload_tenant_namespace_use_cluster_quota: false to use this style.
-# ocp4_workload_tenant_namespace_suffixes:
-# - suffix: lab
-#   quota:
-#     limits.cpu: "4"
-#     requests.cpu: "4"
-#     limits.memory: 8Gi
-#     requests.memory: 8Gi
-#     requests.storage: 20Gi
-#   limit_range:
-#     default: { cpu: 500m, memory: 512Mi }
-#     defaultRequest: { cpu: 50m, memory: 128Mi }
-
 # ===================================================================
 # Workload: ocp4_workload_gitops_bootstrap
 #
 # Same repo as ocp4-getting-started-cluster; tenant path only.
 # ===================================================================
-
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ocp4-getting-started-automation.git
-ocp4_workload_gitops_bootstrap_repo_revision: modular_attempt
+ocp4_workload_gitops_bootstrap_repo_revision: main
 ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
 ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ guid }}"
 
@@ -127,24 +125,14 @@ ocp4_workload_gitops_bootstrap_helm_values:
       name: "{{ ocp4_workload_tenant_keycloak_username }}"
   # deployer domain/apiUrl/guid are injected automatically by the bootstrap role.
 
-  # example1InlineResource:
-  #   enabled: false
-  #   namespace: "user-{{ guid }}-example1-lab"
-
-  # example2HelmBasic:
-  #   enabled: false
-  #   namespace: "user-{{ guid }}-example2-lab"
+  gitea:
+    userRepos:
+      enabled: true
 
   labs:
-    # example3HelmParameterized:
-    #   enabled: false
-    #   namespace: "user-{{ guid }}-example3-lab"
-
-    helloWorld:
+    datasphere:
       enabled: true
-      namespace: "user-{{ guid }}-lab-hello-world"
-      git:
-        targetRevision: modular_attempt
+      namespace: "{{ ocp4_workload_tenant_keycloak_username }}-datasphere"
 
 # ===================================================================
 # Workload: ocp4_workload_showroom
@@ -154,11 +142,8 @@ openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
 
 ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/zt-ocp4-getting-started
-ocp4_workload_showroom_content_git_repo_ref: modular_attempt
-## commented out to try Tony's way
-#ocp4_workload_showroom_terminal_type: ""
+ocp4_workload_showroom_content_git_repo_ref: main
 
-## Tony's way of doing it
 ocp4_workload_showroom_terminal_type: showroom
 ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-11
 ocp4_workload_showroom_content_ui_config: |
@@ -174,20 +159,6 @@ ocp4_workload_showroom_content_ui_config: |
   - name: Terminal
     path: /terminal
     port: 443
-
-# ocp4_workload_showroom_content_ui_config: |
-#   type: showroom
-#   default_width: 40
-#   persist_url_state: true
-#   view_switcher:
-#     enabled: true
-#     default_mode: split
-#   tabs:
-#   - name: Terminal
-#     path: /wetty
-#     port: 443
-#   - name: OpenShift Console
-#     url: 'https://console-openshift-console.{{ openshift_cluster_ingress_domain }}'
 
 ocp4_workload_showroom_passthrough_user_data: true
 
