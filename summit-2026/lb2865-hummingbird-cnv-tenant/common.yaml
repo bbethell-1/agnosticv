@@ -1,0 +1,199 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: LB2865: Container hardening:
+#                           From zero to hero with Red Hat
+#                           Hardened Images
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# Repository Tag
+# Tag for all repositories that are used in this config.
+# ===================================================================
+tag: main
+# -------------------------------------------------------------------
+cloud_provider: none
+# cloud_provider_version: "{{ tag }}"
+config: namespace
+
+# Sandbox API configuration sets:
+# {{ sandbox_openshift_api_url }}"
+# {{ cluster_admin_agnosticd_sa_token }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # Namespaced Workloads
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # Hummingbird Workshop Workloads
+  - name: https://github.com/rhpds/hummingbird.git
+    type: git
+    version: "{{ tag }}"
+
+  # Showroom
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.6.0
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_gitea_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_quay
+# - rhpds.hummingbird.ocp4_workload_hummingbird_tenant
+- agnosticd.showroom.ocp4_workload_showroom
+
+# remove_workloads:
+# - agnosticd.showroom.ocp4_workload_showroom
+# # - rhpds.hummingbird.ocp4_workload_hummingbird_tenant
+# - agnosticd.namespaced_workloads.ocp4_workload_tenant_quay
+# - agnosticd.namespaced_workloads.ocp4_workload_tenant_gitea_user
+# - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+# - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_username: "user-{{ guid }}"
+ocp4_workload_user_password: "{{ lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits') }}"
+
+# -------------------------------------------------------------------
+# agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+ocp4_workload_tenant_namespace_suffixes:
+- suffix: rhel
+- suffix: hummingbird-builds
+- suffix: hummingbird-production
+- suffix: hummingbird-acs-lab
+ocp4_workload_tenant_namespace_use_cluster_quota: false
+
+# -------------------------------------------------------------------
+# agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+ocp4_workload_tenant_keycloak_user_keycloak_realm: keycloak
+ocp4_workload_tenant_keycloak_username: "{{ ocp4_workload_username }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ ocp4_workload_user_password }}"
+
+# ------------------------------------------------------------------------
+# Workload: agnosticd.namespaced_workloads.ocp4_workload_tenant_gitea_user
+# ------------------------------------------------------------------------
+ocp4_workload_tenant_gitea_user_namespace: gitea
+ocp4_workload_tenant_gitea_user_instance: gitea
+
+ocp4_workload_tenant_gitea_user_username: "{{ ocp4_workload_username }}"
+ocp4_workload_tenant_gitea_user_password: "{{ ocp4_workload_user_password }}"
+
+ocp4_workload_tenant_gitea_user_repositories: []
+
+# ------------------------------------------------------------------------
+# Workload: agnosticd.namespaced_workloads.ocp4_workload_tenant_quay
+# ------------------------------------------------------------------------
+ocp4_workload_tenant_quay_namespace: quay
+ocp4_workload_tenant_quay_instance: quay
+ocp4_workload_tenant_quay_user: "{{ ocp4_workload_username }}"
+ocp4_workload_tenant_quay_user_password: "{{ ocp4_workload_user_password }}"
+ocp4_workload_tenant_quay_pipeline_namespaces:
+- "{{ ocp4_workload_username }}-hummingbird-builds"
+- "{{ ocp4_workload_username }}-hummingbird-production"
+- "{{ ocp4_workload_username }}-hummingbird-acs-lab"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_vm_tenant
+# -------------------------------------------------------------------
+
+# Settings for the RHEL VMs
+ocp4_workload_vm_tenant_vm_name: rhel
+ocp4_workload_vm_tenant_vm_namespace: "{{ ocp4_workload_username }}-rhel"
+ocp4_workload_vm_tenant_vm_datasource_name: hummingbird
+ocp4_workload_vm_tenant_vm_datasource_namespace: openshift-virtualization-os-images
+ocp4_workload_vm_tenant_vm_user: rhel
+ocp4_workload_vm_tenant_vm_password: "{{ common_user_password }}"
+ocp4_workload_vm_tenant_vm_disksize: 30Gi
+ocp4_workload_vm_tenant_vm_instancetype: u1.medium
+ocp4_workload_vm_tenant_vm_init_script_url: https://raw.githubusercontent.com/rhpds/hummingbird-showroom/refs/heads/main/scripts/setup-rhel.sh
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/hummingbird-showroom
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_antora_playbook: site.yml
+
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-20
+
+# Dev Mode is overridden in dev.yaml
+ocp4_workload_showroom_antora_enable_dev_mode: "false"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: dfce3e7d-d4e8-4d93-8033-1b5cfa4d38e7
+  owners:
+    maintainer:
+    - name: Wolfgang Kulhanek
+      email: wkulhane@redhat.com
+    sme:
+    - name: Matt Micene
+      email: mmicene@redhat.com
+    - name: Tosin Akinosho
+      email: takinosh@redhat.com
+    instructions:
+    - name: Matt Micene
+      email: mmicene@redhat.com
+    - name: Tosin Akinosho
+      email: takinosh@redhat.com
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-01
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB2865: Container hardening: From zero to hero with Red Hat Hardened Images"
+    category: Brand_Events
+    keywords:
+    - summit-2026
+    - lb2865
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+      Brand_Event: Red_Hat_Summit_2026
+    multiuser: false
+    workshopLabUiRedirect: true
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+
+  # -----------------------------------------------------------------
+  # Sandbox API
+  # -----------------------------------------------------------------
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
