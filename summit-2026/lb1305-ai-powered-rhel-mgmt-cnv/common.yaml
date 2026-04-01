@@ -1,8 +1,4 @@
 ---
-# This item is restricted to devs only!
-# It should be ordered by regular users using the Virtual CI
-# in the `published` directory.
-
 #include /includes/agd-v2-mapping.yaml
 #include /includes/catalog-icon-rhel.yaml
 #include /includes/terms-of-service.yaml
@@ -10,6 +6,11 @@
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/sandbox-api.yaml
 #include /includes/secrets/demosat-rhel-9-10.1-latest.yaml
+#include /includes/secrets/registry-redhat.yaml
+
+# For LiteMaaS
+#include /includes/parameters/litellm_metadata.yaml
+#include /includes/secrets/litemaas-master_api.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog: Summit 2026
@@ -40,11 +41,6 @@ common_password: >-
     lookup('password', output_dir ~ '/common_password', length=16, chars=['ascii_letters', 'digits', '@#$-_^='])
   }}
 
-# -------------------------------------------------------------------
-# CNV-specific settings
-# -------------------------------------------------------------------
-openshift_cnv_legacy_routes: false
-openshift_cnv_route_remove_x_frame_options_header: true
 
 # -------------------------------------------------------------------
 # Instance Config
@@ -112,18 +108,17 @@ instances:
     floating_ip: false
     image: "{{ satellite_instance_image }}"
     bootloader: efi
-    # register_satellite: false
     memory: 32G
     cores: 8
     image_size: "{{ satellite_rootfs_size }}"
     tags:
       - key: "AnsibleGroup"
-        value: "isolated"
+        value: "satellites"
       - key: "ostype"
         value: "linux"
     userdata: |
       #cloud-config
-      fqdn: satellite
+      fqdn: satellite.lab
       hostname: satellite
       prefer_fqdn_over_hostname: true
       manage_etc_hosts: true
@@ -134,11 +129,20 @@ instances:
             protocol: TCP
             targetPort: 22
             name: satellite-22
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: satellite-80
           - port: 443
             protocol: TCP
             targetPort: 443
             name: satellite-443
     routes:
+      - name: satellite-80
+        host: satellite
+        service: satellite
+        targetPort: 80
+        tls: false
       - name: satellite-443
         host: satellite
         service: satellite
@@ -186,8 +190,8 @@ instances:
           +WTV/ogDLLZX8gj6kg==
           -----END CERTIFICATE-----
 
-  - name: "node"
-    count: 4
+  - name: "rhel-1-{{ guid }}"
+    count: 1
     unique: true
     public_dns: false
     floating_ip: false
@@ -201,14 +205,80 @@ instances:
       - key: "ostype"
         value: "linux"
     services:
-      - name: node
+      - name: rhel-1
         ports:
           - port: 22
             protocol: TCP
             targetPort: 22
-            name: node-22
+            name: rhel-1-22
 
-  - name: "mcp"
+  - name: "rhel-2-{{ guid }}"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ node_instance_image }}"
+    memory: 2G
+    cores: 2
+    image_size: "{{ node_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel10_nodes"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: rhel-2
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: rhel-2-22
+
+  - name: "rhel-3-{{ guid }}"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ node_instance_image }}"
+    memory: 2G
+    cores: 2
+    image_size: "{{ node_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: rhel-3
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: rhel-3-22
+
+  - name: "rhel-4-{{ guid }}"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ node_instance_image }}"
+    memory: 2G
+    cores: 2
+    image_size: "{{ node_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: rhel-4
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: rhel-4-22
+
+  - name: "mcp-{{ guid }}"
     count: 1
     unique: true
     public_dns: false
@@ -223,12 +293,23 @@ instances:
       - key: "ostype"
         value: "linux"
     services:
-      - name: node
+      - name: mcp
         ports:
           - port: 22
             protocol: TCP
             targetPort: 22
-            name: node-22
+            name: mcp-22
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: mcp-80
+    routes:
+      - name: mcp-80
+        host: mcp
+        service: mcp
+        targetPort: 80
+        tls: true
+        tls_termination: edge
 
 # -------------------------------------------------------------------
 # Collection Version Control
@@ -248,29 +329,101 @@ requirements_content:
       version: "{{ tag }}"
     - name: https://github.com/agnosticd/showroom.git
       type: git
-      version: v1.6.0
+      version: v1.6.4
     - name: https://github.com/rhpds/rhpds.manage_host.git
       type: git
       version: "{{ tag }}"
+    - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+      type: git
+      version: main
+    - name: https://github.com/rhpds/rhpds.rhel_management.git
+      type: git
+      version: main
 
 # -------------------------------------------------------------------
 # Infra Workloads - AgnosticD v2
 # -------------------------------------------------------------------
 pre_software_workloads:
-  all:
+  bastions:
     - host_satellite_repositories
-    - agnosticd.cloud_vm_workloads.control_user
+    - host_common_packages
+    - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+  servers:
+    - host_satellite_repositories
+    - host_common_packages
+  rhel10_nodes:
+    - host_satellite_repositories
+    - host_common_packages
+  nodes:
+    - host_satellite_repositories
     - host_common_packages
 
 software_workloads:
   all:
+    - agnosticd.cloud_vm_workloads.control_user
     - rhpds.manage_host.asset_injector
 
+  satellites:
+    - rhpds.rhel_management.satellite_reconfigure
+
+  servers:
+    - rhpds.rhel_management.satellite_host
+    - rhpds.rhel_management.mcp_host
+
+  rhel10_nodes:
+    - rhpds.rhel_management.insights_host
+
+  nodes:
+    - rhpds.rhel_management.satellite_host
+
 post_software_final_workloads:
-  localhost:
-    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
   bastions:
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
     - agnosticd.showroom.vm_workload_showroom
+
+# -------------------------------------------------------------------
+# Pre-destroy workloads AgnosticD v2
+# -------------------------------------------------------------------
+pre_destroy_workloads:
+  localhost:
+    - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+
+# -------------------------------------------------------------------
+# Workload: rhpds.rhel_management.satellite_reconfigure
+# -------------------------------------------------------------------
+satellite_reconfigure_new_hostname: "satellite.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+satellite_reconfigure_username: admin
+satellite_reconfigure_new_admin_password: "{{ common_password }}"
+satellite_reconfigure_org: "Acme Org"
+
+# -------------------------------------------------------------------
+# Workload: rhpds.rhel_management.insights_host
+# -------------------------------------------------------------------
+insights_host_org: 19209301
+insights_host_activation_key: RHS-2026-lb1305
+
+# -------------------------------------------------------------------
+# Workload: rhpds.rhel_management.satellite_host
+# -------------------------------------------------------------------
+satellite_host_katello_ca_rpm: http://{{ satellite_reconfigure_new_hostname }}/pub/katello-ca-consumer-latest.noarch.rpm
+satellite_host_org: "Acme_Org"
+satellite_host_activation_key: satellite
+satellite_host_verify_ssl: false
+
+# -------------------------------------------------------------------
+# Workload: rhpds.rhel_management.mcp_host
+# -------------------------------------------------------------------
+mcp_host_podman_username: "{{ registry_credentials_username }}"
+mcp_host_podman_password: "{{ registry_credentials_password }}"
+
+mcp_host_satellite_url: >-
+ https://{{ satellite_reconfigure_new_hostname }}
+
+mcp_host_satellite_ca_cert: >-
+  http://{{ satellite_reconfigure_new_hostname }}/unattended/public/foreman_raw_ca
+
+mcp_host_server_image: >-
+ registry.redhat.io/satellite/foreman-mcp-server-rhel9@sha256:fd6b99a7c68025279ceeb0a27751039043706a0da2569e3b613752724bfc31a6
 
 # -------------------------------------------------------------------
 # Workload: host_satellite_repositories
@@ -299,7 +452,6 @@ bastion_host_packages:
   - unzip
   - vim-enhanced
   - wget
-  # - ansible
 
 node_host_packages:
   - skopeo
@@ -310,24 +462,37 @@ node_host_packages:
   - git
   - httpd-tools
   - nano
-  - podman
-  - python3
-  - python3-pip
-  - tmux
   - tree
   - unzip
   - vim-enhanced
   - wget
+  - rhc-worker-playbook
+  - yara
+  - scap-security-guide-*
+  - postgresql-server
+  - rhc
+  - podman
+  - bzip2
+  - libxcb
+  - python3
+  - python3-pip
+  - zstd
+  - tmux
 
 # Extra packages set dynamically based on group membership
 host_common_packages_extra: >-
   {{
     bastion_host_packages
      if 'bastions' in group_names
-      else
-        node_host_packages if ('bastions' not in group_names and 'satellites' not in group_names)
-          else
-              []
+    else
+      node_host_packages
+        if (
+          'rhel10_nodes' in group_names or
+          'nodes' in group_names or
+          'servers' in group_names
+          )
+        else
+          []
   }}
 
 # -------------------------------------------------------------------
@@ -340,6 +505,21 @@ student_password: "{{ common_password }}"
 control_user_name: "{{ student_name }}"
 control_user_password: "{{ common_password }}"
 control_user_private_group: "{{ omit }}"
+
+# -------------------------------------------------------------------
+# LiteLLM Virtual Keys Configuration
+# -------------------------------------------------------------------
+# Convert model selection to actual model list
+ocp4_workload_litellm_virtual_keys_models:
+  - 'openai/minimax-m2'
+  # - 'openai/granite-3-2-8b-instruct'
+
+# Duration selected by user
+ocp4_workload_litellm_virtual_keys_duration: "{{ litellm_duration | default('7d') }}"
+
+# Enable user.info messages and data
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
 
 # -------------------------------------------------------------------
 # Role: rhpds.manage_host.asset_injector
@@ -402,19 +582,18 @@ showroom_tab_services:
   - single_terminal
 
 showroom_antora_enable_dev_mode: "false"
-showroom_content_ui_config: |
-  type: showroom
-  default_width: 30
-  persist_url_state: true
-  view_switcher:
-    enabled: true
-    default_mode: split
-  tabs:
-    - name: '>_Terminal-01'
-      path: /wetty
-      port: 443
-    - name: 'Satellite'
-      url: "https://satellite-{{ subdomain }}"
+# showroom_content_ui_config: |
+#   type: showroom
+#   default_width: 30
+#   persist_url_state: true
+#   view_switcher:
+#     enabled: true
+#     default_mode: split
+#   tabs:
+#     - name: '>_Terminal-01'
+#       path: /wetty
+#       port: 443
+
 
 # -------------------------------------------------------------------
 # Role: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
@@ -424,7 +603,7 @@ agnosticv_importdata:
   guid: "{{ guid }}"
   satellite_url: https://satellite-{{ subdomain_base }}
   satellite_username: admin
-  satellite_password: bc31c9a6-9ff0-11ec-9587-00155d1b0702
+  satellite_password: "{{ common_password }}"
   bastion_ssh_command: >-
     ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
     -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
@@ -462,6 +641,7 @@ __meta__:
     parameters: []
     reportingLabels:
       primaryBU: RHEL
+      secondaryBU: Artificial_Intelligence
   sandboxes:
     - kind: OcpSandbox
       namespace_suffix: ocp4-cluster
