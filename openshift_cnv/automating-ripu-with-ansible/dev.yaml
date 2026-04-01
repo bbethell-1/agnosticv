@@ -38,8 +38,8 @@ instance_node1_tags:
   - { key: AnsibleGroup, value: "nodes" }
   - { key: hostgroup, value: "rhel7_hosts" }
   - { key: color, value: "#d48a00"}
-  - { key: Workshop_node1, value: "{{ guid }}-{{ node1_instance_name }}" }
-  - { key: short_name, value: "{{ node1_instance_name }}" }
+  - { key: Workshop_node1, value: "{{ guid }}-{{ node1_instance_name | default('node1') }}" }
+  - { key: short_name, value: "{{ node1_instance_name | default('node1') }}" }
   - { key: os_major_version, value: "7" }
   - { key: ansible_python_interpreter, value: "/usr/libexec/platform-python" }
 
@@ -48,8 +48,8 @@ instance_node2_tags:
   - { key: AnsibleGroup, value: "nodes" }
   - { key: hostgroup, value: "rhel8_hosts" }
   - { key: color, value: "#bf00d4" }
-  - { key: Workshop_node2, value: "{{ guid }}-{{ node2_instance_name }}" }
-  - { key: short_name, value: "{{ node2_instance_name }}" }
+  - { key: Workshop_node2, value: "{{ guid }}-{{ node2_instance_name | default('node2') }}" }
+  - { key: short_name, value: "{{ node2_instance_name | default('node2') }}" }
   - { key: os_major_version, value: "8" }
   - { key: ansible_python_interpreter, value: "/usr/libexec/platform-python" }
 
@@ -58,8 +58,8 @@ instance_node3_tags:
   - { key: AnsibleGroup, value: "nodes" }
   - { key: hostgroup, value: "rhel9_hosts" }
   - { key: color, value: "#67d300" }
-  - { key: Workshop_node3, value: "{{ guid }}-{{ node3_instance_name }}" }
-  - { key: short_name, value: "{{ node3_instance_name }}" }
+  - { key: Workshop_node3, value: "{{ guid }}-{{ node3_instance_name | default('node3') }}" }
+  - { key: short_name, value: "{{ node3_instance_name | default('node3') }}" }
   - { key: os_major_version, value: "9" }
 
 instance_bastion_tags:
@@ -207,7 +207,7 @@ instances:
           57Ys1npOUx+oxw==
           -----END CERTIFICATE-----
 
-  - name: "{{ node1_instance_name }}"
+  - name: "{{ node1_instance_name | default('node1') }}"
     count: 1
     unique: true
     public_dns: false
@@ -249,7 +249,7 @@ instances:
         targetPort: 8080
         tls: false
 
-  - name: "{{ node2_instance_name }}"
+  - name: "{{ node2_instance_name | default('node2') }}"
     count: 1
     unique: true
     public_dns: false
@@ -291,7 +291,7 @@ instances:
         targetPort: 8080
         tls: false
 
-  - name: "{{ node3_instance_name }}"
+  - name: "{{ node3_instance_name | default('node3') }}"
     count: 1
     unique: true
     public_dns: false
@@ -359,15 +359,15 @@ controller_hosts:
     variables:
       ansible_user: rhel
       ansible_password: ansible123!
-  - name: "{{ node1_instance_name }}"
+  - name: "{{ groups['nodes'][0].split('.')[0] }}"
     inventory: "Workshop Inventory"
     enabled: true
     state: present
-  - name: "{{ node2_instance_name }}"
+  - name: "{{ groups['nodes'][1].split('.')[0] }}"
     inventory: "Workshop Inventory"
     enabled: true
     state: present
-  - name: "{{ node3_instance_name }}"
+  - name: "{{ groups['nodes'][2].split('.')[0] }}"
     inventory: "Workshop Inventory"
     enabled: true
     state: present
@@ -381,10 +381,7 @@ controller_groups:
   - name: web
     inventory: "Workshop Inventory"
     state: present
-    hosts:
-      - "{{ node1_instance_name }}"
-      - "{{ node2_instance_name }}"
-      - "{{ node3_instance_name }}"
+    hosts: "{{ groups['nodes'] | map('split', '.') | map('first') | list }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
