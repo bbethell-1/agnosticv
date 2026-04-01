@@ -34,7 +34,7 @@ requirements_content:
 
     - name: https://github.com/agnosticd/core_workloads.git
       type: git
-      version: "{{ tag }}"
+      version: aap2-scalars-to-vars
 
     # LiteLLM Virtual Keys Collection
     - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
@@ -53,6 +53,9 @@ workloads:
   - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
   - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
   - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_gitea_user
+  - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+  # - agnosticd.core_workloads.ocp4_workload_gitea_operator
   # - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
   - agnosticd.showroom.ocp4_workload_ocp_console_embed
   - agnosticd.showroom.ocp4_workload_showroom
@@ -114,6 +117,79 @@ ocp4_workload_litellm_virtual_keys_models:
   - "gpt-oss-120b"
   - "gpt-oss-20b"
   - "gemini-2.5-pro"
+
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_gitea_user
+# -------------------------------------------------------------------
+
+# ocp4_workload_tenant_gitea_user_openshift_api_url: "{{ sandbox_api_url }}"
+# ocp4_workload_tenant_gitea_user_openshift_api_token: "{{ sandbox_api_token }}"
+#
+ocp4_workload_tenant_gitea_user_namespace: gitea
+ocp4_workload_tenant_gitea_user_name: gitea
+ocp4_workload_tenant_gitea_user_username: "user-{{ guid }}"
+ocp4_workload_tenant_gitea_user_password: "{{ common_password }}"
+
+ocp4_workload_tenant_gitea_user_repositories:
+  - repo: https://github.com/agnosticd/namespaced_workloads.git
+    name: namespaced-dev
+    private: false
+  - repo: https://github.com/agnosticd/namespaced_workloads.git
+    name: namespaced-private
+    private: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ansible_automation_platform
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_admin_password: "{{ common_password }}"
+ocp4_workload_ansible_automation_platform_disable_controller: false
+ocp4_workload_ansible_automation_platform_disable_eda: true
+ocp4_workload_ansible_automation_platform_disable_hub: true
+ocp4_workload_ansible_automation_platform_disable_lightspeed: true
+ocp4_workload_ansible_automation_platform_inject_manifest: true
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+ocp4_workload_ansible_automation_platform_create_eda_rolebinding: true
+ocp4_workload_ansible_automation_platform_operator_channel: stable-2.6
+ocp4_workload_ansible_automation_platform_catalog_snapshot_image_tag: "v4.20_2025_12_29"
+ocp4_workload_ansible_automation_platform_ocp_cluster_role: cluster-reader
+ocp4_workload_ansible_automation_platform_hub_file_storage_file_class: ocs-external-storagecluster-cephfs
+ocp4_workload_ansible_automation_platform_hub_file_storage_access_mode: ReadWriteMany
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+# ocp4_workload_gitea_operator_project: gitea
+# ocp4_workload_gitea_operator_catalog_image_tag: v2.1.0
+# ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+
+# ocp4_workload_gitea_operator_repositories_list:
+#   - name: mcp
+#     repo: https://github.com/burrsutter/fantaco-redhat-one-2026
+#     private: false
+
+# ocp4_workload_gitea_operator_deploy_gitea_instance: true
+# ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+# ocp4_workload_gitea_operator_gitea_image_tag: "1.25.2"
+# ocp4_workload_gitea_operator_name: gitea
+# ocp4_workload_gitea_operator_gitea_hostname: gitea
+# ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
+# ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel10/postgresql-16
+# ocp4_workload_gitea_operator_postgresql_image_tag: latest
+# ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
+# ocp4_workload_gitea_operator_ssl_route: true
+
+# ocp4_workload_gitea_operator_create_admin: true
+# ocp4_workload_gitea_operator_admin_user: mcpadmin
+# ocp4_workload_gitea_operator_admin_email: mcpadmin@redhat.com
+# ocp4_workload_gitea_operator_admin_password: "{{ common_password }}"
+
+# ocp4_workload_gitea_operator_create_users: true
+# ocp4_workload_gitea_operator_user_number: 1
+# ocp4_workload_gitea_operator_generate_user_format: "user-{{ guid }}"
+# ocp4_workload_gitea_operator_user_password: "{{ common_password }}"
+# ocp4_workload_gitea_operator_migrate_repositories: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitops_bootstrap
@@ -190,6 +266,10 @@ ocp4_workload_showroom_content_ui_config: |
     secondary_port: 443
   - name: OpenShift Console
     url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
+  - name: AAP
+    url: "https://aap-aap.{{ openshift_cluster_ingress_domain }}"
+  - name: Gitea
+    url: "https://gitea.{{ openshift_cluster_ingress_domain }}"
   - name: OpenShift AI
     url: "https://data-science-gateway.{{ openshift_cluster_ingress_domain }}"
 
@@ -215,16 +295,16 @@ __meta__:
         catch_all: false
 
   catalog:
-    display_name: "LB2645 Agentic DevOps (Tenant)"
-    category: Labs
+    display_name: "LB2645 Agentic DevOps"
+    category: Brand_Events
     namespace: babylon-catalog-{{ stage | default('?') }}
     keywords:
-      - openshift
-      - summit
+      - summit-2026
       - lb2645
       - agentic-devops
     labels:
       Provider: RHDP
+      Brand_Event: Red_Hat_Summit_2026
     reportingLabels:
       primaryBU: Hybrid_Platforms
     parameters: []

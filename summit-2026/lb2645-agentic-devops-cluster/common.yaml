@@ -40,6 +40,15 @@ worker_instance_count: 2
 ai_workers_cores: 8
 ai_workers_memory: 16Gi
 
+# -------------------------------------------------------------------
+# Common Password - used by gitea admin
+# -------------------------------------------------------------------
+
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=16 chars=ascii_letters,digits')
+  }}
+
 # ===================================================================
 # Additional Collections & roles to be installed for this config
 # ===================================================================
@@ -59,20 +68,53 @@ requirements_content:
       type: git
       version: "{{ tag }}"
 
+    - name: https://github.com/agnosticd/namespaced_workloads.git
+      type: git
+      version: main
+
 # ===================================================================
 # List of workloads to be deployed
 # ===================================================================
 workloads:
   - agnosticd.core_workloads.ocp4_workload_authentication
+  - agnosticd.core_workloads.ocp4_workload_gitea_operator
   - agnosticd.ai_workloads.ocp4_workload_openshift_ai
-  - agnosticd.core_workloads.ocp4_workload_openshift_gitops
-  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  # - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  # - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 
 # ===================================================================
 # Workload: ocp4_workload_authentication
 # ===================================================================
 ocp4_workload_authentication_provider: keycloak
 ocp4_workload_authentication_keycloak_channel: stable-v26.4
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image_tag: v2.1.0
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.25.5"
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
+# ocp4_workload_gitea_operator_gitea_volume_storage_class: ocs-external-storagecluster-cephfs
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel10/postgresql-16
+ocp4_workload_gitea_operator_postgresql_image_tag: "10.1"
+ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
+# ocp4_workload_gitea_operator_postgresql_volume_storage_class: ocs-external-storagecluster-cephfs
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: gitea-admin
+ocp4_workload_gitea_operator_admin_email: gitea-admin@redhat.com
+ocp4_workload_gitea_operator_admin_password: "{{ common_admin_password}}"
+
+ocp4_workload_gitea_operator_create_users: false
 
 # ===================================================================
 # Workload: ocp4_workload_openshift_gitops
