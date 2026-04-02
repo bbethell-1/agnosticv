@@ -15,6 +15,9 @@
 
 #include /includes/parameters/purpose.yaml
 
+# To subscribe the RHEL 10 VM
+#include /includes/secrets/demosat-rhel-9-10.0-latest.yaml
+
 # ===================================================================
 # Mandatory Variables
 # ===================================================================
@@ -49,7 +52,7 @@ requirements_content:
   # Showroom
   - name: https://github.com/agnosticd/showroom.git
     type: git
-    version: v1.6.0
+    version: v1.6.5
 
 # ===================================================================
 # List of workloads to be deployed
@@ -59,12 +62,12 @@ workloads:
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_gitea_user
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_quay
-# - rhpds.hummingbird.ocp4_workload_hummingbird_tenant
+- rhpds.hummingbird.ocp4_workload_hummingbird_tenant
 - agnosticd.showroom.ocp4_workload_showroom
 
 # remove_workloads:
 # - agnosticd.showroom.ocp4_workload_showroom
-# # - rhpds.hummingbird.ocp4_workload_hummingbird_tenant
+# - rhpds.hummingbird.ocp4_workload_hummingbird_tenant
 # - agnosticd.namespaced_workloads.ocp4_workload_tenant_quay
 # - agnosticd.namespaced_workloads.ocp4_workload_tenant_gitea_user
 # - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
@@ -81,17 +84,23 @@ ocp4_workload_username: "user-{{ guid }}"
 ocp4_workload_user_password: "{{ lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits') }}"
 
 # -------------------------------------------------------------------
-# agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+# Workload: agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
 # -------------------------------------------------------------------
 ocp4_workload_tenant_namespace_suffixes:
 - suffix: rhel
+  quota:
+    limits.cpu: "4"
+    requests.cpu: "4"
+    limits.memory: 10Gi
+    requests.memory: 10Gi
+    requests.storage: 40Gi
 - suffix: hummingbird-builds
 - suffix: hummingbird-production
 - suffix: hummingbird-acs-lab
 ocp4_workload_tenant_namespace_use_cluster_quota: false
 
 # -------------------------------------------------------------------
-# agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+# Workload: agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
 # -------------------------------------------------------------------
 ocp4_workload_tenant_keycloak_user_keycloak_realm: keycloak
 ocp4_workload_tenant_keycloak_username: "{{ ocp4_workload_username }}"
@@ -121,23 +130,29 @@ ocp4_workload_tenant_quay_pipeline_namespaces:
 - "{{ ocp4_workload_username }}-hummingbird-acs-lab"
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_vm_tenant
+# Workload: rhpds.hummingbird.ocp4_workload_hummingbird_tenant
 # -------------------------------------------------------------------
 
 # Settings for the RHEL VMs
-ocp4_workload_vm_tenant_vm_name: rhel
-ocp4_workload_vm_tenant_vm_namespace: "{{ ocp4_workload_username }}-rhel"
-ocp4_workload_vm_tenant_vm_datasource_name: hummingbird
-ocp4_workload_vm_tenant_vm_datasource_namespace: openshift-virtualization-os-images
-ocp4_workload_vm_tenant_vm_user: rhel
-ocp4_workload_vm_tenant_vm_password: "{{ common_user_password }}"
-ocp4_workload_vm_tenant_vm_disksize: 30Gi
-ocp4_workload_vm_tenant_vm_instancetype: u1.medium
-ocp4_workload_vm_tenant_vm_init_script_url: https://raw.githubusercontent.com/rhpds/hummingbird-showroom/refs/heads/main/scripts/setup-rhel.sh
+ocp4_workload_hummingbird_tenant_vm_name: rhel
+ocp4_workload_hummingbird_tenant_vm_namespace: "{{ ocp4_workload_username }}-rhel"
+ocp4_workload_hummingbird_tenant_vm_datasource_name: hummingbird
+ocp4_workload_hummingbird_tenant_vm_datasource_namespace: openshift-virtualization-os-images
+ocp4_workload_hummingbird_tenant_vm_user: rhel
+ocp4_workload_hummingbird_tenant_vm_password: "{{ ocp4_workload_user_password }}"
+ocp4_workload_hummingbird_tenant_vm_disksize: 30Gi
+ocp4_workload_hummingbird_tenant_vm_instancetype: u1.medium
+ocp4_workload_hummingbird_tenant_vm_init_script_url: https://raw.githubusercontent.com/rhpds/hummingbird-showroom/refs/heads/main/scripts/setup-rhel.sh
+ocp4_workload_hummingbird_tenant_vm_satellite_url: "{{ set_repositories_satellite_url }}"
+ocp4_workload_hummingbird_tenant_vm_satellite_org: "{{ set_repositories_satellite_org}}"
+ocp4_workload_hummingbird_tenant_vm_satellite_activation_key: "{{ set_repositories_satellite_activationkey}}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
 # -------------------------------------------------------------------
+# Match namespace to the other namespace formats
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_username }}-showroom"
+
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/hummingbird-showroom
 ocp4_workload_showroom_content_git_repo_ref: main
 ocp4_workload_showroom_content_antora_playbook: site.yml
