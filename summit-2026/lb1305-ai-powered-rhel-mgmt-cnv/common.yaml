@@ -299,15 +299,25 @@ instances:
             protocol: TCP
             targetPort: 22
             name: mcp-22
-          - port: 80
+          - port: 8080
             protocol: TCP
-            targetPort: 80
-            name: mcp-80
+            targetPort: 8080
+            name: mcp-8080
+          - port: 9999
+            protocol: TCP
+            targetPort: 9999
+            name: mcp-9999
     routes:
-      - name: mcp-80
+      - name: mcp-8080
         host: mcp
         service: mcp
-        targetPort: 80
+        targetPort: 8080
+        tls: true
+        tls_termination: edge
+      - name: mcp-9999
+        host: mcp-server
+        service: mcp
+        targetPort: 9999
         tls: true
         tls_termination: edge
 
@@ -335,7 +345,7 @@ requirements_content:
       version: "{{ tag }}"
     - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
       type: git
-      version: main
+      version: "{{ tag }}"
     - name: https://github.com/rhpds/rhpds.rhel_management.git
       type: git
       version: main
@@ -409,6 +419,7 @@ satellite_host_katello_ca_rpm: http://{{ satellite_reconfigure_new_hostname }}/p
 satellite_host_org: "Acme_Org"
 satellite_host_activation_key: satellite
 satellite_host_verify_ssl: false
+satellite_host_disable_gpg_check: true
 
 # -------------------------------------------------------------------
 # Workload: rhpds.rhel_management.mcp_host
@@ -424,6 +435,29 @@ mcp_host_satellite_ca_cert: >-
 
 mcp_host_server_image: >-
  registry.redhat.io/satellite/foreman-mcp-server-rhel9@sha256:fd6b99a7c68025279ceeb0a27751039043706a0da2569e3b613752724bfc31a6
+mcp_host_satellite_admin_access_token: "{{ hostvars['satellite'].satellite_reconfigure_admin_access_token }}"
+
+mcp_host_litellm_api_endpoint: "{{ hostvars['bastion'].litellm_api_endpoint }}"
+mcp_host_litellm_api_base_url: "{{ hostvars['bastion'].litellm_api_base_url }}/v1"
+mcp_host_litellm_available_models_list: "{{ ocp4_workload_litellm_virtual_keys_models.0 }}"
+mcp_host_litellm_virtual_key: "{{ hostvars['bastion'].litellm_virtual_key }}"
+
+mcp_host_lightspeed_client_id: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  38643361613363343663383236326261363431643962326631626633326232396134303362316434
+  3061383131393463373630643763613561393737323230610a303933373337353566343935396265
+  64646362306364323139663132363666643964666135393537643631633562633832323563346635
+  3263396263613463630a386664396232336438383830333731626265633230663834303331633665
+  39336162613534633466613131663162336566643331623630393962616663623663313961636534
+  6532636335303230656539373565303737333861393136616434
+mcp_host_lightspeed_client_secret: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  32366335336534643534396263616565386231313933313531336566363232623861313836363062
+  6161353434363932626234653462633334386636623633360a373766646164373361643565353134
+  62366637303861393033656238383233326463663765616166303738303435346161373234343933
+  6335353765393565310a626333306266396232613136323664313732303531633338346638306561
+  30633436646439383639383333353531656665646465666432313835613234663262353332383664
+  6334333166333839623937363537356165343934306332363633
 
 # -------------------------------------------------------------------
 # Workload: host_satellite_repositories
@@ -604,6 +638,7 @@ agnosticv_importdata:
   satellite_url: https://satellite-{{ subdomain_base }}
   satellite_username: admin
   satellite_password: "{{ common_password }}"
+  satellite_internal_name: "{{ satellite_reconfigure_new_hostname }}"
   bastion_ssh_command: >-
     ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
     -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
@@ -611,6 +646,8 @@ agnosticv_importdata:
   bastion_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
   bastion_ssh_user_name: "{{ student_name }}"
   bastion_ssh_password: "{{ common_password }}"
+  mcp_server_8080: https://mcp-{{ subdomain_base }}
+  mcp_server_9090: https://mcp-server-{{ subdomain_base }}
 
 # -------------------------------------------------------------------
 # Babylon meta variables
