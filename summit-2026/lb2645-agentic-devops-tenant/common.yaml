@@ -2,9 +2,10 @@
 # -------------------------------------------------------------------
 # --- Catalog Item: LB2645 Agentic DevOps Tenant
 # --- Per-tenant provisioning for the Summit LB2645 Agentic DevOps lab.
-# --- Deploys onto a shared base cluster (lb2645-agentic-devops-cluster)
+# --- Deploys onto the shared lb2645-agentic-devops-cluster
 # --- via the OpenShift Sandbox API.
 # -------------------------------------------------------------------
+# touched  3
 
 #include /includes/agd-v2-mapping.yaml
 #include /includes/catalog-icon-openshift.yaml
@@ -32,9 +33,16 @@ requirements_content:
       type: git
       version: "{{ tag }}"
 
-    - name: https://github.com/agnosticd/core_workloads.git
+    # deepagents-aiops — RHEL VM workloads
+    - name: https://github.com/rhpds/deepagents-aiops.git
       type: git
-      version: aap2-scalars-to-vars
+      version: "{{ tag }}"
+
+    # AAP2 configuration
+    # - name: ansible.controller
+    #   version: "4.5.0"
+    # - name: infra.controller_configuration
+    #   version: "2.11.0"
 
     # LiteLLM Virtual Keys Collection
     - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
@@ -54,7 +62,8 @@ workloads:
   - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
   - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
   - agnosticd.namespaced_workloads.ocp4_workload_tenant_gitea_user
-  - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+  - rhpds.deepagents_aiops.ocp4_workload_rhel_vm_tenant
+  - rhpds.deepagents_aiops.ocp4_workload_aap2_tenant_config
   # - agnosticd.core_workloads.ocp4_workload_gitea_operator
   # - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
   - agnosticd.showroom.ocp4_workload_ocp_console_embed
@@ -63,6 +72,8 @@ workloads:
 # ===================================================================
 # Common
 # ===================================================================
+ocp4_workload_username: "user-{{ guid }}"
+
 common_password: >-
   {{
     lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
@@ -83,6 +94,7 @@ ocp4_workload_tenant_namespace_username: "user-{{ guid }}"
 ocp4_workload_tenant_namespace_use_cluster_quota: true
 ocp4_workload_tenant_namespace_suffixes:
   - suffix: agentic
+  - suffix: rhel
 
 # Total resource pool shared across all tenant namespaces via CRQ.
 # Adjust to match your workload's expected resource consumption.
@@ -140,22 +152,24 @@ ocp4_workload_tenant_gitea_user_repositories:
     private: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_ansible_automation_platform
+# Workload: ocp4_workload_rhel_vm_tenant
 # -------------------------------------------------------------------
-ocp4_workload_ansible_automation_platform_admin_password: "{{ common_password }}"
-ocp4_workload_ansible_automation_platform_disable_controller: false
-ocp4_workload_ansible_automation_platform_disable_eda: true
-ocp4_workload_ansible_automation_platform_disable_hub: true
-ocp4_workload_ansible_automation_platform_disable_lightspeed: true
-ocp4_workload_ansible_automation_platform_inject_manifest: true
-ocp4_workload_ansible_automation_platform_manifest:
-  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
-ocp4_workload_ansible_automation_platform_create_eda_rolebinding: true
-ocp4_workload_ansible_automation_platform_operator_channel: stable-2.6
-ocp4_workload_ansible_automation_platform_catalog_snapshot_image_tag: "v4.20_2025_12_29"
-ocp4_workload_ansible_automation_platform_ocp_cluster_role: cluster-reader
-ocp4_workload_ansible_automation_platform_hub_file_storage_file_class: ocs-external-storagecluster-cephfs
-ocp4_workload_ansible_automation_platform_hub_file_storage_access_mode: ReadWriteMany
+ocp4_workload_rhel_vm_tenant_vm_name: rhel
+ocp4_workload_rhel_vm_tenant_vm_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-rhel"
+ocp4_workload_rhel_vm_tenant_vm_datasource_name: rhel-base
+ocp4_workload_rhel_vm_tenant_vm_datasource_namespace: openshift-virtualization-os-images
+ocp4_workload_rhel_vm_tenant_vm_user: rhel
+ocp4_workload_rhel_vm_tenant_vm_password: "{{ common_password }}"
+ocp4_workload_rhel_vm_tenant_vm_disksize: 10Gi
+ocp4_workload_rhel_vm_tenant_vm_instancetype: u1.small
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_aap2_tenant_config
+# -------------------------------------------------------------------
+# Controller credentials are read from the aap-admin-credentials secret
+# (created by ocp4_workload_ansible_automation_platform on the cluster)
+ocp4_workload_aap2_tenant_config_user_password: "{{ common_password }}"
+ocp4_workload_aap2_tenant_config_vm_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitea_operator

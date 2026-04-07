@@ -60,9 +60,10 @@ requirements_content:
       type: git
       version: v0.0.9
 
+    # TODO: Revert to "{{ tag }}" once agnosticd/core_workloads#118 is merged
     - name: https://github.com/agnosticd/core_workloads.git
       type: git
-      version: "{{ tag }}"
+      version: aap2-save-admin-credentials
 
     - name: https://github.com/agnosticd/ai_workloads.git
       type: git
@@ -72,6 +73,11 @@ requirements_content:
       type: git
       version: main
 
+    # deepagents-aiops — RHEL VM workloads
+    - name: https://github.com/rhpds/deepagents-aiops.git
+      type: git
+      version: "{{ tag }}"
+
 # ===================================================================
 # List of workloads to be deployed
 # ===================================================================
@@ -79,7 +85,9 @@ workloads:
   - agnosticd.core_workloads.ocp4_workload_authentication
   - agnosticd.core_workloads.ocp4_workload_gitea_operator
   - agnosticd.ai_workloads.ocp4_workload_openshift_ai
-  # - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+  - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+  - rhpds.deepagents_aiops.ocp4_workload_rhel_vm_infra
   # - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 
 # ===================================================================
@@ -117,17 +125,52 @@ ocp4_workload_gitea_operator_admin_password: "{{ common_admin_password}}"
 ocp4_workload_gitea_operator_create_users: false
 
 # ===================================================================
-# Workload: ocp4_workload_openshift_gitops
+# Workload: ocp4_workload_ansible_automation_platform
 # ===================================================================
-ocp4_workload_openshift_gitops_channel: latest
-ocp4_workload_openshift_gitops_setup_cluster_admin: true
-ocp4_workload_openshift_gitops_update_route_tls: true
-ocp4_workload_openshift_gitops_rbac_update: true
-ocp4_workload_openshift_gitops_rbac_policy: |
-  g, system:cluster-admins, role:admin
-  g, admin, role:admin
-ocp4_workload_openshift_gitops_rbac_scopes: "[name,groups]"
-ocp4_workload_openshift_gitops_resource_tracking_method: annotation
+ocp4_workload_ansible_automation_platform_admin_password: "{{ common_admin_password }}"
+ocp4_workload_ansible_automation_platform_save_admin_credentials: true
+ocp4_workload_ansible_automation_platform_disable_controller: false
+ocp4_workload_ansible_automation_platform_disable_eda: true
+ocp4_workload_ansible_automation_platform_disable_hub: true
+ocp4_workload_ansible_automation_platform_disable_lightspeed: true
+ocp4_workload_ansible_automation_platform_inject_manifest: true
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+ocp4_workload_ansible_automation_platform_create_eda_rolebinding: true
+ocp4_workload_ansible_automation_platform_operator_channel: stable-2.6
+ocp4_workload_ansible_automation_platform_catalog_snapshot_image_tag: "v4.20_2025_12_29"
+ocp4_workload_ansible_automation_platform_ocp_cluster_role: cluster-reader
+ocp4_workload_ansible_automation_platform_hub_file_storage_file_class: ocs-external-storagecluster-cephfs
+ocp4_workload_ansible_automation_platform_hub_file_storage_access_mode: ReadWriteMany
+
+# ===================================================================
+# Workload: ocp4_workload_openshift_virtualization
+# ===================================================================
+ocp4_workload_openshift_virtualization_channel: stable
+ocp4_workload_openshift_virtualization_use_catalog_snapshot: false
+
+# ===================================================================
+# Workload: ocp4_workload_rhel_vm_infra
+# ===================================================================
+# VM Image for the RHEL VMs
+# Location and credentials for the S3 bucket (s3-hummingbird-images user in AWS Infra Prod account)
+ocp4_workload_rhel_vm_infra_datavolume_source: https://s3.us-east-1.amazonaws.com/rhdp-images/lb2865.qcow2
+ocp4_workload_rhel_vm_infra_datavolume_s3_access_key_id: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  35326433623865663635633430376463306633323233353931373362623735373466636531363030
+  3633316565333935386162303264326562306131343338330a353436386331656138306662623330
+  30376339336562323035653865663036383333336631343263626633393438383836396331666564
+  6530373836616334370a343037383135313833343934613135616535303464353430613136323364
+  32306535306166386664303033386437663930633431363566336262333931623733
+
+ocp4_workload_rhel_vm_infra_datavolume_s3_secret_access_key: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  62333066613835656362666161656535653839303530323135386530663536396365376133373734
+  3239616362383965613139313734613339353731383766640a643937356165356131326638643938
+  34333439613834663631376233373736383934353236303737633038306461303065333666373433
+  3038336462313539340a613566653432633237393835393366616139386261623734333230396364
+  33336331326235303436613935373738636434363366636437663233346530636566613263343839
+  3732386564393061373838633262383537343862323735386531
 
 # ===================================================================
 # Workload: agnosticd.ai_workloads.ocp4_workload_openshift_ai
@@ -218,6 +261,13 @@ __meta__:
           var: sandbox_openshift_api_url
         - name: sandbox_openshift_namespace
           var: sandbox_openshift_namespace
+        - name: aap_controller_admin_password
+          var: aap_controller_admin_password
+        - name: aap_controller_admin_user
+          var: aap_controller_admin_user
+        - name: aap_controller_web_url
+          var: aap_controller_web_url
+
 
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2
