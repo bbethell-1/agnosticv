@@ -14,10 +14,14 @@
 #include /includes/catalog-icon-openshift.yaml
 #include /includes/terms-of-service.yaml
 
+#include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
-# Auto-pass user email and catalog item name to LiteLLM for better tracking
+#include /includes/parameters/aws-regions-3.yaml
 #include /includes/parameters/litellm_metadata.yaml
 
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/secrets/zerossl.yaml
 #include /includes/secrets/litemaas-master_api.yaml
 #include /includes/secrets/ibm-fusion.yaml
 
@@ -29,33 +33,49 @@
 # ===================================================================
 tag: main
 # -------------------------------------------------------------------
-cloud_provider: none
-# cloud_provider_version: "{{ tag }}"
-config: openshift-workloads
-clusters:
-- default:
-    api_url: "{{ openshift_api_url }}"
-    api_token: "{{ openshift_api_key }}"
+cloud_provider: aws
+cloud_provider_version: main
+config: openshift-cluster
 
 # -------------------------------------------------------------------
-# Autoscaling cluster
+# OpenShift Version
 # -------------------------------------------------------------------
-openshift_aws_scale_cluster: true
-# At a minimum, we need 3 workers for IBM Fusion
+host_ocp4_installer_version: "4.21"
+host_ocp4_installer_info_set_user_data_kubeadmin_password: true
+
+openshift_cluster_admin_service_account_enable: true
+openshift_cluster_show_access_user_info: true
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+bastion_setup_student_user: true
+bastion_student_user_name: lab-user
+bastion_student_suer_sudo: true
+
+# -------------------------------------------------------------------
+# AWS Specific
+# -------------------------------------------------------------------
+# Hardcoded to us-east-2 for pool matching
+aws_region: us-east-2
+
+control_plane_instance_type: m8i.8xlarge
+control_plane_storage_type: gp3
+control_plane_instance_count: 1
 worker_instance_count: 6
-worker_instance_type: m8i.4xlarge
-worker_only: true
-worker_drain_control_plane: false
+
+bastion_instance_image: RHEL96GOLD-latest
 
 # ===================================================================
 # Additional Collections & roles to be installed for this config
 # ===================================================================
 requirements_content:
   collections:
-  # Add AWS cloud provider to facilitate scaling cluster with workers
-  - name: https://github.com/agnosticd/cloud_provider_aws.git
-    type: git
-    version: "{{ tag }}"
   # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
@@ -67,7 +87,8 @@ requirements_content:
   # Partner workloads (IBM Software)
   - name: https://github.com/rhpds/partner_workloads.git
     type: git
-    version: "{{ tag }}"
+    # version: "{{ tag }}"
+    version: add-aws-sg-rules-ibm-fusion
   # Showroom
   - name: https://github.com/agnosticd/showroom.git
     type: git
@@ -83,6 +104,7 @@ common_admin_password: >-
 # Workloads
 # -------------------------------------------------------------------
 workloads:
+- agnosticd.core_workloads.ocp4_workload_cert_manager
 - rhpds.partner_workloads.ocp4_workload_ibm_fusion
 - agnosticd.core_workloads.ocp4_workload_authentication
 - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
@@ -92,6 +114,20 @@ workloads:
 - agnosticd.showroom.ocp4_workload_ocp_console_embed
 
 remove_workloads: []
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+
+ocp4_workload_cert_manager_aws_region: "{{ aws_region }}"
+ocp4_workload_cert_manager_aws_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
+ocp4_workload_cert_manager_aws_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
+
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+ocp4_workload_cert_manager_ignore_errors: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_ibm_fusion
@@ -200,39 +236,15 @@ __meta__:
       Provider: RHDP
       Brand_Event: Red_Hat_Summit_2026
     multiuser: false
-
-  components:
-  - name: openshift-base
-    display_name: OpenShift Cluster
-    item: agd-v2/ocp-cluster-aws-pools
-    parameter_values:
-      cluster_size: multinode
-      host_ocp4_installer_version: "4.20"
-      ocp4_fips_enable: false
-      aws_region: us-east-2
-    # Propagate agnosticd_user_info data set by this component to variables.
-    propagate_provision_data:
-    - name: openshift_api_ca_cert
-      var: openshift_api_ca_cert
-    - name: openshift_api_url
-      var: openshift_api_url
-    - name: openshift_cluster_admin_token
-      var: openshift_api_key
-    - name: openshift_cluster_admin_token
-      var: openshift_cluster_admin_token
-    # Propagate bastion data for infra_add_bastion role
-    - name: bastion_public_hostname
-      var: bastion_ansible_host
-    - name: bastion_ssh_user_name
-      var: bastion_ansible_user
-    - name: bastion_ssh_password
-      var: bastion_ansible_ssh_pass
-    - name: bastion_ssh_port
-      var: bastion_ansible_port
-    # Needed for scaling cluster with workers
-    - name: sandbox_openshift_api_key
-      var: sandbox_openshift_api_key
-    - name: sandbox_openshift_api_url
-      var: sandbox_openshift_api_url
-    - name: sandbox_openshift_namespace
-      var: sandbox_openshift_namespace
+    parameters:
+    - name: aws_region
+      description: AWS Region (hardcoded to us-east-2)
+      formLabel: Region
+      required: true
+      openAPIV3Schema:
+        type: string
+        default: us-east-2
+        enum:
+        - us-east-2
+      annotation: demo.redhat.com/aws-region
+      variable: aws_region
