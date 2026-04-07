@@ -1,5 +1,5 @@
 ---
-# Last updated: 2026-03-31 08:10 UTC
+# Last updated: 2026-04-07 08:51 UTC
 # -------------------------------------------------------------------
 # ZT OCP Pipelines Lab — POC Test Catalog Item
 # -------------------------------------------------------------------
@@ -10,7 +10,6 @@
 #   1. ocp4_workload_tenant_keycloak_user — create RHBK user devuser-{guid}
 #   2. ocp4_workload_tenant_namespace     — create namespace zt-test-devuser-{guid}
 #   3. ocp4_workload_showroom             — deploy showroom pod
-#   4. rhpds.ftl.ocp4_workload_zt_load_test    — load test (when zt_load_testing_enabled=true)
 #      Derives all vars from previous roles — NO extra AgV vars needed beyond checkbox.
 # -------------------------------------------------------------------
 #include /includes/agd-v2-mapping.yaml
@@ -40,7 +39,7 @@ requirements_content:
     version: "{{ tag }}"
   - name: https://github.com/agnosticd/showroom.git
     type: git
-    version: v1.6.3                       # PR #52 merged — adds runtime_automation_image var
+    version: v1.6.4                       # PR #52 merged — adds runtime_automation_image var
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
     version: "{{ tag }}"
@@ -50,24 +49,14 @@ requirements_content:
 
 # ===================================================================
 # Workloads
-# zt_load_testing_enabled checkbox adds ocp4_workload_zt_load_test which triggers
 # solve + validation on all modules to verify grading engine post-deploy.
 # The ZT runner is part of the showroom ZT infrastructure — not a workload.
 # ===================================================================
-workloads: >-
-  {{
-    [
-      'agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user',
-      'agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace',
-      'agnosticd.showroom.ocp4_workload_showroom',
-      'rhpds.ftl.ocp4_workload_runtime_automation_k8s'
-    ] +
-    (
-      ['rhpds.ftl.ocp4_runtime_automation_load_test']
-      if zt_load_testing_enabled | default(false) | bool
-      else []
-    )
-  }}
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.showroom.ocp4_workload_showroom
+- rhpds.ftl.ocp4_workload_runtime_automation_k8s
 
 remove_workloads:
 - rhpds.ftl.ocp4_workload_runtime_automation_k8s
@@ -99,23 +88,14 @@ ocp4_workload_tenant_namespace_suffixes:
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ocp-zt-tenant-showroom.git
 ocp4_workload_showroom_content_git_repo_ref: main
 ocp4_workload_showroom_content_antora_playbook: site.yml
-ocp4_workload_showroom_terminal_type: ""
-ocp4_workload_showroom_zero_touch_ui_enabled: true
+ocp4_workload_showroom_chart_package_url: https://prakhar1985.github.io/showroom-deployer
 
-# Use zerotouch chart — includes runner container natively
-ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
-ocp4_workload_showroom_deployer_chart_name: zerotouch
-ocp4_workload_showroom_deployer_chart_version: "1.9.18"
-
-# Override runner image — quay.io/rhpds/zt-runner has kubernetes.core pre-installed
-# Required for OCP-native labs (no SSH/bastion, uses kubernetes.core directly)
-# Needs agnosticd/showroom PR #52 — using branch zt-runtime-automation-image
-ocp4_workload_showroom_runtime_automation_image: "quay.io/rhpds/zt-runner:v2.3.0"
-
-# ===================================================================
-# rhpds.ftl.ocp4_workload_zt_load_test — triggered by zt_load_testing_enabled
-# Triggers solve + validation on all modules to verify grading engine
-# ===================================================================
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_image: "quay.io/rhpds/wetty:v3.0"
+ocp4_workload_showroom_wetty_ssh_bastion_login: false
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: "2.1.4"
+ocp4_workload_showroom_runtime_automation_image: "quay.io/rhpds/zt-runner:v2.4.2"
 
 # ===================================================================
 # Babylon meta
@@ -137,32 +117,6 @@ __meta__:
       image: quay.io/agnosticd/ee-multicloud:chained-2025-12-17
       pull: missing
   # anarchy.namespace must NOT be set here — controlled at AgV top level
-  catalog:
-    display_name: "Zero Touch Grading — OpenShift Pipelines (Tenant POC)"
-    category: Workshops
-    namespace: babylon-catalog-{{ stage | default('?') }}
-    keywords:
-    - zerotouch
-    - grading
-    - ocp
-    - pipelines
-    labels:
-      Provider: RHDP
-      Product: Red_Hat_OpenShift_Container_Platform
-    multiuser: false
-    workshopLabUiRedirect: true
-    parameters:
-    - name: zt_load_testing_enabled
-      description: >-
-        Run ZT load test — triggers solve and validate on all lab modules
-        simultaneously to verify the grading engine works end-to-end.
-        The ZT runner is always deployed regardless of this setting.
-      formLabel: "Run ZT Load Test"
-      openAPIV3Schema:
-        type: boolean
-        default: false
-    reportingLabels:
-      primaryBU: Hybrid_Platforms
   sandboxes:
   # Selects cluster from sandbox pool. Keycloak user created by
   # ocp4_workload_tenant_keycloak_user workload role (NOT via keycloak: "yes").
@@ -173,21 +127,17 @@ __meta__:
       cloud: cnv-dedicated-shared
       demo: mcp-with-openshift
       purpose: prod
-    quota:
-      limits.cpu: "2"
-      requests.cpu: "2"
-      limits.memory: 4Gi
-      requests.memory: 4Gi
-      requests.storage: 5Gi
-    limit_range:
-      default:
-        cpu: 500m
-        memory: 512Mi
-      defaultRequest:
-        cpu: 50m
-        memory: 128Mi
-
-  sandbox_api:
-    actions:
-      destroy:
-        catch_all: false
+  catalog:
+    display_name: "Showroom Solve/Validate — OCP Multi-user (POC)"
+    category: Workshops
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+    - grading
+    - ocp
+    - pipelines
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+    multiuser: false
+    workshopLabUiRedirect: true
+    parameters: []
