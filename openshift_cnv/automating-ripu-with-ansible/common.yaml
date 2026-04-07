@@ -76,31 +76,31 @@ instance_common_tags:
 
 instance_node1_tags:
   - { key: Index, value: "1" }
-  - { key: AnsibleGroup, value: "nodes" }
+  - { key: AnsibleGroup, value: "rhel7_nodes" }
   - { key: hostgroup, value: "rhel7_hosts" }
   - { key: color, value: "#d48a00"}
-  - { key: Workshop_node1, value: "{{ guid }}-node1" }
-  - { key: short_name, value: "node1" }
+  - { key: Workshop_node1, value: "{{ guid }}-{{ node1_instance_name | default('node1') }}" }
+  - { key: short_name, value: "{{ node1_instance_name | default('node1') }}" }
   - { key: os_major_version, value: "7" }
   - { key: ansible_python_interpreter, value: "/usr/libexec/platform-python" }
 
 instance_node2_tags:
   - { key: Index, value: "2" }
-  - { key: AnsibleGroup, value: "nodes" }
+  - { key: AnsibleGroup, value: "rhel8_nodes" }
   - { key: hostgroup, value: "rhel8_hosts" }
   - { key: color, value: "#bf00d4" }
-  - { key: Workshop_node2, value: "{{ guid }}-node2" }
-  - { key: short_name, value: "node2" }
+  - { key: Workshop_node2, value: "{{ guid }}-{{ node2_instance_name | default('node2') }}" }
+  - { key: short_name, value: "{{ node2_instance_name | default('node2') }}" }
   - { key: os_major_version, value: "8" }
   - { key: ansible_python_interpreter, value: "/usr/libexec/platform-python" }
 
 instance_node3_tags:
   - { key: Index, value: "3" }
-  - { key: AnsibleGroup, value: "nodes" }
+  - { key: AnsibleGroup, value: "rhel9_nodes" }
   - { key: hostgroup, value: "rhel9_hosts" }
   - { key: color, value: "#67d300" }
-  - { key: Workshop_node3, value: "{{ guid }}-node3" }
-  - { key: short_name, value: "node3" }
+  - { key: Workshop_node3, value: "{{ guid }}-{{ node3_instance_name | default('node3') }}" }
+  - { key: short_name, value: "{{ node3_instance_name | default('node3') }}" }
   - { key: os_major_version, value: "9" }
 
 instance_bastion_tags:
@@ -248,7 +248,7 @@ instances:
           57Ys1npOUx+oxw==
           -----END CERTIFICATE-----
 
-  - name: "node1"
+  - name: "{{ node1_instance_name | default('node1') }}"
     count: 1
     unique: true
     public_dns: false
@@ -290,7 +290,7 @@ instances:
         targetPort: 8080
         tls: false
 
-  - name: "node2"
+  - name: "{{ node2_instance_name | default('node2') }}"
     count: 1
     unique: true
     public_dns: false
@@ -332,7 +332,7 @@ instances:
         targetPort: 8080
         tls: false
 
-  - name: "node3"
+  - name: "{{ node3_instance_name | default('node3') }}"
     count: 1
     unique: true
     public_dns: false
@@ -393,8 +393,32 @@ requirements_content:
       version: main
 
 # -------------------------------------------------------------------
+# Workloads: rhpds.ripu.pet_name_generator
+# -------------------------------------------------------------------
+# Define name pattern for pet_name_generator
+pet_name_generator_separator: "{{ '789'[ansible_loop.index0] }}"
+pet_name_generator_lookup: "{{ lookup('community.general.random_pet', separator=pet_name_generator_separator) }}"
+pet_name_generator_enable: true
+pet_name_generator_instances:
+  - node1_instance_name
+  - node2_instance_name
+  - node3_instance_name
+
+# -------------------------------------------------------------------
+# Workloads: rhpds.ripu.cockpit and ansible_naviagtor
+# -------------------------------------------------------------------
+# Enables configuration of pet hostnames
+node1_pet_name: "{{ groups['rhel7_nodes'][0].split('.')[0] }}"
+node2_pet_name: "{{ groups['rhel8_nodes'][0].split('.')[0] }}"
+node3_pet_name: "{{ groups['rhel9_nodes'][0].split('.')[0] }}"
+
+# -------------------------------------------------------------------
 # Workloads: Pre/Software/Post
 # -------------------------------------------------------------------
+pre_infra_workloads:
+  localhost:
+    - rhpds.ripu.pet_name_generator
+
 pre_software_workloads:
   all:
     - host_satellite_repositories
@@ -408,7 +432,11 @@ software_workloads:
     - agnosticd.cloud_vm_workloads.asset_injector
 
 post_software_workloads:
-  nodes:
+  rhel7_nodes:
+    - rhpds.ripu.enable_upgrade_repos
+  rhel8_nodes:
+    - rhpds.ripu.enable_upgrade_repos
+  rhel9_nodes:
     - rhpds.ripu.enable_upgrade_repos
   bastions:
     - infra.aap_configuration.dispatch
@@ -662,15 +690,15 @@ controller_hosts:
     variables:
       ansible_user: rhel
       ansible_password: ansible123!
-  - name: "node1"
+  - name: "{{ groups['rhel7_nodes'][0].split('.')[0] }}"
     inventory: "Workshop Inventory"
     enabled: true
     state: present
-  - name: "node2"
+  - name: "{{ groups['rhel8_nodes'][0].split('.')[0] }}"
     inventory: "Workshop Inventory"
     enabled: true
     state: present
-  - name: "node3"
+  - name: "{{ groups['rhel9_nodes'][0].split('.')[0] }}"
     inventory: "Workshop Inventory"
     enabled: true
     state: present
@@ -685,9 +713,35 @@ controller_groups:
     inventory: "Workshop Inventory"
     state: present
     hosts:
-      - node1
-      - node2
-      - node3
+      - "{{ groups['rhel7_nodes'][0].split('.')[0] }}"
+      - "{{ groups['rhel8_nodes'][0].split('.')[0] }}"
+      - "{{ groups['rhel9_nodes'][0].split('.')[0] }}"
+  - name: ALL_rhel
+    inventory: "Workshop Inventory"
+    description: All RHEL hosts in the workshop
+    state: present
+    hosts:
+      - "{{ groups['rhel7_nodes'][0].split('.')[0] }}"
+      - "{{ groups['rhel8_nodes'][0].split('.')[0] }}"
+      - "{{ groups['rhel9_nodes'][0].split('.')[0] }}"
+  - name: rhel7
+    inventory: "Workshop Inventory"
+    description: RHEL 7 hosts in the workshop
+    state: present
+    hosts:
+      - "{{ groups['rhel7_nodes'][0].split('.')[0] }}"
+  - name: rhel8
+    inventory: "Workshop Inventory"
+    description: RHEL 8 hosts in the workshop
+    state: present
+    hosts:
+      - "{{ groups['rhel8_nodes'][0].split('.')[0] }}"
+  - name: rhel9
+    inventory: "Workshop Inventory"
+    description: RHEL 9 hosts in the workshop
+    state: present
+    hosts:
+      - "{{ groups['rhel9_nodes'][0].split('.')[0] }}"
 
 controller_templates:
   - name: "Z / CaC / Controller"
@@ -722,8 +776,8 @@ agnosticv_importdata:
   controller_username: "{{ student_name }}"
   controller_password: "{{ student_password }}"
   ssh_command: >-
-    ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
-    -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
+    ssh -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
+    {{ student_name }}@{{ openshift_cnv_ssh_address }}
   ssh_hostname: "{{ openshift_cnv_ssh_address }}"
   ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
   ssh_username: "{{ student_name }}"
