@@ -1,7 +1,25 @@
 ---
-# -------------------------------------------------------------------
-# --- Catalog Item: OpenShift Days: Ops Track Workshop (CNV Multi-Cluster)
-# -------------------------------------------------------------------
+# ===================================================================
+# Catalog Item: OpenShift Day — Ops Track Workshop (CNV Multi-Cluster)
+#
+# Single-user workshop deployed on a 3-node compact OCP cluster from
+# a CNV pool (cloud_provider: none). The cluster comes pre-provisioned
+# with ODF (external Ceph + NooBaa) via ocp-cluster-cnv-pools.
+#
+# This config connects to the pool cluster and deploys workshop
+# workloads on top. Workloads are built dynamically from module_enable_*
+# catalog parameters — each module can be toggled independently.
+#
+# Key repos:
+#   agnosticv (this file)              — catalog config, variables, parameters
+#   openshift-days-roadshow-automation — custom Ansible roles (collection: openshift_days.ops_track)
+#   openshift-days-ops-showroom        — Antora lab instructions + inject-env-vars.sh
+#   agnosticd/core_workloads           — upstream shared operator roles
+#   agnosticd/ai_workloads             — upstream OLS role
+#
+# common.yaml is the base config. dev.yaml overrides for testing
+# (uses main branches instead of pinned tags).
+# ===================================================================
 
 # -------------------------------------------------------------------
 # AgnosticV includes
@@ -22,8 +40,13 @@
 # ===================================================================
 # Mandatory Variables
 # ===================================================================
+
+# Collection versions — all collections pinned to {{ tag }} use this.
+# dev.yaml overrides to 'main' for testing unreleased changes.
 tag: main
 
+# Connects to a pre-existing OCP cluster from a CNV pool (no cloud provisioning).
+# The cluster is provided via the openshift-base component (see __meta__.components).
 cloud_provider: none
 config: openshift-workloads
 
@@ -32,7 +55,7 @@ clusters:
     api_url: "{{ openshift_api_url }}"
     api_token: "{{ openshift_api_key }}"
 
-# No additional users, this will still provide an admin account
+# Single-user workshop — no student accounts, just the admin user
 num_users: 0
 
 # ===================================================================
@@ -50,10 +73,10 @@ requirements_content:
     type: git
     version: "{{ tag }}"
 
-  # Showroom (v1.5.4 required for ocp4_workload_ocp_console_embed)
+  # Showroom
   - name: https://github.com/agnosticd/showroom.git
     type: git
-    version: v1.5.4
+    version: v1.6.5
 
   # Custom Workshop Workloads for Ops Track
   - name: git+https://github.com/rhpds/openshift-days-roadshow-automation.git#/ops_track
@@ -61,9 +84,10 @@ requirements_content:
     version: "{{ tag }}"
 
   # Sovereign Cloud workloads (for HCP preparation)
+  # Pinned to known good commit — {{ tag }} tracks main which may introduce breaking changes
   - name: https://github.com/rhpds/sovereign_cloud.git
     type: git
-    version: "{{ tag }}"
+    version: ede8c9b6
 
   # AI workloads (for OpenShift Lightspeed)
   - name: https://github.com/agnosticd/ai_workloads.git
@@ -72,9 +96,13 @@ requirements_content:
 
 # -------------------------------------------------------------------
 # Common Passwords
+# Random per deployment, persisted to output_dir for consistency within a run.
+# Used by authentication, RHACS, and other workloads.
 # -------------------------------------------------------------------
-common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:10] }}"
-common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:16] }}"
+common_user_password: >-
+  {{ lookup('password', output_dir ~ '/common_user_password', length=10, chars=['ascii_letters', 'digits']) }}
+common_admin_password: >-
+  {{ lookup('password', output_dir ~ '/common_admin_password', length=16, chars=['ascii_letters', 'digits']) }}
 
 # ============================================
 # BASE WORKLOADS (Always deployed)
@@ -87,11 +115,8 @@ _base_workloads:
 - agnosticd.showroom.ocp4_workload_showroom
 - openshift_days.ops_track.ocp4_workload_days_ops_track
 - agnosticd.core_workloads.ocp4_workload_web_terminal
-- openshift_days.ops_track.ocp4_workload_kubernetes_image_puller
 # Phase 3: CI/CD
 - agnosticd.core_workloads.ocp4_workload_pipelines
-# Phase 4: Container Registry
-- agnosticd.core_workloads.ocp4_workload_quay_operator
 
 # ============================================
 # OPTIONAL WORKLOAD GROUPS
@@ -101,8 +126,9 @@ _base_workloads:
 _virt_workloads:
 - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
 
-# HCP module workloads - shared infrastructure for both HCP and ACM
-# Includes KubeVirt (deduped via unique if Virt also enabled)
+# HCP module workloads — infrastructure needed for Hosted Control Planes
+# Gated by module_enable_acm (HCP requires ACM). Includes KubeVirt,
+# GitOps, MetalLB, and ACM itself. Deduped via unique if Virt also enabled.
 _hcp_workloads:
 - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
@@ -118,22 +144,37 @@ _acm_workloads:
 - openshift_days.ops_track.ocp4_days_workload_compliance_operator
 - openshift_days.ops_track.ocp4_workload_create_hcp_cluster
 
-# Backup module workloads
-_backup_workloads:
-- openshift_days.ops_track.ocp4_workload_oadp
-
 # Developer Hub module workloads (simplified - operator only)
 _devhub_workloads:
 - openshift_days.ops_track.ocp4_days_workload_rhdh
 
 # OpenShift Lightspeed module workloads
+# Cleanup deletes the OLSConfig created by the upstream role so students
+# create it manually in the lab module. Operator and secrets remain.
 _ols_workloads:
 - agnosticd.ai_workloads.ocp4_workload_ols
+- openshift_days.ops_track.ocp4_workload_ols_cleanup
 
 # Security module workloads (ACS + Compliance)
+# After upstream RHACS installs, console_embed patches the Central route from
+# passthrough → reencrypt so the IngressController can strip X-Frame-Options
+# and Showroom can iframe the RHACS console tab.
+# https://github.com/rhpds/openshift-days-roadshow-automation/tree/main/ops_track/roles/ocp4_workload_rhacs_console_embed
 _security_workloads:
 - agnosticd.core_workloads.ocp4_workload_rhacs
+- openshift_days.ops_track.ocp4_workload_rhacs_console_embed
 - openshift_days.ops_track.ocp4_days_workload_compliance_operator
+
+# Cluster cleanup — disable unused OLM catalogs and prune stale images.
+# Compact 3-node clusters with 100GB disks accumulate 60+ GB of stale images
+# from OLM catalog refreshes. Runs twice: before ACS (prevent ephemeral storage
+# evictions) and after (final cleanup). Two role names needed because the
+# unique filter deduplicates.
+_cleanup_workloads:
+- openshift_days.ops_track.ocp4_workload_cluster_cleanup
+
+_cleanup_final_workloads:
+- openshift_days.ops_track.ocp4_workload_cluster_cleanup_final
 
 # End-of-deployment comprehensive diagnostics
 _diag_workloads:
@@ -150,10 +191,11 @@ workloads: >-
       (_virt_workloads if module_enable_virt | default(true) | bool else []) +
       (_hcp_workloads if module_enable_acm | default(true) | bool else []) +
       (_acm_workloads if module_enable_acm | default(true) | bool else []) +
-      (_backup_workloads if module_enable_backup | default(true) | bool else []) +
       (_devhub_workloads if module_enable_devhub | default(true) | bool else []) +
       (_ols_workloads if module_enable_ols | default(true) | bool else []) +
+      _cleanup_workloads +
       (_security_workloads if module_enable_security | default(true) | bool else []) +
+      _cleanup_final_workloads +
       _diag_workloads
     ) | unique | list
   }}
@@ -167,9 +209,11 @@ remove_workloads:
 
 # -------------------------------------------------------------------
 # Showroom workshop content configuration
+# https://github.com/rhpds/openshift-days-ops-showroom
 # -------------------------------------------------------------------
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-days-ops-showroom.git
 ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_antora_enable_dev_mode: "false"
 ocp4_workload_showroom_user_is_admin: true
 
 # Enable Wetty and auto-SSH to bastion
@@ -184,12 +228,10 @@ ocp4_workload_showroom_user_data:
   MODULE_ENABLE_APPMGMT: "{{ module_enable_appmgmt | default(true) }}"
   MODULE_ENABLE_INGRESS: "{{ module_enable_ingress | default(true) }}"
   MODULE_ENABLE_NETSEC: "{{ module_enable_netsec | default(true) }}"
-  MODULE_ENABLE_WAF: "{{ module_enable_waf | default(true) }}"
   MODULE_ENABLE_DEBUGGING: "{{ module_enable_debugging | default(true) }}"
   MODULE_ENABLE_LDAP: "{{ module_enable_ldap | default(true) }}"
   MODULE_ENABLE_OIDC: "{{ module_enable_oidc | default(true) }}"
   MODULE_ENABLE_OBSERVABILITY: "{{ module_enable_observability | default(true) }}"
-  MODULE_ENABLE_BACKUP: "{{ module_enable_backup | default(true) }}"
   MODULE_ENABLE_PERFORMANCE: "{{ module_enable_performance | default(true) }}"
   MODULE_ENABLE_VIRT: "{{ module_enable_virt | default(true) }}"
   MODULE_ENABLE_DEVHUB: "{{ module_enable_devhub | default(true) }}"
@@ -199,20 +241,27 @@ ocp4_workload_showroom_user_data:
 
 # -------------------------------------------------------------------
 # Catalog Snapshot Configuration (shared across operators)
+# Catalog snapshots pin operator versions for reproducible installs.
+# Without this, operators on 'stable'/'fast' channels can auto-upgrade
+# between deployments, breaking the workshop if a new version changes
+# defaults or introduces bugs.
+#
+# Snapshot: v4.20_2026_03_16 (latest weekly snapshot)
+# Each role uses its OWN tag variable — the shared ocp4_workload_catalogsource_tag
+# is NOT picked up by upstream roles. Must set per-role tags explicitly.
+# Operators not in the snapshot (RHDH) are pinned by startingCSV instead.
 # -------------------------------------------------------------------
 ocp4_workload_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.20_2026_02_23
+ocp4_workload_catalogsource_tag: v4.20_2026_03_16
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication (unified auth role)
+# Workload: ocp4_workload_authentication
+# Sets up htpasswd auth with a single admin user. Passwords are derived
+# from the guid so they're deterministic but unique per deployment.
 # -------------------------------------------------------------------
 ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
-# ocp4_workload_authentication_admin_password_length: 16
-# ocp4_workload_authentication_user_name: admin
 ocp4_workload_authentication_user_password: "{{ common_user_password }}"
-# ocp4_workload_authentication_user_password_length: 16
 ocp4_workload_authentication_provider: htpasswd
-ocp4_workload_authentication_enable_user_info_data: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm (Core version)
@@ -222,6 +271,10 @@ ocp4_workload_rhacm_enable_wildcards: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm_cloud_credentials
+# https://github.com/rhpds/openshift-days-roadshow-automation/tree/main/ops_track/roles/ocp4_workload_rhacm_cloud_credentials
+# Creates a KubeVirt provider credential in ACM so it can provision
+# Hosted Control Plane clusters on the local CNV infrastructure.
+# Also installs the hcp CLI for managing hosted clusters.
 # -------------------------------------------------------------------
 ocp4_workload_rhacm_cloud_credentials_kubevirt: true
 ocp4_workload_rhacm_cloud_credentials_kubevirt_secret_name: kubevirt-secret
@@ -237,37 +290,58 @@ ocp4_workload_rhacs_central_admin_password: "{{ common_admin_password }}"
 ocp4_workload_rhacs_enable_central_scanner_v4: true
 # Use Immediate binding to avoid WaitForFirstConsumer PVC deadlock on multinode external Ceph
 ocp4_workload_rhacs_central_storage_class: ocs-external-storagecluster-ceph-rbd-immediate
-# Resource overrides for compact cluster (reduces total from ~15 cores to ~4 cores)
+# Resource overrides for compact 3-node cluster
+# RHACS upstream defaults total ~15 cores of requests across all components.
+# These overrides reduce that to ~4 cores so everything fits on the workshop cluster.
+# When _update is false (role default), no overrides are applied and the operator
+# uses its own defaults. Setting _update to true activates the values below.
+
+# Central - main RHACS API server and UI (upstream default: 1500m/4Gi request)
 ocp4_workload_rhacs_central_resources_update: true
 ocp4_workload_rhacs_central_requests_cpu: "500m"
 ocp4_workload_rhacs_central_requests_memory: "2Gi"
 ocp4_workload_rhacs_central_limits_cpu: "2"
 ocp4_workload_rhacs_central_limits_memory: "4Gi"
+
+# Central DB - PostgreSQL database for Central (upstream default: 4000m/8Gi request)
 ocp4_workload_rhacs_central_db_resources_update: true
 ocp4_workload_rhacs_central_db_requests_cpu: "500m"
 ocp4_workload_rhacs_central_db_requests_memory: "2Gi"
 ocp4_workload_rhacs_central_db_limits_cpu: "2"
 ocp4_workload_rhacs_central_db_limits_memory: "4Gi"
+
+# Scanner - legacy image scanner (upstream default: 1000m/1500Mi request)
 ocp4_workload_rhacs_scanner_resources_update: true
 ocp4_workload_rhacs_scanner_requests_cpu: "500m"
 ocp4_workload_rhacs_scanner_requests_memory: "512Mi"
 ocp4_workload_rhacs_scanner_limits_cpu: "1"
 ocp4_workload_rhacs_scanner_limits_memory: "2Gi"
+
+# Scanner V4 - newer image scanner with indexer, matcher, and DB components
+# Also reduces replicas from 3 (default) to 1 for the workshop
 ocp4_workload_rhacs_scanner_v4_resources_update: true
+
+# Scanner V4 Indexer - scans and indexes container images
 ocp4_workload_rhacs_scanner_v4_indexer_replicas: 1
 ocp4_workload_rhacs_scanner_v4_indexer_requests_cpu: "500m"
 ocp4_workload_rhacs_scanner_v4_indexer_requests_memory: "512Mi"
 ocp4_workload_rhacs_scanner_v4_indexer_limits_cpu: "1"
 ocp4_workload_rhacs_scanner_v4_indexer_limits_memory: "2Gi"
+
+# Scanner V4 Matcher - matches vulnerabilities against indexed images
 ocp4_workload_rhacs_scanner_v4_matcher_replicas: 1
 ocp4_workload_rhacs_scanner_v4_matcher_requests_cpu: "500m"
 ocp4_workload_rhacs_scanner_v4_matcher_requests_memory: "512Mi"
 ocp4_workload_rhacs_scanner_v4_matcher_limits_cpu: "1"
 ocp4_workload_rhacs_scanner_v4_matcher_limits_memory: "2Gi"
+
+# Scanner V4 DB - PostgreSQL for scanner vulnerability data
 ocp4_workload_rhacs_scanner_v4_db_requests_cpu: "500m"
 ocp4_workload_rhacs_scanner_v4_db_requests_memory: "1Gi"
 ocp4_workload_rhacs_scanner_v4_db_limits_cpu: "1"
 ocp4_workload_rhacs_scanner_v4_db_limits_memory: "2Gi"
+
+# Sensor - deployed via SecuredCluster CR, monitors the cluster for security events
 ocp4_workload_rhacs_sensor_resources_update: true
 ocp4_workload_rhacs_sensor_requests_cpu: "500m"
 ocp4_workload_rhacs_sensor_requests_memory: "1Gi"
@@ -286,32 +360,47 @@ ocp4_workload_openshift_gitops_rbac_policy: |
   g, admin, role:admin
 ocp4_workload_openshift_gitops_rbac_scopes: '[email,groups]'
 # Reduce ArgoCD resources for compact cluster
+# ArgoCD deploys 6 components, each with their own resource requirements.
+# Upstream defaults are generous for production HA. These overrides reduce
+# them to fit the workshop's 3-node cluster.
+
+# Application Controller - reconciles ArgoCD Applications against the cluster
 ocp4_workload_openshift_gitops_controller_update: true
 ocp4_workload_openshift_gitops_controller_requests_cpu: "100m"
 ocp4_workload_openshift_gitops_controller_requests_memory: "512Mi"
 ocp4_workload_openshift_gitops_controller_limits_cpu: "1"
-ocp4_workload_openshift_gitops_controller_limits_memory: "2Gi"
+ocp4_workload_openshift_gitops_controller_limits_memory: "4Gi"
 ocp4_workload_openshift_gitops_controller_app_sync: "180s"
+
+# API Server - serves the ArgoCD UI and API
 ocp4_workload_openshift_gitops_server_update: true
 ocp4_workload_openshift_gitops_server_requests_cpu: "50m"
 ocp4_workload_openshift_gitops_server_requests_memory: "128Mi"
 ocp4_workload_openshift_gitops_server_limits_cpu: "500m"
 ocp4_workload_openshift_gitops_server_limits_memory: "256Mi"
+
+# Repo Server - clones git repos and generates manifests
 ocp4_workload_openshift_gitops_repo_update: true
 ocp4_workload_openshift_gitops_repo_requests_cpu: "100m"
 ocp4_workload_openshift_gitops_repo_requests_memory: "256Mi"
 ocp4_workload_openshift_gitops_repo_limits_cpu: "500m"
 ocp4_workload_openshift_gitops_repo_limits_memory: "1Gi"
+
+# Redis - in-memory cache for ArgoCD state
 ocp4_workload_openshift_gitops_redis_update: true
 ocp4_workload_openshift_gitops_redis_requests_cpu: "50m"
 ocp4_workload_openshift_gitops_redis_requests_memory: "64Mi"
 ocp4_workload_openshift_gitops_redis_limits_cpu: "500m"
 ocp4_workload_openshift_gitops_redis_limits_memory: "256Mi"
+
+# Dex - OIDC authentication provider for ArgoCD
 ocp4_workload_openshift_gitops_dex_update: true
 ocp4_workload_openshift_gitops_dex_requests_cpu: "50m"
 ocp4_workload_openshift_gitops_dex_requests_memory: "64Mi"
 ocp4_workload_openshift_gitops_dex_limits_cpu: "500m"
 ocp4_workload_openshift_gitops_dex_limits_memory: "256Mi"
+
+# ApplicationSet Controller - generates Applications from templates
 ocp4_workload_openshift_gitops_applicationset_controller_update: true
 ocp4_workload_openshift_gitops_applicationset_controller_requests_cpu: "50m"
 ocp4_workload_openshift_gitops_applicationset_controller_requests_memory: "64Mi"
@@ -320,6 +409,9 @@ ocp4_workload_openshift_gitops_applicationset_controller_limits_memory: "256Mi"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_days_workload_compliance_operator
+# https://github.com/rhpds/openshift-days-roadshow-automation/tree/main/ops_track/roles/ocp4_days_workload_compliance_operator
+# Installs the Compliance Operator for the security module.
+# Students use it to scan the cluster against CIS/NIST profiles.
 # -------------------------------------------------------------------
 ocp4_days_workload_compliance_operator_channel: stable
 ocp4_days_workload_compliance_operator_namespace: openshift-compliance
@@ -327,20 +419,28 @@ ocp4_days_workload_compliance_operator_use_catalog_snapshot: false
 ocp4_days_workload_compliance_operator_automatic_install_plan_approval: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_openshift_virtualization (Core version)
+# Workload: ocp4_workload_openshift_virtualization
+# Deploys KubeVirt/CNV operator and HyperConverged CR.
+# Used by both the Virtualization module and HCP (KubeVirt provider).
 # -------------------------------------------------------------------
 ocp4_workload_openshift_virtualization_channel: stable
-ocp4_workload_openshift_virtualization_use_catalog_snapshot: false
+ocp4_workload_openshift_virtualization_use_catalog_snapshot: true
+ocp4_workload_openshift_virtualization_catalog_snapshot_image_tag: v4.20_2026_03_16
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_metallb (Core version - CNV specific settings)
+# Provides LoadBalancer service type on bare metal/CNV clusters.
+# Required for HCP (Hosted Control Planes) ingress.
 # -------------------------------------------------------------------
 ocp4_workload_metallb_channel: stable
+ocp4_workload_metallb_use_catalog_snapshot: true
+ocp4_workload_metallb_catalog_snapshot_image_tag: v4.20_2026_03_16
 ocp4_workload_metallb_enable_ipaddresspool: true
 ocp4_workload_metallb_ipaddresspool_name: ip-addresspool
+# IP range from the CNV cluster's secondary network (br-ex)
 ocp4_workload_metallb_ipaddresspool_addresses:
 - "10.10.10.200-10.10.10.210"
-# Configure L2Advertisement with CNV-specific interface
+# L2 mode advertises IPs via ARP on the br-ex bridge interface
 ocp4_workload_metallb_enable_l2advertisement: true
 ocp4_workload_metallb_l2advertisement_ipaddresspool:
 - ip-addresspool
@@ -348,78 +448,83 @@ ocp4_workload_metallb_l2advertisement_interface:
 - br-ex
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_oadp (Backup/DR)
-# -------------------------------------------------------------------
-ocp4_workload_oadp_channel: stable
-ocp4_workload_oadp_use_catalog_snapshot: false
-ocp4_workload_oadp_automatic_install_plan_approval: true
-ocp4_workload_oadp_storage: ocs
-ocp4_workload_oadp_configure_dpa: false
-ocp4_workload_oadp_multi_user: false
-
-# -------------------------------------------------------------------
 # Workload: ocp4_workload_pipelines (OpenShift Pipelines / Tekton)
+# Installs the Pipelines operator and tkn CLI for CI/CD exercises.
 # -------------------------------------------------------------------
 ocp4_workload_pipelines_channel: pipelines-1.20
 ocp4_workload_pipelines_use_catalog_snapshot: false
 ocp4_workload_pipelines_install_tkn_cli: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_quay_operator (upstream with resource overrides)
-# -------------------------------------------------------------------
-ocp4_workload_quay_operator_channel: stable-3.15
-ocp4_workload_quay_operator_registry_namespace: quay
-ocp4_workload_quay_operator_registry_admin_password: "{{ common_admin_password }}"
-ocp4_workload_quay_operator_registry_hostname: quay
-# Resource overrides for compact cluster
-ocp4_workload_quay_operator_registry_quay_resources_update: true
-ocp4_workload_quay_operator_registry_quay_replicas: 1
-ocp4_workload_quay_operator_registry_quay_requests_cpu: "1000m"
-ocp4_workload_quay_operator_registry_quay_requests_memory: "2Gi"
-ocp4_workload_quay_operator_registry_quay_limits_cpu: "2"
-ocp4_workload_quay_operator_registry_quay_limits_memory: "4Gi"
-ocp4_workload_quay_operator_registry_clair_resources_update: true
-ocp4_workload_quay_operator_registry_clair_replicas: 1
-ocp4_workload_quay_operator_registry_clair_requests_cpu: "500m"
-ocp4_workload_quay_operator_registry_clair_requests_memory: "1Gi"
-ocp4_workload_quay_operator_registry_clair_limits_cpu: "1"
-ocp4_workload_quay_operator_registry_clair_limits_memory: "2Gi"
-ocp4_workload_quay_operator_registry_enable_clairpostgres: true
-ocp4_workload_quay_operator_registry_startup_probe_update: true
-ocp4_workload_quay_operator_registry_startup_probe_failure_threshold: 30
-
-# -------------------------------------------------------------------
 # Workload: ocp4_workload_web_terminal
+# Provides an in-browser terminal in the OpenShift console (oc, kubectl, etc.)
 # -------------------------------------------------------------------
 ocp4_workload_web_terminal_channel: fast
-ocp4_workload_web_terminal_use_catalog_snapshot: false
-ocp4_workload_web_terminal_catalogsource_setup: false
+ocp4_workload_web_terminal_use_catalog_snapshot: true
+ocp4_workload_web_terminal_catalogsource_setup: true
+ocp4_workload_web_terminal_catalog_snapshot_image_tag: v4.20_2026_03_16
 
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_kubernetes_image_puller
-# -------------------------------------------------------------------
-ocp4_workload_kubernetes_image_puller_node_selector: '{"node-role.kubernetes.io/worker": ""}'
-ocp4_workload_kubernetes_image_puller_images:
-- quay.io/devfile/universal-developer-image:ubi8-277c10c
-ocp4_workload_kubernetes_image_puller_instance_namespace: default
 
 # -------------------------------------------------------------------
 # Workload: ocp4_days_workload_rhdh (Simplified Developer Hub)
+# https://github.com/rhpds/openshift-days-roadshow-automation/tree/main/ops_track/roles/ocp4_days_workload_rhdh
+# Uses guest auth so students can access without additional identity config
 # -------------------------------------------------------------------
 ocp4_days_workload_rhdh_enable_guest_auth: true
 ocp4_days_workload_rhdh_channel: fast
+# RHDH is not in the snapshot — pin by startingCSV + Manual approval
+# startingCSV ensures OLM installs v1.9.1, Manual approval prevents
+# OLM from auto-upgrading to a newer version in the fast channel.
+ocp4_days_workload_rhdh_starting_csv: "rhdh-operator.v1.9.1"
+ocp4_days_workload_rhdh_automatic_install_plan_approval: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_ols (OpenShift Lightspeed - official ai_workloads role)
+# Workload: ocp4_workload_ols (OpenShift Lightspeed)
+# https://github.com/agnosticd/ai_workloads/tree/main/roles/ocp4_workload_ols
+# Installs the operator and creates Azure credentials secret.
+# The upstream role defaults ocp4_workload_ai_platform: azure which also
+# creates an OLSConfig — the ocp4_workload_ols_cleanup role (see
+# _ols_workloads above) deletes it so students create it in the lab.
 # -------------------------------------------------------------------
-# Do NOT define ocp4_workload_ai_platform — this skips OLSConfig creation
-# Students create OLSConfig manually in the workshop module
-ocp4_workload_ols_use_catalog_snapshot: false
+# OLS uses a different catalog image by default (quay.io/openshift-lightspeed/...)
+# Override to use our shared snapshot image instead
+ocp4_workload_ols_use_catalog_snapshot: true
+ocp4_workload_ols_catalog_snapshot_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp4_workload_ols_catalog_snapshot_image_tag: v4.20_2026_03_16
+ocp4_workload_ols_catalogsource_name: redhat-operators-snapshot-lightspeed
 ocp4_workload_ols_channel: stable
 ocp4_workload_ols_get_token: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_prepare_hcp
+# Workload: ocp4_workload_acm_multicluster_observability
+# https://github.com/rhpds/openshift-days-roadshow-automation/tree/main/ops_track/roles/ocp4_workload_acm_multicluster_observability
+# Reduce ACM Multicluster Observability replicas and CPU requests.
+# Default MCO deploys 2-3 replicas per Thanos component (~3100m total)
+# but actual usage is ~135m. Compact mode reduces all to 1 replica
+# with lower requests. All components remain functional (no HA).
+# -------------------------------------------------------------------
+ocp4_workload_acm_multicluster_observability_compact_resources: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_days_ops_track
+# https://github.com/rhpds/openshift-days-roadshow-automation/tree/main/ops_track/roles/ocp4_workload_days_ops_track
+# Reduce NooBaa resources at workload deploy time.
+# Patches StorageCluster + BackingStore CRs on pool clusters that were
+# provisioned with high NooBaa CPU defaults (~5500m).
+# Also fixes BackingStore memory rejection (MCG 4.20+ requires >= 400Mi).
+# -------------------------------------------------------------------
+workshop_reduce_noobaa_resources: true
+
+# -------------------------------------------------------------------
+# Reduce Prometheus retention from 15d to 2d (~4 GiB memory savings)
+# -------------------------------------------------------------------
+workshop_reduce_prometheus_retention: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_prepare_hcp (sovereign_cloud collection)
+# https://github.com/rhpds/sovereign_cloud
+# Configures ACM policies, ManagedClusterSet, and GitOps integration
+# needed before a Hosted Control Plane cluster can be provisioned.
 # -------------------------------------------------------------------
 ocp4_workload_prepare_hcp_policy_namespace: policies
 ocp4_workload_prepare_hcp_clusterset_name: managed
@@ -427,6 +532,9 @@ ocp4_workload_prepare_hcp_gitops_operator_channel: gitops-1.19
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_create_hcp_cluster
+# https://github.com/rhpds/openshift-days-roadshow-automation/tree/main/ops_track/roles/ocp4_workload_create_hcp_cluster
+# Provisions a managed HCP cluster on the local KubeVirt infrastructure
+# so the ACM module has a real multi-cluster environment to work with.
 # -------------------------------------------------------------------
 # Use Immediate binding to avoid WaitForFirstConsumer PVC deadlock on multinode external Ceph
 ocp4_workload_create_hcp_cluster_etcd_storage_class: ocs-external-storagecluster-ceph-rbd-immediate
@@ -444,13 +552,11 @@ __meta__:
 
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "OpenShift Days: Ops Track Workshop (CNV)"
+    display_name: "OpenShift Day: Ops Track Workshop (CNV)"
     category: Workshops
     keywords:
-    - ocp
     - rhacm
     - rhacs
-    - admin
     - operations
     labels:
       Product: Red_Hat_OpenShift_Container_Platform
@@ -504,14 +610,6 @@ __meta__:
         type: boolean
         default: true
 
-    - name: module_enable_waf
-      description: Include WAF Integration module (content only, educational)
-      formGroup: Core Operations
-      formLabel: WAF - Web Application Firewall
-      openAPIV3Schema:
-        type: boolean
-        default: true
-
     - name: module_enable_debugging
       description: Include Debugging & Troubleshooting module (content only)
       formGroup: Core Operations
@@ -542,14 +640,6 @@ __meta__:
       description: Include Observability module - metrics, alerts, and logging (content only)
       formGroup: Day 2 Operations
       formLabel: Observability - Metrics, Alerts & Logging
-      openAPIV3Schema:
-        type: boolean
-        default: true
-
-    - name: module_enable_backup
-      description: Deploy OADP for backup and restore module
-      formGroup: Day 2 Operations
-      formLabel: Backup & DR - OADP Backup and Restore
       openAPIV3Schema:
         type: boolean
         default: true
@@ -607,7 +697,7 @@ __meta__:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-15
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
       pull: missing
     actions:
       destroy:
