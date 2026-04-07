@@ -1,0 +1,205 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item:  lb1839 - Balance Virt - CLUSTER
+# -------------------------------------------------------------------
+
+# This item is restricted to devs only!
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+
+# ---------------------------------------------------
+#
+# The workshop is a single tenant SNO+2 OCP Virt cluster running on CNV.
+#
+# Just about everything is deployed via GitOps
+#
+# ---------------------------------------------------
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-virtualization.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+#
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/secrets/dynamic-aws-dns.yaml
+
+tag: main
+cloud_provider: none
+config: openshift-workloads
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_cluster_admin_token }}"
+
+# -------------------------------------------------------------------
+# Bastion
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.6
+bastion_cores: 2
+bastion_memory: 2Gi
+bastion_setup_student_user: true
+bastion_student_user_name: lab-user
+
+# -------------------------------------------------------------------
+# Autoscaling cluster
+# -------------------------------------------------------------------#
+openshift_cnv_scale_cluster: true
+worker_instance_count: "2"
+
+ai_workers_cores: 8
+ai_workers_memory: 24Gi
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.9
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: 'main'
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: 'main'
+
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+#- agnosticd.showroom.ocp4_workload_showroom_ocp_integration
+- agnosticd.showroom.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+#ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+#ocp4_workload_catalogsource_tag: v4.19_2025_07_01
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_provider: htpasswd
+ocp4_workload_authentication_admin_username: admin
+ocp4_workload_authentication_admin_password: ""
+ocp4_workload_authentication_user_basename: user
+ocp4_workload_authentication_user_password: ""
+#ocp4_workload_authentication_num_users: "{{ num_users | default('1') | int }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.20
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+# ocp4_workload_authentication_admin_user
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, admin, role:admin
+# g, {{ ocp4_workload_authentication_admin_user }}, role:admin
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 8Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 8Gi
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/balance-virt-automation.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+ocp4_workload_gitops_bootstrap_application_health_retries: 150
+ocp4_workload_gitops_bootstrap_helm_values:
+  users:
+    count: 60
+  guid: "{{ guid }}"
+
+# -------------------------------------------------------------------
+# agnosticd.showroom.ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/balance-virt-showroom.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_passthrough_user_data: true
+
+__meta__:
+  asset_uuid: 66180ffd-be5f-4f71-a44d-fe73a5c731ab
+  owners:
+    maintainer:
+    - name: Judd Maltin
+      email: jmaltin@redhat.com
+    instructions:
+    - name: Alan Cowles
+      email: acowles@redhat.com
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
+      pull: missing
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1839 - Beyond the basics: Operationalizing Red Hat OpenShift Virtualization"
+    category: Brand_Events
+    keywords:
+    - summit-2026
+    - lb1839
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Brand_Event: Red_Hat_Summit_2026
+    reportingLabels:
+      assetGroup: Virtualization
+      primaryBU: Hybrid_Platforms
+    workshopLabUiRedirect: true
+
+  # Components to include in template and catalog item
+  components:
+  - name: openshift
+    display_name: OpenShift Cluster
+    item: agd_v2/ocp-virt-labs-pool
+    parameter_values:
+      cluster_size: sno
+      host_ocp4_installer_version: '4.21'
+      ocp4_fips_enable: false
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    # guest cluster credentials
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    # ocpvN cluster credentials
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    # Propagate bastion data for infra_add_bastion role
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
