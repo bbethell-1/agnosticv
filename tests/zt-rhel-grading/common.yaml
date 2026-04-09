@@ -1,5 +1,5 @@
 ---
-# Last updated: 2026-04-07 00:43 UTC
+# Last updated: 2026-04-09 UTC — trigger
 # -------------------------------------------------------------------
 # ZT RHEL Grading Example — POC Test Catalog Item
 # Based on Mitesh Sharma's poc-rhel-zt-showroom (PR #25584)
@@ -137,9 +137,18 @@ pre_software_workloads:
 post_software_final_workloads:
   localhost:
     - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
-  bastions:
-    - agnosticd.showroom.vm_workload_showroom
-    - rhpds.ftl.vm_workload_runtime_automation
+  bastions: >-
+    {{
+      [
+        'agnosticd.showroom.vm_workload_showroom',
+        'rhpds.ftl.vm_workload_runtime_automation'
+      ] +
+      (
+        ['rhpds.ftl.vm_runtime_automation_load_test']
+        if run_e2e_load_test | default(false) | bool
+        else []
+      )
+    }}
 
 # -------------------------------------------------------------------
 # Workload: host_satellite_repositories
@@ -293,7 +302,7 @@ __meta__:
       image: quay.io/agnosticd/ee-multicloud:chained-2025-12-17
       pull: missing
   catalog:
-    display_name: "Showroom Solve/Validate — RHEL VM + Bastion (POC)"
+    display_name: "E2E Test Example — RHEL VM + Bastion"
     category: Workshops
     namespace: babylon-catalog-{{ stage | default('?') }}
     keywords:
@@ -306,7 +315,13 @@ __meta__:
       Product: Red_Hat_Enterprise_Linux
     multiuser: false
     workshopLabUiRedirect: true
-    parameters: []
+    parameters:
+      - name: run_e2e_load_test
+        description: "Run E2E load test after provisioning — triggers solve and validate on all modules"
+        formLabel: "Run E2E Load Test"
+        openAPIV3Schema:
+          type: boolean
+          default: false
     reportingLabels:
       primaryBU: Hybrid_Platforms
   sandboxes:

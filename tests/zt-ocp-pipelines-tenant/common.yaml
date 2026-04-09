@@ -1,5 +1,5 @@
 ---
-# Last updated: 2026-04-07 08:51 UTC
+# Last updated: 2026-04-09 UTC — trigger
 # -------------------------------------------------------------------
 # ZT OCP Pipelines Lab — POC Test Catalog Item
 # -------------------------------------------------------------------
@@ -52,11 +52,20 @@ requirements_content:
 # solve + validation on all modules to verify grading engine post-deploy.
 # The ZT runner is part of the showroom ZT infrastructure — not a workload.
 # ===================================================================
-workloads:
-- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
-- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
-- agnosticd.showroom.ocp4_workload_showroom
-- rhpds.ftl.ocp4_workload_runtime_automation_k8s
+workloads: >-
+  {{
+    [
+      'agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user',
+      'agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace',
+      'agnosticd.showroom.ocp4_workload_showroom',
+      'rhpds.ftl.ocp4_workload_runtime_automation_k8s'
+    ] +
+    (
+      ['rhpds.ftl.ocp4_runtime_automation_load_test']
+      if run_e2e_load_test | default(false) | bool
+      else []
+    )
+  }}
 
 remove_workloads:
 - rhpds.ftl.ocp4_workload_runtime_automation_k8s
@@ -128,7 +137,7 @@ __meta__:
       demo: mcp-with-openshift
       purpose: prod
   catalog:
-    display_name: "Showroom Solve/Validate — OCP Multi-user (POC)"
+    display_name: "E2E Test Example — OCP Multi-user Tenant"
     category: Workshops
     namespace: babylon-catalog-{{ stage | default('?') }}
     keywords:
@@ -140,4 +149,10 @@ __meta__:
       Product: Red_Hat_OpenShift_Container_Platform
     multiuser: false
     workshopLabUiRedirect: true
-    parameters: []
+    parameters:
+    - name: run_e2e_load_test
+      description: "Run E2E load test after provisioning — triggers solve and validate on all modules"
+      formLabel: "Run E2E Load Test"
+      openAPIV3Schema:
+        type: boolean
+        default: false
