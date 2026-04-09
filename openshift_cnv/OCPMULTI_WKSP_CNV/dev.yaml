@@ -1,21 +1,50 @@
 ---
-#include /includes/secrets/dynamic-dns.yaml
-#include /includes/secrets/acme-bifrost.yaml
+# #include /includes/secrets/dynamic-dns.yaml
+# #include /includes/secrets/acme-bifrost.yaml
 
 base_domain: "{{ undef() }}"
 route53_zone: "{{ undef() }}"
 route53_aws_zone_id: "{{ undef() }}"
 route53_aws_access_key_id: "{{ undef() }}"
 route53_aws_secret_access_key: "{{ undef() }}"
+
+ocp4_workload_cert_manager_acme_bifrost_webhook_image: "quay.io/rhpds/acme-bifrost-webhook:v0.2.21"
+ocp4_workload_cert_manager_acme_bifrost_ca_provider: "google"
+ocp4_workload_cert_manager_acme_url: "https://acme-bifrost.apps.ocpv-infra01.dal12.infra.demo.redhat.com/acme/google/directory"
+ocp4_workload_cert_manager_acme_bifrost_gateway_url: "https://acme-bifrost.apps.ocpv-infra01.dal12.infra.demo.redhat.com"
+
+ocp4_workload_cert_manager_provider: "acme-bifrost"
+ocp4_workload_cert_manager_provider_fallback: "acme-bifrost"
+ocp4_workload_cert_manager_acme_bifrost_ca_provider_fallback: "zerosslapi"
+ocp4_workload_cert_manager_acme_url_fallback: "https://acme-bifrost.apps.ocpv-infra01.dal12.infra.demo.redhat.com/acme/zerosslapi/directory"
+
+cluster_dns_server: "ddns01.infra.demo.redhat.com"
+cluster_dns_zone: "dyn.redhatworkshops.io"
+
+ocp4_workload_sandbox_ddns_token: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          34643036346437326165306431643033316465336466616161323163363931326632313834346132
+          3238383736616461353539323464346364303031373365350a386262663331646232353662663431
+          32666133306661613635313034376263326530393537316565623132363731666466353038393062
+          3364666133373930630a323664386633623933336637656134663462393030323961626631306264
+          61613236323835376566356530303330636433633030306635353963656433306265663063323166
+          6632326334663830346333316661633233366461643735623136
+
+ocp4_workload_cert_manager_acme_bifrost_admin_token: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          61343764663064626463373931373336636130333638343334343566623362636165666435653063
+          6337373965386235653332633665663933306361363963610a376532353937643863363337306431
+          61353931623234386164393533663961393231373431323762613331663134316435656530316531
+          3837616535636134330a343463633737353033373337363630396432303566333064303136366232
+          34323937383535366138653136356635383633353133386666313163303339303634623137366438
+          6636333166383331386338333734323061373332636666366561
+
 ocp4_workload_cert_manager_cloud_provider: "ddns"
 
 # -------------------------------------------------------------------
 # Purpose - Cost tag. One of development, ilt, production, event
 # -------------------------------------------------------------------
 purpose: development
-
-
-ocp4_workload_cert_manager_acme_bifrost_webhook_image: "quay.io/rhpds/acme-bifrost-webhook:v0.2.21"
 
 ocp4_workload_external_odf_backingstore_custom_resources: true
 ocp4_workload_external_odf_backingstore_cpu_limits: 1000m
@@ -90,11 +119,21 @@ __meta__:
       cloud_selector:
         cloud: cnv
         name: "{{ job_vars.ocpv_cluster }}"
-        #purpose: events
         virt: "yes"
+    - kind: DNSSandbox
+      annotations:
+        prefix: cluster
+      cloud_selector:
+        provider: ddns
+        domain: "dyn.redhatworkshops.io"
+      var: dns_sandbox
+    - kind: SSLSandbox
+      cloud_selector:
+        purpose: production
+      var: ssl_sandbox
   deployer:
     #scm_ref: radosnamespace
-    scm_ref: development
+    scm_ref: ocp4_workload_sandbox_ddns
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:v0.1.1
       pull: missing
