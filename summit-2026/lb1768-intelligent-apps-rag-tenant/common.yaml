@@ -1,0 +1,222 @@
+---
+# This item is restricted to devs only!
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: LB1768: Building Intelligent Apps with Python and RAG - Tenant Deployer
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift-ai.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/parameters/litellm_metadata.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: none
+config: namespace
+# Sandbox API configuration
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
+
+# ===================================================================
+# Additional collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+    # Namespaced workloads for tenant provisioning
+    - name: https://github.com/agnosticd/namespaced_workloads.git
+      type: git
+      version: main
+    # Core OpenShift Workloads
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: main
+    # Showroom
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: v1.6.0
+    # LiteLLM Virtual Keys Collection
+    - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+      type: git
+      version: "1.0.0"
+
+# -------------------------------------------------------------------
+# List of workloads to be deployed
+# -------------------------------------------------------------------
+workloads:
+  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.showroom.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# List of workloads to remove (reverse order of workloads)
+# -------------------------------------------------------------------
+remove_workloads:
+  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+  - agnosticd.showroom.ocp4_workload_showroom
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+# Single password for all tenant resources -- deterministic from guid
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_models:
+  - nomic-embed-text-v1-5
+  - granite-4-0-h-tiny
+  - qwen3-14b
+
+common_password: >-
+  {{ lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits']) }}
+common_user_password: aiops
+
+# -------------------------------------------------------------------
+# ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+ocp4_workload_tenant_keycloak_username: "raguser-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_user_password }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_tenant_namespace
+# -------------------------------------------------------------------
+ocp4_workload_tenant_namespace_prefix: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_namespace_namespaces:
+  - "{{ ocp4_workload_tenant_keycloak_username }}"
+  - "showroom-{{ ocp4_workload_tenant_keycloak_username }}"
+
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "14"
+  requests.cpu: "14"
+  limits.memory: 30Gi
+  requests.memory: 30Gi
+  requests.storage: 100Gi
+
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: "2"
+    memory: 4Gi
+  defaultRequest:
+    cpu: 250m
+    memory: 1Gi
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/lb1768-intelligent-apps-rag-automation
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ ocp4_workload_tenant_keycloak_username }}"
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  bootstrap:
+    targetRevision: "{{ ocp4_workload_gitops_bootstrap_repo_revision }}"
+  tenant:
+    username: "{{ ocp4_workload_tenant_keycloak_username }}"
+    domain: "{{ sandbox_openshift_apps_domain }}"
+    litellmKey: "{{ litellm_virtual_key }}"
+
+ocp4_workload_gitops_bootstrap_health_retries: 2
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_openshift_api_token: "{{ cluster_admin_agnosticd_sa_token }}"
+ocp4_workload_showroom_openshift_api_url: "{{ sandbox_openshift_api_url }}"
+ocp4_workload_showroom_namespace: "showroom-{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/intelligent-apps-python-rag-showroom
+ocp4_workload_showroom_content_git_repo_ref: "main"
+ocp4_workload_showroom_content_only: true
+ocp4_workload_showroom_namespace_display: "LB1768: Building Intelligent Apps with Python and RAG"
+
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_terminal_image: quay.io/juliaaano/openshift-showroom-terminal-ocp:2025-12-02
+
+ocp4_workload_showroom_passthrough_user_data: true
+
+# -------------------------------------------------------------------
+# Babylon Meta Variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: d77d4400-ecfd-4354-8a76-516924c2246a
+  owners:
+    maintainer:
+      - email: rshah@redhat.com
+        name: Ritesh Shah
+      - email: cnuland@redhat.com
+        name: Christopher Nuland
+      - email: cclyburn@redhat.com
+        name: Cedric Clyburn
+      - email: nvinto@redhat.com
+        name: Natale Vinto
+    sme:
+      - email: cnuland@redhat.com
+        name: Christopher Nuland
+      - email: cclyburn@redhat.com
+        name: Cedric Clyburn
+      - email: nvinto@redhat.com
+        name: Natale Vinto
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-01
+      pull: missing
+    actions:
+      status:
+        disable: true
+      update:
+        disable: true
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    reportingLabels:
+      primaryBU: Artificial_Intelligence
+    display_name: "LB1768: Building Intelligent Apps with Python and RAG - Tenant Deployer"
+    category: Brand_Events
+    keywords:
+      - lb1768
+      - summit-2026
+      - openshift ai
+      - RAG
+      - pipeline
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_AI
+      Product_Family: Red_Hat_AI
+      Brand_Event: Red_Hat_Summit_2026
+    multiuser: false
+    workshopLabUiRedirect: true
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: rag
+      cloud_selector:
+        cloud: cnv-dedicated-shared
+        purpose: dev
+        lab: lb1768-intelligent-apps-rag
+      quota:
+        limits.cpu: "14"
+        requests.cpu: "14"
+        limits.memory: 30Gi
+        requests.memory: 30Gi
+        requests.storage: 100Gi
+  tower:
+    timeout: 3600
