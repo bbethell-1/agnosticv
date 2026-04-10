@@ -5,6 +5,7 @@
 # --- Deploys onto the shared lb2645-agentic-devops-cluster
 # --- via the OpenShift Sandbox API.
 # -------------------------------------------------------------------
+# touched 1
 
 #include /includes/agd-v2-mapping.yaml
 #include /includes/catalog-icon-openshift.yaml
@@ -37,12 +38,6 @@ requirements_content:
       type: git
       version: "{{ tag }}"
 
-    # AAP2 configuration
-    # - name: ansible.controller
-    #   version: "4.5.0"
-    # - name: infra.controller_configuration
-    #   version: "2.11.0"
-
     # LiteLLM Virtual Keys Collection
     - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
       type: git
@@ -64,9 +59,7 @@ workloads:
   - rhpds.deepagents_aiops.ocp4_workload_rhel_vm_tenant
   - rhpds.deepagents_aiops.ocp4_workload_aap2_tenant_config
   - rhpds.deepagents_aiops.ocp4_workload_kira_tenant
-  # - agnosticd.core_workloads.ocp4_workload_gitea_operator
-  # - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
-  - agnosticd.showroom.ocp4_workload_ocp_console_embed
+  - rhpds.deepagents_aiops.ocp4_workload_rocketchat_tenant
   - agnosticd.showroom.ocp4_workload_showroom
 
 # ===================================================================
@@ -172,83 +165,6 @@ ocp4_workload_aap2_tenant_config_user_password: "{{ common_password }}"
 ocp4_workload_aap2_tenant_config_vm_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_gitea_operator
-# -------------------------------------------------------------------
-# ocp4_workload_gitea_operator_project: gitea
-# ocp4_workload_gitea_operator_catalog_image_tag: v2.1.0
-# ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
-
-# ocp4_workload_gitea_operator_repositories_list:
-#   - name: mcp
-#     repo: https://github.com/burrsutter/fantaco-redhat-one-2026
-#     private: false
-
-# ocp4_workload_gitea_operator_deploy_gitea_instance: true
-# ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
-# ocp4_workload_gitea_operator_gitea_image_tag: "1.25.2"
-# ocp4_workload_gitea_operator_name: gitea
-# ocp4_workload_gitea_operator_gitea_hostname: gitea
-# ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
-# ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel10/postgresql-16
-# ocp4_workload_gitea_operator_postgresql_image_tag: latest
-# ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
-# ocp4_workload_gitea_operator_ssl_route: true
-
-# ocp4_workload_gitea_operator_create_admin: true
-# ocp4_workload_gitea_operator_admin_user: mcpadmin
-# ocp4_workload_gitea_operator_admin_email: mcpadmin@redhat.com
-# ocp4_workload_gitea_operator_admin_password: "{{ common_password }}"
-
-# ocp4_workload_gitea_operator_create_users: true
-# ocp4_workload_gitea_operator_user_number: 1
-# ocp4_workload_gitea_operator_generate_user_format: "user-{{ guid }}"
-# ocp4_workload_gitea_operator_user_password: "{{ common_password }}"
-# ocp4_workload_gitea_operator_migrate_repositories: true
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_gitops_bootstrap
-#
-# Deploys a per-tenant ArgoCD bootstrap Application pointing to the
-# RAG Helm chart. ArgoCD manages the RAG pipeline components.
-# -------------------------------------------------------------------
-# For reference: The `deployer` variables are defined by the gitops_boostrap workload
-# deployer:
-#   domain: "{{ lookup('agnosticd_user_data', 'openshift_cluster_ingress_domain') }}"
-#   apiUrl: "{{ lookup('agnosticd_user_data', 'openshift_api_url') }}"
-#   guid: "{{ guid }}"
-# ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ guid }}"
-# ocp4_workload_gitops_bootstrap_repo_path: "tenant/bootstrap"
-# ocp4_workload_gitops_bootstrap_application_project: tenants
-# ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rh-ai-quickstart/RAG.git
-# ocp4_workload_gitops_bootstrap_repo_revision: main
-
-# ocp4_workload_gitops_bootstrap_helm_values:
-#   tenant:
-#     name: "{{ guid }}"
-#     user:
-#       name: "{{ ocp4_workload_tenant_keycloak_username }}"
-#       password: "{{ common_password }}"
-#   rag:
-#     namespace: "user-{{ guid }}-rag"
-#     git:
-#       revision: dev
-#     values:
-#       llm-service:
-#         enabled: false
-#         secret:
-#           hf_token: "{{ ai_quickstart_hugging_face_token }}"
-#       llama-stack:
-#         secrets:
-#           TAVILY_SEARCH_API_KEY: "{{ ai_quickstart_tavily_search_key }}"
-#       global:
-#         models:
-#           remotellm:
-#             id: "{{ ai_quickstart_rag_llm_model }}"
-#             url: "{{ litellm_api_endpoint }}"
-#             apiToken: "{{ litellm_virtual_key }}"
-#             enabled: true
-
-# -------------------------------------------------------------------
 # Workload: ocp4_workload_ocp_console_embed + ocp4_workload_showroom
 #
 # openshift_cluster_ingress_domain is discovered by the tenant
@@ -280,12 +196,14 @@ ocp4_workload_showroom_content_ui_config: |
     secondary_port: 443
   - name: Kira
     url: "https://kira-frontend-{{ ocp4_workload_tenant_keycloak_username }}-agentic.{{ openshift_cluster_ingress_domain }}"
-  - name: OpenShift Console
-    url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
+  - name: Rocket.Chat
+    url: "https://rocketchat-{{ ocp4_workload_tenant_keycloak_username }}-agentic.{{ openshift_cluster_ingress_domain }}"
   - name: AAP
     url: "https://aap-aap.{{ openshift_cluster_ingress_domain }}"
   - name: Gitea
     url: "https://gitea.{{ openshift_cluster_ingress_domain }}"
+  - name: OpenShift Console
+    url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
   - name: OpenShift AI
     url: "https://data-science-gateway.{{ openshift_cluster_ingress_domain }}"
 
