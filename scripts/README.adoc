@@ -1,0 +1,336 @@
+= agd-promote — AgnosticV Promotion Automation
+:toc: macro
+:toc-title: Contents
+:toclevels: 3
+
+toc::[]
+
+== Overview
+
+`agd-promote` automates the process of promoting an AgnosticV catalog item to production and event stages.
+It handles the full promotion lifecycle:
+
+1. **Discover** all related repositories from `common.yaml`
+2. **Detect** the highest existing version tag across all repositories
+3. **Bump** the version (patch, minor, or major)
+4. **Create** git tags on all relevant repositories via the GitHub API
+5. **Update** stage YAML files (`prod.yaml`, `event.yaml`) and pinned collection versions in `common.yaml`
+
+The tool also has a CI validation mode (`--validate-pr`) used by the GitHub Actions workflow to ensure all tags exist before a promotion PR can be merged.
+
+== Prerequisites
+
+* **Python 3.7+** — the bash wrapper creates a virtual environment automatically
+* **GitHub CLI (`gh`)** — installed and authenticated (`gh auth login`)
+* **Repository access** — push access to all repositories referenced in `common.yaml`
+
+NOTE: The first run creates a virtual environment at `/tmp/agd-promote-venv` and installs `pyyaml`.
+Subsequent runs reuse this environment.
+
+== Usage
+
+[source,bash]
+----
+# Promotion mode
+scripts/agd-promote <item_path> <bump_type> [options]
+
+# CI validation mode
+scripts/agd-promote --validate-pr <file> [<file> ...]
+----
+
+=== Positional Arguments
+
+[cols="1,1,3",options="header"]
+|===
+| Argument    | Required | Description
+| `item_path` | Yes (promotion mode) | Path to the catalog item directory (e.g., `agd_v2/mcp-with-openshift`)
+| `bump`      | Yes (promotion mode) | Version bump type: `patch`, `minor`, or `major`
+|===
+
+=== Options
+
+[cols="2,1,3",options="header"]
+|===
+| Flag | Default | Description
+
+| `--stage <stages>`
+| `prod,event`
+| Comma-separated list of stages to update
+
+| `--cloud-provider-bump <type>`
+| Same as main bump
+| Separate bump type (`patch`, `minor`, `major`) for `cloud_provider_version`
+
+| `--dry-run`
+| Off
+| Show the promotion plan without making any changes or prompting for confirmation
+
+| `--skip-tagging`
+| Off
+| Only update YAML files, skip git tag creation (useful when tags were created manually)
+
+| `--tag-prefix <prefix>`
+| Auto-detected
+| Override the tag prefix auto-detected from stage files
+
+| `--validate-pr <file> ...`
+| N/A
+| CI mode: validate that tags referenced in the given stage files exist on all repositories
+|===
+
+== Version Bumping
+
+The tool supports three bump types.
+Given a current version of `1.2.3`:
+
+[cols="1,1,2",options="header"]
+|===
+| Bump Type | Result  | Description
+| `patch`   | `1.2.4` | Bug fixes, minor updates
+| `minor`   | `1.3.0` | New features, resets patch to 0
+| `major`   | `2.0.0` | Breaking changes, resets minor and patch to 0
+|===
+
+The tool determines the current version by finding the **highest existing tag** across all tagged repositories — not just the version in the stage file.
+This prevents version collisions if tags were created outside the tool.
+
+== Examples
+
+All examples assume you run the command from the root of the agnosticv repository.
+
+=== Patch Bump
+
+Increment the patch version (e.g., `1.2.3` -> `1.2.4`):
+
+[source,bash]
+----
+scripts/agd-promote agd_v2/mcp-with-openshift patch
+----
+
+This will:
+
+* Query all repos for the highest tag matching `mcp-openshift-*`
+* Create tag `mcp-openshift-1.2.4` on all tagged repos and the deployer repo
+* Update `prod.yaml` and `event.yaml` with the new tag
+
+=== Minor Bump
+
+Increment the minor version and reset patch to 0 (e.g., `1.2.3` -> `1.3.0`):
+
+[source,bash]
+----
+scripts/agd-promote agd_v2/mcp-with-openshift minor
+----
+
+=== Major Bump
+
+Increment the major version and reset minor and patch to 0 (e.g., `1.2.3` -> `2.0.0`):
+
+[source,bash]
+----
+scripts/agd-promote agd_v2/mcp-with-openshift major
+----
+
+=== Dry Run
+
+Preview the promotion plan without making any changes:
+
+[source,bash]
+----
+scripts/agd-promote agd_v2/mcp-with-openshift patch --dry-run
+----
+
+The dry run shows:
+
+* Current and new version
+* Tags that would be created and on which repos
+* Pinned collection updates (if any)
+* YAML files that would be modified
+
+No confirmation prompt is shown and no changes are made.
+
+=== Cloud Provider Bump (Separate Version)
+
+Bump the main tag with a patch but bump the cloud provider version with a minor:
+
+[source,bash]
+----
+scripts/agd-promote agd_v2/ocp-cluster-cnv-pools patch --cloud-provider-bump minor
+----
+
+This is useful when the cloud provider repo has more significant changes than the main catalog item.
+For example, if the current versions are:
+
+* Main tag: `ocp-cluster-cnv-pools-1.0.5`
+* Cloud provider version: `2.1.0`
+
+The result would be:
+
+* New main tag: `ocp-cluster-cnv-pools-1.0.6`
+* New cloud provider version: `2.2.0`
+
+=== Skip Tagging
+
+Only update the YAML files without creating git tags.
+Useful when tags were already created manually or by another process:
+
+[source,bash]
+----
+scripts/agd-promote agd_v2/mcp-with-openshift patch --skip-tagging
+----
+
+=== Override Tag Prefix
+
+Use a custom tag prefix instead of the one auto-detected from stage files:
+
+[source,bash]
+----
+scripts/agd-promote agd_v2/mcp-with-openshift patch --tag-prefix my-custom-prefix
+----
+
+This creates tags like `my-custom-prefix-1.2.4` instead of the auto-detected prefix.
+
+=== Update Only Specific Stages
+
+Promote only to `prod` (skip `event`):
+
+[source,bash]
+----
+scripts/agd-promote agd_v2/mcp-with-openshift patch --stage prod
+----
+
+Promote to a custom set of stages:
+
+[source,bash]
+----
+scripts/agd-promote agd_v2/mcp-with-openshift patch --stage prod,event,staging
+----
+
+=== Validate PR (CI Mode)
+
+Validate that all tags referenced in stage files exist on all repositories:
+
+[source,bash]
+----
+# Validate a single file
+scripts/agd-promote --validate-pr agd_v2/mcp-with-openshift/prod.yaml
+
+# Validate multiple files
+scripts/agd-promote --validate-pr \
+  agd_v2/mcp-with-openshift/prod.yaml \
+  agd_v2/mcp-with-openshift/event.yaml \
+  agd_v2/ocp-cluster-cnv-pools/prod.yaml
+----
+
+The validation checks:
+
+* The `tag:` (or `scm_ref:`) value in each stage file
+* Whether that tag exists on all tagged repos and the deployer repo
+* Whether the `cloud_provider_version` tag exists on the cloud provider repo (if applicable)
+
+Exit code `0` means all tags are present.
+Exit code `1` means one or more tags are missing.
+
+=== Combining Options
+
+Dry-run a minor bump with a separate cloud provider patch bump, only for prod:
+
+[source,bash]
+----
+scripts/agd-promote agd_v2/ocp-cluster-cnv-pools minor \
+  --cloud-provider-bump patch \
+  --stage prod \
+  --dry-run
+----
+
+== How It Works
+
+=== Repository Discovery
+
+The tool reads `common.yaml` and identifies four categories of repositories:
+
+[cols="1,3,2",options="header"]
+|===
+| Category | Description | Example
+
+| **Tagged repos**
+| Ansible collections with `{{ tag }}` in their version field
+| `rhpds/agnosticd_collection_mcp`
+
+| **Pinned collections**
+| Known collections with fixed version numbers (checked for available updates)
+| `rhpds/assisted_installer`, `agnosticd/showroom`
+
+| **Cloud provider repo**
+| Derived from `cloud_provider` field when `cloud_provider_version` uses `{{ tag }}`
+| `agnosticd/cloud_provider_aws`
+
+| **Deployer repo**
+| From `__meta__.deployer.scm_url`
+| `rhpds/agnosticd_deployer`
+|===
+
+=== Version Detection
+
+The tool queries all tagged repos and the deployer repo for tags matching the detected prefix (e.g., `mcp-openshift-*`).
+It uses the **highest version found across all repos** as the base for bumping.
+This prevents version conflicts when different repos have different latest tags.
+
+=== Tag Creation
+
+Tags are created via the GitHub API (`gh api`):
+
+1. Gets the HEAD SHA of each repo's default branch
+2. Creates a lightweight tag pointing to that SHA
+3. Verifies the tag was created successfully
+
+If any tag creation fails, the tool:
+
+* Prints cleanup commands to delete any tags that were successfully created
+* Does **not** update YAML files
+* Exits with code `1`
+
+=== YAML File Updates
+
+After all tags are created successfully:
+
+* **Stage files** (`prod.yaml`, `event.yaml`): updates `tag:`, `scm_ref:`, and `cloud_provider_version:` fields
+* **`common.yaml`**: updates pinned collection versions if newer versions are available
+
+The updates use line-based editing to preserve file structure, comments, and formatting.
+
+== GitHub Actions Workflow: validate-tags
+
+The file `.github/workflows/validate-tags.yml` runs automatically on pull requests that modify promotion stage files.
+
+=== Trigger
+
+The workflow triggers on pull requests to the `master` branch when any of these files are changed:
+
+* `agd_v2/*/prod.yaml`
+* `agd_v2/*/event.yaml`
+* `summit-2026/*/prod.yaml`
+* `summit-2026/*/event.yaml`
+
+=== What It Does
+
+1. Checks out the repository with full history
+2. Sets up Python and installs `pyyaml`
+3. Identifies which `prod.yaml` / `event.yaml` files were added or modified in the PR
+4. Runs `scripts/agd-promote.py --validate-pr` on each changed file
+
+=== Purpose
+
+The workflow ensures that when someone updates a stage file with a new tag value, that tag **actually exists** on all the repositories referenced in the catalog item's `common.yaml`.
+This prevents broken promotions where a stage file references a tag that was never created.
+
+If validation fails, the PR check fails and the missing tags are reported in the workflow output.
+
+=== Typical Workflow
+
+A complete promotion follows this sequence:
+
+1. Run `agd-promote` locally to create tags and update YAML files
+2. Commit the changes and open a PR
+3. The `validate-tags` workflow runs automatically and verifies all tags exist
+4. Once the check passes, the PR can be merged
