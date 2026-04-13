@@ -1,610 +1,315 @@
-:toc2:
+= AgnosticV Promotion Automation
+:toc:
+:toc-placement!:
+:source-highlighter: highlight.js
 
-= RHPDS catalog
+Tooling for promoting AgnosticV catalog items to production and event stages.
 
+toc::[]
 
-This repository contains the catalog of RHPDS https://demo.redhat.com. It contains the variables and also meta definition like descriptions, labels, categories, RBAC access, ...
+== Overview
 
+Promoting a catalog item to `prod` or `event` involves several coordinated steps:
 
-== Nomenclature
+1. Parse `common.yaml` to discover which repos use `{{ tag }}`
+2. Check GitHub for the highest existing tag across all repos
+3. Create the new tag on every discovered repo _and_ the deployer
+4. Update the stage YAML files (`tag:`, `__meta__.deployer.scm_ref:`, and optionally `cloud_provider_version:`)
+5. Optionally update pinned collection versions in `common.yaml` when newer releases are available
 
-* AgnosticV *Asset* `/<account>/<item>/` dir
-* Component `/<account>/<item>/<stage>.yaml`
-* CatalogItem is a Component that has `\\__meta__.catalog`
+The `agd-promote.py` script automates all of the above. A companion GitHub Actions workflow (`validate-tags.yml`) runs on PRs to verify that the tags referenced in changed stage files actually exist on all repos.
 
-See also link:https://github.com/redhat-cop/agnosticv[agnosticv upstream readme]
+== Prerequisites
 
+* **Python 3.12+** (used to create the virtual environment automatically)
+* **GitHub CLI** (`gh`) — authenticated with access to the `agnosticd`, `rhpds`, and related orgs
+* Write access to the repos that need tagging
 
-== Goals
+Verify your setup:
 
-* Separate code and data
-* Deploy the same way we develop, using a yaml file.
-** Easy onboarding of lab and demo creators
-* Contain catalog information (description, ...)
-** Automatically generate catalog
-* Lab creators and Administrator will easily contribute to agnosticV
-* Easy maintenance (YAML files in a git repo)
-* Introduce good processes for contributing
-** Pull request
-** Peer review
-** Automatic tests
-*** Syntax checking, Linters
-*** Enforce policies (ex: "catalog item must have a description")
-*** Detect non-documented variables
-* Risk mitigation: no more manual operations on the deployment servers
-
-
-Please refer to link:https://github.com/redhat-cop/agnosticv[agnosticv] documentation:
-
-* agnosticv CLI to list/merge variables of the catalog items
-* Default merge strategies
-
-== Structure of this repository
-
+[source,bash]
 ----
-common.yaml
-
-includes/
-  parameters/
-    ...
-  secrets/
-    ...
-
-ACCOUNT/
-    common.yaml
-
-   CATALOGITEM1/
-         common.yaml
-         dev.yaml
-         test.yaml
-         prod.yaml
-
-
-   CATALOGITEM2/
-         common.yaml
-         dev.yaml
-         test.yaml
-         prod.yaml
+gh auth status
+python3 --version
 ----
 
+=== Python dependencies
 
-== CI / CD
+The following Python packages are required and installed automatically into the virtual environment by the wrapper script:
 
-This repo uses Github workflows. For the full definition, see directory link:.github/workflows[.github/workflows].
+[cols="1,2"]
+|===
+| Package | Purpose
 
-=== User stories and flowcharts
+| `pyyaml`
+| Parsing `common.yaml` to discover repos and collection versions
+|===
 
+== Installation
 
-[source,mermaid]
-.Key
+=== The CLI script
+
+The tool consists of two files in the `scripts/` directory:
+
+[cols="1,3"]
+|===
+| File | Purpose
+
+| `agd-promote`
+| Shell wrapper — creates a virtual environment in `/tmp/agd-promote-venv` on first run, installs dependencies, and delegates to the Python script. **This is the entry point you should use.**
+
+| `agd-promote.py`
+| Python implementation — should not be called directly (use the wrapper instead).
+|===
+
+No manual installation of Python packages is needed. The wrapper handles everything:
+
+[source,bash]
 ----
-flowchart TB
-  automated[Automated operation]
-  decision{Automated decision}
-  manual[Manual operation]
-  manualdecision{Manual decision}
-  style manualdecision fill:#FFF7A8,stroke:orange,stroke-width:4px
-  style manual fill:#FFF7A8,stroke:orange,stroke-width:4px
-  datastore[(Datastore, Git, DB)]
-  approved(<b>Automated approval</b>)
-  style approved fill:#D6FFD9,stroke:green,stroke-width:4px
-  rejected(fa:fa-ban <b>Automated rejection</b>)
-  style rejected fill:#FFD0D0,stroke:red,stroke-width:4px
-----
+# First run creates the venv automatically
+./scripts/agd-promote --help
 
-==== Update deployer code using the DEV catalog item
-
-As a lab or demo developer, i want to update the code of the deployer while testing the change in RHPDS. When i can't use my local machine to provision, i want to be able to use RHPDS and a DEV catalog item to test my code change.
-
-I want to be able to do all of the above without having to wait for someone.
-
-[source,mermaid]
-----
-flowchart TB
-  classDef agnosticd fill:#f9f3,stroke:#A80093,stroke-width:1px;
-  classDef manual fill:#FFF7A8,stroke:orange,stroke-width:4px
-
-  cp[Open PR<br /><b>agnosticd</b>]
-  class cp manual
-
-  gitp[(PR branch<br /><b>agnosticd</b>)]
-  class gitp agnosticd
-  gitd[(development<br />branch<br /><b>agnosticd</b>)]
-  class gitd agnosticd
-  merge[Merge PR<br /><b>agnosticd</b>]
-  class merge manual
-  u2[Open PR for DEV<br />update scm_ref<br /><b>agnosticv</b>]
-  class u2 manual
-  u3[Restore DEV item]
-  class u3 manual
-
-  subgraph it [Iterative phase]
-  test(Developer interacts<br />with DEV item)
-  class test manual
-  happy{happy?}
-  class happy manual
-  u1[Update PR<br /><b>agnosticd</b>]
-  class u1 manual
-  end
-
-  cp -.- gitp
-  cp --> u2
-  u2 -- auto-approved --> u2
-  u2 -. point to .-> gitp
-  u2 --> it
-  test --> happy
-  happy -- no --> u1
-  u1 -. update .-> gitp
-  u1 --> test
-  happy -- yes --> merge
-
-  merge -. into .-> gitd
-
-
-  merge --> u3
-  u3 -. point to .-> gitd
-  u3 -- auto-approved --> u3
+# Subsequent runs reuse the existing venv
+./scripts/agd-promote agd_v2/mcp-with-openshift patch --dry-run
 ----
 
+To force a fresh virtual environment (e.g., after a Python upgrade), delete and re-run:
 
-==== Create or Update catalog item, general
-
-. As a catalog item maintainer, i want to be able to test a change of a catalog item without impacting production.
-. As a content developer, i want to be able to create a new catalog item and see the change on the integration cluster without having to wait for someone.
-. As a content developer, i want to be able to make a change to a catalog item and see the change or test the change on the integration cluster without having to wait for someone.
-
-[source,mermaid]
+[source,bash]
 ----
-flowchart TB
-  labeler[Workflow: Labeler]
-  click labeler "https://github.com/rhpds/agnosticv/blob/master/.github/workflows/labeler.yml" "labeler.yml"
-  dev{dev.yaml only?}
-  start[Open PR<br />Update PR<br />Reopen PR]
-  style start fill:#FFF7A8,stroke:orange,stroke-width:4px
-  static[Workflow: all-checks-pr]
-  click static "https://github.com/rhpds/agnosticv/blob/master/.github/workflows/all-checks-pr.yml" "all-checks-pr.yml"
-  close[Close PR]
-  style close fill:#FFF7A8,stroke:orange,stroke-width:4px
-  prclosed[Workflow: integration-pr-closed]
-  click prclosed "https://github.com/rhpds/agnosticv/blob/master/.github/workflows/integration-pr-closed.yml" "integration-pr-closed.yml"
-
-  giti[(integration branch)]
-  comment[Comment back in the PR]
-  approved(<b>PR approved</b>)
-  approved2(<b>PR approved</b>)
-  style approved fill:#D6FFD9,stroke:green,stroke-width:4px
-  style approved2 fill:#D6FFD9,stroke:green,stroke-width:4px
-  rejected(fa:fa-ban <b>PR rejected</b>)
-  rejected2(fa:fa-ban <b>PR rejected</b>)
-  style rejected fill:#FFD0D0,stroke:red,stroke-width:4px
-  style rejected2 fill:#FFD0D0,stroke:red,stroke-width:4px
-  size[job lfs-warning:<br />Check size of files in commits]
-  staticjob[job static checks:<br />validate YAML lint <br />Validate syntax and schema<br />Validate all git refs exist<br />Babylon validations: anarchy namespace, EE validation]
-  m1{PR merged?}
-  test(Maintainer can test<br />from the integration cluster)
-  style test fill:#FFF7A8,stroke:orange,stroke-width:4px
-  sync[Sync master branch to integration branch]
-  revert[Revert all changes from the integration branch]
-  enterprise{Is enterprise?}
-  e2e[End to End test<br /><b>integration</b>]
-  passed{Passed?}
-  merge[job: Merge PR branch into integration]
-  qa{QA successful?<br /><b>integration</b>}
-  allapproved{all approved?}
-  finalmerge(Maintainer can<br />merge the PR)
-  style finalmerge fill:#FFF7A8,stroke:orange,stroke-width:4px
-  upr[Update PR]
-  style upr fill:#FFF7A8,stroke:orange,stroke-width:4px
-
-  labeler --> dev
-  dev -- yes --> approved
-  start --> static
-  start --> labeler
-  static --> size
-  static --> staticjob
-  staticjob & size --> ok{all jobs passed?}
-  ok -- yes --> merge
-  merge -.-> giti
-  ok -- no --> rejected
-
-  subgraph agnosticv-operator
-
-    update[Update the catalog on the integration cluster]
-
-    giti o-- watch --> anyupdate{Any update?}
-
-    anyupdate -- yes --> update
-    update --> comment
-  end
-
-
-  comment --> test
-  test --> qa
-  qa -- yes --> allapproved -- yes --> finalmerge
-  allapproved -- no --> upr
-  qa -- no --> upr
-  comment --> enterprise
-  enterprise -- yes --> e2e
-  e2e --> passed
-  passed -- yes --> approved2
-  passed -- no --> rejected2
-
-  close --> prclosed --> m1
-  m1 -- yes --> sync
-  m1 -- no --> revert
-  revert -.-> giti
+rm -rf /tmp/agd-promote-venv
+./scripts/agd-promote --help
 ----
 
-==== Promote deployer development to production
+=== The GitHub Actions workflow
 
-As a catalog item maintainer, i want to be able to promote a change in agnosticd development branch to production.
+The workflow file is `.github/workflows/validate-tags.yml`. It is activated automatically on pull requests to `master` that modify any `agd_v2/*/prod.yaml` or `agd_v2/*/event.yaml` file.
 
-[source,mermaid]
+It uses the existing `RHPDS_BOT_REPO` repository secret for cross-org GitHub API access. No additional secrets or configuration are required.
+
+== Usage
+
+=== Basic promotion (patch bump)
+
+[source,bash]
 ----
-flowchart TB
-  version>Git revision]
-  dev[DEV catalog item]
-  testtest[TEST catalog item<br />latest prod tag using 'git_tag_prefix']
-  bumpprod[new PROD tag]
-  style bumpprod fill:#FFF7A8,stroke:orange,stroke-width:2px
-  prprod[Open PR to update PROD]
-  style prprod fill:#FFF7A8,stroke:orange,stroke-width:2px
-  merge[Merge PR]
-  style merge fill:#FFF7A8,stroke:orange,stroke-width:2px
-  qatest{QA on <b>production</b> cluster<br />successful?}
-  style qatest fill:#FFF7A8,stroke:orange,stroke-width:2px
-  qaprod{QA on <b>integration</b> cluster<br />successful?}
-
-  dev -.- version
-  bumpprod -.point to.-> version
-
-  dev --> bumpprod --> testtest --> qatest
-  qatest -- yes --> prprod --> qaprod -- yes --> merge
+./scripts/agd-promote agd_v2/mcp-with-openshift patch
 ----
 
+This will:
 
-==  Running AgnosticD and AgnosticV via CLI
+1. Discover all repos from `agd_v2/mcp-with-openshift/common.yaml`
+2. Query GitHub for the highest existing tag matching the prefix (e.g., `mcp-openshift-`)
+3. Compute the new version (e.g., `1.0.2` -> `1.0.3`)
+4. Display a plan and prompt for confirmation
+5. Create tags on all repos
+6. Update `prod.yaml` and `event.yaml`
 
-* First, use link:https://github.com/redhat-cop/agnosticv/releases/[`agnosticv` CLI] to get a YAML file of your config.  Indicate the catalog item path to merge the variables.
-+
-.Example
-----
-cd agnosticv
-agnosticv --merge sandboxes-gpte/RHTE_A0007/dev.yml > $HOME/config.yaml
-----
-** For more information about the agnosticv CLI, see agnosticv link:https://github.com/redhat-cop/agnosticv[Readme]
+=== Dry run (preview only)
 
-* Then run your agnosticD deployer
-+
-.Example `ansible-playbook` agnosticD
+[source,bash]
 ----
-#!/bin/bash
-ansible-playbook ./ansible/main.yml -e @./config.yaml -e @./secret.yaml -e guid=<a GUID>
+./scripts/agd-promote agd_v2/mcp-with-openshift patch --dry-run
 ----
 
+Prints the full promotion plan without making any changes or prompting for confirmation.
 
-== Meta variables (reference only)
+Example output:
 
-Meta variables are just variables like any other, except they are not used for agnostic**d**. Instead they are useful to configure the way we want the deployment to happen, or anything that is done **before** or **outside** of agnostic**d**.
-
-|=============================================
-| Special variable | Purpose
-
-| `\\__meta__`
-| Variables used by link:https://github.com/redhat-cop/babylon[Babylon]. See the dedicated section later in this Readme.
-|=============================================
-
-Variables in agnosticv are merged and then passed directly to `ansible-playbook` command.
-
-The following variables work with the BASH deployment scripts (Located in OPEN_Admin repository).
-
-|=============================================
-| Variable name | type | default | Purpose | Merging strategy
-
-| `asset_uuid`
-| String
-| None
-| A unique UUID must be created and added to each component with __meta__ defined.  You can generate UUIDs by using the `uuidgen` command on any RHEL system.  This should ONLY be defined in the common.yaml as it is shared by all stages (dev/test/prod/etc.).  It is used by the billing system to better differentiate beween components.
-| Overwrite
-
-| `sandboxed`
-| Boolean
-| `false`
-| Set to true to deploy in a sandbox (AWS only).
-| Overwrite
-
-| `virtualenv`
-| String
-| None
-| When this variable is specified, the deployment script will activate the python virtualenv. Make sure the virtualenv exists on the admin host or create it first.
-
-[underline]#For example#:
-
-If you specify `virtualenv: openstack` and keep the default for `virtualenv_dir`, then the deployment script will perform: `source ${HOME}/virtualenvs/openstack/bin/activate` before running `ansible-playbook`.
-
-| Overwrite
-
-| `virtualenv_dir`
-| String
-| `~/virtualenvs`
-| The directory where the virtualenvs are located
-| Overwrite
-
-
-| `nuke_sandbox`
-| Boolean
-| `true`
-| Set to true to run link:https://github.com/rebuy-de/aws-nuke[aws-nuke] on the sandbox when the service retires (AWS only).
-
-If set to `true`, the deletions of sandboxes are throttled to be gentle with AWS.
-
-If set to `false`, the deletions of sandboxes can be run in parallel.
-| Overwrite
-
-| `params_to_variables`
-| Dictionary
-| see `link:common.yaml[]`
-| This is the dictionary used to map ansible variables with BASH argument names passed by Cloudforms.  `<bash-arg>: <ansible-var>`
-| Merge
-
-| `secrets`
-| List
-| `[]`
-| This list defines the secret files to load. `~/secrets/{{name}}.yml` in Admin host) or credentials (tower).
-| Append
-
-| `idle_after`
-| Number
-| `8`
-| Number of hours after start/deploy to stop the environment.
-| Overwrite
-
-| `idle_after_deploy`
-| Number
-| `8`
-| Number of hours after deploy to stop the environment.
-| Overwrite
-
-| `idle_after_start`
-| Number
-| `8`
-| Number of hours after start to stop the environment.
-| Overwrite
-
-| `agnosticd_git_repo`
-| String
-| `'https://github.com/redhat-cop/agnosticd'`
-| Repo URL for agnosticd
-| Overwrite
-
-| `agnosticd_git_tag_prefix`
-| String
-| `''`
-| git tag prefix to check out. The tags are sorted using Version sort and the latest tag is picked.
-| Overwrite
-
-| `agnosticd_git_ref`
-| String
-| `development` if `stage=dev`
-| git ref (branch, commit id, tag, ...) to checkout
-| Overwrite
-
-| `lifecycle_playbook`
-| String
-| `configs/{{ env_type }}/lifecycle.yml` if it exists, otherwise `lifecycle.yml`
-| The playbook to use for start / stop / status actions. By default, the one in the config directory is used. If it doesn't exist, then the common link:https://github.com/redhat-cop/agnosticd/blob/development/ansible/lifecycle.yml[`lifecycle.yml`] is used, which just turns on/off the instances.
-| Overwrite
-
-|=============================================
-
-=== Babylon backend
-
-See reference documentation in the GPTE wiki: https://ipamwiki.opentlc.com/index.php/Babylon_AgnosticV
-
-The deployer script located on the admin hosts, `ALL_agnosticv.sh` has now the capability to deploy an environment using our link:https://github.com/redhat-cop/babylon[Babylon] clusters.
-Instead of running the `ansible-playbook` locally on the admin host, the script will call Babylon components and let Babylon (down to Ansible Tower) handle the deployment.
-
-In order to do that, there are a few things to add to your catalog item in agnosticv:
-
-. Create `\\__meta__` dictionary containing the information needed by Babylon.
-+
-[source,yaml]
+[source]
 ----
-__meta__:
-  # You can generate the uuid with uuidgen on RHEL.  This attribute is required for all common.yaml!
-  asset_uuid: abcd-efgh-ijkl-mnop
-  catalog:
-    namespace: gpte
+=== Promotion Plan ===
+Item:       agd_v2/mcp-with-openshift
+Current:    mcp-openshift-1.0.2  (highest across all repos)
+New:        mcp-openshift-1.0.3
 
-    parameters:
-      # Specify here all the variables passed by Cloudforms
+Tags to create:
+  agnosticd/core_workloads                 mcp-openshift-1.0.3
+  agnosticd/ai_workloads                   mcp-openshift-1.0.3
+  rhpds/mcp_workloads                      mcp-openshift-1.0.3
+  agnosticd/agnosticd-v2                   mcp-openshift-1.0.3
 
-  deployer:
-    scm_ref: development
-    scm_type: git
-    scm_url: https://github.com/redhat-cop/agnosticd.git
-    type: agnosticd
+Pinned collection updates (common.yaml):
+  rhpds/assisted_installer                 v0.0.9 (already latest)
+  agnosticd/showroom                       v1.3.9 -> v1.5.7  (latest available)
 
-  # Here you must specify the secrets containing the variables used to deploy.
-  secrets:
-  - name: gpte
-    namespace: gpte
-
-  tower:
-    organization: gpte
+Files to update:
+  common.yaml: showroom version v1.3.9 -> v1.5.7
+  prod.yaml:  tag + scm_ref -> mcp-openshift-1.0.3
+  event.yaml:  tag + scm_ref -> mcp-openshift-1.0.3
 ----
 
-. Make sure you set `\\__meta__.catalog`, otherwise, the link:https://github.com/redhat-gpte-devopsautomation/agnosticv-operator[agnosticv-operator] will not pick up the catalog item.
-.. You can test that your catalog item is listed as a catalog item by using the link:https://github.com/redhat-cop/agnosticv/releases/[`agnosticv` CLI]: `agnosticv --list --has \\__meta__.catalog`
-.. You can test the content of your catalog item as follow: `agnosticv --merge path/to/your/catalog/item.yaml`
+=== Minor or major bump
 
-==== Scheduler ====
-
-.Example using production OpenStack
-[source,yaml]
+[source,bash]
 ----
-__meta__:
-  scheduler:
-    enable: true
-    data:
-      # clusters having those labels will be picked first.
-      cloud_preference:
-        datacenter: dal
-        purpose: production
+./scripts/agd-promote agd_v2/mcp-with-openshift minor
+./scripts/agd-promote agd_v2/mcp-with-openshift major
 ----
 
-When using the scheduler, the name of the secret will be set by the scheduler automatically, depending on the labels passed as `cloud_preference` and `cloud_selector`, so you don't need to set the secret of the cluster.
-For more information about the scheduler, please refer to the documentation in the wiki: https://ipamwiki.opentlc.com/index.php/AgnosticS
+=== Update only specific stages
 
-== Migrate a catalog item to agnosticv (reference only)
+[source,bash]
+----
+# Only update prod.yaml (skip event.yaml)
+./scripts/agd-promote agd_v2/mcp-with-openshift patch --stage prod
 
-== Checklist
-
-. Ensure a jenkins pipeline is present for the catalog item
-.. If not, ideally create the pipeline. See link:https://github.com/redhat-gpe/OPEN_Admin/blob/master/OPENTLC-Documentation/OPENTLC-Deployer_development_workflow/jenkins.adoc[jenkins.adoc] in OPEN_Admin.
-. Run jenkins pipeline: should work.
-. Translate variables present in the deployment script (`OPEN_Admin/OPEN-Deployer/deploy_scripts/`) into YAML link:https://github.com/redhat-gpe/agnosticv[`agnosticv`]
-. Go into CloudForms and change the remote script
-.. automation / automate / explorer / OPEN-Ansible-Deployer / State Machines / ... / remoteScript
-+
-----
-/home/opentlc-mgr/OPEN_Admin/OPENTLC-Deployer/deploy_scripts/${#className}.sh
-to
-/home/opentlc-mgr/OPEN_Admin/OPENTLC-Deployer/deploy_scripts/ALL_agnosticv.sh
-----
-. Order service
-.. test stop action from Clouforms
-.. test start action from Clouforms
-.. test status action from Clouforms
-. Run jenkins pipeline: should work.
-. Add comment in the old script to point to the new script and to agnosticv definition files.
-+
-.Warning example
-----
-########################################################################
-#
-#
-#           /!\ THIS FILE IS NOT USED ANYMORE /!\
-#
-#
-#   The DEV CLIENT VM catalog item vars are now defined here:
-# https://github.com/redhat-gpe/agnosticv/blob/master/common.yaml
-# https://github.com/redhat-gpe/agnosticv/blob/master/gpte/common.yaml
-# https://github.com/redhat-gpe/agnosticv/blob/master/gpte/OCP_CLIENTVM/dev.yaml
-#
-#
-#   The deployment script used now is ALL_agnosticv.sh
-#
-#
-########################################################################
+# Only update event.yaml
+./scripts/agd-promote agd_v2/mcp-with-openshift patch --stage event
 ----
 
-. After a month, grep the logs to ensure the old script was not called.
-** If it was, it means there is another catalog item that is using the script. Investigate.
-** If not, delete the old script.
+=== Catalog items with cloud_provider_version
 
+For items like `ocp-cluster-cnv-pools` that have a separate `cloud_provider_version`, the tool handles it automatically:
+
+[source,bash]
 ----
-########################################################################
-# RHTE: for shared clusters, use account: RHTE
-# RHTE: for cluster per studnet, use sandboxes-GPTE *Does not work via CLI*
-# RHTE: Secrets: ssh to bastion to find rhte-ocp4
-########################################################################
+./scripts/agd-promote agd_v2/ocp-cluster-cnv-pools patch
 ----
 
+To bump the cloud provider version independently from the main version:
 
-== Guidelines to write description.adoc files
+[source,bash]
+----
+# Main version: patch bump (1.2.3 -> 1.2.4)
+# Cloud provider version: minor bump (1.2.3 -> 1.3.0)
+./scripts/agd-promote agd_v2/ocp-cluster-cnv-pools patch --cloud-provider-bump minor
+----
 
-Descriptions can be either write in ASCIIDOC or HTML.
-When writing descriptions in adoc with a goal of maintaining a generic look and feel you should avoid inserting custom CSS. It's essential to follow consistent practices for titles and text. Here's a guideline for creating the description.adoc:
+=== Skip tagging (YAML-only update)
 
-=== Titles
-Heading Tags: Use appropriate heading tags (`<h1>`, `<h2>`, `<h3>`, etc.) to denote the importance and hierarchy of the titles. For instance, use `<h1>` for the main title or header, `<h2>` for subsections, and so on.
+If tags were already created manually or by a previous partial run:
 
-```
-<h1>Title</h1>
-<h2>Subheading</h2>
-```
-Keep it Semantic: Choose titles that accurately represent the content. They should be clear and descriptive, helping users understand the context.
+[source,bash]
+----
+./scripts/agd-promote agd_v2/mcp-with-openshift patch --skip-tagging
+----
 
-Avoid Styling Tags: Refrain from using inline styling or custom classes to format titles. Rely on the default browser styling for the headings.
+=== Override tag prefix
 
-=== Text Descriptions
-Paragraph Tags: Utilize `<p>` tags for textual descriptions. Separate different sections of text with paragraph tags for clarity and readability.
+If the auto-detected prefix is wrong or the stage file doesn't exist yet:
 
-```
-<p>This is a description of the content...</p>
-<p>Another paragraph for additional information...</p>
-```
+[source,bash]
+----
+./scripts/agd-promote agd_v2/my-new-item patch --tag-prefix my-item
+----
 
-Use Lists for Bullet Points: For lists or bullet points within the description, employ `<ul>` (unordered list) and `<li>` (list item) tags.
+=== Validate tags in a PR (CI mode)
 
-```
-<ul>
-    <li>Point 1</li>
-    <li>Point 2</li>
-    <li>Point 3</li>
-</ul>
-```
+Used by the GitHub Actions workflow, but can also be run locally:
 
-Text Formatting Tags: Basic text formatting can be achieved using HTML tags such as `<strong>` for bold and `<em>` for emphasis (italics).
+[source,bash]
+----
+./scripts/agd-promote --validate-pr agd_v2/mcp-with-openshift/prod.yaml
+----
 
-```
-<p>This is <strong>bold text</strong> and this is <em>italicized text</em>.</p>
-```
+Checks that the tag specified in `prod.yaml` exists on every repo discovered from `common.yaml`. Exits with code 0 if all tags are present, 1 if any are missing.
 
-=== Tables
-Table Structure: Use the `<table>`, `<tr>` (table row), `<th>` (table header), and `<td>` (table data) tags to structure the table.
+Multiple files can be validated at once:
 
-```
-<table>
-    <tr>
-        <th>Header 1</th>
-        <th>Header 2</th>
-    </tr>
-    <tr>
-        <td>Data 1</td>
-        <td>Data 2</td>
-    </tr>
-    <!-- Add more rows as needed -->
-</table>
-```
-Simple Styling: If necessary, use minimal table attributes like border, cellpadding, or cellspacing within the table tag to control the table appearance without employing custom CSS.
+[source,bash]
+----
+./scripts/agd-promote --validate-pr \
+  agd_v2/mcp-with-openshift/prod.yaml \
+  agd_v2/ocp-cluster-cnv-pools/event.yaml
+----
 
-```
-<table border="1" cellpadding="5" cellspacing="0">
-    <!-- Table content -->
-</table>
-```
+== How It Works
 
-=== Links
-Anchor Tags: Use `<a>` tags to create links.
+=== Repo discovery
 
-```
-<a href="https://www.example.com">Link Text</a>
-```
-Link Targets: When linking to external pages, consider using target="_blank" to open the link in a new tab.
+The tool reads `common.yaml` and classifies repos into three categories:
 
-```
-<a href="https://www.example.com" target="_blank">Link Text</a>
-```
+[cols="1,3,2"]
+|===
+| Category | Description | Example
 
-=== Images
-Image Tags: Utilize the `<img>` tag to insert images.
+| **A: Tagged**
+| Collections where `version: "{{ tag }}"` plus the deployer repo. All receive the new tag.
+| `agnosticd/core_workloads`, `agnosticd/agnosticd-v2`
 
-```
-<img src="image.jpg" alt="Description of the image" width="300" height="200">
-```
-Alternate Text: Always provide descriptive and relevant alt attributes for images to ensure accessibility and understanding in case the image fails to load.
+| **B: Pinned**
+| Known collections with hardcoded versions (showroom, assisted_installer). The tool checks GitHub for newer releases and updates `common.yaml` if available.
+| `agnosticd/showroom` at `v1.3.9`
 
-Dimension Attributes: Optionally, use width and height attributes within the `<img>` tag to set the image dimensions, maintaining the aspect ratio without CSS.
+| **C: Cloud provider**
+| When `cloud_provider_version: "{{ tag }}"` and `cloud_provider != "none"`. Gets tagged with a bare version number.
+| `agnosticd/cloud_provider_openshift_cnv` at `1.2.3`
+|===
 
-Keep it Consistent: Maintain consistency in text structure, spacing, and alignment throughout the description.
-Avoid Custom Styling: Do not apply custom CSS or inline styles to the text content. Rely on default browser rendering for text styles.
+=== Version resolution
 
-=== Template
+The tool queries _all_ tagged repos for the highest existing tag matching the prefix. This handles cases where repos are out of sync — it always bumps from the global maximum.
 
-You can write it ASCIIDOC
+=== YAML editing
 
+Files are edited line-by-line (not via `yaml.dump`) to preserve comments, formatting, and the `#include` directives that are specific to AgnosticV.
 
+=== Error handling
 
+[cols="1,2"]
+|===
+| Scenario | Behavior
 
+| `gh auth` fails
+| Exits with authentication guidance
+
+| Repo inaccessible
+| Lists all inaccessible repos, exits before any mutations
+
+| Tag already exists
+| Skips that repo, continues with the rest
+
+| Tag creation fails midway
+| Reports status, prints cleanup commands, does _not_ update YAML files
+
+| Unexpected YAML format
+| Errors with details, does not write the file
+
+| Stage file missing
+| Skips with a warning (e.g., `event.yaml` may not exist for all items)
+|===
+
+== Typical Workflow
+
+[source,bash]
+----
+# 1. Preview the promotion
+./scripts/agd-promote agd_v2/mcp-with-openshift patch --dry-run
+
+# 2. Run the promotion (creates tags + updates YAML)
+./scripts/agd-promote agd_v2/mcp-with-openshift patch
+
+# 3. Review the local changes
+git diff
+
+# 4. Commit and open a PR
+git add agd_v2/mcp-with-openshift/
+git commit -m "Promote mcp-with-openshift to 1.0.3"
+git push origin HEAD
+gh pr create --title "Promote mcp-with-openshift to 1.0.3"
+----
+
+The `validate-tags` workflow will automatically verify that all tags exist when the PR is opened.
+
+== CLI Reference
+
+[source]
+----
+usage: agd-promote.py [-h] [--validate-pr FILE [FILE ...]] [--stage STAGE]
+                      [--cloud-provider-bump {patch,minor,major}]
+                      [--dry-run] [--skip-tagging] [--tag-prefix TAG_PREFIX]
+                      [item_path] [{patch,minor,major}]
+
+positional arguments:
+  item_path             Path to catalog item dir (e.g., agd_v2/mcp-with-openshift)
+  bump                  Version bump: patch | minor | major
+
+options:
+  --validate-pr FILE    CI mode: validate tags in given stage files exist
+  --stage STAGE         Comma-separated stages to update (default: prod,event)
+  --cloud-provider-bump Separate bump for cloud_provider_version (default: same as main)
+  --dry-run             Show plan only, no confirmation prompt
+  --skip-tagging        Only update YAML files, skip git tag creation
+  --tag-prefix          Override auto-detected tag prefix
+----

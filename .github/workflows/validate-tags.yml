@@ -1,0 +1,33 @@
+---
+name: validate-promotion-tags
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'agd_v2/*/prod.yaml'
+      - 'agd_v2/*/event.yaml'
+      - 'summit-2026/*/prod.yaml'
+      - 'summit-2026/*/event.yaml'
+
+jobs:
+  validate-tags:
+    name: Validate promotion tags
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - run: pip install pyyaml
+      - name: Find changed files and validate
+        env:
+          GH_TOKEN: ${{ secrets.RHPDS_BOT_REPO }}
+        run: |
+          files=$(git diff --name-only --diff-filter=AM \
+            origin/${{ github.base_ref }}...${{ github.sha }} \
+            -- 'agd_v2/*/prod.yaml' 'agd_v2/*/event.yaml' \
+               'summit-2026/*/prod.yaml' 'summit-2026/*/event.yaml')
+          [ -z "$files" ] && exit 0
+          echo "$files" | xargs python scripts/agd-promote.py --validate-pr
