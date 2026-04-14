@@ -51,16 +51,31 @@ requirements_content:
     type: git
     version: v1.6.6
 
+  # FTL — ZT runner SA + runtime automation grader
+  - name: https://github.com/rhpds/rhpds-ftl.git
+    type: git
+    version: "{{ tag }}"
+
 # ===================================================================
 # List of workloads to be deployed
 # ===================================================================
-workloads:
-- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
-- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
-- agnosticd.namespaced_workloads.ocp4_workload_tenant_gitea_user
-- agnosticd.namespaced_workloads.ocp4_workload_tenant_quay
-- rhpds.hummingbird.ocp4_workload_hummingbird_tenant
-- agnosticd.showroom.ocp4_workload_showroom
+workloads: >-
+  {{
+    [
+      'agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace',
+      'agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user',
+      'agnosticd.namespaced_workloads.ocp4_workload_tenant_gitea_user',
+      'agnosticd.namespaced_workloads.ocp4_workload_tenant_quay',
+      'rhpds.hummingbird.ocp4_workload_hummingbird_tenant',
+      'agnosticd.showroom.ocp4_workload_showroom',
+      'rhpds.ftl.ocp4_workload_runtime_automation_k8s'
+    ] +
+    (
+      ['rhpds.ftl.ocp4_runtime_automation_load_test']
+      if run_e2e_load_test | default(false) | bool
+      else []
+    )
+  }}
 
 # ===================================================================
 # Variables for specific workloads
@@ -147,10 +162,20 @@ ocp4_workload_showroom_content_git_repo_ref: main
 ocp4_workload_showroom_content_antora_playbook: site.yml
 
 ocp4_workload_showroom_terminal_type: showroom
-ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-04-10
+ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-04-07
+
+ocp4_workload_showroom_runtime_automation_enable: true
+ocp4_workload_showroom_runtime_automation_image: "quay.io/rhpds/zt-runner:v2.4.2"
 
 # Dev Mode is overridden in dev.yaml
 ocp4_workload_showroom_antora_enable_dev_mode: "false"
+
+# -------------------------------------------------------------------
+# Workload: rhpds.ftl.ocp4_workload_runtime_automation_k8s
+# -------------------------------------------------------------------
+ocp4_workload_runtime_automation_k8s_cluster_admin: true
+ocp4_workload_runtime_automation_k8s_openshift_api_url: "{{ sandbox_openshift_api_url }}"
+ocp4_workload_runtime_automation_k8s_openshift_api_token: "{{ cluster_admin_agnosticd_sa_token }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -193,6 +218,13 @@ __meta__:
     workshopLabUiRedirect: true
     reportingLabels:
       primaryBU: Hybrid_Platforms
+    parameters:
+    - name: run_e2e_load_test
+      description: "Run E2E load test after provisioning — triggers solve and validate on all modules"
+      formLabel: "Run E2E Load Test"
+      openAPIV3Schema:
+        type: boolean
+        default: false
 
   # -----------------------------------------------------------------
   # Sandbox API
