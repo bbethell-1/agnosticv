@@ -1,0 +1,193 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: AI Lightning Labs - Factory Floor Tycoon Agentic Lab (Tenant)
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/access-restriction-admins-only.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+config: namespace
+cloud_provider: none
+
+common_password: >-
+  {{ lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits') }}
+
+# ===================================================================
+# Additional Collections & Roles
+# ===================================================================
+tag: main
+requirements_content:
+  collections:
+    - name: https://github.com/agnosticd/namespaced_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: v1.6.6
+
+# ===================================================================
+# Workloads
+# Order matters — namespace must exist before gitops_bootstrap runs
+# ===================================================================
+workloads:
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.showroom.ocp4_workload_ocp_console_embed
+  - agnosticd.showroom.ocp4_workload_showroom
+
+remove_workloads:
+  - agnosticd.showroom.ocp4_workload_showroom
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+
+# -------------------------------------------------------------------
+# ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_tenant_namespace
+# -------------------------------------------------------------------
+ocp4_workload_tenant_namespace_username: "user-{{ guid }}"
+ocp4_workload_tenant_namespace_use_cluster_quota: true
+
+ocp4_workload_tenant_namespace_suffixes:
+  - suffix: daamclaw
+  - suffix: mcp-openshift
+  - suffix: openclaw
+
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "8"
+  requests.cpu: "4"
+  limits.memory: 16Gi
+  requests.memory: 8Gi
+  requests.storage: 100Gi
+
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: "2"
+    memory: 4Gi
+  defaultRequest:
+    cpu: 250m
+    memory: 128Mi
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ai-lightning-labs-automation
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ guid }}"
+ocp4_workload_gitops_bootstrap_application_project: tenants
+ocp4_workload_gitops_bootstrap_health_retries: 2
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  tenant:
+    name: "{{ guid }}"
+    user:
+      name: "{{ ocp4_workload_tenant_keycloak_username }}"
+  daamclaw:
+    namespace: "{{ ocp4_workload_tenant_keycloak_username }}-daamclaw"
+  mcpOpenshift:
+    namespace: "{{ ocp4_workload_tenant_keycloak_username }}-mcp-openshift"
+  openclaw:
+    namespace: "{{ ocp4_workload_tenant_keycloak_username }}-openclaw"
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
+
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ai-lightning-fft-agentic-lab-showroom.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_terminal_type: none
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 40
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+  - name: OpenShift Console
+    url: 'https://console-openshift-console.{{ openshift_cluster_ingress_domain }}'
+
+# -------------------------------------------------------------------
+# Babylon Meta Variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 88c4126b-25b6-4b09-b397-9eef7ab11f10
+  owners:
+    maintainer:
+      - name: Mike Hepburn
+        email: mhepburn@redhat.com
+    instructions:
+      - name: Mike Hepburn
+        email: mhepburn@redhat.com
+
+  sandboxes:
+    - kind: OcpSandbox
+      cloud_selector:
+        cloud: cnv-dedicated-shared
+        lab: ai-lightning-lab-cluster
+        purpose: dev
+
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      pull: missing
+    actions:
+      start:
+        disable: true
+      stop:
+        disable: true
+      status:
+        disable: true
+      update:
+        disable: true
+
+  catalog:
+    reportingLabels:
+      primaryBU: Artificial_Intelligence
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "AI Lightning Labs - Factory Floor Tycoon Agentic Lab"
+    category: Brand_Events
+    keywords:
+      - summit-2026
+      - ai-lightning-labs
+      - factory-floor-tycoon
+      - agentic
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+      Brand_Event: Red_Hat_Summit_2026
+    multiuser: false
+    workshopLabUiRedirect: true
+  tower:
+    timeout: 3600
