@@ -232,6 +232,15 @@ def gh_create_tag(repo, tag, sha):
 
 # --- Discovery ---
 
+class _AnsibleSafeLoader(yaml.SafeLoader):
+    """SafeLoader that accepts Ansible-specific YAML tags like !vault."""
+
+
+_AnsibleSafeLoader.add_multi_constructor(
+    "", lambda loader, suffix, node: loader.construct_scalar(node),
+)
+
+
 def load_common_yaml(item_path):
     """Load and parse common.yaml, returning raw dict."""
     path = os.path.join(item_path, "common.yaml")
@@ -239,7 +248,7 @@ def load_common_yaml(item_path):
         print(f"ERROR: {path} not found", file=sys.stderr)
         sys.exit(1)
     with open(path) as f:
-        return yaml.safe_load(f)
+        return yaml.load(f, Loader=_AnsibleSafeLoader)
 
 
 def discover_repos(common_data, item_path):
@@ -684,12 +693,12 @@ Examples:
     highest = find_highest_version(tagged_repos, deployer_repo, tag_prefix)
     if highest is None:
         if current_version is None:
-            print("ERROR: No existing tags found and no version in stage file.",
-                  file=sys.stderr)
-            sys.exit(1)
-        highest = current_version
-        print(f"  No tags found on repos, using version from stage file: "
-              f"{format_version(highest)}")
+            highest = (0, 0, 0)
+            print("  No existing tags found — initializing from 0.0.0")
+        else:
+            highest = current_version
+            print(f"  No tags found on repos, using version from stage file: "
+                  f"{format_version(highest)}")
     else:
         print(f"  Highest version found: {format_version(highest)}")
 
