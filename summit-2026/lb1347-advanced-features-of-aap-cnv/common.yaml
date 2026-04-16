@@ -72,8 +72,7 @@ requirements_content:
       version: 1.1.10
     - name: https://github.com/agnosticd/showroom.git
       type: git
-      version: v1.6.4
-      # version: v1.5.6
+      version: v1.6.6
     - name: https://github.com/rhpds/rhpds-ftl.git
       type: git
       version: "{{ tag }}"
@@ -359,9 +358,18 @@ post_software_workloads:
     - rhpds.manage_host.asset_injector
 
 post_software_final_workloads:
-  bastions:
-    - agnosticd.showroom.vm_workload_showroom
-    - rhpds.ftl.vm_workload_runtime_automation
+  bastions: >-
+    {{
+      [
+        'agnosticd.showroom.vm_workload_showroom',
+        'rhpds.ftl.vm_workload_runtime_automation'
+      ] +
+      (
+        ['rhpds.ftl.vm_runtime_automation_load_test']
+        if run_e2e_load_test | default(false) | bool
+        else []
+      )
+    }}
 
 # -------------------------------------------------------------------
 # Workload: rhpds.manage_host.opa_setup
@@ -629,12 +637,15 @@ showroom_host: "bastion-{{ subdomain }}"
 showroom_lab_users:
   - "{{ student_name }}"
 showroom_user_password: "{{ common_password }}"
+showroom_antora_enable_dev_mode: "false"
 
 showroom_ssh_method: password
 showroom_ssh_host: "{{ openshift_cnv_ssh_address }}"
 showroom_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
 showroom_ssh_username: "{{ student_name }}"
 showroom_ssh_password: "{{ common_password }}"
+showroom_tty_image: quay.io/rhpds/wetty
+showroom_tty_image_tag: v3.0
 showroom_tab_services:
   - single_terminal
 
@@ -658,10 +669,12 @@ showroom_content_ui_config: |
     - name: SSAP
       url: "https://ssap-portal-{{ subdomain }}"
 
+# Runner for ZT Solve/Validate buttons
 showroom_ansible_runner_api: true
 showroom_ansible_runner_image: quay.io/rhpds/zt-runner
 showroom_ansible_runner_image_tag: v2.4.2
-showroom_antora_enable_dev_mode: "false"
+showroom_ansible_runner_path: "/stream"
+showroom_nookbag_sidecar_enable: false
 
 # -------------------------------------------------------------------
 # Role: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
@@ -731,7 +744,13 @@ __meta__:
       Brand_Event: Red_Hat_Summit_2026
     reportingLabels:
       primaryBU: Automation
-    parameters: []
+    parameters:
+      - name: run_e2e_load_test
+        description: "Run E2E load test after provisioning — triggers solve and validate on all modules"
+        formLabel: "Run E2E Load Test"
+        openAPIV3Schema:
+          type: boolean
+          default: false
   sandboxes:
     - kind: OcpSandbox
       namespace_suffix: ocp4-cluster
