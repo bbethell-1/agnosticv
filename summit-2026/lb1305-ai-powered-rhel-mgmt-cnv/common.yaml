@@ -60,7 +60,10 @@ requirements_content:
       version: "{{ tag }}"
     - name: https://github.com/agnosticd/showroom.git
       type: git
-      version: v1.6.4
+      version: v1.6.6
+    - name: https://github.com/rhpds/rhpds-ftl.git
+      type: git
+      version: "{{ tag }}"
     - name: https://github.com/rhpds/rhpds.manage_host.git
       type: git
       version: "{{ tag }}"
@@ -391,9 +394,20 @@ software_workloads:
     - rhpds.rhel_management.db_app
 
 post_software_final_workloads:
-  bastions:
+  localhost:
     - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
-    - agnosticd.showroom.vm_workload_showroom
+  bastions: >-
+    {{
+      [
+        'agnosticd.showroom.vm_workload_showroom',
+        'rhpds.ftl.vm_workload_runtime_automation'
+      ] +
+      (
+        ['rhpds.ftl.vm_runtime_automation_load_test']
+        if run_e2e_load_test | default(false) | bool
+        else []
+      )
+    }}
 
 # -------------------------------------------------------------------
 # Pre-destroy workloads AgnosticD v2
@@ -617,6 +631,9 @@ showroom_ssh_host: "{{ openshift_cnv_ssh_address }}"
 showroom_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
 showroom_ssh_username: "{{ student_name }}"
 showroom_ssh_password: "{{ common_password }}"
+# showroom_wetty_image: "quay.io/rhpds/wetty:v3.0"
+showroom_tty_image: quay.io/rhpds/wetty
+showroom_tty_image_tag: v3.0
 
 showroom_terminal2_ssh_username: lab-user
 showroom_terminal2_ssh_password: "{{ common_password }}"
@@ -628,6 +645,13 @@ showroom_tab_services:
   - second_terminal
 
 showroom_antora_enable_dev_mode: "false"
+
+# Runner for ZT Solve/Validate buttons
+showroom_ansible_runner_api: true
+showroom_ansible_runner_image: quay.io/rhpds/zt-runner
+showroom_ansible_runner_image_tag: v2.4.2
+showroom_ansible_runner_path: "/stream"
+showroom_nookbag_sidecar_enable: false
 
 # -------------------------------------------------------------------
 # Role: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
@@ -675,7 +699,13 @@ __meta__:
       Provider: RHDP
       Brand_Event: Red_Hat_Summit_2026
     multiuser: false
-    parameters: []
+    parameters:
+      - name: run_e2e_load_test
+        description: "Run E2E load test after provisioning — triggers solve and validate on all modules"
+        formLabel: "Run E2E Load Test"
+        openAPIV3Schema:
+          type: boolean
+          default: false
     reportingLabels:
       primaryBU: RHEL
       secondaryBU: Artificial_Intelligence
