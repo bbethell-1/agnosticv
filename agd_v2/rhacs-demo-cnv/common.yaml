@@ -16,6 +16,8 @@
 
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 #include /includes/secrets/ocp4_workload_ols_api_token.yaml
+# Satellite credentials to subscribe the RHEL VM in the lab.
+#include /includes/secrets/demosat-smt-lb1161-wolfgang.yaml
 
 # ===================================================================
 # Mandatory Variables
@@ -70,10 +72,15 @@ requirements_content:
     type: git
     version: "{{ tag }}"
 
+  # Demo Workloads
+  - name: https://github.com/rhpds/demo_workloads.git
+    type: git
+    version: "{{ tag }}"
+
   # Showroom
   - name: https://github.com/agnosticd/showroom.git
     type: git
-    version: v1.6.0
+    version: v1.6.7
 
 # -------------------------------------------------------------------
 # Common Password
@@ -96,6 +103,7 @@ workloads:
 - agnosticd.core_workloads.ocp4_workload_rhacm
 - agnosticd.core_workloads.ocp4_workload_quay_operator
 - agnosticd.ai_workloads.ocp4_workload_ols
+- rhpds.demo_workloads.ocp4_workload_rhacs_demo
 - agnosticd.showroom.ocp4_workload_ocp_console_embed
 - agnosticd.showroom.ocp4_workload_showroom
 
@@ -118,7 +126,7 @@ ocp4_workload_authentication_enable_user_info_data: true
 
 ocp4_workload_authentication_provider: keycloak
 ocp4_workload_authentication_keycloak_default_realm: keycloak
-ocp4_workload_authentication_keycloak_channel: stable-v26.2
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
 ocp4_workload_authentication_keycloak_use_catalog_source: false
 
 # -------------------------------------------------------------------
@@ -146,7 +154,7 @@ ocp4_workload_metallb_l2advertisement_interface:
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.19
+ocp4_workload_openshift_gitops_channel: gitops-1.20
 
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_update_route_tls: true
@@ -161,7 +169,7 @@ ocp4_workload_openshift_gitops_use_catalog_snapshot: false
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_pipelines
 # -------------------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.20
+ocp4_workload_pipelines_channel: pipelines-1.21
 ocp4_workload_pipelines_use_catalog_snapshot: false
 
 # -------------------------------------------------------------------
@@ -188,13 +196,21 @@ ocp4_workload_rhacm_enable_wildcards: true
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_quay_operator
 # -------------------------------------------------------------------
-ocp4_workload_quay_operator_channel: stable-3.16
+ocp4_workload_quay_operator_channel: stable-3.17
 ocp4_workload_quay_operator_registry_namespace: quay
 ocp4_workload_quay_operator_registry_admin_password: "{{ common_admin_password }}"
 ocp4_workload_quay_operator_registry_hostname: quay
 
+ocp4_workload_quay_operator_registry_quay_overrides: true
+ocp4_workload_quay_operator_registry_quay_overrides_env: true
+ocp4_workload_quay_operator_registry_quay_overrides_resources: true
+# ocp4_workload_quay_operator_registry_quay_cpu_request: 4
+# ocp4_workload_quay_operator_registry_quay_cpu_limit: 6
+# ocp4_workload_quay_operator_registry_quay_memory_request: 12Gi
+# ocp4_workload_quay_operator_registry_quay_memory_limit: 12Gi
+
 # -------------------------------------------------------------------
-# agnosticd.ai_workloads.ocp4_workload_ols
+# Workload: agnosticd.ai_workloads.ocp4_workload_ols
 # -------------------------------------------------------------------
 # Create a child app and SP for this lab environment
 # It is removed when the environment is destroyed
@@ -202,9 +218,29 @@ ocp4_workload_ols_get_token: true
 ocp4_workload_ai_platform: azure
 
 # -------------------------------------------------------------------
+# Workload: rhpds.demo_workloads.ocp4_workload_demo_workloads
+# -------------------------------------------------------------------
+ocp4_workload_rhacs_demo_vm_name: rhel-webserver
+ocp4_workload_rhacs_demo_vm_namespace: rhel-webserver
+ocp4_workload_rhacs_demo_vm_datasource_name: rhel10
+ocp4_workload_rhacs_demo_vm_datasource_namespace: openshift-virtualization-os-images
+ocp4_workload_rhacs_demo_vm_user: rhel
+ocp4_workload_rhacs_demo_vm_password: "{{ common_admin_password }}"
+ocp4_workload_rhacs_demo_vm_ssh_pwauth: true
+ocp4_workload_rhacs_demo_vm_disksize: 30Gi
+ocp4_workload_rhacs_demo_vm_cpu_cores: 1
+ocp4_workload_rhacs_demo_vm_cpu_sockets: 1
+ocp4_workload_rhacs_demo_vm_cpu_threads: 1
+ocp4_workload_rhacs_demo_vm_memory_guest: 2Gi
+ocp4_workload_rhacs_demo_vm_init_script_url: https://raw.githubusercontent.com/rhpds/rhacs-demo/refs/heads/main/scripts/init-vm.sh
+ocp4_workload_rhacs_demo_vm_satellite_url: "{{ set_repositories_satellite_url }}"
+ocp4_workload_rhacs_demo_vm_satellite_org: "{{ set_repositories_satellite_org }}"
+ocp4_workload_rhacs_demo_vm_satellite_activationkey: "{{ set_repositories_satellite_activationkey }}"
+
+# -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
 # -------------------------------------------------------------------
-ocp4_workload_showroom_content_git_repo: https://github.com/mfosterrox/rhacs-demo
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/rhacs-demo
 ocp4_workload_showroom_content_git_repo_ref: main
 
 ocp4_workload_showroom_content_antora_playbook: default-site.yml
@@ -252,7 +288,7 @@ __meta__:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-01
       pull: missing
     actions:
       destroy:
