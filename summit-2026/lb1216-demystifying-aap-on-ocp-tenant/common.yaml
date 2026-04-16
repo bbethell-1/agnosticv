@@ -37,7 +37,7 @@ requirements_content:
     version: "{{ tag }}"
   - name: https://github.com/agnosticd/showroom.git
     type: git
-    version: v1.6.6
+    version: v1.6.7
   - name: https://github.com/rhpds/rhpds-ftl.git
     type: git
     version: main
@@ -45,13 +45,22 @@ requirements_content:
 # ===================================================================
 # Workloads
 # ===================================================================
-workloads:
-- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
-- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
-- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
-- agnosticd.showroom.ocp4_workload_showroom_user_data_seed
-- agnosticd.showroom.ocp4_workload_showroom
-- rhpds.ftl.ocp4_workload_runtime_automation_k8s
+workloads: >-
+  {{
+    [
+      'agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user',
+      'agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace',
+      'agnosticd.core_workloads.ocp4_workload_gitops_bootstrap',
+      'agnosticd.showroom.ocp4_workload_showroom_user_data_seed',
+      'agnosticd.showroom.ocp4_workload_showroom',
+      'rhpds.ftl.ocp4_workload_runtime_automation_k8s'
+    ] +
+    (
+      ['rhpds.ftl.ocp4_runtime_automation_load_test']
+      if run_e2e_load_test | default(false) | bool
+      else []
+    )
+  }}
 
 remove_workloads:
 - agnosticd.showroom.ocp4_workload_showroom
@@ -305,3 +314,9 @@ __meta__:
         - "Scenario 4: Job template with EE with wrong credentials"
         - "Scenario 5: Hub community sync limits / Hub sync storage issue"
         - "Scenario 6: ALIA troubleshooting wrong model"
+    - name: run_e2e_load_test
+      description: "Run E2E load test after provisioning — triggers solve and validate on all modules"
+      formLabel: "Run E2E Load Test"
+      openAPIV3Schema:
+        type: boolean
+        default: false
