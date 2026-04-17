@@ -5,7 +5,6 @@
 # --- Deploys onto the shared lb2645-agentic-devops-cluster
 # --- via the OpenShift Sandbox API.
 # -------------------------------------------------------------------
-# touched 1
 
 #include /includes/agd-v2-mapping.yaml
 #include /includes/catalog-icon-openshift.yaml
@@ -60,6 +59,7 @@ workloads:
   - rhpds.deepagents_aiops.ocp4_workload_aap2_tenant_config
   - rhpds.deepagents_aiops.ocp4_workload_kira_tenant
   - rhpds.deepagents_aiops.ocp4_workload_rocketchat_tenant
+  - rhpds.deepagents_aiops.ocp4_workload_athena_tenant
   - agnosticd.showroom.ocp4_workload_showroom
 
 # ===================================================================
@@ -111,38 +111,30 @@ ocp4_workload_tenant_namespace_default_limit_range:
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_litellm_virtual_keys
 # -------------------------------------------------------------------
-
-agentic_llm_model: llama-scout-17b
-
 ocp4_workload_litellm_virtual_keys_duration: "7d"
 ocp4_workload_litellm_virtual_keys_models:
-  - "{{ agentic_llm_model }}"
+  - llama-scout-17b
   - "minimax-m2"
   - "qwen3-235b"
   - "gpt-oss-120b"
   - "gpt-oss-20b"
   - "gemini-2.5-pro"
-
+  - "claude-3-5-haiku"
+  - "claude-opus-4-6"
+  - "claude-sonnet-4-6"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_tenant_gitea_user
 # -------------------------------------------------------------------
-
-# ocp4_workload_tenant_gitea_user_openshift_api_url: "{{ sandbox_api_url }}"
-# ocp4_workload_tenant_gitea_user_openshift_api_token: "{{ sandbox_api_token }}"
-#
 ocp4_workload_tenant_gitea_user_namespace: gitea
 ocp4_workload_tenant_gitea_user_name: gitea
 ocp4_workload_tenant_gitea_user_username: "user-{{ guid }}"
 ocp4_workload_tenant_gitea_user_password: "{{ common_password }}"
 
 ocp4_workload_tenant_gitea_user_repositories:
-  - repo: https://github.com/agnosticd/namespaced_workloads.git
-    name: namespaced-dev
+  - name: agentic-devops-plays
+    repo: https://github.com/rhpds/agentic-aiops-plays.git
     private: false
-  - repo: https://github.com/agnosticd/namespaced_workloads.git
-    name: namespaced-private
-    private: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhel_vm_tenant
@@ -157,15 +149,29 @@ ocp4_workload_rhel_vm_tenant_vm_disksize: 10Gi
 ocp4_workload_rhel_vm_tenant_vm_instancetype: u1.small
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_aap2_tenant_config
+# Workload: ocp4_workload_kira_tenant
 # -------------------------------------------------------------------
-# Controller credentials are read from the aap-admin-credentials secret
-# (created by ocp4_workload_ansible_automation_platform on the cluster)
-ocp4_workload_aap2_tenant_config_user_password: "{{ common_password }}"
-ocp4_workload_aap2_tenant_config_vm_password: "{{ common_password }}"
+ocp4_workload_kira_tenant_user_username: "user-{{ guid }}"
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_ocp_console_embed + ocp4_workload_showroom
+# Workload: ocp4_workload_aap2_tenant_config
+# -------------------------------------------------------------------
+ocp4_workload_aap2_tenant_config_username: "user-{{ guid }}"
+ocp4_workload_aap2_tenant_config_user_password: "{{ common_password }}"
+ocp4_workload_aap2_tenant_config_vm_password: "{{ common_password }}"
+ocp4_workload_rocketchat_tenant_user_username: "user-{{ guid }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_athena_tenant
+# -------------------------------------------------------------------
+# Uses defaults from the role — no overrides needed.
+# Credentials are discovered dynamically:
+#   AAP2 admin: from aap-admin-credentials secret
+#   Kira/RC URLs: from Route lookups in tenant namespace
+#   MaaS: from litellm_api_endpoint / litellm_virtual_key
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
 #
 # openshift_cluster_ingress_domain is discovered by the tenant
 # keycloak_user role via cluster discovery.
@@ -188,24 +194,24 @@ ocp4_workload_showroom_content_ui_config: |
     enabled: true
     default_mode: split
   tabs:
-  - name: Terminal
-    path: /terminal
-    port: 443
-    secondary_name: Terminal 2
-    secondary_path: /terminal/
-    secondary_port: 443
+  - name: AAP2
+    url: "https://aap-aap.{{ openshift_cluster_ingress_domain }}"
   - name: Kira
     url: "https://kira-frontend-{{ ocp4_workload_tenant_keycloak_username }}-agentic.{{ openshift_cluster_ingress_domain }}"
   - name: Rocket.Chat
     url: "https://rocketchat-{{ ocp4_workload_tenant_keycloak_username }}-agentic.{{ openshift_cluster_ingress_domain }}"
-  - name: AAP
-    url: "https://aap-aap.{{ openshift_cluster_ingress_domain }}"
   - name: Gitea
     url: "https://gitea.{{ openshift_cluster_ingress_domain }}"
   - name: OpenShift Console
     url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
   - name: OpenShift AI
     url: "https://data-science-gateway.{{ openshift_cluster_ingress_domain }}"
+  - name: Terminal
+    path: /terminal
+    port: 443
+    secondary_name: Terminal 2
+    secondary_path: /terminal/
+    secondary_port: 443
 
 # -------------------------------------------------------------------
 # Babylon meta variables
