@@ -28,21 +28,27 @@ clusters:
 platform: rhpds
 
 # -------------------------------------------------------------------
-# CNV Specific
+# Cloud provider — toggle between AWS and CNV by commenting/uncommenting
 # -------------------------------------------------------------------
 # Workers: 4 per cluster → ~40 tenants per cluster (1 scenario namespace per tenant at a time).
-# Measured: ~3,675m CPU / ~7.9 Gi per tenant; CPU and memory balanced at 48vCPU/128Gi nodes.
+# Measured: ~3,675m CPU / ~7.9 Gi per tenant.
 # Scale out by adding more clusters for prod. Register each cluster with ~40 placements.
-worker_instance_count: 4
-worker_only: true
-ai_workers_cores: 48
-ai_workers_memory: 128Gi
 
-# -------------------------------------------------------------------
-# Repos
-# -------------------------------------------------------------------
-repo_method: satellite
-update_packages: true
+# ── AWS (active) ──────────────────────────────────────────────────
+openshift_aws_scale_cluster: true
+worker_instance_count: 4
+worker_instance_type: m6a.12xlarge   # 48 vCPU / 192Gi — matches CNV sizing
+worker_only: true
+aws_region: us-east-2
+
+# ── CNV (commented out — uncomment to switch back) ────────────────
+# openshift_cnv_scale_cluster: true
+# worker_instance_count: 4
+# ai_workers_cores: 48
+# ai_workers_memory: 128Gi
+# worker_only: true
+# repo_method: satellite
+# update_packages: true
 
 # -------------------------------------------------------------------
 # Collection version pinning — override tag in dev/event/prod yaml
@@ -54,9 +60,15 @@ tag: main
 # -------------------------------------------------------------------
 requirements_content:
   collections:
+    # ── CNV only ──────────────────────────────────────────────────
     - name: https://github.com/rhpds/assisted_installer.git
       type: git
       version: "{{ tag }}"
+    # ── AWS only (comment out when switching back to CNV) ─────────
+    - name: https://github.com/agnosticd/cloud_provider_aws.git
+      type: git
+      version: "{{ tag }}"
+    # ── Common ────────────────────────────────────────────────────
     - name: https://github.com/agnosticd/core_workloads.git
       type: git
       version: "{{ tag }}"
@@ -103,7 +115,7 @@ __meta__:
   components:
     - name: openshift
       display_name: OpenShift Cluster
-      item: agd-v2/ocp-cluster-cnv-pools
+      item: agd-v2/ocp-cluster-aws-pools  # CNV: agd-v2/ocp-cluster-cnv-pools
       parameter_values:
         cluster_size: multinode
         host_ocp4_installer_version: "4.20"
