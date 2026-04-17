@@ -1,5 +1,6 @@
 ---
-# This item is restricted to devs only!
+# LB2759 - Agentic AIOps with Ansible Automation Platform
+# Summit 2026 - devs only! resync
 # It should be ordered by regular users using the Virtual CI
 # in the `published` directory.
 
@@ -64,7 +65,7 @@ requirements_content:
       version: "{{ tag }}"
     - name: https://github.com/agnosticd/showroom.git
       type: git
-      version: v1.6.6
+      version: v1.6.7
     - name: https://github.com/rhpds/rhpds-ftl.git
       type: git
       version: "{{ tag }}"
@@ -78,19 +79,21 @@ requirements_content:
       version: 1.1.10
     - name: https://github.com/rhpds/lb2961.ai_driven_aap.git
       type: git
-      version: "{{ tag }}"
+      version: feat/continue-dev-config
     - name: ansible.netcommon
       version: ">=6.0.0"
     - name: cisco.ios
       version: ">=5.0.0"
     - name: "https://github.com/rhpds/rhpds.litellm_virtual_keys.git"
       type: git
-      version: "{{ tag }}"
+      version: main
     - name: ansible.windows
       version: ">=2.0.0"
     - name: microsoft.ad
       version: ">=1.0.0"
     - name: community.windows
+      version: ">=2.0.0"
+    - name: ansible.platform
       version: ">=2.0.0"
 
 # -------------------------------------------------------------------
@@ -139,8 +142,8 @@ instances:
     public_dns: false
     floating_ip: false
     image: "{{ bastion_instance_image }}"
-    memory: 8G
-    cores: 4
+    memory: 12G
+    cores: 6
     image_size: 100Gi
     tags:
       - key: "AnsibleGroup"
@@ -526,6 +529,9 @@ post_software_workloads:
   bastions:
     - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
     - infra.aap_configuration.dispatch
+    - lb2961.ai_driven_aap.mcp_server
+    - lb2961.ai_driven_aap.code_server_ai_client
+    - lb2961.ai_driven_aap.ansible_dev_env
 
 post_software_final_workloads:
   localhost:
@@ -643,6 +649,61 @@ vscode_use_automationcontroller_nginx: false
 vscode_server_bind_addr_ip: 0.0.0.0
 vscode_server_bind_addr_port: 8080
 
+vscode_server_version: "4.112.0"
+vscode_server_rpm_url: >-
+  https://github.com/coder/code-server/releases/download/v{{ vscode_server_version }}/code-server-{{ vscode_server_version }}-amd64.rpm
+
+vscode_server_ansible_become: true
+vscode_user_workspace_path: "/home/{{ student_name }}"
+vscode_auth_type: password
+vscode_user_name: "{{ student_name }}"
+vscode_user_password: "{{ common_password }}"
+vscode_server_hostname: "vscode-{{ subdomain_base }}"
+vscode_ansible_python_interpreter: /home/{{ student_name }}/.venv/bin/python3
+
+vscode_server_default_extensions: []
+vscode_server_extension_urls: []
+
+vscode_server_additional_settings: |
+  "ansible.python.interpreterPath": "/home/{{ student_name }}/.venv/bin/python3",
+  "ansible.ansible.path": "/home/{{ student_name }}/.venv/bin/ansible",
+  "ansible.validation.enabled": true,
+  "ansible.validation.lint.enabled": true,
+  "ansible.lightspeed.enabled": true,
+  "ansible.lightspeed.suggestions.enabled": true,
+  "security.workspace.trust.enabled": false,
+  "ansible.lightspeed.URL": "",
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "[yaml]": {
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true,
+    "editor.detectIndentation": false
+  },
+  "claudeCode.disableLoginPrompt": true,
+  "extensions.ignoreRecommendations": true,
+  "python-envs.terminal.autoActivationType": "off",
+  "git.scanRepositories": ["/home/{{ student_name }}/lightspeed_playbooks"],
+  "files.exclude": {
+    "**/.git": true,
+    "**/.kube": true,
+    "**/.bash*": true,
+    "**/.vim*": true,
+    "**/.ssh": true,
+    "**/.vscode": true,
+    "**/.local": true,
+    "**/.config": true,
+    "**/.ansible": true,
+    "**/.cache": true,
+    "**/.claude": true,
+    "**/.mcp-auth": true,
+    "**/.npm": true,
+    "**/.nvm": true,
+    "**/.venv": true
+  }
+
 # -------------------------------------------------------------------
 # Workload: gitea_vm_setup
 # -------------------------------------------------------------------
@@ -656,7 +717,8 @@ gitea_create_password: "{{ common_password }}"
 # -------------------------------------------------------------------
 # Convert model selection to actual model list
 ocp4_workload_litellm_virtual_keys_models:
-  - 'openai/granite-3-2-8b-instruct'
+  - openai/granite-3-2-8b-instruct
+  - claude-sonnet-4-6
 
 # Duration selected by user
 ocp4_workload_litellm_virtual_keys_duration: "{{ litellm_duration | default('7d') }}"
@@ -832,6 +894,8 @@ controller_inventories:
 controller_hosts:
   - name: "{{ groups['rhel9_nodes'][0].split('.')[0] }}"
     inventory: "lab-inventory"
+  - name: "bastion"
+    inventory: "lab-inventory"
   - name: "{{ groups['servers'][0].split('.')[0] }}"
     inventory: "service-inventory"
   - name: "gitea"
@@ -861,7 +925,7 @@ controller_hosts:
   - name: "windows"
     inventory: "windows-inventory"
     variables:
-      ansible_host: "windows.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+      ansible_host: "windows"
       ansible_connection: psrp
       ansible_psrp_auth: negotiate
       ansible_psrp_cert_validation: ignore
@@ -877,7 +941,7 @@ controller_projects:
     organization: "Default"
     scm_type: "git"
     scm_url: "https://github.com/ansible-tmm/aiops-summitlab.git"
-    scm_branch: "main"
+    scm_branch: "feat/rhel-self-healing"
     scm_clean: false
     scm_delete_on_update: false
     scm_update_on_launch: false
@@ -943,8 +1007,9 @@ controller_templates:
     survey_enabled: false
     verbosity: 1
     limit: "node1"
+    become_enabled: true
   - name: "✅ Restore Apache"
-    description: "Job template to break Apache config"
+    description: "Restore Apache config on node1"
     organization: "Default"
     job_type: "run"
     inventory: "lab-inventory"
@@ -956,8 +1021,9 @@ controller_templates:
     survey_enabled: false
     verbosity: 1
     limit: "node1"
+    become_enabled: true
   - name: "⚙️ Apache Service Status Check"
-    description: "Job template to get httpd logs"
+    description: "Check httpd service status"
     organization: "Default"
     job_type: "run"
     inventory: "lab-inventory"
@@ -969,6 +1035,7 @@ controller_templates:
     survey_enabled: false
     verbosity: 1
     limit: "node1"
+    become_enabled: true
   - name: "📣 Notify via Mattermost"
     description: "Job template to send mattermost message"
     organization: "Default"
@@ -1130,6 +1197,36 @@ controller_templates:
       rhelai_token: "{{ litellm_virtual_key }}"
       mattermost_instance: "https://mattermost-{{ subdomain_base }}"
       mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
+  # Challenge 3: AI Agent job templates
+  - name: "AI Agent: Incident Response"
+    description: "Run CrewAI agent to triage, remediate, and report on an incident"
+    organization: "Default"
+    job_type: "run"
+    inventory: "lab-inventory"
+    project: "AI-EDA"
+    playbook: "playbooks/run_ai_agent.yml"
+    credentials:
+      - "lab-credential"
+    ask_variables_on_launch: true
+    verbosity: 1
+    limit: "bastion"
+    become_enabled: true
+    extra_vars:
+      problem: "Apache web server is down on node1"
+      mattermost_instance: "https://mattermost-{{ subdomain_base }}"
+      mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
+  # - name: "Simulate Service Failure"
+  #   description: "Stop crond service on node1 to simulate a non-Apache incident"
+  #   organization: "Default"
+  #   job_type: "run"
+  #   inventory: "lab-inventory"
+  #   project: "AI-EDA"
+  #   playbook: "playbooks/simulate_service_failure.yml"
+  #   credentials:
+  #     - "lab-credential"
+  #   verbosity: 1
+  #   limit: "node1"
+  #   become_enabled: true
 
 controller_launch_jobs:
   # Run initialization jobs first
@@ -1143,6 +1240,7 @@ eda_projects:
     description: "Event-driven Ansible rulebooks for AIOps"
     organization: Default
     url: "{{ eda_repo_url }}"
+    scm_branch: main
     tls_validation: true
 
 eda_credentials:
@@ -1192,6 +1290,17 @@ eda_rulebook_activations:
     enabled: true
     eda_credentials: "AAP"
     state: present
+  # EDA Rulebook Activation for AI Agent
+  - name: "AI Agent"
+    description: "Trigger AI agent on infrastructure events via Kafka"
+    organization: Default
+    project: "ai-eda"
+    rulebook: "ai_agent.yml"
+    decision_environment: "{{ eda_decision_environment_name }}"
+    restart_policy: "on-failure"
+    enabled: false
+    eda_credentials: "AAP"
+    state: present
   # EDA Rulebook Activation for Windows Events
   - name: "Windows Events"
     description: "Detect Windows security and firewall events via Kafka"
@@ -1214,6 +1323,31 @@ mattermost_admin_password: "{{ common_password }}"
 # -------------------------------------------------------------------
 kafka_additional_topics:
   - "windows-events"
+  # - "systemd-service-logs"
+
+# -------------------------------------------------------------------
+# MCP Server (standalone on bastion, proxies to AAP)
+# -------------------------------------------------------------------
+mcp_server_enabled: true
+mcp_server_aap_url: "https://controller-{{ subdomain_base }}"
+mcp_server_port: 8448
+mcp_server_ignore_cert_errors: "true"
+mcp_server_allow_write_operations: "true"
+
+# -------------------------------------------------------------------
+# Code-Server AI Client (Claude Code + MCP tools)
+# -------------------------------------------------------------------
+ai_client: claude_code
+ai_client_mcp_enabled: true
+ai_client_mcp_mode: standalone
+ai_client_proxy_enabled: true
+ai_client_proxy_upstream_url: "{{ litellm_api_endpoint }}"
+ai_client_proxy_upstream_api_key: "{{ litellm_virtual_key }}"
+
+# -------------------------------------------------------------------
+# CrewAI agent for Module 4 Challenge 3
+# -------------------------------------------------------------------
+ansible_dev_env_crewai_enabled: true
 
 # -------------------------------------------------------------------
 # Workload: agnosticv_userdata_import
