@@ -34,7 +34,7 @@ clusters:
     api_token: "{{ openshift_api_key }}"
 
 # -------------------------------------------------------------------
-# Autoscaling cluster
+# Autoscaling cluster CNV
 # -------------------------------------------------------------------
 openshift_cnv_scale_cluster: true
 worker_only: true
@@ -43,15 +43,32 @@ worker_instance_count: 10
 ai_workers_cores: 32
 ai_workers_memory: 64Gi
 
+# -------------------------------------------------------------------
+# Autoscaling cluster AWS
+# -------------------------------------------------------------------
+# openshift_aws_scale_cluster: true
+# worker_instance_type: m6a.8xlarge
+# worker_instance_count: 10
+# worker_only: true
+# worker_drain_control_plane: false
+
+# Use region us-east-2 for pool matching
+# aws_region: us-east-2
+
 # ===================================================================
 # Additional Collections & roles to be installed for this config
 # ===================================================================
 requirements_content:
   collections:
-  # Assisted Installer Collection
+  # Assisted Installer Collection to facilitate scaling cluster with workers on CNV
   - name: https://github.com/rhpds/assisted_installer.git
     type: git
     version: v0.0.9
+
+  # Add AWS cloud provider to facilitate scaling cluster with workers on AWS
+  - name: https://github.com/agnosticd/cloud_provider_aws.git
+    type: git
+    version: "{{ tag }}"
 
   # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
@@ -189,12 +206,12 @@ ocp4_workload_builds_automatic_install_plan_approval: true
 # Workload: ocp4_workload_gitea_operator
 # -------------------------------------------------------------------
 ocp4_workload_gitea_operator_project: gitea
-ocp4_workload_gitea_operator_catalog_image_tag: v2.1.0
+ocp4_workload_gitea_operator_catalog_image_tag: v2.3.0
 ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
 
 ocp4_workload_gitea_operator_deploy_gitea_instance: true
 ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
-ocp4_workload_gitea_operator_gitea_image_tag: "1.25.5"
+ocp4_workload_gitea_operator_gitea_image_tag: "1.25.5.2"
 ocp4_workload_gitea_operator_name: gitea
 ocp4_workload_gitea_operator_gitea_hostname: gitea
 ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
@@ -280,10 +297,12 @@ __meta__:
   - name: openshift-base
     display_name: OpenShift Cluster
     item: agd-v2/ocp-cluster-cnv-pools
+    # item: agd-v2/ocp-cluster-aws-pools
     parameter_values:
       cluster_size: sno
       host_ocp4_installer_version: "4.20"
       ocp4_fips_enable: false
+      # aws_region: us-east-2
     # Propagate agnosticd_user_info data set by this component to variables.
     propagate_provision_data:
     - name: openshift_api_ca_cert
