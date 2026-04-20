@@ -34,11 +34,10 @@ platform: rhpds
 # Scale out by adding more clusters for prod. Register each cluster with ~40 placements.
 
 # ── AWS (active) ──────────────────────────────────────────────────
-openshift_aws_scale_cluster: true
+# scale_ocp_workers has a MachineSet replica type bug on pool-based clusters
+# (tracked in agnosticd/cloud_provider_aws PR#11) — use ocp4_workload_machinesets instead
+openshift_aws_scale_cluster: false
 openshift_cnv_scale_cluster: false   # must be explicitly false (default is true)
-worker_instance_count: 4
-worker_instance_type: m6a.12xlarge   # 48 vCPU / 192Gi — matches CNV sizing
-worker_only: true
 aws_region: us-east-2
 
 # ── CNV (commented out — uncomment to switch back) ────────────────
@@ -80,9 +79,27 @@ requirements_content:
 # Workloads
 # -------------------------------------------------------------------
 workloads:
+  - agnosticd.core_workloads.ocp4_workload_machinesets
   - agnosticd.core_workloads.ocp4_workload_authentication
   - agnosticd.core_workloads.ocp4_workload_openshift_gitops
   - agnosticd.showroom.ocp4_workload_ocp_console_embed
+
+# ===================================================================
+# Workload: agnosticd.core_workloads.ocp4_workload_machinesets
+# Workers: 4 × m6a.12xlarge (48 vCPU / 192Gi) → ~40 tenants per cluster
+# Replaces scale_ocp_workers which has a replica type bug on pool clusters
+# ===================================================================
+ocp4_workload_machinesets_wait_for_nodes: true
+ocp4_workload_machinesets_wait_for_nodes_retries: 30   # 30 × 30s = 15 min max
+
+ocp4_workload_machinesets_machineset_groups:
+  - name: worker-compute
+    role: worker
+    instance_type: m6a.12xlarge   # 48 vCPU / 192Gi — matches previous CNV sizing
+    total_replicas: "4"
+    total_replicas_min: "4"
+    total_replicas_max: "4"
+    root_volume_size: "100"
 
 # ===================================================================
 # Workload: agnosticd.core_workloads.ocp4_workload_authentication
@@ -159,5 +176,5 @@ __meta__:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-01
       pull: missing
