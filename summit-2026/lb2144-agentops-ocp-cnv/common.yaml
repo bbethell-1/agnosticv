@@ -53,7 +53,7 @@ requirements_content:
   # Showroom
   - name: https://github.com/agnosticd/showroom.git
     type: git
-    version: v1.6.0
+    version: v1.6.5
 
 # ===================================================================
 # List of workloads to be deployed
@@ -62,8 +62,8 @@ workloads:
 
 - agnosticd.core_workloads.ocp4_workload_authentication
 # - agnosticd.ai_workloads.ocp4_workload_openshift_ai
-- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 - agnosticd.showroom.ocp4_workload_ocp_console_embed
 - agnosticd.showroom.ocp4_workload_showroom
@@ -127,11 +127,10 @@ ocp4_workload_openshift_ai_llamastackoperator: Managed
 ocp4_workload_openshift_ai_kueue: Removed
 ocp4_workload_openshift_ai_aipipelines: Managed
 
+llm_model: gpt-oss-120b
 ocp4_workload_litellm_virtual_keys_duration: "7d"
 ocp4_workload_litellm_virtual_keys_models:
-- llama-scout-17b
-- qwen3-235b
-- gpt-oss-120b
+- "{{ llm_model }}"
 
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
@@ -141,6 +140,18 @@ ocp4_workload_litellm_virtual_keys_models:
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/agentops-in-prod-automation
 ocp4_workload_gitops_bootstrap_repo_revision: main
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+ocp4_workload_gitops_bootstrap_kustomize_envvar_plugin: false
+ocp4_workload_gitops_bootstrap_helm_values:
+  deployer:
+    domain: "{{ openshift_cluster_ingress_domain }}"
+    apiUrl: "{{ openshift_api_url }}"
+  user:
+    count: "{{ num_users | default(1) }}"
+  remotellm:
+    id: "{{ llm_model }}"
+    url: "{{ litellm_api_endpoint }}"
+    apiToken: "{{ litellm_virtual_key }}"
+    enabled: true
 
 # ocp4_workload_gitops_bootstrap_helm_values:
 #   user:
@@ -160,7 +171,12 @@ ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal
 
 ocp4_workload_showroom_passthrough_user_data: true
 
-ocp4_workload_showroom_content_ui_config: |
+ocp4_workload_showroom_user_data:
+  openshift_api_url: "{{ openshift_api_url }}"
+  openshift_console_url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
+  user_project: "wksp-{{ ocp4_workload_authentication_user_username_base }}1"
+
+ocp4_workload_showroom_content_ui_config:
   type: showroom
   default_width: 30
   persist_url_state: true
@@ -169,14 +185,22 @@ ocp4_workload_showroom_content_ui_config: |
     default_mode: split
   tabs:
   - name: OCP Console
-    url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
+    url: 'https://console-openshift-console.{{ openshift_cluster_ingress_domain }}'
   - name: Terminal
     path: /terminal
     port: 443
+  - name: MLflow Console
+    url: 'https://rh-ai.{{ openshift_cluster_ingress_domain }}/mlflow/'
+  - name: Mortgage AI App
+    url: 'https://mortgage-ai-ui-route-wksp-{{ ocp4_workload_authentication_user_username_base }}1.{{ openshift_cluster_ingress_domain }}'
+  - name: Grafana
+    url: 'https://grafana-route-wksp-{{ ocp4_workload_authentication_user_username_base }}1.{{ openshift_cluster_ingress_domain }}'
+  - name: RHOAI Console
+    url: 'https://rh-ai.{{ openshift_cluster_ingress_domain }}/'
   - name: MLflow Docs
-    url: "https://mlflow.org/docs/latest/genai/tracing/"
+    url: 'https://mlflow.org/docs/latest/genai/tracing/'
   - name: RHOAI Docs
-    url: "https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/"
+    url: 'https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/'
 
 
 # -------------------------------------------------------------------
