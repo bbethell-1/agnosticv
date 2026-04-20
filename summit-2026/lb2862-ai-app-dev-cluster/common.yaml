@@ -17,6 +17,9 @@
 # Required by host_ocp4_assisted_scale
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 
+# S3 credentials for RHPDS private image bucket (lb2862.qcow2)
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+
 # -------------------------------------------------------------------
 # Top Variables
 # -------------------------------------------------------------------
@@ -25,36 +28,49 @@ config: openshift-workloads
 clusters:
 - default:
     api_url: "{{ openshift_api_url }}"
-    api_token: "{{ openshift_api_key }}"
+    api_token: "{{ openshift_cluster_admin_token }}"
+
+# -------------------------------------------------------------------
+# Tags / Revisions
+# -------------------------------------------------------------------
+tag: main
+tag_showroom: v1.6.7
+gitops_repo_revision: v1.0.0
+
+# ===================================================================
+# Cloud provider — AWS (pool-based)
+# All worker scaling done via ocp4_workload_machinesets workload.
+# openshift_aws_scale_cluster is disabled — the scale_ocp_workers role
+# has a MachineSet replica type bug that causes creation to fail on
+# pool-based clusters (tracked in agnosticd/cloud_provider_aws PR#11).
+# ===================================================================
+openshift_aws_scale_cluster: false
+openshift_cnv_scale_cluster: false
+aws_region: us-east-2
+
+# ── CNV (previous — uncomment to switch back) ──────────────────────
+# openshift_cnv_scale_cluster: true
+# worker_instance_count: 12
+# ai_workers_cores: 16
+# ai_workers_memory: 64Gi
 
 # ===================================================================
 # Additional Collections & roles to be installed
 # ===================================================================
 requirements_content:
   collections:
-  # Required by host_ocp4_assisted_scale
-  - name: https://github.com/rhpds/assisted_installer.git
-    type: git
-    version: v0.0.9
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
-    version: 1.3.0
+    version: "{{ tag }}"
   - name: https://github.com/agnosticd/showroom.git
     type: git
-    version: v1.6.5
+    version: "{{ tag_showroom }}"
 
-# -------------------------------------------------------------------
-# CNV Specific
-# -------------------------------------------------------------------
-openshift_cnv_scale_cluster: true
-worker_instance_count: 12
-ai_workers_cores: 16
-ai_workers_memory: 64Gi
-
-# -------------------------------------------------------------------
+# ===================================================================
 # Workloads
-# -------------------------------------------------------------------
+# ===================================================================
 workloads:
+- agnosticd.core_workloads.ocp4_workload_machinesets
 - agnosticd.core_workloads.ocp4_workload_authentication
 - agnosticd.core_workloads.ocp4_workload_pipelines
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
@@ -70,7 +86,46 @@ common_admin_password: "{{ lookup('password', output_dir ~ '/common_password len
 common_admin_username: admin
 
 ocp4_workload_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
-ocp4_workload_catalogsource_tag: v4.21_2026_02_23
+ocp4_workload_catalogsource_tag: v4.20_2026_04_13
+# ocp4_workload_catalogsource_tag: v4.21_2026_04_13
+
+# -------------------------------------------------------------------
+# ocp4_workload_machinesets — ALL workers via this workload
+#
+# Standard workers: m6a.4xlarge (16 vCPU / 64 GiB)
+#   NOTE: 6 replicas for testing — production must be 12 to match
+#   previous CNV sizing (12 x 16 cores / 64Gi per worker)
+#
+# Metal workers: m6a.metal (192 vCPU / 768 GiB) x2 — bare metal for OCP Virt
+#   Tainted metal=reserved:NoSchedule so only VMs land here
+#   Retries bumped to 60 (30 min) — m6a.metal boots in ~20-25 min
+# -------------------------------------------------------------------
+ocp4_workload_machinesets_wait_for_nodes: true
+ocp4_workload_machinesets_wait_for_nodes_retries: 60   # 60 * 30s = 30 min max wait
+
+ocp4_workload_machinesets_machineset_groups:
+- name: worker-standard
+  role: worker
+  instance_type: m6a.4xlarge   # 16 vCPU / 64 GiB — OCP workloads
+  total_replicas: "6"           # DEV: 6 for testing — PROD: bump to 12 (matches CNV sizing)
+  total_replicas_min: "6"
+  total_replicas_max: "6"
+  root_volume_size: "100"
+
+- name: worker-metal
+  role: worker-metal
+  instance_type: m6a.metal     # 192 vCPU / 768 GiB — bare metal, no hypervisor
+  total_replicas: "2"
+  total_replicas_min: "2"
+  total_replicas_max: "2"
+  root_volume_size: "200"
+  machineConfigPool:
+    setup: true
+    maxPodsPerNode: 250         # 192 vCPU — allow more pods
+  taints:
+  - key: metal
+    value: reserved
+    effect: NoSchedule          # only VMs with matching toleration land here
 
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_authentication
@@ -97,7 +152,7 @@ ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsou
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.19
+ocp4_workload_openshift_gitops_channel: gitops-1.20
 ocp4_workload_openshift_gitops_use_catalog_snapshot: true
 ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
@@ -116,11 +171,19 @@ ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
 
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+# Configure KubeVirt workloads toleration so virt-handler DaemonSet
+# runs on metal nodes and labels them as kubevirt.io/schedulable=true
+# Without this, VMs cannot be scheduled on metal nodes (catch-22)
 # -------------------------------------------------------------------
 ocp4_workload_openshift_virtualization_channel: stable
 ocp4_workload_openshift_virtualization_use_catalog_snapshot: true
 ocp4_workload_openshift_virtualization_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_openshift_virtualization_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_virtualization_workloads_tolerations:
+- key: metal
+  value: reserved
+  effect: NoSchedule
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitea_operator
@@ -133,7 +196,7 @@ ocp4_workload_gitea_operator_deploy_gitea_instance: false
 # agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ai-app-dev-automation
-ocp4_workload_gitops_bootstrap_repo_revision: v1.0.0
+ocp4_workload_gitops_bootstrap_repo_revision: "{{ gitops_repo_revision }}"
 ocp4_workload_gitops_bootstrap_repo_path: bootstrap-infra
 ocp4_workload_gitops_bootstrap_application_name: bootstrap-infra
 
@@ -158,6 +221,7 @@ ocp4_workload_gitops_bootstrap_helm_values:
       6535633634376238630a363836346262366563313761633433666636346166646265616462306436
       66303964323663616638623037633936623735356665663766623934663864383239376463346332
       3465376332356462376364666465663437363133353133666539
+    storageClass: ""    # blank = use cluster default on AWS
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -195,22 +259,21 @@ __meta__:
       primaryBU: Application_Developer
       secondaryBU: Hybrid_Platforms
 
-  # -----------------------------------------------------------------
-  # Components / Cluster Pool
-  # -----------------------------------------------------------------
   components:
   - name: openshift
     display_name: OpenShift Cluster
-    item: agd-v2/ocp-cluster-cnv-pools
+    item: agd-v2/ocp-cluster-aws-pools
     parameter_values:
+      agnosticd_open_environment: false
+      aws_region: us-east-2
       cluster_size: multinode
-      host_ocp4_installer_version: "4.21"
+      host_ocp4_installer_version: "4.20"
+      ocp4_fips_enable: false
     propagate_provision_data:
     - name: openshift_api_url
       var: openshift_api_url
     - name: openshift_cluster_admin_token
       var: openshift_api_key
-    # Required by host_ocp4_assisted_scale
     - name: openshift_cluster_admin_token
       var: openshift_cluster_admin_token
     - name: sandbox_openshift_api_url
