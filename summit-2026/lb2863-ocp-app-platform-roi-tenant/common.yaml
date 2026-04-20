@@ -21,6 +21,7 @@
 
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/salesforce-id.yaml
+#include /includes/secrets/litemaas-master_api.yaml
 
 # ===================================================================
 # Mandatory Variables
@@ -58,9 +59,14 @@ requirements_content:
     type: git
     version: "{{ tag }}"
 
+  # Core OpenShift Workloads (gitops_bootstrap, showroom)
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
   - name: https://github.com/agnosticd/showroom.git
     type: git
-    version: v1.6.8
+    version: v1.6.7
 
 # ===================================================================
 # List of workloads to be deployed
@@ -71,12 +77,18 @@ requirements_content:
 # ===================================================================
 workloads:
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 - agnosticd.showroom.ocp4_workload_showroom
 
 # remove_workloads runs in the ORDER listed (explicit destroy control).
 remove_workloads:
-- agnosticd.showroom.ocp4_workload_showroom
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- agnosticd.showroom.ocp4_workload_showroom
 
 # ===================================================================
 # Variables for specific workloads
@@ -95,20 +107,30 @@ common_password: >-
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_tenant_keycloak_user
 # -------------------------------------------------------------------
+# TODO: adding these to resolve "Discover cluster ingress domain" error in ocp4_workload_tenant_keycloak_user role
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
+
 ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
 ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
 ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_tenant_openshift_gitops_user: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_openshift_gitops_user_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_litellm_virtual_keys
 # -------------------------------------------------------------------
 # This workload is not currently enabled
 
-# ocp4_workload_litellm_virtual_keys_duration: "7d"
-# ocp4_workload_litellm_virtual_keys_models:
-# - qwen3-14b
-# - llama-scout-17b
-# - deepseek-r1-distill-qwen-14b
+ocp4_workload_litellm_virtual_keys_duration: "1d"
+ocp4_workload_litellm_virtual_keys_models:
+- qwen3-14b
+- llama-scout-17b
+- deepseek-r1-distill-qwen-14b
 # ocp4_workload_litellm_virtual_keys_multi_user: false
 # ocp4_workload_litellm_virtual_keys_user_count: 1
 # ocp4_workload_litellm_virtual_keys_verify_ssl: true
@@ -117,12 +139,34 @@ ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
 # Workload: ocp4_workload_showroom
 # -------------------------------------------------------------------
 ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
-ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-app-platform-roi-showroom.git
+ocp4_workload_showroom_content_git_repo: https://github.com/evanshortiss/openshift-app-platform-roi-showroom.git
 ocp4_workload_showroom_content_git_repo_ref: main
 ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
 ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
 ocp4_workload_showroom_deployer_chart_version: "2.1.4"
 ocp4_workload_showroom_terminal_type: ""
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/App-Platform-ROI-Summit-Lab/helm-charts.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ ocp4_workload_tenant_keycloak_username }}"
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  tenant:
+    username: "{{ ocp4_workload_tenant_keycloak_username }}"
+    password: "{{ common_password }}"
+    domain: "{{ openshift_cluster_ingress_domain }}"
+  gitlab:
+    host: "gitlab-gitlab.{{ openshift_cluster_ingress_domain }}"
+  cluster:
+    subdomain: "{{ openshift_cluster_ingress_domain }}"
+  registry:
+    host: "quay.{{ openshift_cluster_ingress_domain }}"
+
+ocp4_workload_gitops_bootstrap_health_retries: 10
 
 # ===================================================================
 # Babylon meta variables
@@ -166,6 +210,8 @@ __meta__:
         catch_all: false
   sandboxes:
   - kind: OcpSandbox
+    alias: cluster
+    namespace_suffix: user
     cloud_selector:
-      no_namespace: true
       lab: lb2863-openshift-app-platform-roi
+      purpose: prod
