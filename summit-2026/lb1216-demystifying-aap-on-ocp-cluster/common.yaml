@@ -34,10 +34,13 @@ platform: rhpds
 # Scale out by adding more clusters for prod. Register each cluster with ~40 placements.
 
 # ── AWS (active) ──────────────────────────────────────────────────
-# scale_ocp_workers has a MachineSet replica type bug on pool-based clusters
-# (tracked in agnosticd/cloud_provider_aws PR#11) — use ocp4_workload_machinesets instead
-openshift_aws_scale_cluster: false
+# Workers: 4 × m6a.12xlarge for ODF (must be worker_only so ODF doesn't land on control plane)
+openshift_aws_scale_cluster: true
 openshift_cnv_scale_cluster: false   # must be explicitly false (default is true)
+worker_instance_count: 4
+worker_instance_type: m6a.12xlarge   # 48 vCPU / 192Gi — ~40 tenants per cluster
+worker_only: true
+worker_drain_control_plane: false
 aws_region: us-east-2
 
 # ── CNV (commented out — uncomment to switch back) ────────────────
@@ -73,41 +76,23 @@ requirements_content:
       version: "{{ tag }}"
     - name: https://github.com/agnosticd/showroom.git
       type: git
-      version: v1.6.0
+      version: v1.6.9
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 workloads:
-  - agnosticd.core_workloads.ocp4_workload_machinesets
   - agnosticd.core_workloads.ocp4_workload_openshift_data_foundation
   - agnosticd.core_workloads.ocp4_workload_authentication
   - agnosticd.core_workloads.ocp4_workload_openshift_gitops
   - agnosticd.showroom.ocp4_workload_ocp_console_embed
 
 # ===================================================================
-# Workload: agnosticd.core_workloads.ocp4_workload_machinesets
-# Workers: 4 × m6a.12xlarge (48 vCPU / 192Gi) → ~40 tenants per cluster
-# Replaces scale_ocp_workers which has a replica type bug on pool clusters
-# ===================================================================
-ocp4_workload_machinesets_wait_for_nodes: true
-ocp4_workload_machinesets_wait_for_nodes_retries: 30   # 30 × 30s = 15 min max
-
-ocp4_workload_machinesets_machineset_groups:
-  - name: worker-compute
-    role: worker
-    instance_type: m6a.12xlarge   # 48 vCPU / 192Gi — matches previous CNV sizing
-    total_replicas: "4"
-    total_replicas_min: "4"
-    total_replicas_max: "4"
-    root_volume_size: "100"
-
-# ===================================================================
 # Workload: agnosticd.core_workloads.ocp4_workload_openshift_data_foundation
 # Provides CephFS RWX storage required by Automation Hub file storage.
 # Reference: agd_v2/etx-ai-superlab3/common.yaml (Wolfgang)
 # ===================================================================
-ocp4_workload_openshift_data_foundation_channel: stable-4.17
+ocp4_workload_openshift_data_foundation_channel: stable-4.20
 ocp4_workload_openshift_data_foundation_catalogsource_setup: false
 ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 500Gi
 ocp4_workload_openshift_data_foundation_update_default_storage_class: true
