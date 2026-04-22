@@ -14,9 +14,6 @@
 
 #include /includes/parameters/purpose.yaml
 
-# Required by host_ocp4_assisted_scale
-#include /includes/secrets/ocp4_ai_offline_token.yaml
-
 # S3 credentials for RHPDS private image bucket (lb2862.qcow2)
 #include /includes/secrets/s3-rhpds-private-bucket.yaml
 
@@ -34,29 +31,23 @@ clusters:
 # Tags / Revisions
 # -------------------------------------------------------------------
 tag: main
-tag_showroom: v1.6.7
+tag_showroom: v1.6.9
 gitops_repo_revision: v1.0.0
 
-# ===================================================================
+# -------------------------------------------------------------------
 # Cloud provider — AWS (pool-based)
 # All worker scaling done via ocp4_workload_machinesets workload.
 # openshift_aws_scale_cluster is disabled — the scale_ocp_workers role
 # has a MachineSet replica type bug that causes creation to fail on
 # pool-based clusters (tracked in agnosticd/cloud_provider_aws PR#11).
-# ===================================================================
+# -------------------------------------------------------------------
 openshift_aws_scale_cluster: false
 openshift_cnv_scale_cluster: false
 aws_region: us-east-2
 
-# ── CNV (previous — uncomment to switch back) ──────────────────────
-# openshift_cnv_scale_cluster: true
-# worker_instance_count: 12
-# ai_workers_cores: 16
-# ai_workers_memory: 64Gi
-
-# ===================================================================
+# -------------------------------------------------------------------
 # Additional Collections & roles to be installed
-# ===================================================================
+# -------------------------------------------------------------------
 requirements_content:
   collections:
   - name: https://github.com/agnosticd/core_workloads.git
@@ -66,16 +57,16 @@ requirements_content:
     type: git
     version: "{{ tag_showroom }}"
 
-# ===================================================================
+# -------------------------------------------------------------------
 # Workloads
-# ===================================================================
+# -------------------------------------------------------------------
 workloads:
 - agnosticd.core_workloads.ocp4_workload_machinesets
 - agnosticd.core_workloads.ocp4_workload_authentication
 - agnosticd.core_workloads.ocp4_workload_pipelines
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
 - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
-- agnosticd.core_workloads.ocp4_workload_gitea_operator
+# - agnosticd.core_workloads.ocp4_workload_gitea_operator
 - agnosticd.showroom.ocp4_workload_ocp_console_embed
 - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 
@@ -90,42 +81,13 @@ ocp4_workload_catalogsource_tag: v4.20_2026_04_13
 # ocp4_workload_catalogsource_tag: v4.21_2026_04_13
 
 # -------------------------------------------------------------------
-# ocp4_workload_machinesets — ALL workers via this workload
-#
-# Standard workers: m6a.4xlarge (16 vCPU / 64 GiB)
-#   NOTE: 6 replicas for testing — production must be 12 to match
-#   previous CNV sizing (12 x 16 cores / 64Gi per worker)
-#
-# Metal workers: m6a.metal (192 vCPU / 768 GiB) x2 — bare metal for OCP Virt
-#   Tainted metal=reserved:NoSchedule so only VMs land here
-#   Retries bumped to 60 (30 min) — m6a.metal boots in ~20-25 min
+# agnosticd.core_workloads.ocp4_workload_machinesets
 # -------------------------------------------------------------------
 ocp4_workload_machinesets_wait_for_nodes: true
-ocp4_workload_machinesets_wait_for_nodes_retries: 60   # 60 * 30s = 30 min max wait
+ocp4_workload_machinesets_wait_for_nodes_retries: 60
 
-ocp4_workload_machinesets_machineset_groups:
-- name: worker-standard
-  role: worker
-  instance_type: m6a.4xlarge   # 16 vCPU / 64 GiB — OCP workloads
-  total_replicas: "6"           # DEV: 6 for testing — PROD: bump to 12 (matches CNV sizing)
-  total_replicas_min: "6"
-  total_replicas_max: "6"
-  root_volume_size: "100"
-
-- name: worker-metal
-  role: worker-metal
-  instance_type: m6a.metal     # 192 vCPU / 768 GiB — bare metal, no hypervisor
-  total_replicas: "2"
-  total_replicas_min: "2"
-  total_replicas_max: "2"
-  root_volume_size: "200"
-  machineConfigPool:
-    setup: true
-    maxPodsPerNode: 250         # 192 vCPU — allow more pods
-  taints:
-  - key: metal
-    value: reserved
-    effect: NoSchedule          # only VMs with matching toleration land here
+# Must override in child's config (event/dev/prod.yaml)
+ocp4_workload_machinesets_machineset_groups: []
 
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_authentication
@@ -188,9 +150,9 @@ ocp4_workload_openshift_virtualization_workload_tolerations:
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_gitea_operator
 # -------------------------------------------------------------------
-ocp4_workload_gitea_operator_catalog_image_tag: v2.1.0
-ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
-ocp4_workload_gitea_operator_deploy_gitea_instance: false
+# ocp4_workload_gitea_operator_catalog_image_tag: v2.1.0
+# ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+# ocp4_workload_gitea_operator_deploy_gitea_instance: false
 
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
@@ -233,8 +195,8 @@ __meta__:
     - name: Juliano Mohr
       email: juliano@redhat.com
     instructions:
-    - name: Ian Lawson
-      email: ilawson@redhat.com
+    - name: James Falkner
+      email: jfalkner@redhat.com
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     execution_environment:
@@ -259,6 +221,9 @@ __meta__:
       primaryBU: Application_Developer
       secondaryBU: Hybrid_Platforms
 
+  # -----------------------------------------------------------------
+  # Components / Cluster Pool
+  # -----------------------------------------------------------------
   components:
   - name: openshift
     display_name: OpenShift Cluster
