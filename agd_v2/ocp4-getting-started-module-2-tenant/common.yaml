@@ -1,7 +1,7 @@
 ---
 # -------------------------------------------------------------------
-# --- OpenShift Getting Started Tenant CI
-# --- Pairs with ocp4-getting-started-cluster (tenant deploys on that cluster)
+# --- OpenShift Getting Started Module 2 Tenant CI
+# --- Includes Lab 1 automation + Module 2 environment
 # -------------------------------------------------------------------
 #include /includes/access-restriction-admins-only.yaml
 
@@ -43,7 +43,8 @@ requirements_content:
 # ===================================================================
 # List of workloads to be deployed
 #
-# Order: keycloak_user → tenant_namespace → gitops_bootstrap → showroom
+# Module 2 = Tenant provisioning + DataSphere WITH resilience features
+# Students OBSERVE/TEST resilience (kill pods, watch HPA, etc.)
 # ===================================================================
 workloads:
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
@@ -82,23 +83,18 @@ ocp4_workload_tenant_gitea_user_repositories: []
 # ===================================================================
 # Workload: ocp4_workload_tenant_namespace
 #
-# Single namespace "lab" with shared pool (ClusterResourceQuota).
+# Module 2 namespaces:
+# - datasphere: Pre-deployed DataSphere (Lab 1 completed)
+# - module2: Workspace for adding resilience features
 # ===================================================================
 ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
 ocp4_workload_tenant_namespace_use_cluster_quota: true
 
 ocp4_workload_tenant_namespace_suffixes:
-- suffix: gitops                 # namespace for user argo instance
-- suffix: datasphere             # Pre-deployed DataSphere — students see the finished app at lab start
-- suffix: lab                    # Empty workspace for CLI/console lab exercises (Module 2 Sections 1-2)
-- suffix: lab-helm               # Empty workspace for Helm deployment exercise (Module 2 Section 3)
-- suffix: gitops-lab             # Empty workspace for GitOps deployment exercise (Module 4)
+- suffix: datasphere           # Pre-deployed DataSphere from Lab 1
+- suffix: lab                 # Workspace for Module 2 exercises
 
-ocp4_workload_tenant_namespace_metadata:
-  annotations:
-    argocd.argoproj.io/managed-by: "{{ ocp4_workload_tenant_keycloak_username }}-gitops"
-
-# Total resource pool shared across all tenant namespaces via CRQ.
+# Total resource pool shared across all tenant namespaces via CRQ
 ocp4_workload_tenant_namespace_default_quota:
   limits.cpu: "10"
   requests.cpu: "5"
@@ -116,15 +112,12 @@ ocp4_workload_tenant_namespace_default_limit_range:
 
 # ===================================================================
 # Workload: ocp4_workload_gitops_bootstrap
-#
-# Same repo as ocp4-getting-started-cluster; tenant path only.
+# Deploys DataSphere WITH resilience features via GitOps
 # ===================================================================
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ocp4-getting-started-automation.git
 ocp4_workload_gitops_bootstrap_repo_revision: main
 ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
 ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ guid }}"
-# ArgoCD permanently adds tracking annotations to managed Application CRDs.
-# Without this, the bootstrap reports OutOfSync indefinitely.
 ocp4_workload_gitops_bootstrap_application_ignore_tracking: true
 
 ocp4_workload_gitops_bootstrap_helm_values:
@@ -141,11 +134,15 @@ ocp4_workload_gitops_bootstrap_helm_values:
     datasphere:
       enabled: true
       namespace: "{{ ocp4_workload_tenant_keycloak_username }}-datasphere"
-    studentArgoCD:
-      enabled: true
-      namespace: "{{ ocp4_workload_tenant_keycloak_username }}-gitops"
-      gitopsLab:
-        namespace: "{{ ocp4_workload_tenant_keycloak_username }}-gitops-lab"
+      # Resilience features ENABLED (default values from Helm chart)
+      # Students observe and test these features in Module 2
+      api:
+        probes:
+          enabled: true
+        resources:
+          enabled: true
+        hpa:
+          enabled: true
 
 # ===================================================================
 # Workload: ocp4_workload_showroom
@@ -153,8 +150,12 @@ ocp4_workload_gitops_bootstrap_helm_values:
 openshift_api_url: "{{ sandbox_openshift_api_url }}"
 openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
 
+# Pass module to showroom for conditional content
+agnosticd_passthrough_user_data:
+  module: "2"
+
 ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
-ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/zt-ocp4-getting-started
+ocp4_workload_showroom_content_git_repo: https://github.com/treddy08/zt-ocp4-getting-started
 ocp4_workload_showroom_content_git_repo_ref: main
 
 ocp4_workload_showroom_terminal_type: showroom
@@ -167,11 +168,13 @@ ocp4_workload_showroom_content_ui_config: |
     enabled: true
     default_mode: split
   tabs:
-  - name: OpenShift Console
-    url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
   - name: Terminal
     path: /terminal
     port: 443
+  - name: OpenShift Console
+    url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
+  - name: Gitea
+    url: "https://gitea.{{ openshift_cluster_ingress_domain }}"
 
 ocp4_workload_showroom_passthrough_user_data: true
 
@@ -179,7 +182,7 @@ ocp4_workload_showroom_passthrough_user_data: true
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
-  asset_uuid: 7a2c4e1b-9f3d-4a8c-b5e0-6d1f8a2c3b4e
+  asset_uuid: 2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e
   owners:
     maintainer:
     - name: Shachar Borenstein
@@ -189,7 +192,7 @@ __meta__:
   - kind: OcpSandbox
     cloud_selector:
       cloud: cnv-dedicated-shared
-      lab: ocp4-getting-started
+      lab: ocp4-getting-started-test
       purpose: dev
 
   sandbox_api:
@@ -198,7 +201,7 @@ __meta__:
         catch_all: false
 
   catalog:
-    display_name: "Getting Started with OpenShift"
+    display_name: "Getting Started with OpenShift - Module 2"
     category: Labs
     namespace: babylon-catalog-{{ stage | default('?') }}
     workshopUiDisabled: false
@@ -208,7 +211,8 @@ __meta__:
     - openshift
     - containers
     - developer
-    - basics
+    - resilience
+    - module2
     labels:
       Provider: RHDP
     reportingLabels:

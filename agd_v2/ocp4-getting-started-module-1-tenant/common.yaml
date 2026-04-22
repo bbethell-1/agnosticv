@@ -1,0 +1,232 @@
+---
+# -------------------------------------------------------------------
+# --- OpenShift Getting Started Module 1 Tenant CI
+# --- Students deploy DataSphere manually (no pre-deployment)
+# -------------------------------------------------------------------
+#include /includes/access-restriction-admins-only.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+config: namespace
+cloud_provider: none
+
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits')
+  }}
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+
+requirements_content:
+  collections:
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.6.0
+
+# ===================================================================
+# List of workloads to be deployed
+#
+# Module 1 = Basic tenant provisioning ONLY (no pre-deployed apps)
+# Students deploy DataSphere themselves
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_gitea_user
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.showroom.ocp4_workload_showroom
+
+remove_workloads:
+- agnosticd.showroom.ocp4_workload_showroom
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_gitea_user
+# Creates the student's Gitea account. Repo seeding is handled by
+# the gitea-user-repos GitOps Job (via ocp4_workload_gitops_bootstrap).
+# -------------------------------------------------------------------
+ocp4_workload_tenant_gitea_user_namespace: gitea
+ocp4_workload_tenant_gitea_user_name: gitea
+ocp4_workload_tenant_gitea_user_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_gitea_user_password: "{{ common_password }}"
+ocp4_workload_tenant_gitea_user_repositories: []
+
+# ===================================================================
+# Workload: ocp4_workload_tenant_namespace
+#
+# Module 1 namespaces:
+# - lab: workspace for container image & S2I deployments
+# - lab-helm: workspace for Helm deployment
+# ===================================================================
+ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_namespace_use_cluster_quota: true
+
+ocp4_workload_tenant_namespace_suffixes:
+- suffix: datasphere             # Pre-deployed DataSphere for Section 1
+- suffix: lab                    # Workspace for CLI/console exercises
+- suffix: lab-helm               # Workspace for Helm exercise
+
+# Total resource pool shared across all tenant namespaces via CRQ
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "10"
+  requests.cpu: "5"
+  limits.memory: 10Gi
+  requests.memory: 5Gi
+  requests.storage: 100Gi
+
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: 500m
+    memory: 512Mi
+  defaultRequest:
+    cpu: 100m
+    memory: 128Mi
+
+# ===================================================================
+# Workload: ocp4_workload_gitops_bootstrap
+#
+# Deploys GitOps automation to seed Gitea repos for Module 1.
+# Module 1 only needs user repos seeded - no applications pre-deployed.
+# ===================================================================
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ocp4-getting-started-automation.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ guid }}"
+ocp4_workload_gitops_bootstrap_application_ignore_tracking: true
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  tenant:
+    name: "{{ guid }}"
+    user:
+      name: "{{ ocp4_workload_tenant_keycloak_username }}"
+
+  gitea:
+    userRepos:
+      enabled: true
+
+  labs:
+    datasphere:
+      enabled: true
+      namespace: "{{ ocp4_workload_tenant_keycloak_username }}-datasphere"
+    studentArgoCD:
+      enabled: false
+
+# ===================================================================
+# Workload: ocp4_workload_showroom
+# ===================================================================
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
+
+# Pass module to showroom for conditional content
+agnosticd_passthrough_user_data:
+  module: "1"
+
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/treddy08/zt-ocp4-getting-started
+ocp4_workload_showroom_content_git_repo_ref: main
+
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-11
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 40
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+  - name: Terminal
+    path: /terminal
+    port: 443
+  - name: OpenShift Console
+    url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
+  - name: Gitea
+    url: "https://gitea.{{ openshift_cluster_ingress_domain }}"
+
+ocp4_workload_showroom_passthrough_user_data: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d
+  owners:
+    maintainer:
+    - name: Shachar Borenstein
+      email: sborenst@redhat.com
+
+  sandboxes:
+  - kind: OcpSandbox
+    cloud_selector:
+      cloud: cnv-dedicated-shared
+      lab: ocp4-getting-started-test
+      purpose: dev
+
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+
+  catalog:
+    display_name: "Getting Started with OpenShift - Module 1"
+    category: Labs
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    workshopUiDisabled: false
+    workshopLabUiRedirect: false
+    multiuser: false
+    keywords:
+    - openshift
+    - containers
+    - developer
+    - basics
+    - module1
+    labels:
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters: []
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
+      pull: missing
+    actions:
+      start:
+        disable: true
+      stop:
+        disable: true
+      status:
+        disable: true
+      update:
+        disable: true
