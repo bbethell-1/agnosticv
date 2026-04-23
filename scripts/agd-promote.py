@@ -302,6 +302,22 @@ def discover_repos(common_data, item_path):
     return tagged_repos, pinned_collections, cloud_provider_repo, deployer_repo
 
 
+def discover_showroom_repo(common_data):
+    """Extract showroom content repo info from common.yaml.
+
+    Returns (org/repo, current_ref) or (None, None).
+    """
+    url = common_data.get("ocp4_workload_showroom_content_git_repo", "")
+    ref = str(common_data.get("ocp4_workload_showroom_content_git_repo_ref", ""))
+    if not url:
+        return None, None
+    try:
+        repo = repo_from_url(url)
+    except ValueError:
+        return None, None
+    return repo, ref
+
+
 def read_stage_file(item_path, stage):
     """Read a stage file and extract tag info.
 
@@ -501,6 +517,69 @@ def update_common_yaml(item_path, pinned_updates):
         f.writelines(new_lines)
 
 
+def update_showroom_ref_in_common(item_path):
+    """Replace ocp4_workload_showroom_content_git_repo_ref value with {{ tag }}."""
+    path = os.path.join(item_path, "common.yaml")
+    with open(path) as f:
+        lines = f.readlines()
+
+    count = 0
+    new_lines = []
+    for line in lines:
+        if re.match(r"^ocp4_workload_showroom_content_git_repo_ref:\s*", line):
+            new_lines.append('ocp4_workload_showroom_content_git_repo_ref: "{{ tag }}"\n')
+            count += 1
+        else:
+            new_lines.append(line)
+
+    if count != 1:
+        print(f"ERROR: Expected 1 showroom ref replacement in {path}, "
+              f"found {count}", file=sys.stderr)
+        return False
+
+    with open(path, "w") as f:
+        f.writelines(new_lines)
+    return True
+
+
+def ensure_dev_showroom_override(item_path):
+    """Ensure dev.yaml has ocp4_workload_showroom_content_git_repo_ref: main."""
+    path = os.path.join(item_path, "dev.yaml")
+    if not os.path.exists(path):
+        return False
+
+    with open(path) as f:
+        lines = f.readlines()
+
+    for line in lines:
+        if re.match(r"^ocp4_workload_showroom_content_git_repo_ref:\s*", line):
+            return True
+
+    new_lines = []
+    inserted = False
+    for line in lines:
+        new_lines.append(line)
+        if not inserted and re.match(r"^tag:\s*", line):
+            new_lines.append("\n")
+            new_lines.append("ocp4_workload_showroom_content_git_repo_ref: main\n")
+            inserted = True
+
+    if not inserted:
+        for i, line in enumerate(new_lines):
+            if re.match(r"^__meta__:", line):
+                new_lines.insert(i, "ocp4_workload_showroom_content_git_repo_ref: main\n")
+                new_lines.insert(i + 1, "\n")
+                inserted = True
+                break
+
+    if not inserted:
+        new_lines.append("\nocp4_workload_showroom_content_git_repo_ref: main\n")
+
+    with open(path, "w") as f:
+        f.writelines(new_lines)
+    return True
+
+
 # --- Validation mode ---
 
 def validate_pr(file_paths):
@@ -562,6 +641,16 @@ def validate_pr(file_paths):
                 file_passed = False
                 all_passed = False
 
+        # Check showroom content repo if ref uses {{ tag }}
+        showroom_repo, showroom_ref = discover_showroom_repo(common_data)
+        if showroom_repo and "{{ tag }}" in showroom_ref:
+            if gh_tag_exists(showroom_repo, effective_tag):
+                print(f"  PASS: {showroom_repo} has tag {effective_tag}")
+            else:
+                print(f"  FAIL: {showroom_repo} missing tag {effective_tag}")
+                file_passed = False
+                all_passed = False
+
         if file_passed:
             print(f"  Result: ALL TAGS PRESENT")
         else:
@@ -602,6 +691,9 @@ Examples:
                         help="Only update YAML files, skip git tag creation")
     parser.add_argument("--tag-prefix",
                         help="Override auto-detected tag prefix")
+    parser.add_argument("--tag-showroom", action="store_true",
+                        help="Include showroom content repo in tagging "
+                             "and switch ref to {{ tag }}")
 
     args = parser.parse_args()
 
@@ -627,6 +719,19 @@ Examples:
     if not tagged_repos and not deployer_repo:
         print("ERROR: No tagged repos found in common.yaml", file=sys.stderr)
         sys.exit(1)
+
+    # Showroom content repo discovery
+    showroom_repo = None
+    showroom_current_ref = None
+    if args.tag_showroom:
+        showroom_repo, showroom_current_ref = discover_showroom_repo(common_data)
+        if showroom_repo:
+            print(f"  Showroom content repo: {showroom_repo} "
+                  f"(ref: {showroom_current_ref})")
+        else:
+            print("WARNING: --tag-showroom specified but no "
+                  "ocp4_workload_showroom_content_git_repo found in common.yaml",
+                  file=sys.stderr)
 
     # Step 2: Read tag from first available stage file
     tag_prefix = args.tag_prefix
@@ -678,6 +783,8 @@ Examples:
             inaccessible.append(repo)
     if cloud_provider_repo and not gh_check_repo_access(cloud_provider_repo):
         inaccessible.append(cloud_provider_repo)
+    if showroom_repo and not gh_check_repo_access(showroom_repo):
+        inaccessible.append(showroom_repo)
     for repo, _, _ in pinned_collections:
         if not gh_check_repo_access(repo):
             inaccessible.append(repo)
@@ -750,6 +857,8 @@ Examples:
         print(f"  {deployer_repo:<40s} {new_tag}")
     if cloud_provider_repo and new_cpv:
         print(f"  {cloud_provider_repo:<40s} {new_cpv}")
+    if showroom_repo:
+        print(f"  {showroom_repo:<40s} {new_tag}")
     print()
 
     if pinned_updates:
@@ -772,6 +881,12 @@ Examples:
         for repo, old_v, new_v, _url in pinned_to_apply:
             short_name = repo.split("/")[-1]
             print(f"  common.yaml: {short_name} version {old_v} -> {new_v}")
+    if showroom_repo:
+        print(f"  common.yaml: showroom ref {showroom_current_ref}"
+              f' -> "{{{{ tag }}}}"')
+        dev_path = os.path.join(item_path, "dev.yaml")
+        if os.path.exists(dev_path):
+            print(f"  dev.yaml:    ensure showroom ref override -> main")
     for stage in stages:
         stage_file = os.path.join(item_path, f"{stage}.yaml")
         if os.path.exists(stage_file):
@@ -812,6 +927,8 @@ Examples:
             repos_to_tag.append((deployer_repo, new_tag))
         if cloud_provider_repo and new_cpv:
             repos_to_tag.append((cloud_provider_repo, new_cpv))
+        if showroom_repo:
+            repos_to_tag.append((showroom_repo, new_tag))
 
         for repo, tag in repos_to_tag:
             if gh_tag_exists(repo, tag):
@@ -857,6 +974,16 @@ Examples:
     if pinned_to_apply:
         update_common_yaml(item_path, pinned_to_apply)
         print(f"  Updated common.yaml with pinned collection versions")
+
+    # Update showroom ref in common.yaml and ensure dev.yaml override
+    if showroom_repo:
+        if update_showroom_ref_in_common(item_path):
+            print(f"  Updated common.yaml showroom ref to {{{{ tag }}}}")
+        else:
+            print(f"  FAIL: Could not update showroom ref in common.yaml",
+                  file=sys.stderr)
+        if ensure_dev_showroom_override(item_path):
+            print(f"  Ensured dev.yaml has showroom ref override")
 
     # Update stage files
     for stage in stages:

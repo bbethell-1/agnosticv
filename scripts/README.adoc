@@ -73,6 +73,10 @@ scripts/agd-promote --validate-pr <file> [<file> ...]
 | Auto-detected
 | Override the tag prefix auto-detected from stage files
 
+| `--tag-showroom`
+| Off
+| Include the showroom content repo in tagging and switch its ref in `common.yaml` to `{{ tag }}`
+
 | `--validate-pr <file> ...`
 | N/A
 | CI mode: validate that tags referenced in the given stage files exist on all repositories
@@ -206,6 +210,27 @@ Promote to a custom set of stages:
 scripts/agd-promote agd_v2/mcp-with-openshift patch --stage prod,event,staging
 ----
 
+=== Tag Showroom Content Repo
+
+Include the showroom content repository in the promotion:
+
+[source,bash]
+----
+scripts/agd-promote agd_v2/openshift-days-ops-track-cnv patch --tag-showroom
+----
+
+This will:
+
+* Detect the showroom content repo from `ocp4_workload_showroom_content_git_repo` in `common.yaml`
+* Create the promotion tag (e.g., `openshift-days-ops-1.2.4`) on the showroom content repo
+* Update `common.yaml` to set `ocp4_workload_showroom_content_git_repo_ref` to `"{{ tag }}"`
+* Ensure `dev.yaml` has an override setting the ref back to `main` so development deploys from HEAD
+
+After promotion, `prod.yaml` and `event.yaml` set `tag:` to the release version, so the showroom content repo resolves to the pinned tag.
+`dev.yaml` sets `tag: main`, so development continues deploying from HEAD.
+
+NOTE: If `--tag-showroom` is specified but no showroom content repo is found in `common.yaml`, a warning is printed and promotion continues without it.
+
 === Validate PR (CI Mode)
 
 Validate that all tags referenced in stage files exist on all repositories:
@@ -227,6 +252,7 @@ The validation checks:
 * The `tag:` (or `scm_ref:`) value in each stage file
 * Whether that tag exists on all tagged repos and the deployer repo
 * Whether the `cloud_provider_version` tag exists on the cloud provider repo (if applicable)
+* Whether the tag exists on the showroom content repo (if `ocp4_workload_showroom_content_git_repo_ref` uses `{{ tag }}`)
 
 Exit code `0` means all tags are present.
 Exit code `1` means one or more tags are missing.
@@ -268,6 +294,10 @@ The tool reads `common.yaml` and identifies four categories of repositories:
 | **Deployer repo**
 | From `__meta__.deployer.scm_url`
 | `rhpds/agnosticd_deployer`
+
+| **Showroom content repo**
+| From `ocp4_workload_showroom_content_git_repo` (only with `--tag-showroom`)
+| `rhpds/openshift-days-ops-showroom`
 |===
 
 === Version Detection
@@ -296,6 +326,8 @@ After all tags are created successfully:
 
 * **Stage files** (`prod.yaml`, `event.yaml`): updates `tag:`, `scm_ref:`, and `cloud_provider_version:` fields
 * **`common.yaml`**: updates pinned collection versions if newer versions are available
+* **`common.yaml`** (with `--tag-showroom`): switches `ocp4_workload_showroom_content_git_repo_ref` to `"{{ tag }}"`
+* **`dev.yaml`** (with `--tag-showroom`): ensures `ocp4_workload_showroom_content_git_repo_ref: main` override exists
 
 The updates use line-based editing to preserve file structure, comments, and formatting.
 
