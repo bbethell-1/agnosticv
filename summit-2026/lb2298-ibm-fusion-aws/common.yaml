@@ -66,6 +66,10 @@ requirements_content:
   - name: https://github.com/agnosticd/showroom.git
     type: git
     version: v1.6.9
+  # FTL E2E testing
+  - name: https://github.com/rhpds/rhpds-ftl.git
+    type: git
+    version: "{{ tag }}"
 
 # -------------------------------------------------------------------
 # Common Password
@@ -76,12 +80,22 @@ common_admin_password: >-
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
-workloads:
-- rhpds.partner_workloads.ocp4_workload_ibm_fusion
-- agnosticd.core_workloads.ocp4_workload_authentication
-- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
-- agnosticd.showroom.ocp4_workload_ocp_console_embed
-- agnosticd.showroom.ocp4_workload_showroom
+workloads: >-
+  {{
+    [
+      'rhpds.partner_workloads.ocp4_workload_ibm_fusion',
+      'agnosticd.core_workloads.ocp4_workload_authentication',
+      'agnosticd.core_workloads.ocp4_workload_openshift_virtualization',
+      'agnosticd.showroom.ocp4_workload_ocp_console_embed',
+      'agnosticd.showroom.ocp4_workload_showroom',
+      'rhpds.ftl.ocp4_workload_runtime_automation_k8s'
+    ] +
+    (
+      ['rhpds.ftl.ocp4_runtime_automation_load_test']
+      if run_e2e_load_test | default(false) | bool
+      else []
+    )
+  }}
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_ibm_fusion
@@ -125,6 +139,16 @@ ocp4_workload_showroom_wetty_ssh_bastion_login: true
 ocp4_workload_showroom_antora_enable_dev_mode: "false"
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_runtime_automation_k8s (E2E testing)
+# -------------------------------------------------------------------
+ocp4_workload_runtime_automation_k8s_runner_image: quay.io/rhpds/zt-runner:v2.4.2
+ocp4_workload_runtime_automation_k8s_wetty_image: quay.io/rhpds/wetty:v3.0
+ocp4_workload_runtime_automation_k8s_content_git_repo: >-
+  {{ ocp4_workload_showroom_content_git_repo }}
+ocp4_workload_runtime_automation_k8s_content_git_repo_ref: >-
+  {{ ocp4_workload_showroom_content_git_repo_ref }}
+
+# -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
@@ -162,6 +186,13 @@ __meta__:
       Brand_Event: Red_Hat_Summit_2026
     multiuser: false
     workshopLabUiRedirect: true
+    parameters:
+    - name: run_e2e_load_test
+      description: "Run E2E load test after provisioning — triggers solve and validate on all modules"
+      formLabel: "Run E2E Load Test"
+      openAPIV3Schema:
+        type: boolean
+        default: false
 
   components:
   - name: openshift-base

@@ -1,8 +1,8 @@
 ---
 # -------------------------------------------------------------------
 # --- Catalog: Brand Events
-# --- Catalog Item: LB1161: Sovereign Cloud Management and
-#                           Security of your Workloads
+# --- Catalog Item: LB1161: Sovereign cloud management and security
+#                           with Red Hat OpenShift Platform Plus
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
@@ -61,26 +61,26 @@ requirements_content:
   - name: https://github.com/rhpds/assisted_installer.git
     type: git
     version: v0.0.9
-
   # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
     version: "{{ tag }}"
-
   # AI Workloads
   - name: https://github.com/agnosticd/ai_workloads.git
     type: git
     version: "{{ tag }}"
-
   # Sovereign Cloud Workloads
   - name: https://github.com/rhpds/sovereign_cloud.git
     type: git
     version: "{{ tag }}"
-
   # Showroom
   - name: https://github.com/agnosticd/showroom.git
     type: git
     version: v1.6.9
+  # FTL E2E testing
+  - name: https://github.com/rhpds/rhpds-ftl.git
+    type: git
+    version: "{{ tag }}"
 
 # -------------------------------------------------------------------
 # Common Password
@@ -96,21 +96,31 @@ common_admin_password: >-
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
-workloads:
-- agnosticd.core_workloads.ocp4_workload_authentication
-- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
-- agnosticd.core_workloads.ocp4_workload_metallb
-- agnosticd.core_workloads.ocp4_workload_openshift_gitops
-- agnosticd.core_workloads.ocp4_workload_pipelines
-- agnosticd.core_workloads.ocp4_workload_rhacs
-- agnosticd.core_workloads.ocp4_workload_rhacm
-- agnosticd.core_workloads.ocp4_workload_quay_operator
-- agnosticd.ai_workloads.ocp4_workload_openshift_ai
-- rhpds.sovereign_cloud.ocp4_workload_register_sno
-- rhpds.sovereign_cloud.ocp4_workload_prepare_hcp
-- rhpds.sovereign_cloud.ocp4_workload_prepare_environment
-- agnosticd.showroom.ocp4_workload_ocp_console_embed
-- agnosticd.showroom.ocp4_workload_showroom
+workloads: >-
+  {{
+    [
+      'agnosticd.core_workloads.ocp4_workload_authentication',
+      'agnosticd.core_workloads.ocp4_workload_openshift_virtualization',
+      'agnosticd.core_workloads.ocp4_workload_metallb',
+      'agnosticd.core_workloads.ocp4_workload_openshift_gitops',
+      'agnosticd.core_workloads.ocp4_workload_pipelines',
+      'agnosticd.core_workloads.ocp4_workload_rhacs',
+      'agnosticd.core_workloads.ocp4_workload_rhacm',
+      'agnosticd.core_workloads.ocp4_workload_quay_operator',
+      'agnosticd.ai_workloads.ocp4_workload_openshift_ai',
+      'rhpds.sovereign_cloud.ocp4_workload_register_sno',
+      'rhpds.sovereign_cloud.ocp4_workload_prepare_hcp',
+      'rhpds.sovereign_cloud.ocp4_workload_prepare_environment',
+      'agnosticd.showroom.ocp4_workload_ocp_console_embed',
+      'agnosticd.showroom.ocp4_workload_showroom',
+      'rhpds.ftl.ocp4_workload_runtime_automation_k8s'
+    ] +
+    (
+      ['rhpds.ftl.ocp4_runtime_automation_load_test']
+      if run_e2e_load_test | default(false) | bool
+      else []
+    )
+  }}
 
 # ===================================================================
 # Variables for specific workloads
@@ -292,6 +302,16 @@ ocp4_workload_showroom_wetty_ssh_bastion_login: true
 ocp4_workload_showroom_antora_enable_dev_mode: "false"
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_runtime_automation_k8s (E2E testing)
+# -------------------------------------------------------------------
+ocp4_workload_runtime_automation_k8s_runner_image: quay.io/rhpds/zt-runner:v2.4.2
+ocp4_workload_runtime_automation_k8s_wetty_image: quay.io/rhpds/wetty:v3.0
+ocp4_workload_runtime_automation_k8s_content_git_repo: >-
+  {{ ocp4_workload_showroom_content_git_repo }}
+ocp4_workload_runtime_automation_k8s_content_git_repo_ref: >-
+  {{ ocp4_workload_showroom_content_git_repo_ref }}
+
+# -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
@@ -313,7 +333,7 @@ __meta__:
       email: mfoster@redhat.com
 
   catalog:
-    display_name: "LB1161: Sovereign Cloud Management and Security of your Workloads"
+    display_name: "LB1161: Sovereign cloud management and security with Red Hat OpenShift Platform Plus"
     category: Brand_Events
     namespace: babylon-catalog-{{ stage | default('?') }}
     multiuser: false
@@ -342,6 +362,12 @@ __meta__:
       variable: aws_region
       components:
       - name: aws_sno
+    - name: run_e2e_load_test
+      description: "Run E2E load test after provisioning — triggers solve and validate on all modules"
+      formLabel: "Run E2E Load Test"
+      openAPIV3Schema:
+        type: boolean
+        default: false
 
   deployer:
     scm_url: https://github.com/agnosticd/agnosticd-v2

@@ -75,7 +75,7 @@ requirements_content:
   # FTL E2E testing
   - name: https://github.com/rhpds/rhpds-ftl.git
     type: git
-    version: main
+    version: "{{ tag }}"
 
 # -------------------------------------------------------------------
 # Common Password
@@ -86,15 +86,24 @@ common_admin_password: >-
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
-workloads:
-- agnosticd.core_workloads.ocp4_workload_cert_manager
-- rhpds.partner_workloads.ocp4_workload_portworx
-- agnosticd.core_workloads.ocp4_workload_authentication
-- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
-- agnosticd.core_workloads.ocp4_workload_web_terminal
-- agnosticd.showroom.ocp4_workload_ocp_console_embed
-- agnosticd.showroom.ocp4_workload_showroom
-- rhpds.ftl.ocp4_workload_runtime_automation_k8s
+workloads: >-
+  {{
+    [
+      'agnosticd.core_workloads.ocp4_workload_cert_manager',
+      'rhpds.partner_workloads.ocp4_workload_portworx',
+      'agnosticd.core_workloads.ocp4_workload_authentication',
+      'agnosticd.core_workloads.ocp4_workload_openshift_virtualization',
+      'agnosticd.core_workloads.ocp4_workload_web_terminal',
+      'agnosticd.showroom.ocp4_workload_ocp_console_embed',
+      'agnosticd.showroom.ocp4_workload_showroom',
+      'rhpds.ftl.ocp4_workload_runtime_automation_k8s'
+    ] +
+    (
+      ['rhpds.ftl.ocp4_runtime_automation_load_test']
+      if run_e2e_load_test | default(false) | bool
+      else []
+    )
+  }}
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager
@@ -218,3 +227,10 @@ __meta__:
       Brand_Event: Red_Hat_Summit_2026
     multiuser: false
     workshopLabUiRedirect: true
+    parameters:
+    - name: run_e2e_load_test
+      description: "Run E2E load test after provisioning — triggers solve and validate on all modules"
+      formLabel: "Run E2E Load Test"
+      openAPIV3Schema:
+        type: boolean
+        default: false
