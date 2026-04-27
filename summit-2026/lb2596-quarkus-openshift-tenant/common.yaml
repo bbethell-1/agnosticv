@@ -32,6 +32,7 @@ openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
 # -------------------------------------------------------------------
 tag: main
 tag_showroom: v1.6.9
+tag_ftl: v5.5.0
 tag_quarkus_openshift: v1.0.0
 showroom_repo_revision: v1.0.0
 
@@ -49,15 +50,28 @@ requirements_content:
   - name: https://github.com/rhpds/quarkus-on-openshift-automation.git
     type: git
     version: "{{ tag_quarkus_openshift }}"
+  - name: https://github.com/rhpds/rhpds-ftl.git
+    type: git
+    version: "{{ tag_ftl }}"
 
 # ===================================================================
 # Workloads
 # ===================================================================
-workloads:
-- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
-- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
-- agnosticd.showroom.ocp4_workload_showroom
-- rhpds.quarkus_on_openshift.bootstrap_tenant
+workloads: >-
+  {{
+    [
+      'agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user',
+      'agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace',
+      'agnosticd.showroom.ocp4_workload_showroom',
+      'rhpds.quarkus_on_openshift.bootstrap_tenant',
+      'rhpds.ftl.ocp4_workload_runtime_automation_k8s'
+    ] +
+    (
+      ['rhpds.ftl.ocp4_runtime_automation_load_test']
+      if run_e2e_load_test | default(false) | bool
+      else []
+    )
+  }}
 
 # -------------------------------------------------------------------
 # Workload variables
@@ -116,6 +130,25 @@ quarkus_on_openshift_bootstrap_tenant_user_password: "{{ ocp4_workload_user_pass
 quarkus_on_openshift_bootstrap_tenant_namespaces:
 - "{{ ocp4_workload_username }}-quarkus"
 
+# -------------------------------------------------------------------
+# rhpds.ftl.ocp4_workload_runtime_automation_k8s
+# -------------------------------------------------------------------
+ocp4_workload_runtime_automation_k8s_cluster_admin: false
+
+ocp4_workload_runtime_automation_k8s_openshift_api_url: "{{ sandbox_openshift_api_url }}"
+ocp4_workload_runtime_automation_k8s_openshift_api_token: "{{ cluster_admin_agnosticd_sa_token }}"
+
+ocp4_workload_runtime_automation_k8s_username: "{{ ocp4_workload_username }}"
+ocp4_workload_runtime_automation_k8s_namespace_suffixes: "{{ ocp4_workload_tenant_namespace_suffixes }}"
+ocp4_workload_runtime_automation_k8s_showroom_namespace: "{{ ocp4_workload_showroom_namespace }}"
+
+# -------------------------------------------------------------------
+# rhpds.ftl.ocp4_runtime_automation_load_test
+# -------------------------------------------------------------------
+zt_load_test_ocp_showroom_namespace: "{{ ocp4_workload_showroom_namespace }}"
+zt_load_test_ocp_openshift_api_url: "{{ sandbox_openshift_api_url }}"
+zt_load_test_ocp_openshift_api_token: "{{ cluster_admin_agnosticd_sa_token }}"
+
 # ===================================================================
 # Babylon meta variables
 # ===================================================================
@@ -153,6 +186,13 @@ __meta__:
     reportingLabels:
       primaryBU: Application_Developer
       secondaryBU: Hybrid_Platforms
+    parameters:
+    - name: run_e2e_load_test
+      description: "Run E2E load test after provisioning — triggers solve and validate on all modules"
+      formLabel: "Run E2E Load Test"
+      openAPIV3Schema:
+        type: boolean
+        default: false
 
   # -----------------------------------------------------------------
   # Sandbox API
