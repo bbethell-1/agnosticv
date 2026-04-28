@@ -44,18 +44,35 @@ requirements_content:
     version: v0.0.9
 
   # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: "v1.6.9"
+
+  # Core OpenShift Workloads
   - name: https://github.com/agnosticd/core_workloads.git
     type: git
-    version: "judd-gitops-add-cluster"
+    version: "main"
+
+  # Core OpenShift Workloads
+  - name: https://github.com/rhpds/demo_workloads.git
+    type: git
+    version: "main"
 
 # ===================================================================
 # List of workloads to be deployed
 # ===================================================================
 workloads:
 - agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
-- agnosticd.core_workloads.ocp4_workload_gitops_add_cluster
+- rhpds.demo_workloads.ocp4_workload_gitops_add_cluster
 - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.showroom.ocp4_workload_showroom
+
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_admin_password length=12 chars=ascii_letters,digits')
+  }}
 
 # ===================================================================
 # Variables for specific workloads
@@ -66,7 +83,7 @@ workloads:
 # ===================================================================
 ocp4_workload_authentication_provider: htpasswd
 ocp4_workload_authentication_multiuser: false
-ocp4_workload_authentication_admin_password: "band-on-the-run"
+ocp4_workload_authentication_admin_password: "{{ common_admin_password | default('') }}"
 
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_openshift_gitops
@@ -96,10 +113,25 @@ ocp4_workload_gitops_bootstrap_repo_revision: main
 ocp4_workload_gitops_bootstrap_repo_path: cluster/infra/bootstrap
 ocp4_workload_gitops_bootstrap_application_name: bootstrap-infra
 
+ocp4_workload_gitops_bootstrap_application_health_retries: 200 # 200 * 10 seconds = 33 minutes
 ocp4_workload_gitops_bootstrap_helm_values:
   user:
     count: 0
   workspace: ""
+  allNodeNames: "{{ ocp4_workload_gitops_add_cluster_all_node_names | default('') }}"
+  htpasswdAuth:
+    enabled: true
+    adminPassword: "{{ common_admin_password | default('') }}"
+
+# -------------------------------------------------------------------
+# agnosticd.showroom.ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/infoscale-showroom.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+ocp4_workload_showroom_enable_dev_mode: true
 
 # -------------------------------------------------------------------
 # Babylon meta variables
