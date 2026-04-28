@@ -86,15 +86,18 @@ ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
 
 # ===================================================================
 # ocp4_workload_tenant_namespace
+# 4 namespaces created per tenant order — one per scenario.
 # Namespace format: {username}-scenario-{n}
-# e.g. user-abc12-scenario-1
-# Each namespace hosts: AAP stack + ArgoCD Application + showroom (one scenario)
+# Showroom is deployed in scenario-1 namespace with tabs for all 4 AAP instances.
 # ===================================================================
 ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
 ocp4_workload_tenant_namespace_use_cluster_quota: true
 
 ocp4_workload_tenant_namespace_suffixes:
-- suffix: "scenario-{{ scenario | default(1) }}"
+- suffix: "scenario-1"
+- suffix: "scenario-2"
+- suffix: "scenario-3"
+- suffix: "scenario-6"
 
 # Per-namespace quota math (measured on a live cluster):
 # Namespace-scoped AAP operator deploys 6 operator controllers with high limits:
@@ -131,12 +134,11 @@ ocp4_workload_tenant_namespace_default_limit_range:
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/demystifying-aap-automation
 ocp4_workload_gitops_bootstrap_repo_revision: main
 ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
-ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ guid }}-scenario-{{ scenario | default(1) }}"
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ guid }}"
 
-# Wait for bootstrap Application to be Healthy before proceeding to Showroom.
-# 60 retries × 30s = 30 min max wait — covers AAP operator reconciliation time.
-ocp4_workload_gitops_bootstrap_application_wait: true
-ocp4_workload_gitops_bootstrap_application_health_retries: 60
+# Do not wait for bootstrap health — 4 AAP instances take ~30 min each.
+# Showroom deploys immediately; AAP instances converge in the background.
+ocp4_workload_gitops_bootstrap_application_wait: false
 
 alia_token: "{{ litellm_master_key }}"
 
@@ -153,11 +155,9 @@ alia_token: "{{ litellm_master_key }}"
 ocp4_workload_gitops_bootstrap_helm_values:
   tenant:
     username: "{{ ocp4_workload_tenant_keycloak_username }}"
-    namespace: "{{ ocp4_workload_tenant_keycloak_username }}-scenario-{{ scenario | default(1) }}"
     password: "{{ common_password }}"
     domain: "{{ openshift_cluster_ingress_domain }}"
     apiUrl: "{{ sandbox_openshift_api_url }}"   # cluster API URL for the break SA credential
-    scenario: "{{ scenario | default(1) }}"
   aap:
     hub:
       enabled: true
@@ -171,7 +171,7 @@ ocp4_workload_gitops_bootstrap_helm_values:
 # ===================================================================
 # ocp4_workload_showroom
 # ===================================================================
-ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-scenario-{{ scenario | default(1) }}"
+ocp4_workload_showroom_namespace: "showroom-{{ guid }}"
 ocp4_workload_showroom_openshift_api_url: "{{ sandbox_openshift_api_url }}"
 ocp4_workload_showroom_openshift_api_token: "{{ cluster_admin_agnosticd_sa_token | trim | regex_replace('^Bearer ', '') }}"
 ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
@@ -188,8 +188,6 @@ ocp4_workload_showroom_terminal_type: ""
 # Custom vars must now be seeded via agnosticd_user_info before showroom deploys.
 # ===================================================================
 ocp4_workload_showroom_user_data_seed:
-  scenario: "{{ scenario | default(1) }}"
-  aap_url: "https://{{ ocp4_workload_tenant_keycloak_username }}-aap-{{ ocp4_workload_tenant_keycloak_username }}-scenario-{{ scenario | default(1) }}.{{ openshift_cluster_ingress_domain }}"
   console_url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
   aap_admin_user: admin
   aap_admin_password: "{{ common_password }}"
@@ -206,8 +204,14 @@ ocp4_workload_showroom_content_ui_config: |
   tabs:
   - name: OpenShift Console
     url: 'https://console-openshift-console.{{ openshift_cluster_ingress_domain }}'
-  - name: Ansible Automation Platform
-    url: 'https://{{ ocp4_workload_tenant_keycloak_username }}-aap-{{ ocp4_workload_tenant_keycloak_username }}-scenario-{{ scenario | default(1) }}.{{ openshift_cluster_ingress_domain }}'
+  - name: 'AAP - Scenario 1 (Hub)'
+    url: 'https://{{ ocp4_workload_tenant_keycloak_username }}-aap-{{ ocp4_workload_tenant_keycloak_username }}-scenario-1.{{ openshift_cluster_ingress_domain }}'
+  - name: 'AAP - Scenario 2 (Gateway)'
+    url: 'https://{{ ocp4_workload_tenant_keycloak_username }}-aap-{{ ocp4_workload_tenant_keycloak_username }}-scenario-2.{{ openshift_cluster_ingress_domain }}'
+  - name: 'AAP - Scenario 3 (Node Selector)'
+    url: 'https://{{ ocp4_workload_tenant_keycloak_username }}-aap-{{ ocp4_workload_tenant_keycloak_username }}-scenario-3.{{ openshift_cluster_ingress_domain }}'
+  - name: 'AAP - Scenario 6 (ALIA)'
+    url: 'https://{{ ocp4_workload_tenant_keycloak_username }}-aap-{{ ocp4_workload_tenant_keycloak_username }}-scenario-6.{{ openshift_cluster_ingress_domain }}'
   antora:
     name: modules
     dir: www
@@ -226,18 +230,6 @@ ocp4_workload_showroom_content_ui_config: |
       - validation
     - name: scenario-3
       label: "Scenario 3: Wrong node selector / High resource requests"
-      solveButton: true
-      scripts:
-      - solve
-      - validation
-    - name: scenario-4
-      label: "Scenario 4: Job template with EE using wrong credentials"
-      solveButton: true
-      scripts:
-      - solve
-      - validation
-    - name: scenario-5
-      label: "Scenario 5: Hub community sync limits / Hub sync storage issue"
       solveButton: true
       scripts:
       - solve
@@ -294,26 +286,6 @@ __meta__:
     reportingLabels:
       primaryBU: Automation
     parameters:
-    - name: scenario
-      description: "AAP troubleshooting scenario to deploy"
-      formLabel: "Scenario"
-      openAPIV3Schema:
-        type: integer
-        default: 1
-        enum:
-        - 1
-        - 2
-        - 3
-        - 4
-        - 5
-        - 6
-        x-enumNames:
-        - "Scenario 1: Hub PVC issue"
-        - "Scenario 2: Wrong admin password / Database service missing"
-        - "Scenario 3: Wrong node-selector / High resource requests"
-        - "Scenario 4: Job template with EE with wrong credentials"
-        - "Scenario 5: Hub community sync limits / Hub sync storage issue"
-        - "Scenario 6: ALIA troubleshooting wrong model"
     - name: run_e2e_load_test
       description: "Run E2E load test after provisioning — triggers solve and validate on all modules"
       formLabel: "Run E2E Load Test"
