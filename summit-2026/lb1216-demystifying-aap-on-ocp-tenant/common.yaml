@@ -99,26 +99,32 @@ ocp4_workload_tenant_namespace_suffixes:
 - suffix: "scenario-3"
 - suffix: "scenario-6"
 
-# Per-namespace quota math (measured on a live cluster):
-# Namespace-scoped AAP operator deploys 6 operator controllers with high limits:
+# ClusterResourceQuota math — measured on a live cluster with 4 simultaneous scenarios.
+# Each namespace-scoped AAP operator deploys 6 controllers with high CPU limits:
 #   aap-gateway-operator:            2500m CPU limit / 4128Mi memory limit
-#   ansible-lightspeed-operator:     2500m CPU limit / 4128Mi memory limit
+#   ansible-lightspeed-operator:     1000m CPU limit / 1000Mi memory limit
 #   automation-controller-operator:  2500m CPU limit / 4128Mi memory limit
 #   automation-hub-operator:         2500m CPU limit / 4128Mi memory limit
 #   eda-server-operator:             2500m CPU limit / 4128Mi memory limit
 #   resource-operator:               2000m CPU limit / 4128Mi memory limit
-#   showroom:                        2200m CPU limit / ~4.3Gi memory limit
-#   Total limits before AAP instance: ~17200m CPU / ~29Gi memory
-#   AAP instance pods add several more GBs — 128Gi/64CPU limit is safe headroom
-# Requests are much lower (~200m CPU / ~1Gi) — scheduler uses requests.
-# requests.cpu governs actual cluster utilization (~27 tenants at 6 vCPU each).
-# limits.cpu must be high enough to allow operator controllers to start.
+#   Subtotal operators per ns:      ~13000m CPU / ~24Gi memory
+#
+# Per-namespace AAP instance pods (after reconciliation):
+#   postgres statefulset:     2000m CPU limit / ~4Gi memory
+#   redis statefulset:        2000m CPU limit / ~4Gi memory
+#   gateway deployment:       4000m CPU limit / ~8Gi memory
+#   Plus controller/hub pods added as reconciliation progresses
+#
+# 4 namespaces × (13 operators + 6 postgres/redis + 4+ gateway + more) ≈ 100–140 CPU limits
+# requests.cpu is low (~100m per operator, ~200m per workload pod) — 24 is safe for 4 ns
+# requests.storage: 4 × postgres 8Gi + Hub RWX PVC per scenario ≈ 100Gi+ needed
+# limits.cpu=64 caused ALL 4 scenarios to deadlock simultaneously — increased to 200.
 ocp4_workload_tenant_namespace_default_quota:
-  limits.cpu: "64"
-  requests.cpu: "6"
-  limits.memory: 192Gi
-  requests.memory: 80Gi
-  requests.storage: 25Gi
+  limits.cpu: "200"
+  requests.cpu: "24"
+  limits.memory: 384Gi
+  requests.memory: 160Gi
+  requests.storage: 200Gi
 
 ocp4_workload_tenant_namespace_default_limit_range:
   default:
