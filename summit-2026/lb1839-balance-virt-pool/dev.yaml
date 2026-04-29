@@ -1,29 +1,49 @@
 ---
-
 control_plane_instance_count: "1"
 
-# -------------------------------------------------------------------
-# ocp4_workload_gitops_bootstrap
-# -------------------------------------------------------------------
-ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/balance-virt-automation.git
-ocp4_workload_gitops_bootstrap_repo_revision: main
-ocp4_workload_gitops_bootstrap_repo_path: cluster/infra/bootstrap
-ocp4_workload_gitops_bootstrap_application_health_retries: 150
-ocp4_workload_gitops_bootstrap_application_name: "bootstrap-infra"
-ocp4_workload_gitops_bootstrap_helm_values:
-  users:
-    count: 1
-  guid: "{{ guid }}"
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # Assisted Installer Collection
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.9
+  # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "main"
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: "v1.6.9"
+  - name: https://github.com/rhpds/demo_workloads.git
+    type: git
+    version: "main"
+
+# ===================================================================
+# List of workloads to be deployed - only on primary cluster
+# ===================================================================
+workloads:
+- agnosticd.core_workloads.ocp4_workload_external_odf
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+- agnosticd.core_workloads.ocp4_workload_cert_manager
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  # adds the secondary cluster to argo
+- rhpds.demo_workloads.ocp4_workload_gitops_add_cluster
+
+ocp4_workload_authentication_admin_password: ""
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 ai_network_prefix_length: 16
 ai_extra_sno_clusters:
-  - name: cluster2
-    ai_network_prefix: "10.10.20"
-    ai_control_plane_cores: "12"
-    ai_control_plane_memory: "32Gi"
+- name: cluster2
+  ai_network_prefix: "10.10.20"
+  ai_control_plane_cores: "12"
+  ai_control_plane_memory: "32Gi"
 __meta__:
   deployer:
     scm_ref: multisno
