@@ -4,6 +4,63 @@
 # -------------------------------------------------------------------
 purpose: event
 
+# ===================================================================
+# Collections
+# ===================================================================
+requirements_content:
+  collections:
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: "48a411297fd26e881ecfe84eb18007403d7828c5"
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "5dd2c5cd61d0bf9645e2110bc82011afa1c26095"
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.6.8
+  - name: https://github.com/rhpds/rhpds-ftl.git
+    type: git
+    version: "9b16efd51c6d1093e7f049d04355a4abd864cf10"
+
+# ===================================================================
+# ocp4_workload_gitops_bootstrap
+# ===================================================================
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/demystifying-aap-automation
+ocp4_workload_gitops_bootstrap_repo_revision: "2035372cfe24f863afa9266edbc7d485743cd81c"
+ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ guid }}"
+
+# Do not wait for bootstrap health — 4 AAP instances take ~30 min each.
+# Showroom deploys immediately; AAP instances converge in the background.
+ocp4_workload_gitops_bootstrap_application_wait: false
+
+alia_token: "{{ litellm_master_key }}"
+
+# -------------------------------------------------------------------------
+# Helm values passed to the demystifying-aap-automation bootstrap chart.
+# These are consumed by the Helm templates in tenant/aap-instance/ to:
+#   - Name and namespace AAP resources per user
+#   - Configure the AAP admin password and manifest license
+#   - Register the OpenShift SA credential in AAP Controller so that
+#     break/fix job templates can make Kubernetes API calls against the
+#     user's own namespace (namespace-admin ServiceAccount, no cluster-admin)
+#   - Provide ALIA/LiteMaaS config for Scenario 7
+# -------------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_helm_values:
+  tenant:
+    username: "{{ ocp4_workload_tenant_keycloak_username }}"
+    password: "{{ common_password }}"
+    domain: "{{ openshift_cluster_ingress_domain }}"
+    apiUrl: "{{ sandbox_openshift_api_url }}"   # cluster API URL for the break SA credential
+  aap:
+    hub:
+      enabled: true
+    manifest:
+      url: "https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip"
+  alia:
+    token: "{{ alia_token }}"
+    model: granite-3-2-8b-instruct
+    url: https://litellm-prod.apps.maas.redhatworkshops.io/v1
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
