@@ -58,6 +58,7 @@ workloads:
   - rhpds.deepagents_aiops.ocp4_workload_rhel_vm_tenant
   - rhpds.deepagents_aiops.ocp4_workload_aap2_tenant_config
   - rhpds.deepagents_aiops.ocp4_workload_kira_tenant
+  - rhpds.deepagents_aiops.ocp4_workload_langfuse_tenant
   - rhpds.deepagents_aiops.ocp4_workload_rocketchat_tenant
   - rhpds.deepagents_aiops.ocp4_workload_athena_tenant
   - agnosticd.showroom.ocp4_workload_showroom
@@ -94,8 +95,8 @@ ocp4_workload_tenant_namespace_suffixes:
 ocp4_workload_tenant_namespace_default_quota:
   limits.cpu: "40"
   requests.cpu: "40"
-  limits.memory: 64Gi
-  requests.memory: 64Gi
+  limits.memory: 80Gi
+  requests.memory: 80Gi
   requests.storage: 100Gi
 
 # LimitRange applied to every namespace.
@@ -176,22 +177,22 @@ ocp4_workload_aap2_tenant_config_vm_password: "{{ common_password }}"
 ocp4_workload_rocketchat_tenant_user_username: "user-{{ guid }}"
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_langfuse_tenant
+# -------------------------------------------------------------------
+ocp4_workload_langfuse_tenant_admin_email: "admin@example.com"
+ocp4_workload_langfuse_tenant_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
 # Workload: ocp4_workload_athena_tenant
 # -------------------------------------------------------------------
 # Credentials are discovered dynamically:
 #   AAP2 admin: from aap-admin-credentials secret
 #   Kira/RC URLs: from Route lookups in tenant namespace
 #   MaaS: from litellm_api_endpoint / litellm_virtual_key
-# Uncomment to pin versions and override role defaults:
-# ocp4_workload_athena_tenant_image: quay.io/rhpds/athena-aiops
-# ocp4_workload_athena_tenant_tag: latest
-# ocp4_workload_athena_tenant_helm_repo: https://github.com/rhpds/athena-aiops-deep-agent.git
-# ocp4_workload_athena_tenant_helm_repo_ref: main
-# ocp4_workload_athena_tenant_ops_manager_model: "openai/claude-sonnet-4-6"
-# ocp4_workload_athena_tenant_specialist_model: "openai/claude-sonnet-4-6"
-# ocp4_workload_athena_tenant_reviewer_model: "openai/claude-3-5-haiku"
-# ocp4_workload_athena_tenant_seed_job_enabled: true
-# ocp4_workload_athena_tenant_seed_job_name: "02 Ping RHEL Admin"
+# LangFuse tracing — wired to the per-tenant LangFuse instance
+ocp4_workload_athena_tenant_langfuse_secret_key: "sk-lf-{{ common_password }}"
+ocp4_workload_athena_tenant_langfuse_public_key: "pk-lf-{{ common_password }}"
+ocp4_workload_athena_tenant_langfuse_host: "http://langfuse-web.{{ ocp4_workload_username }}-agentic.svc.cluster.local:3000"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
@@ -223,22 +224,18 @@ ocp4_workload_showroom_content_ui_config: |
     url: "https://aap-aap.{{ openshift_cluster_ingress_domain }}"
   - name: Kira
     url: "https://kira-frontend-{{ ocp4_workload_tenant_keycloak_username }}-agentic.{{ openshift_cluster_ingress_domain }}"
+  - name: Terminal
+    url: "https://kira-ttyd-{{ ocp4_workload_tenant_keycloak_username }}-agentic.{{ openshift_cluster_ingress_domain }}"
   - name: Rocket.Chat
     url: "https://rocketchat-{{ ocp4_workload_tenant_keycloak_username }}-agentic.{{ openshift_cluster_ingress_domain }}"
   - name: Gitea
     url: "https://gitea.{{ openshift_cluster_ingress_domain }}"
   - name: OpenShift Console
     url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
-  - name: OpenShift AI
-    url: "https://data-science-gateway.{{ openshift_cluster_ingress_domain }}"
-  - name: SRE Terminal
-    url: "https://kira-ttyd-{{ ocp4_workload_tenant_keycloak_username }}-agentic.{{ openshift_cluster_ingress_domain }}"
-  - name: Terminal
-    path: /terminal
-    port: 443
-    # secondary_name: Terminal 2
-    # secondary_path: /terminal/
-    # secondary_port: 443
+  - name: LangFuse
+    url: "https://langfuse-{{ ocp4_workload_tenant_keycloak_username }}-agentic.{{ openshift_cluster_ingress_domain }}"
+  # - name: OpenShift AI
+  #   url: "https://data-science-gateway.{{ openshift_cluster_ingress_domain }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -268,6 +265,9 @@ __meta__:
       - summit-2026
       - lb2645
       - agentic-devops
+      - agentic
+      - ai
+      - deep-agents
     labels:
       Provider: RHDP
       Brand_Event: Red_Hat_Summit_2026
