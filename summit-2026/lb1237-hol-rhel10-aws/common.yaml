@@ -1,0 +1,553 @@
+---
+# This item is restricted to devs only!
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/aws-sandbox-meta.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/aws-regions-3.yaml
+
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+#include /includes/secrets/demosat-rhel-9-10.1-latest.yaml
+#include /includes/secrets/zerossl.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog: Summit 2026
+# --- Catalog Item: LB1237 - The Definitive Red Hat Enterprise Linux 10 Hands-On Lab"
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Platform - AgnosticD v2
+# -------------------------------------------------------------------
+platform: RHPDS
+cloud_provider: aws
+cloud_provider_version: main
+config: cloud-vms-base
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=16, chars=['ascii_letters', 'digits'])
+  }}
+
+# -------------------------------------------------------------------
+# Collection Version Control
+# -------------------------------------------------------------------
+tag: main  # Override in prod.yaml with specific release tag
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements - AgnosticD v2
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/agnosticd/cloud_vm_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: v1.6.10
+    - name: https://github.com/rhpds/rhpds-ftl.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/rhpds.manage_host.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/hol_rhel10_automation.git
+      type: git
+      version: "{{ tag }}"
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+bastion_instance_image: RHEL97GOLD-latest
+rhel_instance_image: RHEL-10.1-GOLD-latest
+leapp_instance_image: RHEL97GOLD-latest
+rootfs_size_bastion: 100
+rootfs_size_rhel: 50
+node_name: node
+bastion_instance_type: t3a.2xlarge
+node_instance_type: t3a.xlarge
+leapp_instance_type: t3a.xlarge
+
+security_groups:
+  - name: BastionSG
+    rules:
+      - name: BastionSSHPorts
+        description: "Bastion SSH"
+        from_port: 22
+        to_port: 22
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: BastionHTTPSPorts
+        description: "HTTPS Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: BastionHTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+  - name: NodeSG
+    rules:
+      - name: FromNodeSGtcp
+        description: "Allow all TCP between nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: tcp
+        from_group: NodeSG
+        rule_type: Ingress
+      - name: FromNodeSGudp
+        description: "Allow all UDP between nodes"
+        from_port: 0
+        to_port: 65535
+        protocol: udp
+        from_group: NodeSG
+        rule_type: Ingress
+
+  - name: WebSG
+    rules:
+      - name: WebHTTPPorts
+        description: "HTTP Public"
+        from_port: 80
+        to_port: 80
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: WebHTTPSPorts
+        description: "HTTPS Public"
+        from_port: 443
+        to_port: 443
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+      - name: CockpitPorts
+        description: "Cockpit Web Console"
+        from_port: 9090
+        to_port: 9090
+        protocol: tcp
+        cidr: "0.0.0.0/0"
+        rule_type: Ingress
+
+instances:
+  - name: "bastion"
+    count: 1
+    unique: true
+    public_dns: true
+    floating_ip: true
+    image: "{{ bastion_instance_image }}"
+    flavor:
+      ec2: "{{ bastion_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_bastion }}"
+    security_groups:
+      - BastionSG
+      - NodeSG
+      - WebSG
+
+  - name: "node1"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel_instance_image }}"
+    flavor:
+      ec2: "{{ node_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel10_nodes"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_rhel }}"
+    security_groups:
+      - NodeSG
+
+  - name: "node2"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel_instance_image }}"
+    flavor:
+      ec2: "{{ node_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel10_nodes"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_rhel }}"
+    security_groups:
+      - NodeSG
+
+  - name: "node3"
+    count: 1
+    unique: true
+    public_dns: true
+    floating_ip: true
+    image: "{{ rhel_instance_image }}"
+    flavor:
+      ec2: "{{ node_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel10_nodes"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_rhel }}"
+    security_groups:
+      - NodeSG
+      - WebSG
+
+  - name: "leapp"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ leapp_instance_image }}"
+    flavor:
+      ec2: "{{ leapp_instance_type }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "nodes"
+      - key: "ostype"
+        value: "linux"
+    rootfs_size: "{{ rootfs_size_rhel }}"
+    security_groups:
+      - NodeSG
+
+
+# -------------------------------------------------------------------
+# Infra Workloads - AgnosticD v2
+# -------------------------------------------------------------------
+pre_software_workloads:
+  all:
+    - host_satellite_repositories
+    - agnosticd.cloud_vm_workloads.control_user
+  bastions:
+    - host_common_packages
+
+software_workloads:
+  all:
+    - rhpds.manage_host.asset_injector
+    - rhpds.hol_rhel10_automation.lab_setup
+
+post_software_final_workloads:
+  localhost:
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+  bastions: >-
+    {{
+      [
+        'agnosticd.showroom.vm_workload_showroom',
+        'rhpds.ftl.vm_workload_runtime_automation'
+      ] +
+      (
+        ['rhpds.ftl.vm_runtime_automation_load_test']
+        if run_e2e_load_test | default(false) | bool
+        else []
+      )
+    }}
+
+# -------------------------------------------------------------------
+# Workload: host_satellite_repositories
+# -------------------------------------------------------------------
+install_satellite_repositories: true
+
+# -------------------------------------------------------------------
+# Workload: host_common_packages
+# -------------------------------------------------------------------
+install_common_packages: false
+host_common_packages_update_all: false
+host_common_packages_extra:
+  - python3
+  - unzip
+  - bash-completion
+  - tmux
+  - bind-utils
+  - wget
+  - nano
+  - git
+  - vim-enhanced
+  - httpd-tools
+  - openldap-clients
+  - podman
+  - tree
+  - runc
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.control_user
+# -------------------------------------------------------------------
+env_authorized_key: "{{guid}}key"
+install_control_user: true
+student_name: lab-user
+student_password: "{{ common_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ common_password }}"
+control_user_private_group: "{{ omit }}"
+
+# -------------------------------------------------------------------
+# Role: rhpds.hol_rhel10_automation.lab_setup
+# -------------------------------------------------------------------
+hol_rhel10_automation_lab_setup_internal_domain: "{{ hostvars[groups['bastions'][0]].private_hostname }}"
+rhel10_hol_config: true
+hol_rhel10_automation_lab_setup_config: true
+
+hol_rhel10_automation_lab_setup_lecertificate_for_node3: false
+# hol_rhel10_automation_lab_setup_use_rhsm_for_node2: false
+# hol_rhel10_automation_lab_setup_sat_org: !vault |
+#   $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+#   65393030363536303335613363623935316561323139353665393066613863633033323238613636
+#   3766313561313334376262623438323938646232663265610a346161323766306464396637363936
+#   31633366633431626362313835393163396333613230363165336565353439616331383365346133
+#   6332313833646537350a353063363266646363616330353866316539623261363763353263653766
+#   3533
+# hol_rhel10_automation_lab_setup_sat_activation_key: !vault |
+#   $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+#   36626338666464386336353838656431643039366337313434663434613563303363303536336539
+#   3362393066363930626361623564376432376562653862660a626363353462396464623135623236
+#   31333338346265383830623164353935366634393931663636313462306366623964393466653834
+#   6365663065626335360a663863636562666435393839396538333532353239653537643532336230
+#   3136
+
+# -------------------------------------------------------------------
+# Role: rhpds.manage_host.asset_injector
+# -------------------------------------------------------------------
+bastion_asset_injector_assets:
+  - description: Remove 50-cloud-init.conf, ssh issue
+    module: file
+    state: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    module: file
+    state: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    module: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    module: service
+    name: sshd
+    state: restarted
+
+node3_asset_injector_assets:
+  - description: Setup cockpit for non ssl route
+    module: blockinfile
+    path: /etc/cockpit/cockpit.conf
+    create: true
+    state: present
+    marker: "# {mark} Allow Unencrypted"
+    block: |
+      [WebService]
+      AllowUnencrypted = true
+      Origins = https://{{ hostvars['node3'].public_hostname }}:9090
+      ProtocolHeader = X-Forwarded-Proto
+      ForwardedForHeader = X-Forwarded-For
+
+  - description: Reload systemctl
+    module: command
+    cmd: systemctl daemon-reload
+
+  - description: Restart cockpit socket
+    module: service
+    name: cockpit.socket
+    state: restarted
+
+node1_asset_injector_assets:
+  - description: Copy ssh public key
+    module: copy
+    src: "/home/{{ student_name }}/.ssh/{{ guid }}key.pub"
+    dest: /root/.ssh/
+    remote_src: true
+    group: root
+    owner: root
+    mode: 'u=r,g-rwx,o-rwx'
+
+  - description: Copy ssh private key
+    module: copy
+    src: "/home/{{ student_name }}/.ssh/{{ guid }}key.pem"
+    dest: /root/.ssh/
+    remote_src: true
+    group: root
+    owner: root
+    mode: 'u=r,g-rwx,o-rwx'
+
+  - description: Create ssh config
+    module: blockinfile
+    path: /root/.ssh/config
+    create: true
+    state: present
+    marker: "# {mark} Allow Unencrypted"
+    block: |
+      Host *
+        User {{ student_name }}
+        IdentityFile ~/.ssh/{{ guid }}key.pem
+        ForwardAgent yes
+        StrictHostKeyChecking no
+        ConnectTimeout 600
+        ConnectionAttempts 10
+        ControlMaster auto
+        ControlPath /tmp/%h-%r
+        ControlPersist 5m
+    group: root
+    owner: root
+    mode: 'u=r,g-rwx,o-rwx'
+
+# Set asset_injector_assets based on group membership
+asset_injector_modules: >-
+  {{
+    bastion_asset_injector_assets
+    if 'bastions' in group_names
+    else
+      node3_asset_injector_assets
+        if (inventory_hostname_short == 'node3')
+        else
+          node1_asset_injector_assets
+            if (inventory_hostname_short == 'node1')
+            else
+              []
+  }}
+
+# -------------------------------------------------------------------
+# Role: agnosticd.showroom.vm_workload_showroom
+# -------------------------------------------------------------------
+showroom_git_repo: https://github.com/rhpds/hol-rhel10-showroom.git
+showroom_git_ref: main
+showroom_user: showroom
+showroom_tls_provider: none
+showroom_host: "{{ hostvars[groups['bastions'][0]].public_hostname }}"
+showroom_lab_users:
+  - "{{ student_name }}"
+showroom_user_password: "{{ common_password }}"
+
+showroom_ssh_method: password
+showroom_ssh_host: "{{ hostvars[groups['bastions'][0]].public_hostname }}"
+showroom_ssh_port: 22
+showroom_ssh_username: "{{ student_name }}"
+showroom_ssh_password: "{{ common_password }}"
+# showroom_tty_image: quay.io/rhpds/wetty
+# showroom_tty_image_tag: v3.0
+
+showroom_tab_services:
+  - single_terminal
+  - second_terminal
+
+showroom_content_ui_config: |
+  type: showroom
+  default_width: 30
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+    - name: '>_Terminal-01'
+      path: /wetty
+      port: 443
+      secondary_name: '>_Terminal-02'
+      secondary_path: /terminal2/
+      secondary_port: 443
+    - name: 'Cockpit'
+      url: "https://{{ hostvars['node3'].public_hostname }}:9090"
+
+showroom_antora_enable_dev_mode: "false"
+
+# Runner for ZT Solve/Validate buttons
+showroom_ansible_runner_api: true
+# showroom_ansible_runner_image: quay.io/rhpds/zt-runner
+# showroom_ansible_runner_image_tag: v2.4.2
+# showroom_ansible_runner_path: "/stream"
+showroom_nookbag_sidecar_enable: false
+showroom_runtime_automation_environment_variables:
+  ANSIBLE_CONFIG: "/showroom/repo/runtime-automation/ansible.cfg"
+  SSH_HOSTNAME: "{{ hostvars[groups['bastions'][0]].public_hostname }}"
+  SSH_PORT: "22"
+  SSH_USER: "{{ student_name }}"
+
+# -------------------------------------------------------------------
+# Role: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  guid: "{{ guid }}"
+  workshop_cockpit_url: "https://{{ hostvars['node3'].public_hostname }}:9090"
+  workshop_cockpit_user_name: "{{ student_name }}"
+  workshop_cockpit_user_password: "{{ common_password }}"
+  bastion_ssh_user_name: "{{ student_name }}"
+  bastion_ssh_password: "{{ common_password }}"
+  run_e2e_load_test: "{{ run_e2e_load_test }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: c2cbdc73-1b9a-43c7-9daf-29d456bc8fa0
+  owners:
+    maintainer:
+      - name: Christoph Doerbeck
+        email: cdoerbec@redhat.com
+      - name: Gordon Keegan
+        email: gkeegan@redhat.com
+    sme:
+      - name: Mitesh Sharma
+        email: msharma@redhat.com
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1237 - Red Hat Enterprise Linux 10 Hands-On Lab"
+    category: Brand_Events
+    keywords:
+      - summit-2026
+      - lb1237
+      - leapp
+      - rhel10
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Enterprise_Linux
+      Provider: RHDP
+      Brand_Event: Red_Hat_Summit_2026
+    parameters:
+      - name: run_e2e_load_test
+        description: "Run E2E load test after provisioning — triggers solve and validate on all modules"
+        formLabel: "Run E2E Load Test"
+        openAPIV3Schema:
+          type: boolean
+          default: false
+    reportingLabels:
+      primaryBU: RHEL
+    workshopLabUiRedirect: true
+    # Provision doesn't call `agnosticd_user_info` with `user` set and so does
+    # not report `users` in `provision_data`. All data and messages are
+    # assigned directly to the workshop seat.
+    workshop_user_mode: none
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      pull: missing
