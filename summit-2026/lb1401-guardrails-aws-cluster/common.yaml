@@ -1,0 +1,271 @@
+---
+# -------------------------------------------------------------------
+# --- LB1401: Securing GenAI Applications with Guardrails as a Service (Cluster)
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/catalog-icon-openshift-ai.yaml
+#include /includes/agd-v2-mapping.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/access-restriction-devs-only.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# Required by host_ocp4_assisted_scale
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/parameters/litellm_metadata.yaml
+#include /includes/secrets/maas-models-token.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/parameters/aws-regions-6.yaml
+#include /includes/secrets/letsencrypt_with_zerossl_fallback.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+
+# -------------------------------------------------------------------
+# Top Variables
+# -------------------------------------------------------------------
+cloud_provider: aws
+config: openshift-cluster
+cloud_provider_version: 1.0.0
+
+# -------------------------------------------------------------------
+# AWS Specific
+# -------------------------------------------------------------------
+control_plane_instance_type: m6i.4xlarge
+control_plane_instance_count: 3
+worker_instance_type: m6i.4xlarge
+worker_instance_count: 20
+bastion_instance_type: t3.small
+bastion_instance_image: RHEL96GOLD-latest
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+host_ocp4_installer_version: "4.20.0"
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+bastion_setup_student_user: true
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+tag: main
+
+# ===================================================================
+# Additional Collections & roles to be installed
+# ===================================================================
+requirements_content:
+  collections:
+  # Required by host_ocp4_assisted_scale
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.9
+
+  # Core OpenShift Workloads
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # AI Workloads
+  - name: https://github.com/agnosticd/ai_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # LiteLLM Virtual Keys Collection
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "{{ tag }}"
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- agnosticd.core_workloads.ocp4_workload_cert_manager
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.core_workloads.ocp4_workload_authorino
+#- agnosticd.core_workloads.ocp4_workload_amq_streams
+- agnosticd.core_workloads.ocp4_workload_pipelines
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_serverless
+#- agnosticd.core_workloads.ocp4_workload_servicemesh2
+- agnosticd.ai_workloads.ocp4_workload_openshift_ai
+- agnosticd.core_workloads.ocp4_workload_web_terminal
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+
+remove_workloads:
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+common_admin_password: >-
+  {{ lookup('password', output_dir ~ '/common_admin_password', length=12, chars=['ascii_letters', 'digits']) }}
+common_admin_username: admin
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_models:
+- granite-3-2-8b-instruct
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1.17
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+
+ocp4_workload_cert_manager_aws_region: "{{ aws_region }}"
+ocp4_workload_cert_manager_aws_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
+ocp4_workload_cert_manager_aws_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
+
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+ocp4_workload_cert_manager_wait_timeout: 900
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_admin_username: "{{ common_admin_username }}"
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_num_users: 0
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.18
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_limits_memory: 8Gi
+ocp4_workload_openshift_gitops_controller_requests_memory: 8Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ common_admin_username }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+ocp4_workload_openshift_gitops_ignore_differences: |
+  resourceIdentifiers:
+  - group: jaegertracing.io
+    kind: Jaeger
+    customization:
+      jsonPointers:
+      - /spec/strategy
+  - group: apps
+    kind: Deployment
+    customization:
+      jqPathExpressions:
+      - .spec.template.spec.containers[] | select(.name == "redis")
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_serverless
+# -------------------------------------------------------------------
+ocp4_workload_serverless_channel: stable
+ocp4_workload_serverless_install_serving: true
+ocp4_workload_serverless_install_eventing: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_servicemesh2
+# -------------------------------------------------------------------
+ocp4_workload_servicemesh2_es: false
+ocp4_workload_servicemesh2_jaeger: false
+ocp4_workload_servicemesh2_kiali: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_ai
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_automatic_install_plan_approval: false
+ocp4_workload_openshift_ai_channel: fast-3.x
+ocp4_workload_openshift_ai_starting_csv: "rhods-operator.3.3.0"
+ocp4_workload_openshift_ai_kserve: Managed
+ocp4_workload_openshift_ai_workbenches: Managed
+ocp4_workload_openshift_ai_aipipelines: Managed
+ocp4_workload_openshift_ai_modelmeshserving: Removed
+ocp4_workload_openshift_ai_trustyai: Managed
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+gitops_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/sec-genai-guardrails-automation
+ocp4_workload_gitops_bootstrap_repo_revision: "{{ gitops_repo_revision }}"
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap-infra
+ocp4_workload_gitops_bootstrap_application_name: bootstrap-infra
+ocp4_workload_gitops_bootstrap_application_wait: false
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  myKey: myValue
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 7cce74a2-4aa6-11f1-ae6a-9b098a4de4c4
+  owners:
+    maintainer:
+    - email: rshah@redhat.com
+      name: Ritesh Shah
+    - email: ckavili@redhat.com
+      name: Cansu Kavili Oernek
+    - email: abanderb@redhat.com
+      name: Anneli Sara Banderby
+    sme:
+    - email: ckavili@redhat.com
+      name: Cansu Kavili Oernek
+    - email: abanderb@redhat.com
+      name: Anneli Sara Banderby
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      pull: missing
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: >-
+      LB1401 (AWS): Securing GenAI Applications with Guardrails as a Service - Cluster Provisioner
+    category: Brand_Events
+    keywords:
+    - summit-2026
+    - lb1401
+    - AIOps
+    - openshift ai
+    labels:
+      Brand_Event: Red_Hat_Summit_2026
+      Product: Red_Hat_OpenShift_AI
+      Product_Family: Red_Hat_AI
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Artificial_Intelligence
+    # This item only provisions shared infrastructure.
+    # It would not be appropriate to order a workshop of this item.
+    workshopUiDisabled: false
+  tower:
+    timeout: 21600
