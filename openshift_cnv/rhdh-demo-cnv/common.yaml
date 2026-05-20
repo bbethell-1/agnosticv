@@ -93,7 +93,7 @@ workloads:
   - agnosticd.core_workloads.ocp4_workload_quay_operator
   - rhpds.ads.ocp4_workload_redhat_developer_hub_bootstrap
   - agnosticd.core_workloads.ocp4_workload_pipelines
-  - rhpds.ads.ocp4_workload_gitops_gitlab
+  - agnosticd.core_workloads.ocp4_workload_gitlab
   - rhpds.ads.ocp4_workload_redhat_developer_hub
 
 # -------------------------------------------------------------------
@@ -159,50 +159,70 @@ ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsou
 # -------------------------------------------------------------------
 # GitLab
 # -------------------------------------------------------------------
-ocp4_workload_gitops_gitlab_gitops_type: argocd
-ocp4_workload_gitops_gitlab_config_email_display_name: Janus Admin
-ocp4_workload_gitops_gitlab_config_email_reply_to: "noreply@redhat.com"
-ocp4_workload_gitops_gitlab_config_smtp_enabled: "false"
-ocp4_workload_gitops_gitlab_config_smtp_domain: "example.com"
-ocp4_workload_gitops_gitlab_config_smtp_port: "587"
-ocp4_workload_gitops_gitlab_config_smtp_user: "gitlab"
-ocp4_workload_gitops_gitlab_config_smtp_password: "gitlab"
-ocp4_workload_gitops_gitlab_config_ssh_port: "22"
-ocp4_workload_gitops_gitlab_config_rootPassword: "{{ common_password }}"
-ocp4_workload_gitops_gitlab_config_https: "true"
-ocp4_workload_gitops_gitlab_config_root_email: "root@demo.redhat.com"
-ocp4_workload_gitops_gitlab_config_keybase_db: "0123456789"
-ocp4_workload_gitops_gitlab_config_keybase_otp: "0123456789"
-ocp4_workload_gitops_gitlab_config_keybase_secret: "0123456789"
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitlab
+# -------------------------------------------------------------------
+ocp4_workload_gitlab_namespace: gitlab
+ocp4_workload_gitlab_auth_mode: native
+ocp4_workload_gitlab_root_password: "{{ common_password }}"
 
-ocp4_workload_gitops_gitlab_db_user_name: gitlab
-ocp4_workload_gitops_gitlab_db_password: passw0rd
-ocp4_workload_gitops_gitlab_db_name: gitlab_production
+# Native integration
+ocp4_workload_gitlab_user_base: user
+ocp4_workload_gitlab_user_count: "{{ num_users | default(0) }}"
+ocp4_workload_gitlab_user_password: "{{ common_password }}"
 
-ocp4_workload_gitops_gitlab_gitops_repo: https://github.com/redhat-gpte-devopsautomation/agnosticg.git
-
-ocp4_workload_gitops_gitlab_import_repos:
-  - name: rhdh
-    repo:
+# Root repositories - groups owned by root user
+ocp4_workload_gitlab_root_repositories:
+  - group: rhdh
+    path: rhdh
+    visibility: public
+    repositories:
       - name: developer-hub-software-templates
         url: https://github.com/rhpds/developer-hub-software-templates.git
+        visibility: public
       - name: learning-paths
         url: https://github.com/rhpds/redhat-learning-journeys-learning-path-data.git
-  - name: summit-lab
-    repo:
-      - name: backstage-workshop
-        url: https://github.com/redhat-gpte-devopsautomation/backstage-workshop.git
-  - name: gitops
-    repo:
+        visibility: public
+  - group: gitops
+    path: gitops
+    visibility: public
+    repositories:
       - name: janus-idp-gitops
         url: https://github.com/rhpds/developer-hub-idp-gitops.git
-  - name: rhdh-entities
-    repo:
+        visibility: public
+  - group: summit-lab
+    path: summit-lab
+    visibility: public
+    repositories:
+      - name: backstage-workshop
+        url: https://github.com/redhat-gpte-devopsautomation/backstage-workshop.git
+        visibility: public
+  - group: rhdh-entities
+    path: rhdh-entities
+    visibility: public
+    repositories:
       - name: rhdh-demo-entities
         url: https://github.com/redhat-gpe/rhdh-demo-entities.git
+        visibility: public
 
-ocp4_workload_gitops_gitlab_users_count: "{{ num_users | default(1) }}"
-ocp4_workload_gitops_gitlab_users_password: "{{ common_password }}"
+# User repositories - groups owned by users
+ocp4_workload_gitlab_user_repositories:
+  - group: development
+    path: development
+    visibility: public
+    access_level: maintainer
+    repositories: []
+
+# User repositories - groups that users can access
+# Users will be added to all groups matching ocp4_workload_gitlab_user_default_access_levels
+ocp4_workload_gitlab_user_default_access_levels:
+  - maintainer
+
+# Storage configuration
+ocp4_workload_gitlab_volume_size: 50Gi
+ocp4_workload_gitlab_postgresql_volume_size: 20Gi
+
+ocp4_workload_gitlab_runner_enabled: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_redhat_developer_hub
@@ -210,7 +230,7 @@ ocp4_workload_gitops_gitlab_users_password: "{{ common_password }}"
 ocp4_workload_redhat_developer_hub_keycloak_namespace: rhsso
 ocp4_workload_redhat_developer_hub_gitlab_root_user: root
 ocp4_workload_redhat_developer_hub_gitlab_root_user_email: root@demo.redhat.com
-ocp4_workload_redhat_developer_hub_gitlab_root_password: "{{ ocp4_workload_gitops_gitlab_config_rootPassword }}"
+ocp4_workload_redhat_developer_hub_gitlab_root_password: "{{ common_password }}"
 ocp4_workload_redhat_developer_hub_janus_bootstrap_repo: https://github.com/redhat-gpte-devopsautomation/janus-idp-bootstrap.git
 ocp4_workload_redhat_developer_hub_janus_bootstrap_repo_target_revision: main
 ocp4_workload_redhat_developer_hub_admin_user: admin
@@ -362,7 +382,7 @@ __meta__:
   components:
     - name: openshift_base
       display_name: OpenShift Cluster
-      item: agd-v2/ocp-cluster-cnv-pools/prod
+      item: agd-v2/ocp-cluster-cnv-pools
       parameter_values:
         cluster_size: sno
         host_ocp4_installer_version: '4.20'
