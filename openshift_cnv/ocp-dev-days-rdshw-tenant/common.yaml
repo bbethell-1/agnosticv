@@ -1,0 +1,242 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: OpenShift Dev Day (Tenant)
+# --- USER PROVISIONER -- per-user resources on shared cluster
+# --- Multi-user deployment on a shared pre-provisioned cluster
+# --- Tenant pattern
+# -------------------------------------------------------------------
+# --- This catalog item combines:
+# ---   - Sandbox/namespace architecture (no cluster provisioning)
+# ---   - Keycloak user authentication
+# ---   - Multi-user support with per-user namespaces
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/parameters/litellm_metadata.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# cloud_provider: none -- no cloud account needed, we use pre-provisioned
+# OCP clusters from the sandbox pool.
+# config: namespace -- uses AgnosticD's namespace config which:
+#   - Runs workloads on provision (software.yml)
+#   - Runs workloads in REVERSE order on destroy (destroy_env.yml)
+#   - Sets K8S_AUTH_* env vars for kubernetes.core modules
+#   - Does NOT need remove_workloads (unlike openshift-workloads config)
+# ===================================================================
+cloud_provider: none
+config: namespace
+
+# not needed at this time - already in namespace config
+# openshift_api_url: "{{ sandbox_openshift_api_url }}"
+# openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
+# openshift_cluster_ingress_domain is set by ocp4_workload_tenant_keycloak_user via cluster discovery
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+
+requirements_content:
+  collections:
+    # LiteLLM Virtual Keys (commented out for now)
+  # - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+  #   type: git
+  #   version: "{{ tag }}"
+
+  # Tenant roles (keycloak_user, namespace, gitea)
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # Core OpenShift Workloads (gitops_bootstrap - commented out for now)
+  # - name: https://github.com/agnosticd/core_workloads.git
+  #   type: git
+  #   version: "{{ tag }}"
+
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.6.8
+
+  # Lab specific collection
+  - name: https://github.com/rhpds/ocp-dev-days-rdshw
+    type: git
+    version: "{{ tag }}"
+
+  # FTL (for E2E testing - commented out for now)
+  # - name: https://github.com/rhpds/rhpds-ftl.git
+  #   type: git
+  #   version: "{{ tag }}"
+
+# ===================================================================
+# List of workloads to be deployed
+#
+# Order matters:
+#   1. tenant_keycloak_user  -- Create RHBK user
+#   2. tenant_openshift_gitops -- GitOps for tenant
+#   3. litellm_virtual_keys  -- LiteLLM API keys
+#   4. gitops_bootstrap      -- Bootstrap GitOps apps
+#   5. runtime_automation_k8s -- E2E testing (solve/validate buttons)
+#   6. showroom              -- Lab instructions UI
+#   7. dev_days_rdshw_tenant_bootstrap -- Custom tenant bootstrap
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+# - agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
+# - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# - rhpds.ftl.ocp4_workload_runtime_automation_k8s
+- rhpds.ocp_dev_days_rdshw.ocp4_workload_dev_days_rdshw_tenant_bootstrap
+- agnosticd.showroom.ocp4_workload_showroom
+
+# remove_workloads runs in the ORDER listed (explicit destroy control).
+remove_workloads:
+- agnosticd.showroom.ocp4_workload_showroom
+- rhpds.ocp_dev_days_rdshw.ocp4_workload_dev_days_rdshw_tenant_bootstrap
+# - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# - agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+# - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# - rhpds.ftl.ocp4_workload_runtime_automation_k8s
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Common -- tenant username and password
+# All tenant resources reference the same username and password
+# Single-user tenant deployment
+# -------------------------------------------------------------------
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+# TODO: adding these to resolve "Discover cluster ingress domain" error in ocp4_workload_tenant_keycloak_user role
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
+
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_tenant_openshift_gitops_user: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_openshift_gitops_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_duration: "1d"
+ocp4_workload_litellm_virtual_keys_models:
+- qwen3-14b
+- llama-scout-17b
+- deepseek-r1-distill-qwen-14b
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-dev-days-roadshow-showroom.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_terminal_type: wetty
+
+# E2E testing configuration (commented out for now)
+# ocp4_workload_showroom_runtime_automation_enable: true
+# ocp4_workload_showroom_runtime_automation_image: "quay.io/rhpds/zt-runner:v2.4.2"
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+# NOTE: Update these values when the bootstrap GitOps repo is ready
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/openshift-dev-days-roadshow-gitops.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ ocp4_workload_tenant_keycloak_username }}"
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  tenant:
+    username: "{{ ocp4_workload_tenant_keycloak_username }}"
+    password: "{{ common_password }}"
+    domain: "{{ openshift_cluster_ingress_domain }}"
+  cluster:
+    subdomain: "{{ openshift_cluster_ingress_domain }}"
+
+ocp4_workload_gitops_bootstrap_health_retries: 10
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_dev_days_rdshw_tenant_bootstrap
+# -------------------------------------------------------------------
+# Add workload-specific variables here as needed
+
+# ===================================================================
+# Babylon meta variables
+# ===================================================================
+__meta__:
+  asset_uuid: b4da2561-5116-4d1f-947b-c28f9c93c275
+  owners:
+    maintainer:
+    - name: Tyrell Reddy
+      email: treddy@redhat.com
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      pull: missing
+    actions:
+      status:
+        disable: true
+      update:
+        disable: true
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "OpenShift Dev Days Roadshow (Tenant)"
+    category: Labs
+    keywords:
+    - gitops
+    - keycloak
+    - argocd
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Application_Developer
+      secondaryBU: Hybrid_Platforms
+    workshopLabUiRedirect: true
+    # Provision doesn't call `agnosticd_user_info` with `user` set and so does
+    # not report `users` in `provision_data`. All data and messages are
+    # assigned directly to the workshop seat.
+    workshop_user_mode: none
+    multiuser: true
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: OcpSandbox
+    alias: cluster
+    namespace_suffix: user
+    cloud_selector:
+      lab: ocp-dev-days-rdshw
+      purpose: prod
