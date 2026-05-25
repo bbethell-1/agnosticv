@@ -1,0 +1,188 @@
+---
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: Service Enablement: App Platform Runtime
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticDv2 variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+num_users: 0
+tag: main
+
+# -------------------------------------------------------------------
+# Pool sizing — 3 workers × 4 CPU × 8Gi per node
+# -------------------------------------------------------------------
+openshift_cnv_scale_cluster: true
+worker_instance_count: 3
+ai_workers_cores: 4
+ai_workers_memory: 8Gi
+
+# -------------------------------------------------------------------
+# Collections
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.9
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+  # Lab automation collection — TBD once repo is created
+  # - name: https://github.com/rhpds/etx-app-platform-automation
+  #   type: git
+  #   version: "{{ tag }}"
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+# New workloads (application runtime targets, promotion pipeline) — TBD
+
+remove_workloads: []
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_admin_username: admin
+ocp4_workload_authentication_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_num_users: 0
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.20
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: 250m
+ocp4_workload_openshift_gitops_controller_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "2"
+ocp4_workload_openshift_gitops_controller_limits_memory: 2Gi
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 250m
+ocp4_workload_openshift_gitops_repo_requests_memory: 256Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+# -------------------------------------------------------------------
+# Lab GitOps repo — used by the bootstrap workload (TBD) to seed
+# ArgoCD on this cluster with the example application
+# -------------------------------------------------------------------
+ocp4_workload_app_platform_gitops_repo: https://github.com/rhpds/service-enablement-app-platform-runtime-gitops
+ocp4_workload_app_platform_gitops_repo_ref: main
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 8e74b556-1f82-4cc9-ab06-7754f8a91ddd
+  anarchy:
+    namespace: babylon-anarchy-0
+  owners:
+    maintainer:
+    - name: Prakhar Srivastava
+      email: psrivast@redhat.com
+    - name: Mitesh Sharma
+      email: mitsharm@redhat.com
+    instructions:
+    - name: Andrew Block
+      email: ablock@redhat.com
+    - name: Evan Shortiss
+      email: eshortis@redhat.com
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Service Enablement: App Platform Runtime"
+    category: Labs
+    multiuser: false
+    workshopUiDisabled: true
+    keywords:
+    - app platform
+    - gitops
+    - runtime
+    - platform engineering
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+
+  components:
+  - name: openshift-base
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: "4.21"
+      ocp4_fips_enable: false
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
