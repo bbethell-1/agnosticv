@@ -108,6 +108,8 @@ common_admin_password: >-
 # BASE WORKLOADS (Always deployed)
 # ============================================
 _base_workloads:
+# Phase 0: Free disk space before operator installs
+- openshift_days.ops_track.ocp4_workload_cluster_cleanup_preflight
 # Phase 1: Foundation & Authentication
 - agnosticd.core_workloads.ocp4_workload_authentication
 # Phase 2: Workshop Infrastructure
@@ -143,6 +145,11 @@ _acm_workloads:
 - openshift_days.ops_track.ocp4_workload_acm_multicluster_observability
 - openshift_days.ops_track.ocp4_days_workload_compliance_operator
 - openshift_days.ops_track.ocp4_workload_create_hcp_cluster
+
+# GitOps module workloads
+# Deploys ArgoCD operator. Deduped via unique if ACM also enabled.
+_gitops_workloads:
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
 
 # Developer Hub module workloads (simplified - operator only)
 _devhub_workloads:
@@ -191,6 +198,7 @@ workloads: >-
       (_virt_workloads if module_enable_virt | default(true) | bool else []) +
       (_hcp_workloads if module_enable_acm | default(true) | bool else []) +
       (_acm_workloads if module_enable_acm | default(true) | bool else []) +
+      (_gitops_workloads if module_enable_gitops | default(true) | bool else []) +
       (_devhub_workloads if module_enable_devhub | default(true) | bool else []) +
       (_ols_workloads if module_enable_ols | default(true) | bool else []) +
       _cleanup_workloads +
@@ -223,12 +231,12 @@ ocp4_workload_showroom_wetty_ssh_bastion_login: true
 # Pass module_enable_* catalog parameters to showroom as environment variables
 # inject-env-vars.sh reads these and sets Antora asciidoc attributes for ifeval conditionals in nav.adoc
 ocp4_workload_showroom_user_data:
-  MODULE_ENABLE_CONCEPTS: "{{ module_enable_concepts | default(true) }}"
   MODULE_ENABLE_INSTALL: "{{ module_enable_install | default(true) }}"
   MODULE_ENABLE_APPMGMT: "{{ module_enable_appmgmt | default(true) }}"
   MODULE_ENABLE_INGRESS: "{{ module_enable_ingress | default(true) }}"
   MODULE_ENABLE_NETSEC: "{{ module_enable_netsec | default(true) }}"
   MODULE_ENABLE_DEBUGGING: "{{ module_enable_debugging | default(true) }}"
+  MODULE_ENABLE_GITOPS: "{{ module_enable_gitops | default(true) }}"
   MODULE_ENABLE_LDAP: "{{ module_enable_ldap | default(true) }}"
   MODULE_ENABLE_OIDC: "{{ module_enable_oidc | default(true) }}"
   MODULE_ENABLE_OBSERVABILITY: "{{ module_enable_observability | default(true) }}"
@@ -569,14 +577,6 @@ __meta__:
 
     parameters:
     # Getting Started
-    - name: module_enable_concepts
-      description: Include OpenShift Platform Overview module (content only)
-      formGroup: Getting Started
-      formLabel: OpenShift Platform Overview
-      openAPIV3Schema:
-        type: boolean
-        default: true
-
     - name: module_enable_install
       description: Include Installation & Verification module (content only)
       formGroup: Getting Started
@@ -589,7 +589,7 @@ __meta__:
     - name: module_enable_appmgmt
       description: Include Application Management Basics module (content only)
       formGroup: Core Operations
-      formLabel: Application Management Basics
+      formLabel: Application Management
       openAPIV3Schema:
         type: boolean
         default: true
@@ -618,11 +618,19 @@ __meta__:
         type: boolean
         default: true
 
+    - name: module_enable_gitops
+      description: Deploy OpenShift GitOps (ArgoCD) for declarative cluster management
+      formGroup: Core Operations
+      formLabel: GitOps
+      openAPIV3Schema:
+        type: boolean
+        default: true
+
     # Identity & Access
     - name: module_enable_ldap
       description: Include LDAP authentication module (content only)
       formGroup: Identity & Access
-      formLabel: Identity - LDAP Authentication
+      formLabel: Identity - LDAP
       openAPIV3Schema:
         type: boolean
         default: true
@@ -630,7 +638,7 @@ __meta__:
     - name: module_enable_oidc
       description: Include OIDC authentication module (content only)
       formGroup: Identity & Access
-      formLabel: Identity - OIDC Authentication
+      formLabel: Identity - OIDC
       openAPIV3Schema:
         type: boolean
         default: true
@@ -639,7 +647,7 @@ __meta__:
     - name: module_enable_observability
       description: Include Observability module - metrics, alerts, and logging (content only)
       formGroup: Day 2 Operations
-      formLabel: Observability - Metrics, Alerts & Logging
+      formLabel: Observability & Logging
       openAPIV3Schema:
         type: boolean
         default: true
@@ -656,7 +664,7 @@ __meta__:
     - name: module_enable_virt
       description: Deploy OpenShift Virtualization for VM management module
       formGroup: Advanced Topics
-      formLabel: Virtualization - OpenShift Virtualization with VMs
+      formLabel: Virtualization
       openAPIV3Schema:
         type: boolean
         default: true
@@ -664,7 +672,7 @@ __meta__:
     - name: module_enable_devhub
       description: Deploy Red Hat Developer Hub for platform engineering showcase
       formGroup: Advanced Topics
-      formLabel: Developer Hub - Red Hat Developer Hub
+      formLabel: Developer Hub
       openAPIV3Schema:
         type: boolean
         default: true
@@ -672,7 +680,7 @@ __meta__:
     - name: module_enable_ols
       description: Deploy OpenShift Lightspeed AI assistant
       formGroup: Advanced Topics
-      formLabel: AI Assistant - OpenShift Lightspeed
+      formLabel: Lightspeed
       openAPIV3Schema:
         type: boolean
         default: true
@@ -680,7 +688,7 @@ __meta__:
     - name: module_enable_acm
       description: Deploy ACM fleet management with pre-provisioned managed HCP cluster
       formGroup: Advanced Topics
-      formLabel: Multi-Cluster - ACM, Fleet Management
+      formLabel: ACM Multi-Cluster Management
       openAPIV3Schema:
         type: boolean
         default: true
@@ -688,7 +696,7 @@ __meta__:
     - name: module_enable_security
       description: Deploy Advanced Cluster Security (ACS/RHACS)
       formGroup: Advanced Topics
-      formLabel: Security - Advanced Cluster Security
+      formLabel: Advanced Cluster Security
       openAPIV3Schema:
         type: boolean
         default: true
