@@ -16,9 +16,9 @@
 #include /includes/parameters/showroom-ocp-defaults.yaml
 
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-#include /includes/secrets/dynamic-aws-dns.yaml
+#include /includes/secrets/dynamic-dns.yaml
 #include /includes/secrets/openshift_assisted_installer_icr.yaml
-#include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
+#include /includes/secrets/acme-bifrost.yaml
 #include /includes/secrets/vmware-ibm-rs-clusters-access.yaml
 
 # -------------------------------------------------------------------
@@ -207,23 +207,15 @@ ocp4_workload_authentication_htpasswd_user_password: ""
 ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('1') | int }}"
 ocp4_workload_authentication_remove_kubeadmin: true
 ocp4_workload_authentication_enable_user_info_data: true
+
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager
 # -------------------------------------------------------------------
-# Values from /includes/secrets/dynamic-aws-dns.yaml
-# route53_aws_zone_id:
-# route53_aws_access_key_id:
-# route53_aws_secret_access_key:
+# Values from /includes/secrets/acme-bifrost.yaml
 
 ocp4_workload_cert_manager_channel: stable-v1
 #ocp4_workload_cert_manager_channel: stable-v1.15
 ocp4_workload_cert_manager_use_catalog_snapshot: false
-
-ocp4_workload_cert_manager_cloud_provider: ec2
-ocp4_workload_cert_manager_ec2_region: us-east-2
-ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
-ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
-ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
 
 ocp4_workload_cert_manager_install_ingress_certificates: true
 ocp4_workload_cert_manager_install_api_certificates: false
@@ -383,8 +375,6 @@ __meta__:
   asset_uuid: 99b6319c-7a39-4a24-b71a-e31476dd41ac
   owners:
     maintainer:
-      - name: Judd Maltin
-        email: jmaltin@redhat.com
       - name: Wolfgang Kulhanek
         email: wkulhanek@redhat.com
     sme:
@@ -418,6 +408,17 @@ __meta__:
         requests.cpu: "128"
         limits.memory: "800Gi"
         requests.memory: "800Gi"
+    - kind: DNSSandbox
+      annotations:
+        prefix: cluster
+      cloud_selector:
+        provider: ddns
+        domain: "dyn.redhatworkshops.io"
+      var: dns_sandbox
+    - kind: SSLSandbox
+      cloud_selector:
+        purpose: production
+      var: ssl_sandbox
 
   catalog:
     display_name: "Experience OpenShift Virtualization Roadshow (2026)"
