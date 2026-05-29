@@ -41,6 +41,9 @@ requirements_content:
   - name: https://github.com/rhpds/rhpds-ftl.git
     type: git
     version: main
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "1.0.0"
 
 # ===================================================================
 # Workloads
@@ -50,6 +53,7 @@ workloads: >-
     [
       'agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user',
       'agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace',
+      'rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys',
       'agnosticd.core_workloads.ocp4_workload_gitops_bootstrap',
       'agnosticd.showroom.ocp4_workload_showroom_user_data_seed',
       'agnosticd.showroom.ocp4_workload_showroom',
@@ -67,6 +71,7 @@ remove_workloads:
 - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 
 # ===================================================================
 # Common
@@ -115,9 +120,9 @@ ocp4_workload_tenant_namespace_suffixes:
 #   gateway deployment:       4000m CPU limit / ~8Gi memory
 #   Plus controller/hub pods added as reconciliation progresses
 #
-# 4 namespaces × (13 operators + 6 postgres/redis + 4+ gateway + more) ≈ 100–140 CPU limits
+# 4 namespaces x (13 operators + 6 postgres/redis + 4+ gateway + more) ~= 100-140 CPU limits
 # requests.cpu is low (~100m per operator, ~200m per workload pod) — 24 is safe for 4 ns
-# requests.storage: 4 × postgres 8Gi + Hub RWX PVC per scenario ≈ 100Gi+ needed
+# requests.storage: 4 x postgres 8Gi + Hub RWX PVC per scenario ~= 100Gi+ needed
 # limits.cpu=64 caused ALL 4 scenarios to deadlock simultaneously — increased to 200.
 ocp4_workload_tenant_namespace_default_quota:
   limits.cpu: "200"
@@ -135,6 +140,17 @@ ocp4_workload_tenant_namespace_default_limit_range:
     memory: 256Mi
 
 # ===================================================================
+# ocp4_workload_litellm_virtual_keys
+# Creates a scoped virtual key for ALIA (Scenario 6).
+# Runs before ocp4_workload_gitops_bootstrap so the key is available
+# via agnosticd_user_data when Helm renders the bootstrap chart.
+# ===================================================================
+ocp4_workload_litellm_virtual_keys_alias: "lb1216-alia-{{ guid }}"
+ocp4_workload_litellm_virtual_keys_models:
+- "granite-3-2-8b-instruct"
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+
+# ===================================================================
 # ocp4_workload_gitops_bootstrap
 # ===================================================================
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/demystifying-aap-automation
@@ -146,7 +162,7 @@ ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ guid }}"
 # Showroom deploys immediately; AAP instances converge in the background.
 ocp4_workload_gitops_bootstrap_application_wait: false
 
-alia_token: "{{ litellm_master_key }}"
+alia_token: "{{ lookup('agnosticd_user_data', 'litellm_virtual_key', default='') }}"
 
 # -------------------------------------------------------------------------
 # Helm values passed to the demystifying-aap-automation bootstrap chart.
@@ -156,7 +172,7 @@ alia_token: "{{ litellm_master_key }}"
 #   - Register the OpenShift SA credential in AAP Controller so that
 #     break/fix job templates can make Kubernetes API calls against the
 #     user's own namespace (namespace-admin ServiceAccount, no cluster-admin)
-#   - Provide ALIA/LiteMaaS config for Scenario 7
+#   - Provide ALIA/LiteMaaS config for Scenario 6
 # -------------------------------------------------------------------------
 ocp4_workload_gitops_bootstrap_helm_values:
   tenant:
