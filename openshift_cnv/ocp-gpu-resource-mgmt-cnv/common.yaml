@@ -1,0 +1,207 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: GPU Resource Management on OpenShift
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# Repository Tag
+# Tag for all repositories that are used in this config.
+# ===================================================================
+tag: main
+# -------------------------------------------------------------------
+cloud_provider: none
+config: openshift-workloads
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_api_key }}"
+
+# Set num_users for autoscale
+num_users: 1
+
+# ===================================================================
+# End Mandatory Variables
+# ===================================================================
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+    # Core OpenShift Workloads
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    # Showroom
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: v1.6.11
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_admin_password: >-
+  {{ lookup('password', output_dir ~ '/common_admin_password', length=12, chars=['ascii_letters', 'digits']) }}
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_authentication
+  - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.showroom.ocp4_workload_ocp_console_embed
+  - agnosticd.showroom.ocp4_workload_showroom
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_admin_username: admin
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_admin_create: true
+ocp4_workload_authentication_num_users: 2
+ocp4_workload_authentication_user_password: "{{ common_admin_password }}"
+
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
+
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_default_realm: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_keycloak_use_catalog_source: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.20
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ ocp4_workload_authentication_admin_username }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[email,groups]'
+
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 8Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 8Gi
+
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/gpu-resource-mgmt-automation
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: bootstrap
+ocp4_workload_gitops_bootstrap_namespace: openshift-gitops
+ocp4_workload_gitops_bootstrap_sync_prune: true
+ocp4_workload_gitops_bootstrap_sync_self_heal: true
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.core_workloads.ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/gpu-resource-mgmt-showroom
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_content_antora_playbook: site.yml
+ocp4_workload_showroom_antora_enable_dev_mode: "false"
+ocp4_workload_showroom_ocp_integration_openshift_api_token: "{{ openshift_cluster_admin_token }}"
+ocp4_workload_showroom_ocp_integration_openshift_api_url: "{{ openshift_api_url }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 1D0EFB13-2795-4B7C-834F-C4E20DD0A68F
+
+  owners:
+    maintainer:
+      - name: Mitesh Sharma
+        email: mitsharm@redhat.com
+    sme:
+      - name: Mike Hepburn
+        email: mhepburn@redhat.com
+
+  catalog:
+    display_name: "GPUaaS using Kueue with Fake GPUs"
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+      - gpu
+      - kueue
+      - fake-gpu
+      - openshift-ai
+    labels:
+      Product: Red_Hat_OpenShift_AI
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    # Provision doesn't call `agnosticd_user_info` with `user` set and so does
+    # not report `users` in `provision_data`. All data and messages are
+    # assigned directly to the workshop seat.
+    workshop_user_mode: single
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-20
+      pull: missing
+
+  components:
+    - name: openshift-base
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools
+      parameter_values:
+        cluster_size: sno
+        host_ocp4_installer_version: "4.20"
+        ocp4_fips_enable: false
+      # Propagate agnosticd_user_info data set by this component to variables.
+      propagate_provision_data:
+        - name: openshift_api_ca_cert
+          var: openshift_api_ca_cert
+        - name: openshift_api_url
+          var: openshift_api_url
+        - name: openshift_cluster_admin_token
+          var: openshift_api_key
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        # Propagate bastion data for infra_add_bastion role
+        - name: bastion_public_hostname
+          var: bastion_ansible_host
+        - name: bastion_ssh_user_name
+          var: bastion_ansible_user
+        - name: bastion_ssh_password
+          var: bastion_ansible_ssh_pass
+        - name: bastion_ssh_port
+          var: bastion_ansible_port
+        - name: bastion_ssh_command
+          var: bastion_ssh_command
+        # Needed for scaling cluster with workers
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
