@@ -67,6 +67,7 @@ common_password: >-
 workloads:
 - agnosticd.core_workloads.ocp4_workload_authentication
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 - agnosticd.showroom.ocp4_workload_ocp_console_embed
 - agnosticd.showroom.ocp4_workload_showroom
 # New workloads (Dev Spaces, Red Hat Developer Hub, GitLab CI) — TBD
@@ -99,11 +100,37 @@ ocp4_workload_openshift_gitops_repo_limits_cpu: "4"
 ocp4_workload_openshift_gitops_repo_limits_memory: 4Gi
 
 # -------------------------------------------------------------------
-# Lab GitOps repo — used by the bootstrap workload (TBD) to seed
-# ArgoCD on this cluster with the example application
+# Lab GitOps repo
 # -------------------------------------------------------------------
 ocp4_workload_app_platform_gitops_repo: https://github.com/rhpds/service-enablement-app-platform-factory-gitops
 ocp4_workload_app_platform_gitops_repo_ref: main
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_bootstrap
+# Creates the etx-bootstrap-infra ArgoCD Application which renders
+# etx-infra-app/migrated-source/bootstrap (Helm chart). That chart
+# self-spawns the platform layer (etx-control-plane) and all
+# enabled operator workloads. deployer.domain/apiUrl/guid are
+# injected automatically by the workload from cluster facts.
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: "{{ ocp4_workload_app_platform_gitops_repo }}"
+ocp4_workload_gitops_bootstrap_repo_revision: "{{ ocp4_workload_app_platform_gitops_repo_ref }}"
+ocp4_workload_gitops_bootstrap_application_name: etx-bootstrap-infra
+ocp4_workload_gitops_bootstrap_repo_path: etx-infra-app/migrated-source/bootstrap
+ocp4_workload_gitops_bootstrap_namespace: openshift-gitops
+ocp4_workload_gitops_bootstrap_application_project: default
+
+# Enable ETX operator workloads via Helm values (all disabled by default in the chart)
+ocp4_workload_gitops_bootstrap_helm_values:
+  keycloakOperator:
+    enabled: true
+  vaultSecretsOperator:
+    enabled: true
+  quayOperator:
+    enabled: true
+  platformValues:
+    keycloakEtxLab:
+      enabled: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
