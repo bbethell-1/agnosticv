@@ -1,0 +1,124 @@
+---
+#include /includes/catalog-icon-openshift-data-science.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: AI Factory Training
+#
+# No changes should be made to this CI, other than __meta__
+# All changes to the functional CI should be made to the component(s):
+#
+# openshift_cnv/ai-factory-training-cnv
+# agd_v2/ai-factory-training-aws
+#
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Babylon Meta Variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: f8d3e5c2-9a7b-4f1e-8d6c-5b2a9f3e7c1d
+  owners:
+    maintainer:
+    - name: Tyrell Reddy
+      email: treddy@redhat.com
+
+  catalog:
+    reportingLabels:
+      primaryBU: Artificial_Intelligence
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "AI Factory Training"
+    category: Labs
+    workshopLabUiRedirect: true
+    multiuser: false
+    keywords:
+    - rhoai
+    - ai factory
+    - llm
+    - ptl
+    - training
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_AI
+      Product_Family: Red_Hat_AI
+    parameters:
+    - name: cloud_provider
+      description: Choose infrastructure provider
+      formLabel: Cloud Provider
+      required: true
+      openAPIV3Schema:
+        type: string
+        default: cnv
+        enum:
+        - cnv
+        - aws
+      components:
+      - name: current
+
+    - name: gpu_instance_type
+      description: Choose GPU instance type (AWS only)
+      formLabel: GPU Instance Type
+      required: true
+      formHideCondition: cloud_provider != 'aws'
+      openAPIV3Schema:
+        type: string
+        default: g6.8xlarge
+        enum:
+        - g6.8xlarge
+        - g6.12xlarge
+        - g6.16xlarge
+      components:
+      - name: ai_factory_aws
+
+    - name: aws_region
+      description: >-
+        Select the AWS Region for provisioning. Note: This training requires g6
+        instances. For best availability, please select us-east-1 or us-east-2.
+      formLabel: Region
+      required: true
+      formHideCondition: cloud_provider != 'aws'
+      openAPIV3Schema:
+        type: string
+        default: us-east-1
+        enum:
+        - us-east-1
+        - us-west-2
+        - us-east-2
+        - eu-central-1
+        - ap-northeast-1
+      components:
+      - name: ai_factory_aws
+
+  components:
+  - name: ai_factory_cnv
+    display_name: "AI Factory Training (CNV)"
+    item: openshift_cnv/ai-factory-training-cnv
+    when: cloud_provider | default('') == 'cnv'
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+
+  - name: ai_factory_aws
+    display_name: "AI Factory Training with GPU (AWS)"
+    item: agd_v2/ai-factory-training-aws
+    when: cloud_provider | default('') == 'aws'
+
+  deployer:
+    type: null
