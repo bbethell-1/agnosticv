@@ -7,16 +7,8 @@
 #include /includes/sandbox-api.yaml
 #include /includes/catalog-icon-automation-management.yaml
 #include /includes/terms-of-service.yaml
-#includes/access-restriction-rh1-2026-devs.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/salesforce-id.yaml
-#include /includes/secrets/ocp4_ai_offline_token.yaml
-
-# To be deleted
-## include /includes/parameters/enable-cert-manager.yaml
-## include /includes/secrets/letsencrypt_with_zerossl_fallback.yaml
-## include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-## include /includes/secrets/openshift_assisted_installer.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: Product Enablement: Ansible Automation Platform Operator Deployment
@@ -28,9 +20,9 @@
 config: openshift-workloads
 cloud_provider: none
 clusters:
-- default:
-    api_url: "{{ openshift_api_url }}"
-    api_token: "{{ openshift_cluster_admin_token }}"
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
 
 # -------------------------------------------------------------------
 # OpenShift Autoscaling cluster settings
@@ -39,12 +31,8 @@ ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_r
 ocp4_workload_catalogsource_tag: v4.20_2025_12_15
 
 num_users: 1
-openshift_cnv_scale_cluster: true
-# worker_instance_count: "{{ [(num_users | int / 3) | round(0, 'ceil') | int, 3] | max }}"
-worker_instance_count: 4
-
-ai_workers_cores: 16
-ai_workers_memory: 64Gi
+openshift_cnv_scale_cluster: false
+worker_instance_count: 0
 
 common_admin_password: >-
   {{
@@ -61,37 +49,35 @@ common_user_password: >-
 tag: main
 requirements_content:
   collections:
-  - name: https://github.com/rhpds/jeffcpullen.agnosticp
-    type: git
-    version: main
-  - name: https://github.com/rhpds/assisted_installer.git
-    type: git
-    version: v0.0.9
-  - name: https://github.com/agnosticd/core_workloads.git
-    type: git
-    version: "{{ tag }}"
-  - name: https://github.com/agnosticd/ai_workloads.git
-    type: git
-    version: "{{ tag }}"
-  - name: https://github.com/agnosticd/cloud_vm_workloads.git
-    type: git
-    version: "cnv_instances"
-  - name: https://github.com/rhpds/rhpds.manage_host.git
-    type: git
-    version: "{{ tag }}"
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: v0.0.9
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/agnosticd/cloud_vm_workloads.git
+      type: git
+      version: "cnv_instances"
+    - name: https://github.com/rhpds/rhpds.manage_host.git
+      type: git
+      version: "{{ tag }}"
+    - name: pert.quickcourse
+      source: https://github.com/opentraining-labs-customizations/pert.git
+      type: git
+      version: main
 
 # -------------------------------------------------------------------
 # List of workloads to be deployed
 # -------------------------------------------------------------------
 workloads:
-- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
-- agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
-- agnosticd.core_workloads.ocp4_workload_pipelines
-- agnosticd.core_workloads.ocp4_workload_gitea_operator
-- agnosticd.cloud_vm_workloads.cnv_instances
-- infra.aap_configuration.dispatch
-- rhpds.manage_host.aap_api
-- agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+  - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+  - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+  - agnosticd.core_workloads.ocp4_workload_pipelines
+  - agnosticd.core_workloads.ocp4_workload_gitea_operator
+  - infra.aap_configuration.dispatch
+  - rhpds.manage_host.aap_api
+  - pert.quickcourse.quickcourse_deployment
+  - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication_htpasswd
@@ -139,9 +125,9 @@ ocp4_workload_gitea_operator_user_password: "{{ common_user_password }}"
 
 ocp4_workload_gitea_operator_migrate_repositories: true
 ocp4_workload_gitea_operator_repositories_list:
-- repo: https://github.com/jeffcpullen/devspaces-example
-  name: 'devspaces-example'
-  private: false
+  - repo: https://github.com/jeffcpullen/devspaces-example
+    name: 'devspaces-example'
+    private: false
 
 # -------------------------------------------------------------------
 # ocp4_workload_ansible_automation_platform
@@ -182,15 +168,15 @@ aap_password: "{{ ansible_automation_platform_configuration_password }}"
 aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
 
 aap_configuration_dispatcher_roles:
-- role: gateway_settings
-  var: gateway_settings
-  tags: gateway_settings
-- role: controller_credentials
-  var: controller_credentials
-  tags: controller_credentials
-- role: controller_inventories
-  var: controller_inventories
-  tags: controller_inventories
+  - role: gateway_settings
+    var: gateway_settings
+    tags: gateway_settings
+  - role: controller_credentials
+    var: controller_credentials
+    tags: controller_credentials
+  - role: controller_inventories
+    var: controller_inventories
+    tags: controller_inventories
 
 gateway_settings:
   SESSION_COOKIE_AGE: 9000
@@ -205,16 +191,16 @@ aap_api_controller_verify_ssl: "{{ ansible_automation_platform_configuration_ver
 
 # AAP API endpoints configuration
 aap_api_endpoints:
-- name: "OpenShift Credential"
-  endpoint: credentials
-  description: "OpenShift API Bearer Token"
-  organization: Default
-  credential_type: OpenShift or Kubernetes API Bearer Token
-  attributes:
-    inputs:
-      host: "{{ openshift_api_url }}"
-      bearer_token: "{{ openshift_bearer_token }}"
-      verify_ssl: true
+  - name: "OpenShift Credential"
+    endpoint: credentials
+    description: "OpenShift API Bearer Token"
+    organization: Default
+    credential_type: OpenShift or Kubernetes API Bearer Token
+    attributes:
+      inputs:
+        host: "{{ openshift_api_url }}"
+        bearer_token: "{{ openshift_bearer_token }}"
+        verify_ssl: true
 
 
 # -------------------------------------------------------------------
@@ -225,8 +211,21 @@ agnosticv_importdata:
   ssh_password: "{{ bastion_ansible_ssh_pass }}"
   ssh_address: "{{ bastion_ansible_host }}"
   ssh_port: "{{ bastion_ansible_port }}"
+  quickcourse_primary_view_url: "{{ quickcourse_primary_view_url }}"
   ssh_command: >-
     ssh {{ bastion_ansible_user }}@{{ bastion_ansible_host }} -p {{ bastion_ansible_port }}
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_quickcourse
+# -------------------------------------------------------------------
+quickcourse_deployment_ocp: yes
+quickcourse_git_repo: https://github.com/RedHatQuickCourses/aap-on-openshift.git
+quickcourse_git_ref: main
+quickcourse_ssh_username: "{{ bastion_ansible_user }}"
+quickcourse_default_ssh_user: "{{ bastion_ansible_user }}"
+quickcourse_ssh_host: "{{ bastion_ansible_host }}"
+quickcourse_lab_users:
+  - "{{ bastion_ansible_user }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -235,14 +234,14 @@ __meta__:
   asset_uuid: e627d434-73f6-47d6-9493-b1d13429c79f
   owners:
     maintainer:
-    - name: Amrinder Singh
-      email: amrsingh@redhat.com
+      - name: Amrinder Singh
+        email: amrsingh@redhat.com
     sme:
-    - name: Andrew Block
-      email: ablock@redhat.com
+      - name: Andrew Block
+        email: ablock@redhat.com
     instructions:
-    - name: Andrew Block
-      email: ablock@redhat.com
+      - name: Andrew Block
+        email: ablock@redhat.com
   anarchy:
     namespace: babylon-anarchy-ocp-wksp
   catalog:
@@ -251,11 +250,10 @@ __meta__:
     category: Labs
     multiuser: false
     keywords:
-    - config_as_code
-    - ocp
-    - opentraining
-    - ansible
-    - aap
+      - operatoraap
+      - opentraining
+      - ansible
+      - aap
     labels:
       Product: Red_Hat_Ansible_Automation_Platform
       Product_Family: Red_Hat_Automation
@@ -284,32 +282,32 @@ __meta__:
   tower:
     timeout: 21600
   components:
-  - name: openshift
-    display_name: OpenShift Cluster
-    item: agd-v2/ocp-cluster-cnv-pools/prod
-    parameter_values:
-      cluster_size: multinode
-      host_ocp4_installer_version: '4.20'
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools/prod
+      parameter_values:
+        cluster_size: multinode
+        host_ocp4_installer_version: '4.20'
     # Propagate agnosticd_user_info data set by this component to variables.
-    propagate_provision_data:
-    - name: sandbox_openshift_api_key
-      var: sandbox_openshift_api_key
-    - name: sandbox_openshift_api_url
-      var: sandbox_openshift_api_url
-    - name: sandbox_openshift_namespace
-      var: sandbox_openshift_namespace
-    - name: openshift_cluster_admin_token
-      var: openshift_cluster_admin_token
-    - name: openshift_api_url
-      var: openshift_api_url
+      propagate_provision_data:
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: openshift_api_url
+          var: openshift_api_url
     # Propagate bastion data for infra_add_bastion role
-    - name: bastion_public_hostname
-      var: bastion_ansible_host
-    - name: bastion_ssh_user_name
-      var: bastion_ansible_user
-    - name: bastion_ssh_password
-      var: bastion_ansible_ssh_pass
-    - name: bastion_ssh_port
-      var: bastion_ansible_port
-    - name: openshift_cluster_ingress_domain
-      var: openshift_cluster_ingress_domain
+        - name: bastion_public_hostname
+          var: bastion_ansible_host
+        - name: bastion_ssh_user_name
+          var: bastion_ansible_user
+        - name: bastion_ssh_password
+          var: bastion_ansible_ssh_pass
+        - name: bastion_ssh_port
+          var: bastion_ansible_port
+        - name: openshift_cluster_ingress_domain
+          var: openshift_cluster_ingress_domain
