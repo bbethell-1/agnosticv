@@ -61,6 +61,9 @@ requirements_content:
     - name: https://github.com/rhpds/rhpds.manage_host.git
       type: git
       version: "{{ tag }}"
+    - name: https://github.com/rhpds/jeffcpullen.agnosticp
+      type: git
+      version: "{{ tag }}"
     - name: pert.quickcourse
       source: https://github.com/opentraining-labs-customizations/pert.git
       type: git
@@ -76,6 +79,8 @@ workloads:
   - agnosticd.core_workloads.ocp4_workload_gitea_operator
   - infra.aap_configuration.dispatch
   - rhpds.manage_host.aap_api
+  - jeffcpullen.agnosticp.agp_devspaces
+  - jeffcpullen.agnosticp.agp_devspaces_samples
   - pert.quickcourse.quickcourse_deployment
   - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
 
@@ -202,6 +207,121 @@ aap_api_endpoints:
         bearer_token: "{{ openshift_bearer_token }}"
         verify_ssl: true
 
+# -------------------------------------------------------------------
+# jeffcpullen.agnosticp.agp_devspaces
+# -------------------------------------------------------------------
+agp_devspaces_namespace: 'devspaces'
+agp_devspaces_operator_catalog_name: 'olm-snapshot-redhat-catalog-20260518'
+agp_devspaces_operator_catalog_image: 'quay.io/rhpds/olm_snapshot_redhat_catalog'
+agp_devspaces_operator_catalog_image_tag: 'v4.21_2026_05_18'
+agp_devspaces_operator_devspaces_starting_csv: 'devspacesoperator.v3.27.1'
+agp_devspaces_operator_devworkspace_starting_csv: 'devworkspace-operator.v0.40.1'
+
+## CheCluster Spec
+agp_devspaces_che_cluster_spec:
+  components:
+    cheServer:
+      debug: false
+      logLevel: INFO
+    dashboard:
+      logLevel: ERROR
+    devWorkspace: {}
+    devfileRegistry:
+      disableInternalRegistry: true
+    imagePuller:
+      enable: false
+      spec: {}
+    metrics:
+      enable: true
+    pluginRegistry:
+      openVSXURL: "https://open-vsx.org"
+  containerRegistry: {}
+  devEnvironments:
+    startTimeoutSeconds: 1000
+    security: {}
+    secondsOfRunBeforeIdling: -1
+    maxNumberOfWorkspacesPerUser: -1
+    containerBuildConfiguration:
+      openShiftSecurityContextConstraint: container-build
+    containerRunConfiguration:
+      containerSecurityContext:
+        procMount: Unmasked
+        capabilities:
+          add:
+            - SETGID
+            - SETUID
+        allowPrivilegeEscalation: true
+      openShiftSecurityContextConstraint: container-run
+    disableContainerBuildCapabilities: false
+    disableContainerRunCapabilities: false
+    ignoredUnrecoverableEvents:
+      - FailedScheduling
+    maxNumberOfRunningWorkspacesPerUser: 5
+    defaultNamespace:
+      autoProvision: true
+      template: <username>-devspaces
+    secondsOfInactivityBeforeIdling: 3600
+    storage:
+      pvcStrategy: per-workspace
+  gitServices: {}
+  networking:
+    auth:
+      gateway:
+        kubeRbacProxy:
+          logLevel: 0
+        oAuthProxy:
+          cookieExpireSeconds: 86400
+        traefik:
+          logLevel: INFO
+
+# Custom nested podman SCC configuration
+agp_devspaces_custom_nested_podman_scc:
+  apiVersion: security.openshift.io/v1
+  kind: SecurityContextConstraints
+  metadata:
+    name: nested-podman-scc
+  priority: null
+  allowPrivilegeEscalation: true
+  allowedCapabilities:
+    - SETUID
+    - SETGID
+  fsGroup:
+    type: MustRunAs
+    ranges:
+      - min: 1000
+        max: 65534
+  runAsUser:
+    type: MustRunAs
+    uid: 1000
+  seLinuxContext:
+    type: MustRunAs
+    seLinuxOptions:
+      type: container_engine_t
+  supplementalGroups:
+    type: MustRunAs
+    ranges:
+      - min: 1000
+        max: 65534
+  userNamespaceLevel: RequirePodLevel
+# Configure global workspace settings
+agp_devspaces_default_workspace_config: false
+
+# -------------------------------------------------------------------
+# jeffcpullen.agnosticp.agp_devspaces_samples
+# -------------------------------------------------------------------
+agp_devspaces_samples_namespace: devspaces
+agp_devspaces_samples_state: present
+agp_devspaces_samples_content:
+  - displayName: Ansible Dev Space
+    description: Environment pre-configured for Ansible development
+    tags:
+      - ansible
+      - python
+    url: 'https://github.com/sabre1041/ansible-devspaces/tree/ansible-superlab'
+    icon:
+      base64data: >-
+        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
+      mediatype: image/png
 
 # -------------------------------------------------------------------
 # Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
