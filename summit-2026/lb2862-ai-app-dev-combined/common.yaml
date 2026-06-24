@@ -1,0 +1,499 @@
+---
+# ===================================================================
+# LB2862: AI App Development from Desktop to Production (Combined)
+#
+# JIRA: GPTEINFRA-16720
+#
+# Merges cluster CI (lb2862-ai-app-dev-cluster) and tenant
+# CI (lb2862-ai-app-dev-tenant) into a single catalog item
+# using the ocp4_workload_multi_tenant_loop bridge role.
+# ===================================================================
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/catalog-icon-virtualization.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# S3 credentials for RHPDS private image bucket (lb2862.qcow2)
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+
+# Required by litellm
+#include /includes/secrets/litemaas-master_api.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+tag: main
+tag_showroom: v1.6.9
+tag_litellm: 1.3.1
+gitops_repo_revision: v1.0.1
+showroom_repo_revision: v1.0.2
+
+cloud_provider: none
+config: openshift-workloads
+
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# Number of tenant users to provision.
+num_users: 1
+
+# Seconds to wait after cluster workloads before starting tenant provisioning.
+tenant_pre_loop_delay: 120
+
+# -------------------------------------------------------------------
+# Token/URL mapping for ALL tenant roles
+#
+# In the combined CI the cluster's admin token comes from
+# propagate_provision_data as openshift_api_key. Override every
+# tenant role so they connect to the correct cluster, not sandbox
+# defaults.
+# -------------------------------------------------------------------
+cluster_admin_agnosticd_sa_token: "{{ openshift_api_key }}"
+
+ocp4_workload_tenant_keycloak_user_openshift_api_url: "{{ openshift_api_url }}"
+ocp4_workload_tenant_keycloak_user_openshift_api_token: "{{ openshift_api_key }}"
+
+ocp4_workload_tenant_namespace_openshift_api_url: "{{ openshift_api_url }}"
+ocp4_workload_tenant_namespace_openshift_api_token: "{{ openshift_api_key }}"
+
+# -------------------------------------------------------------------
+# Autoscaling — disabled for AWS pool (machinesets workload handles it)
+# -------------------------------------------------------------------
+openshift_aws_scale_cluster: false
+ocp4_workload_showroom_passthrough_user_data: true
+openshift_cnv_scale_cluster: false
+aws_region: us-east-2
+
+# ===================================================================
+# Collections (merged from cluster + tenant CIs, deduplicated)
+# ===================================================================
+requirements_content:
+  collections:
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: GPTEINFRA-16720-showroom-no-bastion-fix
+
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "{{ tag_litellm }}"
+
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: "{{ tag_showroom }}"
+
+# ===================================================================
+# Cluster-level workloads (run once by openshift-workloads config)
+#
+# The bridge role (ocp4_workload_multi_tenant_loop) sits at the END.
+# Everything above it runs once to set up shared cluster infra.
+# ===================================================================
+workloads:
+- agnosticd.core_workloads.ocp4_workload_machinesets
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.core_workloads.ocp4_workload_pipelines
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+- agnosticd.core_workloads.ocp4_workload_multi_tenant_loop
+
+# ===================================================================
+# Cluster workloads inside bridge (Phase 0, runs ONCE)
+#
+# gitops_bootstrap runs at BOTH cluster and tenant level with
+# different vars for the same variable names (repo_path,
+# application_name, helm_values). Phase 0 runs the cluster
+# invocation inside the bridge via set_fact.
+# ===================================================================
+tenant_cluster_workloads:
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+
+tenant_cluster_workloads_vars:
+  agnosticd.core_workloads.ocp4_workload_gitops_bootstrap:
+    ocp4_workload_gitops_bootstrap_repo_path: bootstrap-infra
+    ocp4_workload_gitops_bootstrap_application_name: bootstrap-infra
+    ocp4_workload_gitops_bootstrap_application_wait: false
+    ocp4_workload_gitops_bootstrap_helm_values:
+      user:
+        count: "{{ num_users }}"
+      workspace: ""
+      vm:
+        sourceUrl: https://s3.us-east-1.amazonaws.com/rhdp-images/lb2862.qcow2
+        sourceAccessKeyId: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          33656532666331373932653464363333613936363966396635386134663737353265313234346466
+          3566613534373534383932316233646238353836343434360a343430326437333331393966646335
+          65623166373166356431613338386332626665383737326463633166326131373431313238336161
+          6530656339323936640a393334636565326636616666323138633061653135646563363366376339
+          62316239326133353564326138623132663164326364616430313232633935343061
+        sourceSecretAccessKey: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          34316539373033643733656363613139366137343731373530323761376231366635316439306466
+          3035643632643565363431666230366336316566643938330a313433393066373339383732626237
+          62663365613665356132343866363738656230393831393232613764643630383836366563323962
+          6535633634376238630a363836346262366563313761633433666636346166646265616462306436
+          66303964323663616638623037633936623735356665663766623934663864383239376463346332
+          3465376332356462376364666465663437363133353133666539
+        storageClass: ""
+
+# ===================================================================
+# Tenant workloads (run per user, Phase 1)
+#
+# Order:
+#   1. litellm         — creates per-user key
+#   2. keycloak_user   — creates user in Keycloak
+#   3. tenant_namespace — creates user namespaces
+#   4. gitops_bootstrap — deploys tenant bootstrap
+#   5. showroom        — deploys lab UI
+#   6. runtime_automation — FTL runner SA
+# ===================================================================
+tenant_workloads:
+- agnosticd.showroom.ocp4_workload_showroom
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+
+# Per-workload var overrides for tenant invocations.
+tenant_workload_vars:
+  rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys:
+    ocp4_workload_litellm_virtual_keys_alias_format: >-
+      virtkey-{{ ocp4_workload_tenant_keycloak_username }}-{{ guid }}
+    ocp4_workload_litellm_virtual_keys_enable_user_info_messages: false
+    ocp4_workload_litellm_virtual_keys_enable_user_info_data: false
+  agnosticd.core_workloads.ocp4_workload_gitops_bootstrap:
+    ocp4_workload_gitops_bootstrap_repo_path: bootstrap-tenant
+    ocp4_workload_gitops_bootstrap_application_project: tenants
+    ocp4_workload_gitops_bootstrap_application_name: >-
+      bootstrap-{{ ocp4_workload_tenant_keycloak_username }}
+    ocp4_workload_gitops_bootstrap_helm_values:
+      username: "{{ ocp4_workload_tenant_keycloak_username }}"
+      password: "{{ common_password }}"
+      namespaceSuffix: "{{ ocp4_workload_namespace_suffix }}"
+      gitea: ""
+      llm:
+        endpoint: "{{ lookup('agnosticd_user_data', 'litellm_api_base_url') }}"
+        apiKey: "{{ lookup('agnosticd_user_data', 'litellm_virtual_key') }}"
+        modelName: qwen3-14b
+
+# ===================================================================
+# Tenant destroy — LiteMaaS virtual keys live outside cluster.
+# ===================================================================
+tenant_remove_workloads:
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+
+remove_workloads:
+- agnosticd.core_workloads.ocp4_workload_multi_tenant_loop
+
+# ===================================================================
+# Per-user data for Babylon
+# ===================================================================
+tenant_user_info_data:
+  lab_ui_url: >-
+    https://showroom-{{ ocp4_workload_tenant_keycloak_username }}-showroom.{{ openshift_cluster_ingress_domain }}
+  password: "{{ common_password }}"
+
+tenant_user_info_msg: >-
+  Lab: https://showroom-{{ ocp4_workload_tenant_keycloak_username }}-showroom.{{ openshift_cluster_ingress_domain }}
+
+# ===================================================================
+# LiteMaaS metadata (required by litemaas-master_api.yaml secret)
+# ===================================================================
+requester_email: summit-{{ guid }}@demo.redhat.com
+catalog_item_name: summit-2026.lb2862-ai-app-dev-combined.event
+
+# ===================================================================
+# Cluster workload variables
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: >-
+  {{ lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits']) }}
+common_admin_password: "{{ common_password }}"
+common_admin_username: admin
+
+ocp4_workload_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.20_2026_04_13
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_machinesets
+# -------------------------------------------------------------------
+ocp4_workload_machinesets_wait_for_nodes: true
+ocp4_workload_machinesets_wait_for_nodes_retries: 60
+ocp4_workload_machinesets_machineset_groups:
+
+- name: worker-standard
+  role: worker
+  instance_type: m6a.4xlarge  # 16 vCPU / 64 GiB — OCP workloads
+  total_replicas: "6"
+  total_replicas_min: "6"
+  total_replicas_max: "12"
+  root_volume_size: "100"
+
+- name: worker-metal
+  role: worker-metal
+  instance_type: m6a.metal  # 192 vCPU / 768 GiB — bare metal, no hypervisor
+  total_replicas: "1"
+  total_replicas_min: "1"
+  total_replicas_max: "1"
+  root_volume_size: "200"
+  machineConfigPool:
+    setup: true
+    maxPodsPerNode: 250
+  taints:
+  - key: metal
+    value: reserved
+    effect: NoSchedule
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_keycloak_use_catalog_source: true
+ocp4_workload_authentication_keycloak_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_authentication_keycloak_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_authentication_keycloak_default_realm: sso
+
+ocp4_workload_authentication_admin_username: "{{ common_admin_username }}"
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_num_users: 0
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_pipelines
+# -------------------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.21
+ocp4_workload_pipelines_use_catalog_snapshot: true
+ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.20
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ common_admin_username }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+# -------------------------------------------------------------------
+ocp4_workload_openshift_virtualization_channel: stable
+ocp4_workload_openshift_virtualization_use_catalog_snapshot: true
+ocp4_workload_openshift_virtualization_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_virtualization_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_virtualization_workload_tolerations:
+- key: metal
+  value: reserved
+  effect: NoSchedule
+
+# -------------------------------------------------------------------
+# gitops_bootstrap — shared repo URL (path and app set per invocation)
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ai-app-dev-automation
+ocp4_workload_gitops_bootstrap_repo_revision: "{{ gitops_repo_revision }}"
+
+# ===================================================================
+# Tenant workload variables
+# ===================================================================
+
+# ocp4_workload_username maps to bridge per-user keycloak username via lazy Jinja2 eval
+ocp4_workload_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_namespace_suffix: demo
+
+# -------------------------------------------------------------------
+# agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+
+# -------------------------------------------------------------------
+# agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+# -------------------------------------------------------------------
+ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_username }}"
+ocp4_workload_tenant_namespace_use_cluster_quota: false
+
+ocp4_workload_tenant_namespace_suffixes:
+- suffix: "{{ ocp4_workload_namespace_suffix }}"
+  quota:
+    limits.cpu: "22"
+    requests.cpu: "6"
+    limits.memory: 41Gi
+    requests.memory: 26Gi
+    requests.storage: 300Gi
+  limit_range:
+    default:
+      cpu: "1"
+      memory: 2Gi
+    defaultRequest:
+      cpu: 250m
+      memory: 1Gi
+
+- suffix: vm
+  quota:
+    limits.cpu: "10"
+    requests.cpu: "5"
+    limits.memory: 17Gi
+    requests.memory: 11Gi
+    requests.storage: 40Gi
+  limit_range:
+    default:
+      cpu: "4"
+      memory: 16Gi
+    defaultRequest:
+      cpu: 250m
+      memory: 1Gi
+
+# -------------------------------------------------------------------
+# rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_multi_user: false
+ocp4_workload_litellm_virtual_keys_user_count: 1
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_models:
+- qwen3-14b
+- claude-opus-4-6
+
+# -------------------------------------------------------------------
+# agnosticd.showroom.ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ai-app-dev-showroom
+ocp4_workload_showroom_content_git_repo_ref: "{{ showroom_repo_revision }}"
+
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: 2.1.4
+ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-09
+
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 30
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+    - name: OCP Console
+      url: 'https://console-openshift-console.{{ openshift_cluster_ingress_domain }}'
+    - name: Developer Hub
+      url: 'https://backstage-developer-hub-rhdh.{{ openshift_cluster_ingress_domain }}'
+    - name: Gitlab
+      url: 'https://gitlab-gitlab.{{ openshift_cluster_ingress_domain }}'
+    - name: ArgoCD
+      url: 'https://argocd-server-{{ ocp4_workload_tenant_keycloak_username }}-{{ ocp4_workload_namespace_suffix }}.{{ openshift_cluster_ingress_domain }}'
+
+# -------------------------------------------------------------------
+# rhpds.ftl.ocp4_workload_runtime_automation_k8s
+# -------------------------------------------------------------------
+ocp4_workload_runtime_automation_k8s_cluster_admin: false
+ocp4_workload_runtime_automation_k8s_openshift_api_url: "{{ openshift_api_url }}"
+ocp4_workload_runtime_automation_k8s_openshift_api_token: "{{ openshift_api_key }}"
+ocp4_workload_runtime_automation_k8s_username: "{{ ocp4_workload_username }}"
+ocp4_workload_runtime_automation_k8s_namespace_suffixes: "{{ ocp4_workload_tenant_namespace_suffixes }}"
+ocp4_workload_runtime_automation_k8s_showroom_namespace: "{{ ocp4_workload_showroom_namespace }}"
+
+# ===================================================================
+# Babylon meta variables
+# ===================================================================
+ocp4_workload_showroom_user_data_seed:
+  user: "{{ ocp4_workload_tenant_keycloak_username }}"
+
+__meta__:
+  asset_uuid: 896df530-0fc4-4034-b9a5-33cb938db3b2
+  owners:
+    maintainer:
+    - name: Juliano Mohr
+      email: juliano@redhat.com
+    instructions:
+    - name: James Falkner
+      email: jfalkner@redhat.com
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      pull: missing
+  catalog:
+    supportLink: https://redhat.enterprise.slack.com/archives/C06QWD4A5TE
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB2862: AI App Development from Desktop to Production (Combined)"
+    category: Brand_Events
+    keywords:
+    - podman
+    - gitops
+    - pipelines
+    - summit-2026
+    - lb2862
+    - combined
+    labels:
+      Product: Red_Hat_OpenShift_Virtualization
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+      Brand_Event: Red_Hat_Summit_2026
+    parameters:
+    - name: num_users
+      description: "Number of tenant users to provision"
+      formLabel: "Number of Users"
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 24
+    reportingLabels:
+      primaryBU: Application_Developer
+      secondaryBU: Hybrid_Platforms
+    workshopUiDisabled: false
+    workshopLabUiRedirect: true
+    workshop_user_mode: multi
+
+  components:
+  - name: openshift
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-aws-pools
+    parameter_values:
+      agnosticd_open_environment: false
+      aws_region: us-east-2
+      cluster_size: multinode
+      host_ocp4_installer_version: "4.20"
+      ocp4_fips_enable: false
+    propagate_provision_data:
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
