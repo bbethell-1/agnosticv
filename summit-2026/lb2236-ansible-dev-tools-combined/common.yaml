@@ -1,0 +1,419 @@
+---
+ocp4_workload_showroom_user_data_seed:
+  user: "{{ ocp4_workload_tenant_keycloak_username }}"
+# ===================================================================
+# LB2236: Getting Started with Ansible Development Tools
+# (Combined)
+#
+# COMBINED catalog item — merges the separate cluster CI
+# (lb2236-ansible-dev-tools-cluster) and tenant CI
+# (lb2236-ansible-dev-tools-tenant) into a single order.
+#
+# HOW IT WORKS:
+#   1. Component provisions an OCP cluster from the CNV pool
+#   2. Cluster workloads run once (auth, GitOps, DevSpaces, console embed)
+#   3. gitops_bootstrap runs in phase 0 (tenant_cluster_workloads) with
+#      bootstrap-infra vars — ONCE for the cluster
+#   4. Bridge role (ocp4_workload_multi_tenant_loop) loops
+#      tenant_workloads for each user (1..num_users)
+#   5. Per-user: keycloak user, namespace, gitops bootstrap (bootstrap-tenant),
+#      showroom
+#
+# NOTE on gitops_bootstrap dual invocation:
+#   gitops_bootstrap runs at BOTH cluster and tenant level with different
+#   repo_path, application_name, and helm_values. Sharing top-level vars
+#   would cause extra_vars precedence conflicts. Phase 0
+#   (tenant_cluster_workloads) handles the cluster invocation via
+#   set_fact; Phase 1 (tenant_workloads) handles tenant invocation
+#   via tenant_workload_vars.
+#
+# LIFECYCLE:
+#   Stopgap until Babylon gets native cluster-tenant lifecycle support.
+#
+# JIRA: GPTEINFRA-16720
+# ===================================================================
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/catalog-icon-openshift.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# Required by host_ocp4_assisted_scale (CNV pool)
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+tag: main
+cloud_provider: none
+config: openshift-workloads
+
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# Number of tenant users to provision.
+# Overridden in dev.yaml (1).
+num_users: 1
+
+# Seconds to wait after cluster workloads complete before starting
+# tenant provisioning. Gives async resources (ArgoCD syncs, operator
+# CRDs, Keycloak realm) time to settle.
+tenant_pre_loop_delay: 120
+
+# -------------------------------------------------------------------
+# Token/URL mapping for ALL tenant roles
+#
+# WHY THIS IS NEEDED:
+#   In the two-item pattern, tenant roles default to:
+#     sandbox_openshift_api_url        → the infra/sandbox cluster
+#     cluster_admin_agnosticd_sa_token → SA token from cluster-config
+#
+#   In the combined CI, the cluster comes from the component's
+#   propagate_provision_data which provides openshift_api_url and
+#   openshift_api_key. We override every tenant role to use these
+#   instead of the sandbox defaults.
+# -------------------------------------------------------------------
+cluster_admin_agnosticd_sa_token: "{{ openshift_api_key }}"
+
+ocp4_workload_tenant_keycloak_user_openshift_api_url: "{{ openshift_api_url }}"
+ocp4_workload_tenant_keycloak_user_openshift_api_token: "{{ openshift_api_key }}"
+
+ocp4_workload_tenant_namespace_openshift_api_url: "{{ openshift_api_url }}"
+ocp4_workload_tenant_namespace_openshift_api_token: "{{ openshift_api_key }}"
+
+# -------------------------------------------------------------------
+# CNV cluster autoscaling
+# (matches lb2236-ansible-dev-tools-cluster)
+# -------------------------------------------------------------------
+openshift_cnv_scale_cluster: true
+worker_instance_count: 12
+ai_workers_cores: 16
+ai_workers_memory: 64Gi
+
+# -------------------------------------------------------------------
+# Tag / revision pins
+# -------------------------------------------------------------------
+tag_assisted_installer: v0.0.9
+tag_showroom: v1.6.9
+
+# gitops_repo_revision is used for BOTH cluster and tenant bootstrap.
+# The shared repo URL is the same; path and helm_values differ and are
+# set per-invocation via tenant_cluster_workloads_vars and tenant_workload_vars.
+# Using tenant value (v1.0.0) as the combined CI's common pin per GPTEINFRA-16720.
+gitops_repo_revision: v1.0.0
+
+# ===================================================================
+# Collections (merged from cluster + tenant CIs, deduplicated)
+# ===================================================================
+requirements_content:
+  collections:
+  # Required by host_ocp4_assisted_scale (CNV pool)
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: "{{ tag_assisted_installer }}"
+
+  - name: https://github.com/agnosticd/core_workloads.git
+    type: git
+    version: GPTEINFRA-16720-showroom-no-bastion-fix
+
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: "{{ tag_showroom }}"
+
+# ===================================================================
+# Cluster-level workloads (run once by openshift-workloads config)
+#
+# The bridge role (ocp4_workload_multi_tenant_loop) MUST be LAST.
+# Everything above it runs once to set up shared cluster infrastructure.
+# The bridge then executes phase 0 (tenant_cluster_workloads) and
+# loops phase 1 (tenant_workloads) for each user.
+#
+# NOTE: ocp4_workload_gitops_bootstrap is NOT in this list — it runs
+# at both cluster and tenant level with conflicting var names. It is
+# handled in tenant_cluster_workloads (phase 0) instead.
+# ===================================================================
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_devspaces
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+- agnosticd.core_workloads.ocp4_workload_multi_tenant_loop
+
+# ===================================================================
+# Cluster workloads inside bridge (phase 0, runs ONCE)
+#
+# gitops_bootstrap with bootstrap-infra runs once after all cluster
+# operators are ready. Vars here override the shared top-level
+# ocp4_workload_gitops_bootstrap_* vars via set_fact.
+# ===================================================================
+tenant_cluster_workloads:
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+
+tenant_cluster_workloads_vars:
+  agnosticd.core_workloads.ocp4_workload_gitops_bootstrap:
+    ocp4_workload_gitops_bootstrap_repo_path: bootstrap-infra
+    ocp4_workload_gitops_bootstrap_application_name: bootstrap-infra
+    ocp4_workload_gitops_bootstrap_application_wait: false
+    ocp4_workload_gitops_bootstrap_helm_values:
+      myKey: myValue
+
+# ===================================================================
+# Tenant workloads (run per user by the bridge role, phase 1)
+#
+# Order:
+#   1. keycloak_user — create the user in Keycloak (sso realm)
+#   2. tenant_namespace — create user namespaces (including showroom ns)
+#   3. gitops_bootstrap — bootstrap-tenant with per-user helm_values
+#   4. showroom — deploy lab UI into user's showroom namespace
+# ===================================================================
+tenant_workloads:
+- agnosticd.showroom.ocp4_workload_showroom
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+
+# Per-workload var overrides for the tenant gitops_bootstrap invocation.
+# Applied via set_fact before include_role (AAP rejects Jinja2 dicts
+# in include_role vars:).
+tenant_workload_vars:
+  agnosticd.core_workloads.ocp4_workload_gitops_bootstrap:
+    ocp4_workload_gitops_bootstrap_repo_path: bootstrap-tenant
+    ocp4_workload_gitops_bootstrap_application_project: tenants
+    ocp4_workload_gitops_bootstrap_application_name: >-
+      bootstrap-tenant-{{ ocp4_workload_tenant_keycloak_username }}
+    ocp4_workload_gitops_bootstrap_helm_values:
+      username: "{{ ocp4_workload_tenant_keycloak_username }}"
+      devworkspace: ""
+
+# ===================================================================
+# Destroy
+# ===================================================================
+tenant_remove_workloads: []
+
+remove_workloads:
+- agnosticd.core_workloads.ocp4_workload_multi_tenant_loop
+
+# ===================================================================
+# Per-user data reported to Babylon by the bridge role.
+#
+# Route pattern: showroom (route name) + user1-showroom (namespace)
+# = showroom-user1-showroom.apps.domain
+#
+# password overrides the bridge's auto-generated per-user password
+# so the portal shows the correct Keycloak password (common_password).
+# ===================================================================
+tenant_user_info_data:
+  lab_ui_url: >-
+    https://showroom-{{ ocp4_workload_tenant_keycloak_username }}-showroom.{{ openshift_cluster_ingress_domain }}
+  password: "{{ common_password }}"
+
+tenant_user_info_msg: >-
+  Lab: https://showroom-{{ ocp4_workload_tenant_keycloak_username }}-showroom.{{ openshift_cluster_ingress_domain }}
+
+# ===================================================================
+# Cluster workload variables
+# (carried from lb2236-ansible-dev-tools-cluster/common.yaml)
+# ===================================================================
+
+# WHY common_password (not common_admin_password):
+#   Keycloak user password is set to common_password throughout the
+#   tenant chain. All tenant roles that reference ocp4_workload_user_password
+#   or ocp4_workload_tenant_keycloak_user_password must resolve to the same
+#   value or login will fail.
+common_password: >-
+  {{ lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits']) }}
+common_admin_password: "{{ common_password }}"
+common_admin_username: admin
+
+# Catalog snapshot — OCP 4.21 index (from cluster CI)
+ocp4_workload_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.21_2026_04_13
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_keycloak_use_catalog_source: true
+ocp4_workload_authentication_keycloak_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_authentication_keycloak_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_authentication_keycloak_default_realm: sso
+
+ocp4_workload_authentication_admin_username: "{{ common_admin_username }}"
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_num_users: 0
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.20
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ common_admin_username }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_devspaces
+# -------------------------------------------------------------------
+ocp4_workload_devspaces_channel: stable
+ocp4_workload_devspaces_catalogsource_setup: true
+ocp4_workload_devspaces_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_devspaces_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_gitops_bootstrap (shared)
+#
+# These are top-level vars consumed by BOTH invocations (phase 0 and
+# phase 1). Repo URL and revision are the same for both.
+# repo_path, application_name, and helm_values are overridden per
+# invocation via tenant_cluster_workloads_vars and tenant_workload_vars.
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ansible-dev-tools-automation
+ocp4_workload_gitops_bootstrap_repo_revision: "{{ gitops_repo_revision }}"
+
+# ===================================================================
+# Tenant workload variables
+# (carried from lb2236-ansible-dev-tools-tenant/common.yaml)
+# ===================================================================
+
+# WHY ocp4_workload_user_password is set here:
+#   The bridge role overrides ocp4_workload_tenant_keycloak_username per user
+#   but cannot override extra_vars-level variables like common_password.
+#   Setting ocp4_workload_user_password = common_password ensures the
+#   Keycloak user is created with the same password as reported to Babylon.
+ocp4_workload_user_password: "{{ common_password }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ ocp4_workload_user_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+
+ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_namespace_use_cluster_quota: true
+
+# Namespace pattern: {{ username }}-showroom (not showroom-{{ username }})
+# Route becomes: showroom-user1-showroom.apps.domain (clean, no double-showroom)
+# devworkspace suffix matches tenant CI behaviour.
+ocp4_workload_tenant_namespace_namespaces:
+- "{{ ocp4_workload_tenant_keycloak_username }}"
+- "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+
+ocp4_workload_tenant_namespace_suffixes:
+- suffix: devworkspace
+
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "6"
+  requests.cpu: "3"
+  limits.memory: 8Gi
+  requests.memory: 8Gi
+  requests.storage: 100Gi
+
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: "2"
+    memory: 4Gi
+  defaultRequest:
+    cpu: 250m
+    memory: 1Gi
+
+# -------------------------------------------------------------------
+# agnosticd.showroom.ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ansible-dev-tools-showroom
+ocp4_workload_showroom_content_git_repo_ref: "{{ gitops_repo_revision }}"
+
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: "2.1.4"
+ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-09
+ocp4_workload_showroom_passthrough_user_data: true
+
+# ===================================================================
+# Babylon meta variables
+# ===================================================================
+__meta__:
+  asset_uuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+  owners:
+    maintainer:
+    - name: Juliano Mohr
+      email: juliano@redhat.com
+    - name: Leonardo Gallego
+      email: lgallego@redhat.com
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      pull: missing
+  catalog:
+    supportLink: https://redhat.enterprise.slack.com/archives/C06QWD4A5TE
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: >-
+      LB2236: Getting Started with Ansible Development Tools (Combined)
+    category: Brand_Events
+    keywords:
+    - summit-2026
+    - lb2236
+    - ansible
+    - devspaces
+    - combined
+    labels:
+      Brand_Event: Red_Hat_Summit_2026
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    parameters:
+    - name: num_users
+      description: "Number of tenant users to provision"
+      formLabel: "Number of Users"
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 24
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+      secondaryBU: Application_Developer
+    workshopUiDisabled: false
+    workshopLabUiRedirect: true
+    workshop_user_mode: multi
+
+  components:
+  - name: openshift
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: "4.21"
+      ocp4_fips_enable: false
+    propagate_provision_data:
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    # Required by host_ocp4_assisted_scale
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
