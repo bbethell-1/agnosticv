@@ -200,8 +200,7 @@ ocp4_workload_openshift_gitops_resource_customizations: |
 # Workload: rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 # -------------------------------------------------------------------
 ocp4_workload_litellm_virtual_keys_models:
-- claude-opus-4-6
-- qwen3-14b
+- qwen3-235b
 # set to 7d for now until we have a lifecycle hook that can extend them
 ocp4_workload_litellm_virtual_keys_duration: "7d"
 ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
@@ -221,6 +220,30 @@ ocp4_workload_authentication_num_users: 0
 ocp4_workload_authentication_provider: keycloak
 ocp4_workload_authentication_keycloak_default_realm: sso
 ocp4_workload_authentication_keycloak_channel: stable-v26.4
+
+# OIDC clients for Red Hat Developer Hub
+ocp4_workload_authentication_keycloak_backstage_client_secret: >-
+  {{ lookup('password', output_dir ~ '/backstage_client_secret', length=32, chars=['ascii_letters', 'digits']) }}
+ocp4_workload_authentication_keycloak_backstage_plugin_client_secret: >-
+  {{ lookup('password', output_dir ~ '/backstage_plugin_client_secret', length=32, chars=['ascii_letters', 'digits']) }}
+
+ocp4_workload_authentication_keycloak_clients:
+- clientId: backstage
+  secret: "{{ ocp4_workload_authentication_keycloak_backstage_client_secret }}"
+  redirectUris:
+  - "https://backstage-developer-hub-rhdh.{{ openshift_cluster_ingress_domain }}/*"
+  description: "Red Hat Developer Hub OIDC Client"
+- clientId: backstage-plugin
+  secret: "{{ ocp4_workload_authentication_keycloak_backstage_plugin_client_secret }}"
+  description: "Red Hat Developer Hub Keycloak Plugin Client"
+  standardFlowEnabled: false
+  directAccessGrantsEnabled: true
+  serviceAccountsEnabled: true
+  serviceAccountRoles:
+    realm-management:
+    - query-users
+    - view-users
+    - query-groups
 
 # -------------------------------------------------------------------
 # Babylon meta variables
