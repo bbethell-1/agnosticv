@@ -1,0 +1,77 @@
+---
+# Controller-Scheduler integration for babylon_anarchy_governor.
+#
+# Enables intelligent controller selection based on real-time Prometheus
+# metrics (capacity, failure rate, availability, pending jobs).
+#
+# This include is self-contained — it provides all settings needed for
+# controller selection. If the scheduler is unavailable, the governor
+# falls back to the existing selection mode, but only if ansible_controllers
+# is also defined (e.g., via a separate controller include).
+#
+# Standalone usage (scheduler only, no fallback):
+#   #include /includes/ansible_control_plane/controller-scheduler.yaml
+#
+# With fallback (scheduler first, then existing selection):
+#   #include /includes/ansible_control_plane/prod_controllers_lb.yaml
+#   #include /includes/ansible_control_plane/controller-scheduler.yaml
+
+__meta__:
+  ansible_control_plane:
+    type: controller
+
+  tower:
+    organization: RHPDS
+
+  deployer:
+    actions:
+      provision:
+        ansible_control_plane:
+          instance_groups:
+          - provision
+      destroy:
+        ansible_control_plane:
+          instance_groups:
+          - destroy
+      start:
+        ansible_control_plane:
+          instance_groups:
+          - start
+      stop:
+        ansible_control_plane:
+          instance_groups:
+          - stop
+      status:
+        ansible_control_plane:
+          instance_groups:
+          - status
+
+  controller_scheduler:
+    # URL of the controller-scheduler API (required to activate).
+    # If empty or absent, the scheduler is not used.
+    url: https://cluster-scheduler.apps.ocpv-infra01.dal12.infra.demo.redhat.com
+
+    # Soft preference — adds a score bonus to controllers matching these
+    # labels without excluding non-matching ones. The candidates list from
+    # ansible_controllers already restricts which controllers are evaluated.
+    prefer_labels:
+      env: prod
+
+    # Hard filter — only controllers matching ALL labels are eligible.
+    # Use this when a catalog item must run exclusively on a specific
+    # controller pool (e.g., event controllers).
+    # Example:
+    #   require_labels:
+    #     env: event
+    #     region: dal12
+
+    # Prefer labels with multiple values — OR within each key, AND across keys.
+    # Example:
+    #   prefer_labels:
+    #     region:
+    #       - dal12
+    #       - wdc07
+
+  secrets:
+  - name: cluster-scheduler-api-key-governor
+    var: controller_scheduler_credentials
