@@ -1,0 +1,68 @@
+---
+# Controller-Scheduler integration — AWS controllers.
+#
+# Hard filter on platform=aws so only AWS-hosted AAP controllers
+# (east2, west2) are eligible. Use for catalog items that depend
+# on the AAP version running on AWS controllers.
+#
+# TODO: once agnosticv supports chained includes, replace this with:
+#   #include /includes/ansible_control_plane/controller-scheduler.yaml
+#   + require_labels override only.
+
+__meta__:
+  ansible_control_plane:
+    type: controller
+
+  ansible_controller_select_mode: random
+  ansible_controllers:
+  - hostname: aap2-prod-us-east-2.aap.infra.demo.redhat.com
+  - hostname: aap2-prod-us-west-2.aap.infra.demo.redhat.com
+
+  tower:
+    organization: RHPDS
+
+  deployer:
+    actions:
+      provision:
+        ansible_control_plane:
+          instance_groups:
+          - provision
+      destroy:
+        ansible_control_plane:
+          instance_groups:
+          - destroy
+      start:
+        ansible_control_plane:
+          instance_groups:
+          - start
+      stop:
+        ansible_control_plane:
+          instance_groups:
+          - stop
+      status:
+        ansible_control_plane:
+          instance_groups:
+          - status
+
+  controller_scheduler:
+    url: https://cluster-scheduler.apps.ocpv-infra01.dal12.infra.demo.redhat.com
+
+    require_labels:
+      platform: aws
+
+    # Soft preference — adds a score bonus to controllers matching these
+    # labels without excluding non-matching ones.
+    # Example:
+    #   prefer_labels:
+    #     env: prod
+
+    # Prefer labels with multiple values — OR within each key, AND across keys.
+    # Example:
+    #   prefer_labels:
+    #     env:
+    #       - prod
+    #       - event
+
+  secrets:
+  - name: cluster-scheduler-api-key-governor
+    var: controller_scheduler_credentials

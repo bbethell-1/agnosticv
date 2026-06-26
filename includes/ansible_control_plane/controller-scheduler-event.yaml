@@ -1,0 +1,74 @@
+---
+# Controller-Scheduler integration — event controllers.
+#
+# Same as controller-scheduler.yaml but with a hard require_labels
+# filter on env=event, so only event-labelled controllers are eligible.
+#
+# TODO: once agnosticv supports chained includes, replace this with:
+#   #include /includes/ansible_control_plane/controller-scheduler.yaml
+#   + require_labels override only.
+
+__meta__:
+  ansible_control_plane:
+    type: controller
+
+  ansible_controller_select_mode: random
+  ansible_controllers:
+  - hostname: event0.apps.ocpv-infra01.dal12.infra.demo.redhat.com
+  - hostname: event1.apps.ocpv-infra02.wdc07.infra.demo.redhat.com
+
+  tower:
+    organization: RHPDS
+
+  deployer:
+    actions:
+      provision:
+        ansible_control_plane:
+          instance_groups:
+          - provision
+      destroy:
+        ansible_control_plane:
+          instance_groups:
+          - destroy
+      start:
+        ansible_control_plane:
+          instance_groups:
+          - start
+      stop:
+        ansible_control_plane:
+          instance_groups:
+          - stop
+      status:
+        ansible_control_plane:
+          instance_groups:
+          - status
+
+  controller_scheduler:
+    url: https://cluster-scheduler.apps.ocpv-infra01.dal12.infra.demo.redhat.com
+
+    # Override prefer_labels from the base controller-scheduler.yaml
+    # (which sets env: prod). Setting env: event ensures all eligible
+    # controllers get the same prefer bonus, so scoring is purely
+    # metrics-based. (An empty dict {} does not override in deep merge.)
+    prefer_labels:
+      env: event
+
+    require_labels:
+      env: event
+
+    # Soft preference — adds a score bonus to controllers matching these
+    # labels without excluding non-matching ones.
+    # Example (to prefer a specific region within event controllers):
+    #   prefer_labels:
+    #     region: dal12
+
+    # Prefer labels with multiple values — OR within each key, AND across keys.
+    # Example:
+    #   prefer_labels:
+    #     region:
+    #       - dal12
+    #       - wdc07
+
+  secrets:
+  - name: cluster-scheduler-api-key-governor
+    var: controller_scheduler_credentials
