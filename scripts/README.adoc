@@ -77,6 +77,14 @@ scripts/agd-promote --validate-pr <file> [<file> ...]
 | Off
 | Include the showroom content repo in tagging and switch its ref in `common.yaml` to `{{ tag }}`
 
+| `--select-tags`
+| Off
+| Interactively select which repos to tag using a toggle menu
+
+| `--only-repo <org/repo>`
+| All repos
+| Pre-select only this repo for tagging (can be repeated, implies `--select-tags`)
+
 | `--validate-pr <file> ...`
 | N/A
 | CI mode: validate that tags referenced in the given stage files exist on all repositories
@@ -230,6 +238,58 @@ After promotion, `prod.yaml` and `event.yaml` set `tag:` to the release version,
 `dev.yaml` sets `tag: main`, so development continues deploying from HEAD.
 
 NOTE: If `--tag-showroom` is specified but no showroom content repo is found in `common.yaml`, a warning is printed and promotion continues without it.
+
+=== Interactive Tag Selection
+
+Use `--select-tags` to interactively choose which repos to tag.
+A toggle menu is displayed where each repo can be individually enabled or disabled:
+
+[source,bash]
+----
+scripts/agd-promote agd_v2/mcp-with-openshift patch --select-tags
+----
+
+The menu shows all repos with checkboxes.
+Type a number to toggle a repo, `a` to toggle all, `y` to proceed, or `n` to abort:
+
+----
+=== Tag Selection ===
+  [1] [x] rhpds/agnosticd_workloads            mcp-openshift-1.3.0
+  [2] [x] agnosticd/agnosticd_deployer          mcp-openshift-1.3.0
+  [3] [x] agnosticd/cloud_provider_ec2          1.5.0
+
+Toggle: enter number(s) to toggle (e.g. '1 3'), 'a' to toggle all
+Proceed: 'y' to continue, 'n' to abort
+>
+----
+
+Combine with `--dry-run` to preview the selection without making changes:
+
+[source,bash]
+----
+scripts/agd-promote agd_v2/mcp-with-openshift patch --select-tags --dry-run
+----
+
+=== Tag Only Specific Repos
+
+Use `--only-repo` to pre-select specific repos.
+Unspecified repos start disabled in the toggle menu.
+This flag implies `--select-tags`:
+
+[source,bash]
+----
+# Tag only the deployer repo
+scripts/agd-promote agd_v2/mcp-with-openshift patch \
+  --only-repo rhpds/agnosticd_deployer
+
+# Tag two specific repos
+scripts/agd-promote agd_v2/mcp-with-openshift patch \
+  --only-repo rhpds/agnosticd_workloads \
+  --only-repo rhpds/agnosticd_deployer
+----
+
+YAML files are only updated for the tag categories that were actually selected.
+For example, if the cloud provider repo is deselected, `cloud_provider_version` in the stage files is left unchanged.
 
 === Validate PR (CI Mode)
 

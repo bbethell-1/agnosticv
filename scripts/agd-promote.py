@@ -659,6 +659,83 @@ def validate_pr(file_paths):
     return 0 if all_passed else 1
 
 
+# --- Interactive tag selection ---
+
+def interactive_tag_selection(repos_to_tag, only_repos=None):
+    """Present an interactive menu to toggle which repos get tagged.
+
+    Args:
+        repos_to_tag: list of (repo, tag) tuples
+        only_repos: if set, only these repos start enabled
+
+    Returns filtered list of (repo, tag) tuples, or None if aborted.
+    """
+    if not repos_to_tag:
+        return []
+
+    enabled = []
+    if only_repos:
+        repo_names = {repo for repo, _ in repos_to_tag}
+        unknown = [r for r in only_repos if r not in repo_names]
+        if unknown:
+            print("ERROR: --only-repo specifies unknown repos:",
+                  file=sys.stderr)
+            for r in unknown:
+                print(f"  - {r}", file=sys.stderr)
+            sys.exit(1)
+        enabled = [repo in only_repos for repo, _ in repos_to_tag]
+    else:
+        enabled = [True] * len(repos_to_tag)
+
+    def render():
+        print()
+        print("=== Tag Selection ===")
+        for i, (repo, tag) in enumerate(repos_to_tag):
+            mark = "x" if enabled[i] else " "
+            print(f"  [{i + 1}] [{mark}] {repo:<45s} {tag}")
+        print()
+        print("Toggle: enter number(s) to toggle (e.g. '1 3'), "
+              "'a' to toggle all")
+        print("Proceed: 'y' to continue, 'n' to abort")
+
+    while True:
+        render()
+        try:
+            answer = input("> ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            return None
+
+        if answer == "n":
+            return None
+        if answer == "y":
+            selected = [(repo, tag) for (repo, tag), on
+                        in zip(repos_to_tag, enabled) if on]
+            if not selected:
+                print("No repos selected. Aborting.")
+                return None
+            return selected
+        if answer == "a":
+            val = not all(enabled)
+            enabled[:] = [val] * len(enabled)
+            continue
+
+        nums = answer.split()
+        changed = False
+        for tok in nums:
+            try:
+                idx = int(tok) - 1
+                if 0 <= idx < len(enabled):
+                    enabled[idx] = not enabled[idx]
+                    changed = True
+                else:
+                    print(f"  Invalid number: {tok}")
+            except ValueError:
+                print(f"  Invalid input: {tok}")
+        if not changed and nums:
+            print("  No valid numbers entered. Try again.")
+
+
 # --- Main orchestration ---
 
 def main():
@@ -694,6 +771,11 @@ Examples:
     parser.add_argument("--tag-showroom", action="store_true",
                         help="Include showroom content repo in tagging "
                              "and switch ref to {{ tag }}")
+    parser.add_argument("--select-tags", action="store_true",
+                        help="Interactively select which repos to tag")
+    parser.add_argument("--only-repo", action="append", metavar="ORG/REPO",
+                        help="Pre-select only this repo for tagging "
+                             "(can be repeated, implies --select-tags)")
 
     args = parser.parse_args()
 
@@ -900,35 +982,66 @@ Examples:
             print(f"  {stage}.yaml:  (not found, skipping)")
     print()
 
-    if args.dry_run:
-        print("Dry run complete. No changes made.")
-        return
+    # Build the full list of repos to tag
+    all_repos_to_tag = [(repo, new_tag) for repo in tagged_repos]
+    if deployer_repo:
+        all_repos_to_tag.append((deployer_repo, new_tag))
+    if cloud_provider_repo and new_cpv:
+        all_repos_to_tag.append((cloud_provider_repo, new_cpv))
+    if showroom_repo:
+        all_repos_to_tag.append((showroom_repo, new_tag))
 
-    # Confirm
-    try:
-        answer = input("Proceed? [y/N] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print("\nAborted.")
-        sys.exit(1)
+    # Confirmation / interactive tag selection
+    if args.skip_tagging:
+        if args.dry_run:
+            print("Dry run complete. No changes made.")
+            return
+        repos_to_tag = []
+        try:
+            answer = input("Proceed with YAML updates? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            sys.exit(1)
+        if answer != "y":
+            print("Aborted.")
+            sys.exit(0)
+    elif args.select_tags or args.only_repo:
+        repos_to_tag = interactive_tag_selection(
+            all_repos_to_tag, only_repos=args.only_repo)
+        if repos_to_tag is None or args.dry_run:
+            if args.dry_run:
+                print("Dry run complete. No changes made.")
+            else:
+                print("Aborted.")
+            sys.exit(0)
+    else:
+        if args.dry_run:
+            print("Dry run complete. No changes made.")
+            return
+        try:
+            answer = input("Proceed? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            sys.exit(1)
+        if answer != "y":
+            print("Aborted.")
+            sys.exit(0)
+        repos_to_tag = list(all_repos_to_tag)
 
-    if answer != "y":
-        print("Aborted.")
-        sys.exit(0)
+    # Determine which repo categories were selected
+    selected_repos = {repo for repo, _ in repos_to_tag}
+    tagged_repos_selected = any(r in selected_repos for r in tagged_repos)
+    deployer_selected = deployer_repo and deployer_repo in selected_repos
+    cpv_selected = (cloud_provider_repo
+                    and cloud_provider_repo in selected_repos)
+    showroom_selected = showroom_repo and showroom_repo in selected_repos
 
     # Step 6: Create tags
-    if not args.skip_tagging:
+    if repos_to_tag:
         print()
         print("Creating tags...")
         successes = []
         failures = []
-
-        repos_to_tag = [(repo, new_tag) for repo in tagged_repos]
-        if deployer_repo:
-            repos_to_tag.append((deployer_repo, new_tag))
-        if cloud_provider_repo and new_cpv:
-            repos_to_tag.append((cloud_provider_repo, new_cpv))
-        if showroom_repo:
-            repos_to_tag.append((showroom_repo, new_tag))
 
         for repo, tag in repos_to_tag:
             if gh_tag_exists(repo, tag):
@@ -976,7 +1089,7 @@ Examples:
         print(f"  Updated common.yaml with pinned collection versions")
 
     # Update showroom ref in common.yaml and ensure dev.yaml override
-    if showroom_repo:
+    if showroom_selected:
         if update_showroom_ref_in_common(item_path):
             print(f"  Updated common.yaml showroom ref to {{{{ tag }}}}")
         else:
@@ -985,21 +1098,25 @@ Examples:
         if ensure_dev_showroom_override(item_path):
             print(f"  Ensured dev.yaml has showroom ref override")
 
-    # Update stage files
-    for stage in stages:
-        stage_data = read_stage_file(item_path, stage)
-        if stage_data is None:
-            print(f"  SKIP: {stage}.yaml not found")
-            continue
+    # Update stage files only for selected tag categories
+    update_tag_in_stages = tagged_repos_selected or deployer_selected
+    if update_tag_in_stages or cpv_selected:
+        for stage in stages:
+            stage_data = read_stage_file(item_path, stage)
+            if stage_data is None:
+                print(f"  SKIP: {stage}.yaml not found")
+                continue
 
-        _, _, has_cpv, _, _ = stage_data
-        cpv_to_set = new_cpv if (cloud_provider_repo and has_cpv and new_cpv) else None
+            _, _, has_cpv, _, _ = stage_data
+            cpv_to_set = (new_cpv if (cpv_selected and has_cpv and new_cpv)
+                          else None)
 
-        if update_stage_yaml(item_path, stage, new_tag, cpv_to_set,
-                             has_tagged_repos=bool(tagged_repos)):
-            print(f"  Updated {stage}.yaml")
-        else:
-            print(f"  FAIL: Could not update {stage}.yaml", file=sys.stderr)
+            if update_stage_yaml(item_path, stage, new_tag, cpv_to_set,
+                                 has_tagged_repos=update_tag_in_stages):
+                print(f"  Updated {stage}.yaml")
+            else:
+                print(f"  FAIL: Could not update {stage}.yaml",
+                      file=sys.stderr)
 
     print()
     print("Promotion complete!")
