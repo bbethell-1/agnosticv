@@ -17,9 +17,9 @@
 
 
 #include /includes/secrets/demosat-rhel-9-10-latest.yaml
-#include /includes/secrets/dynamic-aws-dns.yaml
 #include /includes/secrets/openshift_assisted_installer.yaml
-#include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
+#include /includes/secrets/dynamic-dns.yaml
+#include /includes/secrets/acme-bifrost.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -117,13 +117,6 @@ ocp4_workload_authentication_enable_user_info_data: true
 # -------------------------------------------------------------------
 ocp4_workload_cert_manager_channel: stable-v1.17
 ocp4_workload_cert_manager_use_catalog_snapshot: false
-
-ocp4_workload_cert_manager_cloud_provider: ec2
-ocp4_workload_cert_manager_ec2_region: us-east-2
-ocp4_workload_cert_manager_ec2_access_key_id: "{{ route53_aws_access_key_id }}"
-ocp4_workload_cert_manager_ec2_secret_access_key: "{{ route53_aws_secret_access_key }}"
-ocp4_workload_cert_manager_ec2_hostedzoneid: "{{ route53_aws_zone_id }}"
-
 ocp4_workload_cert_manager_install_ingress_certificates: true
 ocp4_workload_cert_manager_install_api_certificates: false
 
@@ -159,6 +152,17 @@ __meta__:
       destroy:
         catch_all: false
   sandboxes:
+  - kind: DNSSandbox
+    annotations:
+      prefix: cluster
+    cloud_selector:
+      provider: ddns
+      domain: "dyn.redhatworkshops.io"
+    var: dns_sandbox
+  - kind: SSLSandbox
+    cloud_selector:
+      purpose: production
+    var: ssl_sandbox
   - kind: OcpSandbox
     namespace_suffix: ocp4-cluster
     cloud_selector:
