@@ -39,7 +39,38 @@ subdomain_base: "{{ subdomain_base_short }}{{ subdomain_base_suffix }}"
 subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
 ansible_user: cloud-user
 remote_user: cloud-user
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:16] + '_1' }}"
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=16, chars=['ascii_letters', 'digits', '_'])
+  }}
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+tag: main
+
+requirements_content:
+  collections:
+    - name: l3d.git
+      version: 1.1.10
+    - name: https://github.com/rhpds/lb2961.ai_driven_aap.git
+      type: git
+      version: "{{ tag }}"
+    - name: ansible.netcommon
+      version: ">=6.0.0"
+    - name: cisco.ios
+      version: ">=5.0.0"
+    - name: "https://github.com/rhpds/rhpds.litellm_virtual_keys.git"
+      type: git
+      version: "1.3.1"
+    - name: ansible.windows
+      version: ">=2.0.0"
+    - name: microsoft.ad
+      version: ">=1.0.0"
+    - name: community.windows
+      version: ">=2.0.0"
+    - name: ansible.platform
+      version: ">=2.0.0"
 
 # -------------------------------------------------------------------
 # Instance Config
@@ -62,7 +93,13 @@ cisco_rootfs_size: 10Gi
 windows_instance_image: base-windows-ad-2022
 windows_rootfs_size: 60Gi
 windows_admin_user: Administrator
-windows_admin_password: "Ansible123!"
+windows_admin_password: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  64653237326536663631626139363238643532336362313661393266653734366435373935623261
+  6365316131346365326365323963666263356536373964660a343963646631343538373235623033
+  63346131313762653636346439363464363963646161376337376430666434363031656161343134
+  3965663661623435350a383436656463303062653232306239646433393162376333316161386631
+  3830
 
 networks:
   - name: default
@@ -455,32 +492,6 @@ instances:
             name: windows-rdp
 
 # -------------------------------------------------------------------
-# Ansible Module, Collections, and Roles Requirements
-# -------------------------------------------------------------------
-requirements_content:
-  collections:
-    - name: l3d.git
-      version: 1.1.10
-    - name: https://github.com/rhpds/lb2961.ai_driven_aap.git
-      type: git
-      version: main
-    - name: ansible.netcommon
-      version: ">=6.0.0"
-    - name: cisco.ios
-      version: ">=5.0.0"
-    - name: "https://github.com/rhpds/rhpds.litellm_virtual_keys.git"
-      type: git
-      version: "1.3.1"
-    - name: ansible.windows
-      version: ">=2.0.0"
-    - name: microsoft.ad
-      version: ">=1.0.0"
-    - name: community.windows
-      version: ">=2.0.0"
-    - name: ansible.platform
-      version: ">=2.0.0"
-
-# -------------------------------------------------------------------
 # Workloads: Pre/Software/Post
 # -------------------------------------------------------------------
 pre_software_workloads:
@@ -626,7 +637,7 @@ asset_injector_assets:
 # -------------------------------------------------------------------
 controller_firewall_hostname: controller
 controller_firewall_user: rhel
-controller_firewall_password: ansible123!
+controller_firewall_password: "{{ aap_image_admin_password }}"
 
 # -------------------------------------------------------------------
 # Role: rhel-firewalld (for controller/isolated group)
@@ -725,9 +736,17 @@ ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
 # -------------------------------------------------------------------
 # Role: ansible_automation_platform_configuration
 # -------------------------------------------------------------------
+aap_image_admin_password: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  32373239343436383338306534653935303666313835656336663537303765313731303463653934
+  3436643364366331316465643465343034633539633330380a623937623535653434393931353437
+  66353462343134626664323931396164363063636339333436653332653131343065393333373631
+  3132353739633633330a396632613537343262666530393366626461343937623330656138373131
+  3239
+
 ansible_automation_platform_configuration_host: "https://controller-{{ subdomain_base }}"
 ansible_automation_platform_configuration_username: admin
-ansible_automation_platform_configuration_password: "ansible123!"
+ansible_automation_platform_configuration_password: "{{ aap_image_admin_password }}"
 ansible_automation_platform_configuration_verify_ssl: false
 ansible_automation_platform_configuration_create_controller_token: false
 ansible_automation_platform_configuration_generate_ocp_token: false
@@ -755,6 +774,14 @@ lightspeed_wca_token: !vault |
   38373836333463326565346331356635653261666233663230646239393939373461636266336532
   6332383564336662620a633533633563393561663165646265323830373637623161663039323936
   65343033613239613232663664643263386432373632323965343330626366373236
+
+aap_ansible_vault_password: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  39393561376636343037303266343065323634326665366337643662633237306331613765373265
+  3430666134346335646131366239626135313934326363350a353433363238373339353239343539
+  33323531306437356436623664613162663062636536626135313666643961613262643235633136
+  3337386662343536640a353861646165353264343736613338343036633933646534643561616130
+  6138
 
 # --------------------------------------
 # EDA vars
@@ -823,7 +850,7 @@ controller_credentials:
     organization: "Default"
     credential_type: "Vault"
     inputs:
-      vault_password: MzIzNTE0OTEw
+      vault_password: "{{ aap_ansible_vault_password }}"
   - name: "Gitea"
     description: "Gitea Credentials"
     organization: Default
@@ -838,7 +865,7 @@ controller_credentials:
     credential_type: "Machine"
     inputs:
       username: admin
-      password: "ansible123!"
+      password: "{{ aap_image_admin_password }}"
       become_method: enable
   # Windows Credential
   - name: "Windows"
@@ -1761,8 +1788,6 @@ showroom_tab_web2_name: "@Codeserver"
 # -------------------------------------------------------------------
 __meta__:
   asset_uuid: 4D47C5FB-7DE9-4392-B7EB-99C25844572A
-  anarchy:
-    namespace: babylon-anarchy-3
   owners:
     maintainer:
       - name: Anshul Behl
