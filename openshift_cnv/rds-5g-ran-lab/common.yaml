@@ -1,0 +1,321 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: 5G RAN RDS Deployments on OpenShift
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/ansible-tower-advanced-24.yaml
+#include /includes/secrets/s3-rhpds-private-bucket.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: RHPDS
+
+# -------------------------------------------------------------------
+# Mandatory Variables - AgnosticD v2
+# -------------------------------------------------------------------
+cloud_provider: openshift_cnv
+cloud_provider_version: main
+config: cloud-vms-base
+
+# -------------------------------------------------------------------
+# Collection Version Control
+# -------------------------------------------------------------------
+tag: main  # Override in prod.yaml with specific release tag
+
+# -------------------------------------------------------------------
+# Subdomain Configuration
+# -------------------------------------------------------------------
+subdomain_base_short: "{{ guid }}"
+subdomain_base_suffix: ".{{ sandbox_openshift_apps_domain }}"
+subdomain_base: "{{ subdomain_base_short }}{{ subdomain_base_suffix }}"
+subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
+
+# Bastion public hostname (dynamically built from inventory)
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ subdomain }}"
+
+# Common password (auto-generated from GUID)
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+
+# Bastion SSH password
+bastion_ssh_password: "{{ common_password }}"
+
+# User configuration
+ansible_user: cloud-user
+remote_user: cloud-user
+
+# Project tag
+project_tag: "{{ config }}-{{ guid }}"
+
+# -------------------------------------------------------------------
+# CNV-specific settings
+# -------------------------------------------------------------------
+openshift_cnv_legacy_routes: true
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/rds-deployments-automation.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/agnosticd/cloud_vm_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/rhpds.manage_host.git
+      type: git
+      version: "{{ tag }}"
+
+# -------------------------------------------------------------------
+# Instance Images
+# -------------------------------------------------------------------
+bastion_instance_image: bastion-5gran-ocp420
+bastion_rootfs_size: 200Gi
+
+# -------------------------------------------------------------------
+# Instances to deploy
+# -------------------------------------------------------------------
+instances:
+  - name: "bastion"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ bastion_instance_image }}"
+    memory: 256Gi
+    cores: 96
+    image_size: "{{ bastion_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+      - key: "instance_filter"
+        value: "{{ config }}-{{ guid }}"
+    networks:
+      - default
+    services:
+      - name: bastion
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: bastion-22
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: bastion-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: bastion-443
+    routes:
+      - name: bastion-80
+        host: bastion
+        service: bastion
+        targetPort: 80
+        tls: true
+        tls_termination: edge
+      - name: bastion-443
+        host: bastion
+        service: bastion
+        targetPort: 443
+        tls: true
+        tls_termination: edge
+    disks:
+      - metadata:
+          name: "extradisk{{ guid }}"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "1Ti"
+
+# -------------------------------------------------------------------
+# Bastion Configuration
+# -------------------------------------------------------------------
+# Student user will be created via control_user workload
+bastion_student_user_name: lab-user
+bastion_student_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Common Packages Configuration
+# -------------------------------------------------------------------
+install_common_packages: false
+update_packages: false
+
+# -------------------------------------------------------------------
+# Satellite Repositories
+# -------------------------------------------------------------------
+install_satellite_repositories: true
+# These vars need to come from secrets:
+# host_satellite_repositories_hostname:
+# host_satellite_repositories_ha:
+# host_satellite_repositories_org:
+# host_satellite_repositories_activationkey:
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  all:
+    - agnosticd.cloud_vm_workloads.control_user
+  bastions:
+    - host_satellite_repositories
+    - host_common_packages
+
+software_workloads:
+  bastions:
+    - rhpds.manage_host.asset_injector
+    - rhpds.rds_deployments.ocp4_workload_5gran_deployments_lab
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+
+post_software_workloads: {}
+
+# -------------------------------------------------------------------
+# Workload Variables
+# -------------------------------------------------------------------
+# Pull Secret for OpenShift operations
+pull_secret: "{{ ocp4_pull_secret }}"
+
+# Control User (Student User) Configuration
+control_user_name: "{{ bastion_student_user_name }}"
+control_user_password: "{{ bastion_student_user_password }}"
+control_user_enable_sudoers: true
+control_user_sudo_commands: 'NOPASSWD: ALL'
+
+# host_common_packages configuration
+host_common_packages_extra:
+  - podman
+  - buildah
+  - skopeo
+  - httpd-tools
+
+# -------------------------------------------------------------------
+# Asset Injector Configuration
+# -------------------------------------------------------------------
+asset_injector_modules:
+  - description: Remove 50-cloud-init.conf SSH config
+    module: file
+    state: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf SSH config
+    module: file
+    state: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password authentication
+    module: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Custom SSH settings via Ansible"
+    block: |
+      # Custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+      PermitRootLogin yes
+
+  - description: Restart sshd service
+    module: service
+    name: sshd
+    state: restarted
+
+# -------------------------------------------------------------------
+# AgnosticV User Data (for info messages)
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{  subdomain }}"
+  bastion_ssh_user_name: "{{ bastion_student_user_name }}"
+  bastion_ssh_password: "{{ bastion_student_user_password }}"
+  bastion_ssh_command: >-
+    ssh {{ bastion_student_user_name }}@{{ openshift_cnv_ssh_address }}
+    -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
+  bastion_ssh_hostname: "{{ openshift_cnv_ssh_address }}"
+  bastion_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: e0cb4860-8df1-4bc8-badf-3c492ab484d5
+  owners:
+    maintainer:
+      - name: Alberto Losada Grande
+        email: alosadag@redhat.com
+      - name: Mario Vazquez Cebrian
+        email: mavazque@redhat.com
+      - name: Billy Bethell
+        email: bbethell@redhat.com
+    sme:
+      - name: Alberto Gonzales Rodriguez
+        email: josegonz@redhat.com
+    instructions:
+      - name: Alberto Losada Grande
+        email: alosadag@redhat.com
+      - name: Mario Vazquez Cebrian
+        email: mavazque@redhat.com
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-06-30
+      pull: missing
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+      quota:
+        requests.storage: "2600Gi"
+        limits.cpu: '999'
+        requests.cpu: '999'
+        limits.memory: 2000Gi
+        requests.memory: 2000Gi
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "5G RAN RDS Deployments on OpenShift"
+    category: Workshops
+    keywords:
+      - workshop
+      - openshift
+      - ran
+      - 5g
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+    parameters: []
+    reportingLabels:
+      primaryBU: Edge
+      secondaryBU: Hybrid_Platforms
+  tower:
+    timeout: 18000  # 5 hours
