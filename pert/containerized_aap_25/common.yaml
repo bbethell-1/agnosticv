@@ -1,133 +1,253 @@
 ---
-#include /includes/aws-sandbox-meta.yaml
+# -------------------------------------------------------------------
+# --- Catalog Item: Product Enablement: AAP 2.7 Fundamentals and Deployment
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
 #include /includes/catalog-icon-openshift.yaml
 #include /includes/terms-of-service.yaml
 
-#include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
-#include /includes/parameters/aws-regions-standard.yaml
+#include /includes/parameters/salesforce-id.yaml
 
-#include /includes/secrets/demosat-rhel9-base-microshift.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
 
-# -------------------------------------------------------------------
+# ===================================================================
 # Mandatory Variables
-# -------------------------------------------------------------------
-env_type: rhel8-base
-cloud_provider: ec2
+# ===================================================================
+tag: main
 
-# Unset key name
-key_name: ""
+cloud_provider: none
+config: openshift-workloads
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
 
-# -------------------------------------------------------------------
-# Platform
-# -------------------------------------------------------------------
-platform: RHPDS
-bastion_public_hostname: "rhel9.{{ guid }}.{{ sandbox_zone }}"
-# -------------------------------------------------------------------
-# Instance Config
-# -------------------------------------------------------------------
-rhel9_instance_image: RHEL94GOLD-latest
-rhel9_instance_type: "t3a.xlarge"
-rootfs_size_rhel9: 200
+num_users: 1
 
-security_groups:
-  - name: WebSG
-    rules:
-      - name: WebHTTPSPorts
-        description: "HTTPS Public"
-        from_port: 443
-        to_port: 443
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-      - name: WebHTTPPorts
-        description: "HTTP Public"
-        from_port: 80
-        to_port: 80
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-      - name: BasSSHPublic
-        description: "SSH public"
-        from_port: 22
-        to_port: 22
-        protocol: tcp
-        cidr: "0.0.0.0/0"
-        rule_type: Ingress
-
-instances:
-  - name: "rhel9"
-    count: 1
-    unique: true
-    public_dns: true
-    floating_ip: true
-    image: "{{ rhel9_instance_image }}"
-    flavor:
-      ec2: "{{ rhel9_instance_type }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "bastions"
-      - key: "ostype"
-        value: "linux"
-    rootfs_size: "{{ rootfs_size_rhel9 }}"
-    volumes:
-      - device_name: "/dev/xvdb"
-        size: "70"
-        type: gp3
-    security_groups:
-      - WebSG
+# ===================================================================
+# End Mandatory Variables
+# ===================================================================
 
 # -------------------------------------------------------------------
-# Role: set-repositories
+# Autoscaling cluster - Add 1 worker for the RHEL 10 VM
 # -------------------------------------------------------------------
-repo_method: satellite
-use_content_view: true
+openshift_cnv_scale_cluster: false
+worker_instance_count: 1
+worker_only: true
+worker_drain_control_plane: false
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: v0.0.9
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/agnosticd/cloud_vm_workloads.git
+      type: git
+      version: cnv_instances
+    - name: https://github.com/opentraining-labs-customizations/ocp.git
+      type: git
+      version: v1.2.1
 
 # -------------------------------------------------------------------
-# Role: common
+# Common Password
 # -------------------------------------------------------------------
-common_packages_el9:
-  - python3
-  - unzip
-  - bash-completion
-  - tmux
-  - bind-utils
-  - wget
-  - nano
-  - git
-  - vim-enhanced
-  - httpd-tools
-  - openldap-clients
-  - podman
-  - tree
+common_admin_password: >-
+  {{ lookup('password', output_dir ~ '/common_admin_password', length=12, chars=['ascii_letters', 'digits']) }}
+common_user_password: >-
+  {{ lookup('password', output_dir ~ '/common_user_password', length=12, chars=['ascii_letters', 'digits']) }}
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+  - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+  - agnosticd.core_workloads.ocp4_workload_metallb
+  - ocp.custom.create_namespace
+  - ocp.custom.deploy_cnv_vm
+  - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_htpasswd
+# -------------------------------------------------------------------
+ocp4_workload_authentication_htpasswd_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_num_users: "{{ num_users }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_virtualization
+# -------------------------------------------------------------------
+ocp4_workload_openshift_virtualization_channel: stable
+ocp4_workload_openshift_virtualization_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_metallb (for VM LoadBalancer service)
+# -------------------------------------------------------------------
+ocp4_workload_metallb_channel: stable
+ocp4_workload_metallb_enable_ipaddresspool: true
+ocp4_workload_metallb_ipaddresspool_name: vm-ip-pool
+ocp4_workload_metallb_ipaddresspool_addresses:
+  - "10.10.10.200-10.10.10.210"
+
+# Configure L2Advertisement
+ocp4_workload_metallb_enable_l2advertisement: true
+ocp4_workload_metallb_l2advertisement_ipaddresspool:
+  - vm-ip-pool
+ocp4_workload_metallb_l2advertisement_interface:
+  - br-ex
+
+# -------------------------------------------------------------------
+# Workload: ocp.custom.create_namespace
+# -------------------------------------------------------------------
+# Create dedicated namespace for AAP lab VMs with proper RBAC
+create_namespace_name: "aap-lab"
+create_namespace_display_name: "AAP Lab Environment"
+create_namespace_description: "Namespace for AAP 2.7 lab VMs and resources"
+create_namespace_grant_admin_to_sa: "{{ sandbox_openshift_namespace }}"
+create_namespace_grant_admin_sa_name: "sandbox"
+
+# -------------------------------------------------------------------
+# Workload: ocp.custom.deploy_cnv_vm
+# -------------------------------------------------------------------
+# Unified VM deployment from DataSources
+# RHEL 10 VM Configuration (4 vCPU, 16Gi memory, 100Gi disk)
+# Equivalent to u1.xlarge instance type (Utility series)
+deploy_cnv_vm_namespace: "aap-lab"
+
+deploy_cnv_vm_instances:
+  - name: "aap-lab-rhel10"
+    datasource_name: "rhel10"
+    datasource_namespace: "openshift-virtualization-os-images"
+    cores: 4
+    memory: "16Gi"
+    disk_size: "70Gi"
+    cloud_init_user: "lab-user"
+    cloud_init_password: "{{ common_admin_password }}"
+    ports:
+      - port: 443
+        protocol: TCP
+        targetPort: 443
+        name: https
+      - port: 80
+        protocol: TCP
+        targetPort: 80
+        name: http
+      - port: 22
+        protocol: TCP
+        targetPort: 22
+        name: ssh
+
+_cloud_config: |
+  #cloud-config
+  user: lab-user
+  password: "{{ common_admin_password }}"
+  chpasswd:
+    expire: false
+  ssh_pwauth: true
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  bastion_public_hostname: "{{ bastion_public_hostname }}"
+  bastion_ssh_user_name: "{{ bastion_ssh_user_name }}"
+  bastion_ssh_password: "{{ bastion_ssh_password }}"
+  bastion_ssh_port: "{{ bastion_ssh_port | default(22) }}"
+  bastion_ssh_command: "ssh {{ bastion_ssh_user_name }}@{{ bastion_public_hostname }} -p {{ bastion_ssh_port | default(22) }}"
+  rhel10_vm_name: "aap-lab-rhel10"
+  rhel10_vm_namespace: "aap-lab"
+  rhel10_vm_ip_address: "{{ hostvars['aap-lab-rhel10-' + guid].ansible_host | default('Pending...') }}"
+  rhel10_internal_fqdn: "{{ aap_lab_rhel10_internal_fqdn | default('aap-lab-rhel10.headless.aap-lab.svc.cluster.local') }}"
+  rhel10_route_url: "{{ aap_lab_rhel10_route_url | default('') }}"
+  rhel10_ssh_user: "lab-user"
+  rhel10_ssh_password: "{{ common_admin_password }}"
+  rhel10_ssh_command: "ssh lab-user@{{ hostvars['aap-lab-rhel10-' + guid].ansible_host | default('<VM-IP>') }}"
+  openshift_api_url: "{{ openshift_api_url }}"
+  openshift_cnv_namespace: "aap-lab"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
   asset_uuid: 81458000-6fc3-441e-bcf8-18bdff1d25e8
+
   anarchy:
-    namespace: babylon-anarchy-0
+    namespace: babylon-anarchy-ocp-wksp
+
   owners:
     maintainer:
       - name: Amrinder Singh
         email: amrsingh@redhat.com
+
   catalog:
     reportingLabels:
       primaryBU: Automation
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "Product Enablement: Containerized AAP 2.5"
+    display_name: "Product Enablement: AAP 2.7 Fundamentals and Deployment"
     category: Demos
     keywords:
       - aap
       - ansible
+      - rhel
     labels:
       Product: Red_Hat_Ansible_Automation_Platform
       Product_Family: Red_Hat_Automation
       Provider: Product_Technical_Learning
     multiuser: false
-    parameters: []
+    workshop_user_mode: single
+
   deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.0
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-05-04
       pull: missing
+
+  components:
+    - name: openshift-base
+      display_name: OpenShift SNO Cluster
+      item: agd_v2/ocp-cluster-cnv-pools
+      parameter_values:
+        cluster_size: sno
+        host_ocp4_installer_version: "4.20"
+        ocp4_fips_enable: false
+    # Propagate cluster connection details and bastion access
+      propagate_provision_data:
+        - name: openshift_api_url
+          var: openshift_api_url
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+        - name: bastion_public_hostname
+          var: bastion_public_hostname
+        - name: bastion_ssh_user_name
+          var: bastion_ssh_user_name
+        - name: bastion_ssh_password
+          var: bastion_ssh_password
+        - name: bastion_ssh_port
+          var: bastion_ssh_port
