@@ -1,0 +1,611 @@
+---
+# ===================================================================
+# AI Lightning Labs - Combined (GPTEINFRA-17014)
+#
+# COMBINED catalog item — provisions a shared OCP cluster once,
+# then runs all three lightning lab tenant workloads per user.
+# Showroom content is driven by a PICKLIST (showroom_lab) at
+# order time: fft | wordswarm | voice-agents.
+#
+# HOW IT WORKS:
+#   1. Component provisions an OCP cluster from the CNV pool
+#   2. Cluster workloads run once (Auth, GitOps, Bootstrap, Console)
+#      gitops_bootstrap at cluster level uses cluster/infra/bootstrap path
+#   3. Bridge role (ocp4_workload_multi_tenant_loop) loops
+#      tenant_workloads for each user (1..num_users)
+#   4. Per tenant: keycloak user, namespace, gitops bootstrap (tenant
+#      path, overridden via tenant_workload_vars), showroom seed, showroom
+#   5. Bridge registers each user with Babylon
+#
+# GITOPS_BOOTSTRAP CONFLICT RESOLUTION:
+#   The same role runs at BOTH cluster and tenant level. YAML overwrites
+#   duplicate keys — so tenant-level vars MUST go into tenant_workload_vars,
+#   NOT as top-level vars. Top-level vars = cluster-level defaults.
+#   tenant_workload_vars entries are applied via set_fact before include_role.
+#
+# PICKLIST: showroom_lab resolves ocp4_workload_showroom_content_git_repo
+# via dict lookup at Jinja2 evaluation time. All three lab repos are
+# defined in _showroom_repo_map below.
+#
+# JIRA: GPTEINFRA-17014
+# ===================================================================
+
+# -------------------------------------------------------------------
+# This item is restricted to devs only.
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+# -------------------------------------------------------------------
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+tag: main
+cloud_provider: none
+config: openshift-workloads
+
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_api_key }}"
+
+# Default — overridden by dev.yaml (1 for fast dev testing).
+# Portal dropdown caps at maximum: 10 (cluster max_placements).
+num_users: 1
+
+# Seconds to wait after cluster workloads complete before starting
+# tenant provisioning. Gives Keycloak realm and ArgoCD time to settle.
+tenant_pre_loop_delay: 120
+
+# -------------------------------------------------------------------
+# Token/URL mapping for ALL tenant roles
+#
+# In the combined CI the cluster's admin token (from component
+# propagate_provision_data) is used by every tenant role.
+# Sandbox defaults (sandbox_openshift_api_url / SA token) are NOT
+# appropriate here — the cluster comes from the agd-v2 component.
+# -------------------------------------------------------------------
+cluster_admin_agnosticd_sa_token: "{{ openshift_api_key }}"
+
+# ocp4_workload_tenant_keycloak_user
+ocp4_workload_tenant_keycloak_user_openshift_api_url: "{{ openshift_api_url }}"
+ocp4_workload_tenant_keycloak_user_openshift_api_token: "{{ openshift_api_key }}"
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+
+# ocp4_workload_tenant_namespace
+ocp4_workload_tenant_namespace_openshift_api_url: "{{ openshift_api_url }}"
+ocp4_workload_tenant_namespace_openshift_api_token: "{{ openshift_api_key }}"
+
+# ===================================================================
+# Cluster scaling (copied from ai-lightning-labs-cluster/common.yaml)
+# dev.yaml uses defaults; event.yaml bumps workers to 6.
+# ===================================================================
+openshift_cnv_scale_cluster: true
+worker_instance_count: 3
+ai_workers_cores: 8
+ai_workers_memory: 32Gi
+ai_workers_root_disk_size: 300Gi
+
+# ===================================================================
+# Collections (union of cluster + tenant CIs, deduplicated)
+# showroom pinned to v1.6.11 (cluster CI level, latest stable).
+# Note: tenant CIs use v1.6.6 — combined CI upgrades to v1.6.11.
+# Confirm with Mike Hepburn that ocp4_workload_showroom_user_data_seed
+# API is unchanged between v1.6.6 and v1.6.11 before merging.
+# ===================================================================
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: v0.0.9
+
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+    - name: https://github.com/agnosticd/namespaced_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: v1.6.11
+
+# ===================================================================
+# Cluster-level workloads (run once)
+#
+# Bridge role (ocp4_workload_multi_tenant_loop) is LAST.
+# Everything above it runs once to set up shared cluster infra.
+# ===================================================================
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_authentication
+  - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  - agnosticd.showroom.ocp4_workload_ocp_console_embed
+  - agnosticd.core_workloads.ocp4_workload_multi_tenant_loop
+
+# ===================================================================
+# Tenant workloads (run per user by bridge role)
+#
+# Order is critical:
+#   1. keycloak user — creates user in Keycloak realm
+#   2. namespace — creates OCP namespaces, quotas, limit ranges
+#   3. gitops_bootstrap — deploys per-tenant ArgoCD application
+#      (tenant path and app name via tenant_workload_vars below)
+#   4. showroom_user_data_seed — seeds user/password into ConfigMap
+#      BEFORE showroom creates the Antora content configmap
+#   5. ocp4_workload_showroom — LAST (reads seed ConfigMap)
+# ===================================================================
+tenant_workloads:
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.showroom.ocp4_workload_showroom_user_data_seed
+  - agnosticd.showroom.ocp4_workload_showroom
+
+# No external resources to clean per user (no LiteMaaS keys).
+tenant_remove_workloads: []
+
+# Bridge handles destroy loop. Component tears down the cluster.
+remove_workloads:
+  - agnosticd.core_workloads.ocp4_workload_multi_tenant_loop
+
+# ===================================================================
+# tenant_workload_vars — per-role variable overrides for tenant loop
+#
+# CRITICAL: gitops_bootstrap appears at BOTH cluster and tenant level.
+# Top-level vars set the cluster defaults (cluster/infra/bootstrap).
+# These overrides replace those values ONLY during the tenant loop.
+# Without this block, the cluster-level bootstrap would run with
+# tenant paths and vice versa (YAML last-key-wins semantics).
+# ===================================================================
+tenant_workload_vars:
+  agnosticd.core_workloads.ocp4_workload_gitops_bootstrap:
+    ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ ocp4_workload_tenant_keycloak_username }}"
+    ocp4_workload_gitops_bootstrap_application_project: tenants
+    ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
+    ocp4_workload_gitops_bootstrap_helm_values:
+      tenant:
+        name: "{{ guid }}"
+        user:
+          name: "{{ ocp4_workload_tenant_keycloak_username }}"
+      openclaw:
+        namespace: "{{ ocp4_workload_tenant_keycloak_username }}-openclaw"
+      demo:
+        namespace: "{{ ocp4_workload_tenant_keycloak_username }}-demo"
+
+# ===================================================================
+# Phase 0 — cluster-level workloads (run ONCE by bridge, before user loop)
+#
+# WHY tenant_cluster_workloads instead of workloads::
+#   Any var defined at the AgnosticV top level becomes an AAP extra_var
+#   (highest Ansible precedence). If gitops_bootstrap's application_name,
+#   repo_path, or helm_values are extra_vars they CANNOT be overridden
+#   by set_fact in tenant_workload_vars. Moving the role to Phase 0 and
+#   defining ALL its conflicting vars here (in tenant_cluster_workloads_vars)
+#   keeps them as dict entries, NOT extra_vars. set_fact CAN override role
+#   defaults, so the per-user overrides in tenant_workload_vars work correctly.
+# ===================================================================
+tenant_cluster_workloads:
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+
+tenant_cluster_workloads_vars:
+  agnosticd.core_workloads.ocp4_workload_gitops_bootstrap:
+    ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ai-lightning-labs-automation
+    ocp4_workload_gitops_bootstrap_repo_revision: main
+    ocp4_workload_gitops_bootstrap_repo_path: cluster/infra/bootstrap
+    ocp4_workload_gitops_bootstrap_application_name: bootstrap-infra
+    ocp4_workload_gitops_bootstrap_application_wait: false
+    ocp4_workload_gitops_bootstrap_health_retries: 2
+    ocp4_workload_gitops_bootstrap_helm_values:
+      platform:
+        enabled: true
+      platformValues:
+        rhaiMaaSTokenizer:
+          stt_token: "{{ stt_token }}"
+          maas_bearer: "{{ maas_bearer }}"
+
+# ===================================================================
+# Cluster workload variables
+# (from ai-lightning-labs-cluster/common.yaml)
+# ===================================================================
+common_admin_password: >-
+  {{ lookup('password', output_dir ~ '/common_admin_password', length=16, chars=['ascii_letters', 'digits']) }}
+common_admin_username: admin
+
+ocp4_workload_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.21_2026_02_23
+
+# -------------------------------------------------------------------
+# ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_keycloak_use_catalog_source: true
+ocp4_workload_authentication_keycloak_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_authentication_keycloak_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_authentication_keycloak_default_realm: sso
+
+ocp4_workload_authentication_admin_username: "{{ common_admin_username }}"
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_num_users: 0
+ocp4_workload_authentication_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: latest
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, system:cluster-admins, role:admin
+  g, {{ common_admin_username }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: "[name,groups]"
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 250m
+ocp4_workload_openshift_gitops_repo_requests_memory: 256Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_controller_requests_cpu: 250m
+ocp4_workload_openshift_gitops_controller_requests_memory: 1Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "2"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap vars are defined in tenant_cluster_workloads_vars
+# and tenant_workload_vars — NOT at top-level to avoid becoming extra_vars.
+
+# Vault secrets required by gitops_bootstrap (MaaS tokenizer platform bootstrap).
+# Copied from ai-lightning-labs-cluster/common.yaml — same cluster, same tokens.
+maas_bearer: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  32653363636464376132663466346563306666383437306463393563373036393261643133306461
+  3864353162303934376239643536353463326134393461620a666433653331656363383432316634
+  31303439323136383937303565306535373663623038616139623938646430633866623661623837
+  6130323239343935360a643539393461356165336439636330373965313563653764626163653637
+  61643938623165303762323431663865356636386236623963343765393933353335643036376439
+  39623033623231623434396566643861316263393763376365303136383836613064633765356163
+  63636634666139613531386334306263653836626337343132616238373161626530623337326334
+  30363665376436353934626366613766656333623337376464653736346432313535333332373138
+  39623037653731366339366136326138363136633164646438653766393031643333663464356433
+  33383533623139636133643965303638376437313933396639306339333665333936316565356266
+  34376565633732363564336233613266356134356166343331306232326166333063356638393036
+  36356666393331623166343965613537326437623133343731343763323964613139623331633665
+  33313630666439623866323661303662316238656361643633636335353564613930643263323336
+  33366537336631646262323637303438396164616564613533363136353137623461343432393462
+  61373037613663663636326132383761393666333463393633356231356165343333363663323638
+  32386535353961356439346562613234626566313036313038306631373637343564363337323638
+  61653462323034336439653766663964653439333565303932326332663430613063613638323330
+  34373332333732646130376432393430393936383038346333306266626236326534306564376439
+  31386464636366623536363433393562633932383562633831323733393862653861336334626539
+  35623630363861646161623464336637303737353338303138653231613031626436353039326337
+  31393035633634626630366135643231663138623666333063343035343062313462613034666665
+  39393431373332316336386435383762636639326635666236326135633265306265366435393764
+  62323130656164313738373338363861383134393436313739643633393462313330386132663937
+  36383137353562333837653536343065386332303662383462353134653939376263343563373030
+  32313232366332393039343133646364343738313237393662623964643537353366656233383335
+  36643238323631636132346164386464313939623031336364373231643561376537303662656437
+  64303463336639656337303136323238646665396165393634386665613162366232343565643837
+  35333464643366393961363965366464333334336233306531383635326162343865613263653136
+  34376636356563326636303232326635396538653236333337383362383061336438343663356535
+  38306634373363343939663538363331333235616233306465613733636530643239616363303966
+  61643930653430313362613266663164343334323035366266636431326331356135313561336361
+  32313639356162626537333439653930653264663835333264663662313130313239326263366231
+  63373961356432316232623535303333646239333731613637633566653036616639613561636638
+  36326635386264316563633332313938646536383565356561656336306332303334323466306134
+  33643862663065353065663364313263313432386433326466346536373632356465316465653638
+  30633966393166396136353962623932336631303065646239656636396664303766353562613163
+  30613336653766656139636166323132343834633039343666333166663265366661666430633262
+  34633336333530376435633336613466363564616132393038653932643830343730666232393866
+  35396265306364373437636334363466396339333531323665623736346666353734366661343762
+  61396263626263343839356432383463643330306632306432353761383531653434633632353335
+  35313565656338393134313864363638626131613731653361666538653464313662346237396162
+  37363737373635313762326134613364396163386239306535623737616338656361383134343637
+  63303161623435646137343035323936343966333132343665343635326538396235353831323238
+  33633866353936346439383833633732626431343865323531313237336237626438313639313333
+  31626661626539363163653361666433356362643365383530373732383161626132373337383938
+  32363539323465356337386262363735626539623565653465356564366438633365646563636339
+  63313933383636393031656232623563323563653632623733373164343937636132373961386536
+  64313965623338613634623231656330383865666263353737373561353865333635393130636438
+  64363432613061306135316635383530616334313134653366386462633462663438373630663533
+  66656264386138363732396133316565633435613165643436336138363665346566323736383564
+  36316664616538653137646431383834333565333062326137363166313834383833623964336333
+  62346336633461623461316264303733353565663430303464393639396666306132316336376139
+  33303164636133656130373635623637376539653031343638643638616335306432343466373236
+  37323730626237363735653539336464386536396139346538373561626130373338376134643634
+  65636633303930353935373330663038333336636230363062323339356534663066363730656238
+  33643161393066666361333462343563333535333335316165323562326436363063656239323432
+  61323535303535336361316462393064646132333935343063643161663834643130336233356436
+  31613839313765613837306434616664646462373936306666386338613836373237306137653461
+  39306637663034653961376561653530623266626430366162313830653062623862373866386238
+  35356461306335353764366534643438316434636562613365643538346133346461336530633733
+  35343032656461363364366264353739376162326461613932306239313261363638316234616331
+  38353833316437633938333737646331623561363236653736343761393538336262373833663037
+  35306334613536643331363862363339396436383632326561653134363033643061633461636238
+  37663238353433333131656333386335646566613634323666383135616666353831623939613237
+  63383037373035663537323762333766303963346365393463646239653666373338626334636337
+  6363626164626563626537353038343863373062333961643035
+
+stt_token: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  35396666306436303464333832343063386539303964636639613464373231303264333431396363
+  6330333032363539346330613432613032356536373830320a376435663262383961326431663466
+  63623630356637623763303738343039353938356633666532316164393731313562666462353432
+  3035333266653939640a616132363561376335613933333064383031333863646233663261333931
+  36623838333161663962343633393338333030373130373233636164626536366239353632643439
+  38383764363738326233613434356164303863653233646230346562353130633661353132663139
+  30613264653966653931646263656235373463393561383739653035396665653535373061663237
+  32623765366361326237613235623961343966336661663963326364336261653736613037663761
+  32376638656364643339316638303963303261653637386130383937633463636530326566326435
+  61343964363738383030653035386531613965303036656633333436366638626230313833316535
+  32666537386437346337316237346136613163636331373162316163633334383533353137323537
+  64343165653166623838313631643165316361323063633439353166303762366262633763316562
+  35613031666235643861386562346237346165633732316132366137626231333261303631373736
+  62313637656331306461643134356332386435333038386436303039646239656438323961376366
+  33653865323930353863366632613965656432363032316334613965376664386436643966346434
+  30333761333465663235653261383061376634326235643032376338313963333931633538346634
+  65363237393434326566393933613933306464653065363865333862653966653331663764326462
+  30613931656566323930396331363632376664663738333664653836626238326662363362303635
+  66333166616637653937363632623762633561636634326564653865386536313530353637616465
+  30303830653033383230333435363234636663653264313435653962373939333565373636643236
+  35623837366262326163613461346632373232373964326362663736613861353634376430316535
+  66626563396361653866313464393230356537663630313530326434366461323761633162623039
+  37613734633531393635396432303837376233306233336461656562373864316465663561653631
+  37653737346530633061323136373635353137633831613362633739393033313039646232623435
+  65313530323035313835353465343961616266396361633361306336376264336265306461393864
+  39356432376263306437326636336431643865646239353935656166663737346135353130343731
+  33623638343632333438306362396331393061613830326562616666663164306564396631363531
+  36363337396336616365303931393636346137313232626131306138363135396161316238366430
+  35343432393534303565396431663233653465393535666234323463393536303037303839303463
+  33346432663432666639653833323865373038653539376661313831353764306366623631353061
+  35323031376264313437623230613235393432376437363165316336353931633665316464643561
+  63653232646432306136626635626463613732373363323636323266346136613335343736663064
+  61643332623937346161346164353961363835633237313135306335323830633230653666336362
+  63363761373232393832393463363762386437323533373434323731663364386435393166373866
+  63656563626334616264363831633631383562303265613630323566343035656630343236646466
+  33633561333463353033346663326634643230613366363766643639656562316236343338376235
+  64346637383131663738623831653933343933323932613263616433653435643237656437323232
+  62653863323931626430666230326561623132623462616335393764366232373938383263356438
+  35326563613434393936653065393830323534373664393039613536346337366239396536356465
+  63616231346232353837653631656463386530313438346664633064353032653332303632333433
+  65663762383636383166613037336633633433663661356632633937313661363131623361613864
+  66393832653031663536396234363064613639343031613438333632313431323138373230366539
+  37356466623866373339393436646664383733333365383761663338646563646262626466636639
+  32396134653034653735303966656162323630343838303339376162393734643434373036643532
+  39316162333932393834363232633939356465653931343563613062393632363635626336633234
+  30383436643030653635623962393332376332643162653134633532663466623461356231383633
+  35363566326337323838663563356633613334363438383465326131333964616231643666623665
+  32653939623831323766383039376165383732363333653763633961303939343238373437323433
+  63643063343362313536653138396563323136333365616236616336303966323266633362383531
+  38396165653634386336383438393562333265366138336661356536376231633839626663383631
+  61636131666534636263656130643764343162373538306365313534343833386634303464383337
+  64666563323537383161346331666635666333343836666237326566396532646265393164326633
+  30396461613333323139376262393862353038656539666434363035386265366131383464333533
+  36623265326435393235323465643462616431656664643138663335356638326262313338316263
+  34633464306635356466663534616131316330643534396432383262373338316430663062303130
+  63303365653833613736656331353538633666636361666163306361313765663232386232343263
+  36646466356438373463613036373531363763306166656164393363383832333431393061393333
+  65353935323730633437356163343062336130363563326438616435663836626639616238303534
+  33333730303233316139626635653066626666656162393633626161636562373630616337623330
+  39306332383465616162663463353866636139613636313165376532393764306264366136613463
+  30333433363737663662393966303263386631356431623734336462303230646264343433363538
+  39666236333235303833366633363230613566336230316631306138396533366166316430366232
+  39626364316536353262643731643161353635323233393365663231326666616565343530306662
+  33366130366431353036386631353233613138333761626164313635623332366665666632613537
+  36313133353633373939663861313334623062306565366635633733313433626431633031313963
+  34366130306532303066343237656162366536663039653531353463643233316264353664386661
+  32356631653763626530613439376634653266613966386539663832333166323966643837363239
+  66613032656266626162
+
+
+# ===================================================================
+# Tenant workload variables
+# (from all three tenant CIs — identical except showroom repo)
+# ===================================================================
+common_password: >-
+  {{ lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits']) }}
+
+# -------------------------------------------------------------------
+# ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+# DO NOT define ocp4_workload_tenant_keycloak_username here.
+# Top-level vars become Babylon extra_vars (highest Ansible precedence).
+# The bridge sets this per user (user1, user2...) via set_fact.
+# Defining it here would lock ALL users to user-{{ guid }}.
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_tenant_namespace
+# -------------------------------------------------------------------
+ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_namespace_use_cluster_quota: true
+
+ocp4_workload_tenant_namespace_suffixes:
+  - suffix: openclaw
+  - suffix: demo
+
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "8"
+  requests.cpu: "4"
+  limits.memory: 16Gi
+  requests.memory: 8Gi
+  requests.storage: 100Gi
+
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: "2"
+    memory: 4Gi
+  defaultRequest:
+    cpu: 250m
+    memory: 128Mi
+
+# ===================================================================
+# PICKLIST-driven Showroom selection
+#
+# showroom_lab is set by the Babylon order form PICKLIST parameter.
+# extra_vars always win, so the default (fft) is overridden at order time.
+# _showroom_repo_map resolves the repo URL via Jinja2 dict lookup.
+# If the dict key is invalid, Ansible raises KeyError at runtime.
+# Valid values: fft, wordswarm, voice-agents
+# ===================================================================
+showroom_lab: fft
+
+_showroom_repo_map:
+  fft: https://github.com/rhpds/ai-lightning-fft-agentic-lab-showroom.git
+  wordswarm: https://github.com/rhpds/ai-lightning-wordswarm-showroom.git
+  voice-agents: https://github.com/rhpds/ai-lightning-voice-agents-showroom.git
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom_user_data_seed
+# Seeds user/password into a ConfigMap BEFORE showroom runs.
+# Required so showroom renders {user} and {password} variables correctly.
+# -------------------------------------------------------------------
+ocp4_workload_showroom_user_data_seed:
+  user: "{{ ocp4_workload_tenant_keycloak_username }}"
+  password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_showroom
+# -------------------------------------------------------------------
+# Required so showroom renders {user}/{password} vars from seed ConfigMap.
+ocp4_workload_showroom_passthrough_user_data: true
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: "{{ _showroom_repo_map[showroom_lab] }}"
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_terminal_type: none
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 40
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+  - name: RedHat AI Console
+    url: 'https://rh-ai.{{ openshift_cluster_ingress_domain }}'
+
+# -------------------------------------------------------------------
+# Per-user portal data (registered by bridge after tenant loop)
+# -------------------------------------------------------------------
+tenant_user_info_data:
+  lab_ui_url: >-
+    https://showroom-{{ ocp4_workload_tenant_keycloak_username }}-showroom.{{ openshift_cluster_ingress_domain }}
+  password: "{{ common_password }}"
+
+tenant_user_info_msg: >-
+  Lab: https://showroom-{{ ocp4_workload_tenant_keycloak_username }}-showroom.{{ openshift_cluster_ingress_domain }}
+
+# ===================================================================
+# Babylon Meta Variables
+# ===================================================================
+__meta__:
+  asset_uuid: 80e01900-1d81-484b-9060-55a8d86bd5a5
+  owners:
+    maintainer:
+      - name: Mike Hepburn
+        email: mhepburn@redhat.com
+    instructions:
+      - name: Mike Hepburn
+        email: mhepburn@redhat.com
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      pull: missing
+    actions:
+      status:
+        disable: true
+      update:
+        disable: true
+
+  catalog:
+    supportLink: https://redhat.enterprise.slack.com/archives/C06QWD4A5TE
+    reportingLabels:
+      primaryBU: Artificial_Intelligence
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "AI Lightning Labs - Combined"
+    category: Brand_Events
+    keywords:
+      - summit-2026
+      - ai-lightning-labs
+      - combined
+      - fft
+      - wordswarm
+      - voice-agents
+      - picklist
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: AI_BU
+      Provider: RHDP
+      Brand_Event: WeAreDevelopers_2026
+    workshopUiDisabled: false
+    workshopLabUiRedirect: true
+    workshop_user_mode: multi
+    parameters:
+      - name: showroom_lab
+        description: "Which lightning lab to deploy for all tenants"
+        formLabel: "Lab"
+        openAPIV3Schema:
+          type: string
+          default: fft
+          enum:
+            - fft
+            - wordswarm
+            - voice-agents
+      - name: num_users
+        description: "Number of tenant users to provision (max 10 — cluster supports up to 10 simultaneous placements)"
+        formLabel: "Number of Users"
+        openAPIV3Schema:
+          type: integer
+          default: 1
+          minimum: 1
+          maximum: 10
+
+  components:
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools
+      parameter_values:
+        cluster_size: multinode
+        host_ocp4_installer_version: "4.21"
+        ocp4_fips_enable: false
+      propagate_provision_data:
+        - name: openshift_api_ca_cert
+          var: openshift_api_ca_cert
+        - name: openshift_api_url
+          var: openshift_api_url
+        - name: openshift_cluster_admin_token
+          var: openshift_api_key
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: bastion_public_hostname
+          var: bastion_ansible_host
+        - name: bastion_ssh_user_name
+          var: bastion_ansible_user
+        - name: bastion_ssh_password
+          var: bastion_ansible_ssh_pass
+        - name: bastion_ssh_port
+          var: bastion_ansible_port
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+
+  tower:
+    timeout: 21600
