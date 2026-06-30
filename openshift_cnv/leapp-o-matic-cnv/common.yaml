@@ -1,0 +1,662 @@
+---
+# Dev-only CI — order via Virtual CI in published/ when ready for prod
+#include /includes/access-restriction-devs-only.yaml
+
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/secrets/demosat-rhel-8-9-and-10.yaml
+#include /includes/secrets/ansible-tower-advanced-24.yaml
+#include /includes/secrets/registry-redhat.yaml
+
+# -------------------------------------------------------------------
+# Catalog Item: Leapp-O-Matic: The One-Click Path to RHEL 10
+# JIRA: GPTEINFRA-16373
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+cloud_provider: openshift_cnv
+cloud_provider_version: main
+config: cloud-vms-base
+
+# -------------------------------------------------------------------
+# CNV-specific settings
+# -------------------------------------------------------------------
+openshift_cnv_legacy_routes: false
+openshift_cnv_route_remove_x_frame_options_header: true
+
+# -------------------------------------------------------------------
+# Collection Version Control
+# -------------------------------------------------------------------
+tag: main  # Override in prod.yaml with specific release tag
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+bastion_public_hostname: "bastion-{{ subdomain }}"
+subdomain_base_short: "{{ guid }}"
+subdomain_base_suffix: ".{{ sandbox_openshift_apps_domain }}"
+subdomain_base: "{{ subdomain_base_short }}{{ subdomain_base_suffix }}"
+subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
+ansible_user: cloud-user
+remote_user: cloud-user
+
+# Give cloud-init runcmd (satellite register + python38 install) time to complete
+# before the ping task exhausts its retries. 30 retries x 30s = 15 minutes max.
+infra_generic_wait_for_linux_hosts_retries: 30
+infra_generic_wait_for_linux_hosts_delay: 30
+
+# -------------------------------------------------------------------
+# Passwords
+# -------------------------------------------------------------------
+common_password: >-
+  {{ lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits']) }}
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/agnosticd/cloud_vm_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/rhpds.ansible_automation_platform.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: v1.6.8
+    # TODO: Add Amaya's leapp collection once moved to rhpds org (GPTEINFRA-16373)
+    # - name: https://github.com/rhpds/rhpds.leapp_o_matic.git
+    #   type: git
+    #   version: main
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  bastions:
+    - host_satellite_repositories
+    - host_common_packages
+    - bastion
+  rhel9_nodes:
+    - host_satellite_repositories
+
+software_workloads:
+  all:
+    - agnosticd.cloud_vm_workloads.control_user
+    - agnosticd.cloud_vm_workloads.asset_injector
+
+post_software_workloads:
+  bastions:
+    - infra.aap_configuration.dispatch
+    # TODO: add leapp-o-matic workload role when collection is available
+    # - rhpds.leapp_o_matic.setup_leapp_demo
+
+post_software_final_workloads:
+  localhost:
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+  bastions:
+    - agnosticd.showroom.vm_workload_showroom
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.7
+bastion_rootfs_size: 50Gi
+
+# AAP 2.7 not yet available in CNV pool — using 2.6; update when 2.7 image ships
+controller_instance_image: aap-2.6-2-ceh-20251103
+controller_rootfs_size: 100Gi
+
+rhel95_instance_image: rhel-9.5
+rhel97_instance_image: rhel-9.7
+rhel810_instance_image: rhel-8.10
+node_rootfs_size: 30Gi
+
+workshop_type: leapp-o-matic
+
+# -------------------------------------------------------------------
+# Instances
+# -------------------------------------------------------------------
+instances:
+  - name: "bastion"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ bastion_instance_image }}"
+    memory: 4G
+    cores: 2
+    image_size: "{{ bastion_rootfs_size }}"
+    metadata:
+      ansible_python_interpreter: /usr/bin/python3
+    tags:
+      - key: AnsibleGroup
+        value: "bastions,showroom"
+      - key: ostype
+        value: linux
+    networks:
+      - default
+    services:
+      - name: bastion
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: bastion-22
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: bastion-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: bastion-443
+          - port: 7500
+            protocol: TCP
+            targetPort: 7500
+            name: bastion-7500
+    routes:
+      - name: bastion-80
+        host: bastion
+        service: bastion
+        targetPort: 80
+        tls: true
+        tls_termination: edge
+      - name: bastion-443
+        host: bastion-443
+        service: bastion
+        targetPort: 443
+        tls: true
+        tls_termination: edge
+
+  - name: "controller"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ controller_instance_image }}"
+    memory: 32G
+    cores: 8
+    image_size: "{{ controller_rootfs_size }}"
+    userdata: |-
+      #cloud-config
+      user: rhel
+      password: "{{ common_password }}"
+      chpasswd: { expire: False }
+      runcmd:
+        - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+        - systemctl reload sshd
+    tags:
+      - key: AnsibleGroup
+        value: isolated
+      - key: ostype
+        value: linux
+    services:
+      - name: controller
+        ports:
+          - name: controller-443
+            port: 443
+            protocol: TCP
+            targetPort: 443
+          - name: controller-5000
+            port: 5000
+            protocol: TCP
+            targetPort: 5000
+    routes:
+      - name: controller-5000
+        host: eda-webhook
+        service: controller
+        targetPort: 5000
+        tls: true
+        tls_termination: edge
+      - name: controller-443
+        host: controller
+        service: controller
+        targetPort: 443
+        tls: true
+        tls_termination: reencrypt
+        tls_destinationCACertificate: |
+          -----BEGIN CERTIFICATE-----
+          MIIF1jCCA76gAwIBAgIUASi34Lss1upPyAS1YsA8eZTJOFAwDQYJKoZIhvcNAQEL
+          BQAwgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQIDA5Ob3J0aCBDYXJvbGluYTEQMA4G
+          A1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVkIEhhdDEQMA4GA1UECwwHQW5zaWJs
+          ZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0aW9uIFBsYXRmb3JtMB4XDTI1MTEw
+          MzE5NDkyNVoXDTM1MTEwMTE5NDkyNVowgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQI
+          DA5Ob3J0aCBDYXJvbGluYTEQMA4GA1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVk
+          IEhhdDEQMA4GA1UECwwHQW5zaWJsZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0
+          aW9uIFBsYXRmb3JtMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqNju
+          44XrKsBPTqv5J+OqRz3RsY1QIemHw3NIJF3d3UvimBHt42rHnwt4Lww3mYtYMJQ0
+          nzcRpr+EnFlC5YFl2Htrfq6NzUUqknTpaCeSKNCli4aKYe9JYSocWy/8ag+H7gMf
+          oUFJ7+PDh/S8HcP7ZA15RRXhyGdjzpUK9+ry/UcMcLE4ZOW2Z4YvFyjemh+c/yYY
+          KHsNjV56TRL5q4VqsxlKQuqNQos9lWoHjz363JxC9UrvTPqvl/UbHsQmTD8NKDnB
+          xxsaYTl41kVqscLSw5KR2c6CVVgSjIn5o0iAo01Sd4gONZ0ImhrzQ5Ea9Ya2kKG7
+          OCdg84V4hVmy/fnrcBC4k9RgNthWH9k4eMHwZf3B2P1xZds3dkV1k6yF3zSrQfJd
+          VJZ0AsaeGQGw26NQw0IG17P/jmho1jBhqSLaJyT9vVM/JMOjdojbD/dSFkccID1E
+          wUZeklYiLScD13rhckVk8MxrsFv99BO91tm07lwnj5jsyLoTvUOLuI4o7yw1AlsC
+          V/OjdpAohWbL0W6YxS/elBVgZhe7Gv2lnIF9L7TxTj/UQWaarouAIgyevqbP5dnt
+          mRccxZ38YGivRA+PgWwwSL9AQCFzIJW1Q45shUR2vkTsiWEEB+Lobkj5dcyLG0CH
+          Z7fnJnlKdNDcMbm2s6U1i+nHvv1dpfyveRvOiCsCAwEAAaNCMEAwDgYDVR0PAQH/
+          BAQDAgIEMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFHAFWQy/8in8Lg2TaG9g
+          NJyRxdMfMA0GCSqGSIb3DQEBCwUAA4ICAQBT5QI+nxhpEwPVp/BxZnxJWFBotHw3
+          rROgu1GBR3clZ+c+YFygAUs3LSpCLuDGnqJnh0822sIM+5FFP2ypqHdzeKo3TQEj
+          K4QiTBGeiSgqKqwHQdqPKywgFqAuxFC+clVrmFVR7dQJ8OiUZYNk5fwYLxnOftFQ
+          pxgpJyAX7vpZKnzujc5IGEqb3apjyxUuX3TFRq4uJp8ffWR9cgykeI8WFqAi33+K
+          RW8h9UQbS9mPjkJ3lbTtd06Jx2M0V2pwtQBMlp7aTboEqs+CB5moCIq1wTXvZBqB
+          dcqcpRGppYHL+QuUguBIlZcxn/8JpfoEsYVOJszp4YLEKzr68RoXvevObbrjJxfq
+          BnEPFKqt+pQpjEJktn8JDqp8G6gMc9n+Nkx88f3MR8yr2nhMl9YL6jSZLklH4JJV
+          2UjYg+KU/u/JttFmDydmys1xN9hiFM2wtRjp+r8gAQw95pyUhMraA01qLYWP5wAO
+          KsMpndKg6rUIycxNNr+eLGNafbUNsp9qayRSull5jKok43Goi8oF8edRlPY4qpZW
+          6WvY8+YjBLTCY1rQBb6/Rfr5PHSaRlGLi3Os6xG84gt69dLtMZBz4O232fc5sG5M
+          wMQ+MKwOpgDyuy79XKvsPanlAfP8WgJi79pJdHu3BGTLlDFil9CK8l2sncM1FdaE
+          57Ys1npOUx+oxw==
+          -----END CERTIFICATE-----
+
+  - name: "node1"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel95_instance_image }}"
+    memory: 2G
+    cores: 2
+    image_size: "{{ node_rootfs_size }}"
+    metadata:
+      ansible_python_interpreter: /usr/bin/python3
+    tags:
+      - key: AnsibleGroup
+        value: "nodes,rhel9_nodes"
+      - key: ostype
+        value: linux
+    networks:
+      - default
+
+  - name: "node2"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel97_instance_image }}"
+    memory: 2G
+    cores: 2
+    image_size: "{{ node_rootfs_size }}"
+    metadata:
+      ansible_python_interpreter: /usr/bin/python3
+    tags:
+      - key: AnsibleGroup
+        value: "nodes,rhel9_nodes"
+      - key: ostype
+        value: linux
+    networks:
+      - default
+
+  - name: "node3"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel97_instance_image }}"
+    memory: 1G
+    cores: 2
+    image_size: "{{ node_rootfs_size }}"
+    metadata:
+      ansible_python_interpreter: /usr/bin/python3
+    tags:
+      - key: AnsibleGroup
+        value: "nodes,rhel9_nodes"
+      - key: ostype
+        value: linux
+    networks:
+      - default
+
+  - name: "node4"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ rhel810_instance_image }}"
+    memory: 2G
+    cores: 2
+    image_size: "{{ node_rootfs_size }}"
+    userdata: |-
+      #cloud-config
+      users:
+        - default
+        - name: rhel
+          sudo: ALL=(ALL) NOPASSWD:ALL
+          groups: wheel
+          shell: /bin/bash
+          lock_passwd: false
+      chpasswd:
+        list: |
+          rhel:{{ common_password }}
+        expire: false
+      ssh_pwauth: true
+      runcmd:
+        # Install Satellite CA certificate
+        - curl -sk https://{{ satellite_url }}/pub/katello-server-ca.crt -o /etc/pki/ca-trust/source/anchors/{{ satellite_url }}.ca.crt
+        - update-ca-trust
+        # Remove existing repo files to avoid conflicts
+        - rm -f /etc/yum.repos.d/*.repo
+        # Install Katello CA consumer RPM (disable GPG check — standard RHDP pattern)
+        - yum install -y --disablerepo="*" --nogpgcheck https://{{ satellite_url }}/pub/katello-ca-consumer-latest.noarch.rpm
+        # Set FQDN fact for unique Satellite registration
+        - mkdir -p /etc/rhsm/facts && echo '{"network.fqdn":"node4.{{ guid }}.internal"}' > /etc/rhsm/facts/katello.facts
+        # Register with Satellite HA (matching host_satellite_repositories role HA path)
+        - subscription-manager register --org={{ satellite_org }} --activationkey={{ satellite_activationkey }} --serverurl=https://{{ satellite_url }}:443/rhsm --baseurl=https://{{ satellite_url }}/pulp/repos || true
+        # Enable all repos and install python38
+        - subscription-manager config --rhsm.manage_repos=1
+        - yum clean all
+        - dnf install -y python38 || true
+        - alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1 || true
+        - dnf install -y python3-dnf || true
+    metadata:
+      ansible_python_interpreter: /usr/bin/python3
+    tags:
+      - key: AnsibleGroup
+        value: "nodes,rhel8_nodes"
+      - key: ostype
+        value: linux
+    networks:
+      - default
+
+# -------------------------------------------------------------------
+# Workload: host_common_packages
+# -------------------------------------------------------------------
+install_common_packages: true
+host_common_packages_update_all: false
+
+host_common_packages_extra:
+  - bash-completion
+  - bind-utils
+  - git
+  - nano
+  - python3
+  - python3-pip
+  - tmux
+  - tree
+  - unzip
+  - vim-enhanced
+  - wget
+
+# -------------------------------------------------------------------
+# Workload: bastion
+# -------------------------------------------------------------------
+install_bastion: true
+bastion_setup_student_user: true
+bastion_student_user_name: lab-user
+bastion_student_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.control_user
+# -------------------------------------------------------------------
+env_authorized_key: "{{ guid }}key"
+install_control_user: true
+student_name: "{{ bastion_student_user_name }}"
+student_password: "{{ bastion_student_user_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ bastion_student_user_password }}"
+control_user_private_group: "{{ omit }}"
+control_user_enable_user_data: false
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.asset_injector
+# -------------------------------------------------------------------
+asset_injector_assets:
+  - description: Enable password authentication over SSH
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Custom SSH settings"
+    block: |
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+  - description: Restart sshd
+    type: service
+    name: sshd
+    state: restarted
+
+# -------------------------------------------------------------------
+# Workload: infra.aap_configuration.dispatch (AAP Controller setup)
+# -------------------------------------------------------------------
+aap_image_admin_password: !vault |
+  $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+  32373239343436383338306534653935303666313835656336663537303765313731303463653934
+  3436643364366331316465643465343034633539633330380a623937623535653434393931353437
+  66353462343134626664323931396164363063636339333436653332653131343065393333373631
+  3132353739633633330a396632613537343262666530393366626461343937623330656138373131
+  3239
+
+ansible_automation_platform_configuration_host: "https://controller-{{ subdomain }}"
+ansible_automation_platform_configuration_username: admin
+ansible_automation_platform_configuration_password: "{{ aap_image_admin_password }}"
+ansible_automation_platform_configuration_verify_ssl: false
+
+aap_hostname: "{{ ansible_automation_platform_configuration_host }}"
+aap_username: "{{ ansible_automation_platform_configuration_username }}"
+aap_password: "{{ ansible_automation_platform_configuration_password }}"
+aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
+
+controller_dependency_check: false
+# Wait up to 15 minutes for AAP controller to finish startup before configuring
+controller_configuration_async_retries: 30
+controller_configuration_async_delay: 30
+
+aap_configuration_dispatcher_roles:
+  - { role: controller_license, var: controller_license, tags: controller_license }
+  - { role: gateway_settings, var: gateway_settings, tags: gateway_settings }
+  - { role: gateway_users, var: aap_user_accounts, tags: gateway_users }
+  - { role: controller_credentials, var: controller_credentials, tags: controller_credentials }
+  - { role: controller_execution_environments, var: controller_execution_environments, tags: controller_execution_environments }
+  - { role: controller_inventories, var: controller_inventories, tags: controller_inventories }
+  - { role: controller_hosts, var: controller_hosts, tags: controller_hosts }
+  # - { role: controller_projects, var: controller_projects, tags: controller_projects }
+  # - { role: controller_job_templates, var: controller_templates, tags: controller_job_templates }
+
+gateway_settings:
+  SESSION_COOKIE_AGE: 9000
+
+aap_user_accounts:
+  - username: "{{ student_name }}"
+    is_superuser: true
+    password: "{{ common_password }}"
+    email: "{{ student_name }}@redhat.com"
+    organizations: "Default"
+    first_name: lab
+    last_name: User
+
+controller_license:
+  manifest_url: "https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip"
+
+controller_credentials:
+  - name: "Workshop Credential"
+    organization: Default
+    credential_type: "Machine"
+    inputs:
+      username: "cloud-user"
+      ssh_key_data: "{{ lookup('file', hostvars.localhost.ssh_provision_key_path) }}"
+    state: present
+  - name: "registry.redhat.io credential"
+    organization: Default
+    credential_type: "Container Registry"
+    inputs:
+      host: registry.redhat.io
+      username: "{{ registry_credentials_username }}"
+      password: "{{ registry_credentials_password }}"
+      verify_ssl: true
+    state: present
+
+controller_execution_environments:
+  # TODO: Replace with Amaya's leapp-o-matic custom EE once published to rhpds org
+  - name: "Leapp-O-Matic EE"
+    image: "registry.redhat.io/ansible-automation-platform/ee-supported-rhel9:latest"
+    pull: missing
+    credential: "registry.redhat.io credential"
+    state: present
+
+controller_inventories:
+  - name: "Workshop Inventory"
+    organization: Default
+    state: present
+
+controller_hosts:
+  - name: "controller"
+    inventory: "Workshop Inventory"
+    enabled: true
+    state: present
+    variables:
+      ansible_host: "controller.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+      ansible_user: rhel
+      ansible_password: "{{ aap_image_admin_password }}"
+  - name: "node1"
+    inventory: "Workshop Inventory"
+    enabled: true
+    state: present
+  - name: "node2"
+    inventory: "Workshop Inventory"
+    enabled: true
+    state: present
+  - name: "node3"
+    inventory: "Workshop Inventory"
+    enabled: true
+    state: present
+  - name: "node4"
+    inventory: "Workshop Inventory"
+    enabled: true
+    state: present
+
+controller_projects:
+  # TODO: Update scm_url to rhpds org once Amaya moves her repo (GPTEINFRA-16373)
+  - name: "Leapp-O-Matic"
+    organization: Default
+    scm_type: git
+    scm_url: "https://github.com/agilpipp-redhat/leapp-o-matic.git"
+    scm_branch: main
+    scm_update_on_launch: false
+    scm_update_cache_timeout: 3600
+    default_environment: "Leapp-O-Matic EE"
+
+controller_templates:
+  - name: "Run RHEL 9 to 10 Upgrade"
+    project: "Leapp-O-Matic"
+    playbook: playbooks/upgrade.yml
+    inventory: "Workshop Inventory"
+    execution_environment: "Leapp-O-Matic EE"
+    credentials:
+      - "Workshop Credential"
+
+# -------------------------------------------------------------------
+# Workload: agnosticv_userdata_import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  bastion_public_hostname: "bastion-{{ subdomain }}"
+  bastion_ssh_hostname: "{{ openshift_cnv_ssh_address }}"
+  bastion_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+  bastion_ssh_user_name: "{{ student_name }}"
+  bastion_ssh_password: "{{ common_password }}"
+  bastion_ssh_command: >-
+    ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
+    -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
+  controller_url: "{{ aap_hostname }}"
+  controller_username: "{{ student_name }}"
+  controller_password: "{{ common_password }}"
+  ssh_hostname: "{{ openshift_cnv_ssh_address }}"
+  ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+  ssh_username: "{{ student_name }}"
+  ssh_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.showroom.vm_workload_showroom
+# -------------------------------------------------------------------
+showroom_git_repo: https://github.com/rhpds/leapp-o-matic-showroom.git
+showroom_git_ref: main
+showroom_user: showroom
+showroom_tls_provider: none
+showroom_host: "bastion-{{ subdomain }}"
+showroom_antora_enable_dev_mode: false
+showroom_lab_users:
+  - "{{ student_name }}"
+showroom_user_password: "{{ common_password }}"
+showroom_ssh_method: password
+showroom_ssh_host: "{{ openshift_cnv_ssh_address }}"
+showroom_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+showroom_ssh_username: "{{ student_name }}"
+showroom_ssh_password: "{{ common_password }}"
+showroom_tab_services:
+  - single_terminal
+showroom_nookbag_sidecar_enable: false
+
+showroom_content_ui_config: |
+  type: showroom
+  default_width: 30
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+    - name: '>_Terminal'
+      path: /wetty
+      port: 443
+    - name: AAP
+      url: "https://controller-{{ subdomain }}"
+
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 95c440c5-de55-4681-aac8-9b3b3778d898
+  owners:
+    maintainer:
+      - name: Mitesh Sharma
+        email: mitsharm@redhat.com
+    sme:
+      - name: Amaya Rosa Gil Pippino
+        email: agilpipp@redhat.com
+    instructions:
+      - name: Amaya Rosa Gil Pippino
+        email: agilpipp@redhat.com
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      pull: missing
+    actions:
+      status:
+        disable: true
+      update:
+        disable: true
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Leapp-O-Matic: The One-Click Path to RHEL 10"
+    category: Demos
+    reportingLabels:
+      primaryBU: RHEL
+    keywords:
+      - leapp
+      - rhel-upgrade
+
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Linux
+      Provider: RHDP
+    multiuser: false
+
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+      quota:
+        requests.storage: "500Gi"
