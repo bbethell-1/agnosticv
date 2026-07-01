@@ -21,7 +21,7 @@ import yaml
 # Known pinned collections that should be checked for updates
 KNOWN_PINNED_URLS = {
     "https://github.com/rhpds/assisted_installer.git",
-    "https://github.com/agnosticd/showroom.git",
+    "https://github.com/rhpds/showroom.git",
 }
 
 
