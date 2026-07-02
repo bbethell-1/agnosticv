@@ -8,19 +8,15 @@ model: sonnet
 
 You are a commit message generator. Analyze the staged changes below and produce a single-line git commit subject. Return ONLY the message text — no explanations, quotes, code fences, or extra formatting.
 
-## Repository
+## Staged files
 
-!`git rev-parse --show-toplevel`
+!`git diff --cached --name-status`
 
-Use only the last path component (directory name) as the repository name.
+Determine the commit prefix from the staged file paths: use the **deepest common parent directory** of all staged files (not the repository root). For example, if all staged files are under `openshift_cnv/osp-on-ocp-cnv/`, use `osp-on-ocp-cnv`. If files span multiple top-level directories, use the repository directory name instead.
 
 ## Current staged changes
 
 !`git diff --staged`
-
-## Staged files
-
-!`git diff --cached --name-status`
 
 ## Rules
 
@@ -30,7 +26,7 @@ Use only the last path component (directory name) as the repository name.
 4. Be specific and concise — state what changed and, if space allows, why — never how
 5. Avoid vague phrases like "update code", "changes", "stuff"
 6. Use present tense
-7. Prefix the subject with the repository directory name shown above (choose only the parent that contains more changes if ambiguous)
+7. Prefix the subject with the deepest common parent directory of the staged files as described above
 
 ## Example outputs (all 75 chars or fewer)
 
