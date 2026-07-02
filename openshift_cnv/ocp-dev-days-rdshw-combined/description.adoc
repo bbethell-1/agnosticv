@@ -1,0 +1,66 @@
+= OpenShift Dev Day Roadshow (Combined)
+
+A single-order combined catalog item that provisions a shared OpenShift cluster
+and deploys per-user lab environments for the OpenShift Dev Day Roadshow.
+
+== What It Provisions
+
+This catalog item replaces the two-step cluster + tenant ordering workflow.
+A single order provisions:
+
+* An OpenShift cluster from the CNV pool
+* Keycloak SSO realm with OIDC clients for Red Hat Developer Hub
+* Cluster-level OpenShift GitOps (ArgoCD) instance
+* A shared LiteLLM virtual key (qwen3-235b, 7-day duration) for AI API access
+* Per-user resources for each student (1..num_users):
+** Keycloak user account in realm `sso`, group `users`
+** Per-user ArgoCD AppProject on the shared GitOps instance
+** Tenant GitOps bootstrap (ArgoCD application at `tenant/bootstrap`)
+** Showroom lab UI with wetty terminal
+
+== User Access
+
+After provisioning, each user receives a portal tab with:
+
+* *Lab UI URL* — Direct link to their Showroom instance
+* *Username* — Student SSO username (user1, user2, …)
+* *Password* — Common password for all cluster access
+
+The shared LiteLLM API key for AI model access is reported separately at the
+cluster level.
+
+== Architecture
+
+This catalog item uses the `ocp4_workload_multi_tenant_loop` bridge pattern.
+Cluster workloads run once. Tenant workloads run for each user in a loop.
+
+[source,text]
+----
+Cluster workloads (once):
+  1. ocp4_workload_authentication       → Keycloak realm, OIDC clients
+  2. ocp4_workload_openshift_gitops     → Cluster ArgoCD instance
+  3. ocp4_workload_litellm_virtual_keys → Shared AI API key (cluster-level)
+  4. ocp4_workload_ocp_console_embed    → Console embed for showroom
+  5. ocp4_workload_dev_days_rdshw_cluster_bootstrap → Lab-specific setup
+  6. ocp4_workload_multi_tenant_loop    → Bridge (ALWAYS LAST)
+
+Tenant workloads (per user):
+  1. ocp4_workload_tenant_keycloak_user      → Create SSO user
+  2. ocp4_workload_tenant_openshift_gitops   → Per-user ArgoCD AppProject
+  3. ocp4_workload_gitops_bootstrap          → Bootstrap tenant apps
+  4. ocp4_workload_showroom_user_data_seed   → Seed user/password
+  5. ocp4_workload_showroom                  → Deploy lab UI (LAST)
+----
+
+== Source Catalog Items
+
+This combined CI merges:
+
+* `openshift_cnv/ocp-dev-days-rdshw-cluster` — Shared cluster infrastructure
+* `openshift_cnv/ocp-dev-days-rdshw-tenant` — Per-user tenant resources
+
+Both source items remain available for independent use.
+
+== Ticket
+
+GPTEINFRA-16374

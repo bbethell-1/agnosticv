@@ -1,0 +1,509 @@
+---
+# ===================================================================
+# OpenShift Dev Day Roadshow — Combined CI
+#
+# COMBINED catalog item — merges ocp-dev-days-rdshw-cluster and
+# ocp-dev-days-rdshw-tenant into a single order.
+#
+# HOW IT WORKS:
+#   1. Component provisions OCP cluster from CNV pool
+#   2. Cluster workloads run once (auth, gitops, litellm, cluster bootstrap)
+#   3. Bridge role (ocp4_workload_multi_tenant_loop) loops
+#      tenant_workloads for each user (1..num_users)
+#   4. After all users' workloads complete, bridge registers each
+#      user with Babylon for workshop_user_mode: multi
+#
+# LITELLM PLACEMENT: Cluster-level (single shared key for entire workshop).
+# Duration: 7d. User-info reporting enabled — LiteLLM role reports the
+# key once at cluster-level. Per-user portal data (username, password,
+# lab_ui_url) is handled by the bridge via tenant_user_info_data.
+#
+# TICKET: GPTEINFRA-16374
+# ===================================================================
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/parameters/litellm_metadata.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+tag: main
+cloud_provider: none
+config: openshift-workloads
+
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# Number of tenant users to provision.
+# Overridden in dev.yaml (1). Set to event headcount for events.
+num_users: 1
+
+# Seconds to wait after cluster workloads before starting tenant loop.
+# Allows Keycloak realm, ArgoCD CRDs, and GitOps operator to settle.
+tenant_pre_loop_delay: 120
+
+# -------------------------------------------------------------------
+# Token/URL mapping for ALL tenant roles
+#
+# WHY NEEDED: In the two-CI pattern, tenant roles default to
+# sandbox_openshift_api_url (infra/sandbox cluster). The combined CI
+# gets the cluster from the component via propagate_provision_data,
+# which provides openshift_api_url and openshift_api_key. We override
+# every tenant role to use these instead of the sandbox defaults.
+# -------------------------------------------------------------------
+cluster_admin_agnosticd_sa_token: "{{ openshift_api_key }}"
+
+# ocp4_workload_tenant_keycloak_user URL/token overrides
+ocp4_workload_tenant_keycloak_user_openshift_api_url: "{{ openshift_api_url }}"
+ocp4_workload_tenant_keycloak_user_openshift_api_token: "{{ openshift_api_key }}"
+
+# ocp4_workload_tenant_openshift_gitops URL override
+# Token NOT overridden — role defaults to cluster_admin_agnosticd_sa_token | trim,
+# which is correct once cluster_admin_agnosticd_sa_token is set above.
+ocp4_workload_tenant_openshift_gitops_openshift_api_url: "{{ openshift_api_url }}"
+
+# -------------------------------------------------------------------
+# Autoscaling cluster (from cluster CI verbatim)
+# -------------------------------------------------------------------
+openshift_cnv_scale_cluster: true
+ai_workers_cores: 32
+ai_workers_memory: 64Gi
+worker_instance_count: 4
+
+# ===================================================================
+# Collections (union of cluster + tenant CIs, deduplicated)
+# ===================================================================
+requirements_content:
+  collections:
+  # Assisted Installer Collection
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.9
+
+  # Core OpenShift Workloads (includes multi_tenant_loop bridge)
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # LiteLLM Virtual Keys (cluster-level — single key for workshop)
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "1.0.0"
+
+  # Lab-specific collection (cluster_bootstrap role lives here)
+  - name: https://github.com/rhpds/ocp-dev-days-rdshw-automation
+    type: git
+    version: "{{ tag }}"
+
+  # Showroom
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: v1.6.8
+
+  # FTL (E2E testing)
+  - name: https://github.com/rhpds/rhpds-ftl.git
+    type: git
+    version: "{{ tag }}"
+
+  # Tenant workload roles (keycloak_user, tenant_openshift_gitops)
+  - name: https://github.com/rhpds/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+# ===================================================================
+# Cluster-level workloads (run ONCE by openshift-workloads config)
+#
+# LiteLLM runs at cluster level — single shared key for the workshop.
+# Bridge role MUST be last — it loops tenant_workloads per user.
+# ===================================================================
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+- rhpds.ocp_dev_days_rdshw.ocp4_workload_dev_days_rdshw_cluster_bootstrap
+- agnosticd.core_workloads.ocp4_workload_multi_tenant_loop  # ALWAYS LAST
+
+# ===================================================================
+# Tenant workloads (run per user by bridge role)
+#
+# Order matters:
+#   1. keycloak_user         → Create SSO user in realm=sso, group=users
+#   2. tenant_openshift_gitops → Per-user ArgoCD AppProject
+#   3. gitops_bootstrap      → Bootstrap tenant ArgoCD apps (path: tenant/bootstrap)
+#   4. showroom_user_data_seed → Seed user/password into ConfigMap (BEFORE showroom)
+#   5. showroom              → Deploy lab UI (LAST — prevents literal var bug)
+# ===================================================================
+tenant_workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.showroom.ocp4_workload_showroom_user_data_seed
+- agnosticd.showroom.ocp4_workload_showroom  # LAST
+
+# ===================================================================
+# Destroy lifecycle
+#
+# LiteLLM is cluster-level — cleaned up by the component cluster
+# destroy (the LiteMaaS connection is managed at cluster level).
+# No per-user external resources to clean; tenant_remove_workloads is empty.
+# ===================================================================
+tenant_remove_workloads: []
+
+remove_workloads:
+- agnosticd.core_workloads.ocp4_workload_multi_tenant_loop
+
+# ===================================================================
+# Per-user data reported to Babylon by the bridge role.
+#
+# LiteLLM key is cluster-level (not per-user), so no ai_api_key here.
+# username and lab_ui_url are per-user, evaluated by bridge per iteration.
+# ===================================================================
+tenant_user_info_data:
+  lab_ui_url: >-
+    https://showroom-{{ ocp4_workload_tenant_keycloak_username }}-showroom.{{ openshift_cluster_ingress_domain }}
+  username: "{{ ocp4_workload_tenant_keycloak_username }}"
+  password: "{{ common_password }}"
+
+tenant_user_info_msg: >-
+  Lab UI: https://showroom-{{ ocp4_workload_tenant_keycloak_username }}-showroom.{{ openshift_cluster_ingress_domain }}
+  Username: {{ ocp4_workload_tenant_keycloak_username }}
+  Password: {{ common_password }}
+
+# ===================================================================
+# tenant_workload_vars — per-role variable overrides for tenant loop
+#
+# WHY NOT TOP-LEVEL:
+#   AgnosticV top-level vars become AAP extra_vars (highest Ansible
+#   precedence). Complex dicts like gitops_bootstrap_helm_values and
+#   vars that must be unique per user go here so the bridge can
+#   apply them via set_fact before include_role, allowing per-user
+#   evaluation of ocp4_workload_tenant_keycloak_username.
+# ===================================================================
+tenant_workload_vars:
+
+  # tenant_openshift_gitops: per-user AppProject, username must be unique
+  agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops:
+    ocp4_workload_tenant_openshift_gitops_user: "{{ ocp4_workload_tenant_keycloak_username }}"
+
+  # gitops_bootstrap: application_name and helm_values reference per-user username
+  agnosticd.core_workloads.ocp4_workload_gitops_bootstrap:
+    ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ ocp4_workload_tenant_keycloak_username }}"
+    ocp4_workload_gitops_bootstrap_helm_values:
+      gitops:
+        repoURL: "{{ ocp4_workload_gitops_bootstrap_repo_url }}"
+        targetRevision: "{{ ocp4_workload_gitops_bootstrap_repo_revision }}"
+      tenant:
+        username: "{{ ocp4_workload_tenant_keycloak_username }}"
+        password: "{{ common_password }}"
+        domain: "{{ openshift_cluster_ingress_domain }}"
+      gitlab:
+        host: "gitlab-gitlab.{{ openshift_cluster_ingress_domain }}"
+      cluster:
+        subdomain: "{{ openshift_cluster_ingress_domain }}"
+      registry:
+        host: "quay.{{ openshift_cluster_ingress_domain }}"
+
+# ===================================================================
+# Showroom user data seed
+#
+# Seeds user and password into the showroom ConfigMap BEFORE the
+# showroom role runs. Without this, showroom creates the configmap
+# and the literal string "{user}" appears in lab content.
+# ===================================================================
+ocp4_workload_showroom_user_data_seed:
+  user: "{{ ocp4_workload_tenant_keycloak_username }}"
+  password: "{{ common_password }}"
+
+# ===================================================================
+# Common Password (generated once per provision, shared by all roles)
+# ===================================================================
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+# ===================================================================
+# Workload variables: ocp4_workload_authentication
+# (copied verbatim from cluster CI)
+# ===================================================================
+ocp4_workload_authentication_admin_username: admin
+ocp4_workload_authentication_admin_password: "{{ common_password }}"
+
+# Setting this to false somehow causes SSO login not to be presented as an option. Wonderful.
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_num_users: 0
+
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_default_realm: sso
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+
+# OIDC clients for Red Hat Developer Hub
+ocp4_workload_authentication_keycloak_backstage_client_secret: >-
+  {{ lookup('password', output_dir ~ '/backstage_client_secret', length=32, chars=['ascii_letters', 'digits']) }}
+ocp4_workload_authentication_keycloak_backstage_plugin_client_secret: >-
+  {{ lookup('password', output_dir ~ '/backstage_plugin_client_secret', length=32, chars=['ascii_letters', 'digits']) }}
+
+ocp4_workload_authentication_keycloak_clients:
+- clientId: backstage
+  secret: "{{ ocp4_workload_authentication_keycloak_backstage_client_secret }}"
+  redirectUris:
+  - "https://backstage-developer-hub-rhdh.{{ openshift_cluster_ingress_domain }}/*"
+  description: "Red Hat Developer Hub OIDC Client"
+- clientId: backstage-plugin
+  secret: "{{ ocp4_workload_authentication_keycloak_backstage_plugin_client_secret }}"
+  description: "Red Hat Developer Hub Keycloak Plugin Client"
+  standardFlowEnabled: false
+  directAccessGrantsEnabled: true
+  serviceAccountsEnabled: true
+  serviceAccountRoles:
+    realm-management:
+    - query-users
+    - view-users
+    - query-groups
+
+# ===================================================================
+# Workload variables: ocp4_workload_openshift_gitops
+# (copied verbatim from cluster CI — full Lua health check included)
+# ===================================================================
+# Required so GitOps can manage cluster-level resources and tenant apps
+# (tenant apps are isolated via AppProjects)
+ocp4_workload_openshift_gitops_channel: gitops-1.20
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+# Limits and requests are not applied unless this is true
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: 250m
+ocp4_workload_openshift_gitops_controller_requests_memory: 1Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+# Limits and requests are not applied unless this is true
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "4"
+ocp4_workload_openshift_gitops_repo_limits_memory: 4Gi
+ocp4_workload_openshift_gitops_resource_customizations: |
+  operators.coreos.com/Subscription:
+    health.lua: |
+      health_status = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          numDegraded = 0
+          numPending = 0
+          msg = ""
+          for i, condition in pairs(obj.status.conditions) do
+            msg = msg .. i .. ": " .. condition.type .. " | " .. condition.status .. "\n"
+            if condition.type == "InstallPlanPending" and condition.status == "True" then
+              numPending = numPending + 1
+            elseif (condition.type == "InstallPlanMissing" and condition.reason ~= "ReferencedInstallPlanNotFound") then
+              numDegraded = numDegraded + 1
+            elseif (condition.type == "CatalogSourcesUnhealthy" or condition.type == "InstallPlanFailed") and condition.status == "True" then
+              numDegraded = numDegraded + 1
+            end
+          end
+          if numDegraded == 0 and numPending == 0 then
+            health_status.status = "Healthy"
+            health_status.message = msg
+            return health_status
+          elseif numPending > 0 and numDegraded == 0 then
+            health_status.status = "Progressing"
+            health_status.message = "An install plan for a subscription is pending installation"
+            return health_status
+          else
+            health_status.status = "Degraded"
+            health_status.message = msg
+            return health_status
+          end
+        end
+      end
+      health_status.status = "Progressing"
+      health_status.message = "An install plan for a subscription is pending installation"
+      return health_status
+
+  quay.redhat.com/QuayRegistry:
+    health.lua: |
+      local hs={ status = "Progressing", message = "Waiting for initialization" }
+      found_status = false
+
+      if obj.status ~= nil then
+        found_status = true
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+
+            if condition.type == "Available" and condition.status ~= "True" then
+              if condition.reason == "ComponentNotReady" then
+                hs.status = "Progressing"
+              else
+                hs.status = "Degraded"
+              end
+              hs.message = condition.message or condition.reason
+            end
+            if condition.type == "Available" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "All instances are available"
+            end
+          end
+        end
+      end
+
+      if not found_status then
+        hs = { status = "Progressing", message = "Instance is waiting for initialization" }
+      end
+
+      return hs
+
+# ===================================================================
+# Workload variables: rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# CLUSTER-LEVEL — single shared key for the entire workshop (7d duration)
+# User-info messages enabled so the portal shows the key at cluster level.
+# ===================================================================
+ocp4_workload_litellm_virtual_keys_models:
+- qwen3-235b
+# 7d — single cluster-level key for full workshop duration
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+# Prevent auto-creation of per-user keys when num_users > 1.
+# Single shared cluster key is intentional for this lab.
+ocp4_workload_litellm_virtual_keys_multi_user: false
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
+
+# ===================================================================
+# Workload variables: ocp4_workload_dev_days_rdshw_cluster_bootstrap
+# ===================================================================
+# ocp4_workload_dev_days_rdshw_wait_for_apps_ignore_errors: false  # overridden in dev.yaml
+ocp4_workload_dev_days_rdshw_gitops_repo: https://github.com/rhpds/ocp-dev-days-rdshw-gitops.git
+ocp4_workload_dev_days_rdshw_gitops_repo_tag: "{{ tag }}"
+
+# ===================================================================
+# Workload variables: ocp4_workload_tenant_keycloak_user
+# (username NOT set here — bridge sets it per user)
+# ===================================================================
+# ocp4_workload_tenant_keycloak_username  ← DO NOT SET. Bridge sets this.
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+ocp4_workload_tenant_keycloak_user_groups:
+- users
+
+# ===================================================================
+# Workload variables: ocp4_workload_gitops_bootstrap
+# Static vars at top-level. Per-user vars (application_name, helm_values)
+# are in tenant_workload_vars above.
+# ===================================================================
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ocp-dev-days-rdshw-gitops.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
+ocp4_workload_gitops_bootstrap_health_retries: 10
+
+# ===================================================================
+# Workload variables: ocp4_workload_showroom
+# ===================================================================
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ocp-dev-days-rdshw-showroom.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_terminal_type: wetty
+# Required so showroom renders {user}/{password} vars from seed ConfigMap.
+ocp4_workload_showroom_passthrough_user_data: true
+
+# ===================================================================
+# Babylon meta variables
+# ===================================================================
+__meta__:
+  asset_uuid: 38f8149f-daa5-4522-9c95-d1951af00d2e
+  owners:
+    maintainer:
+    - name: Tyrell Reddy
+      email: treddy@redhat.com
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      pull: missing
+    actions:
+      status:
+        disable: true
+      update:
+        disable: true
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "OpenShift Dev Day Roadshow (Combined)"
+    category: Labs
+    keywords:
+    - gitops
+    - keycloak
+    - argocd
+    - dev-days
+    - combined
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Application_Developer
+      secondaryBU: Hybrid_Platforms
+    workshopUiDisabled: false
+    workshopLabUiRedirect: true
+    workshop_user_mode: multi
+    parameters:
+    - name: num_users
+      description: "Number of tenant users to provision"
+      formLabel: "Number of Users"
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 30
+
+  components:
+  - name: openshift-base
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: "4.20"
+      ocp4_fips_enable: false
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    # Propagate bastion data for infra_add_bastion role
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    # Needed for scaling cluster with workers
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
+
+  tower:
+    timeout: 21600
