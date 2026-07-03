@@ -19,6 +19,9 @@
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/openshift_assisted_installer.yaml
 #include /includes/secrets/vmware-ibm-rs-clusters-access.yaml
+#include /includes/secrets/lb1404-rhoso-registry.yaml
+
+#include /includes/ansible_control_plane/prod_controllers_lb.yaml
 
 #include /includes/secrets/dynamic-dns.yaml
 #include /includes/secrets/acme-bifrost.yaml
@@ -102,25 +105,52 @@ networks:
 - name: tenant
 - name: external
 
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.9
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.6.6
+  - name: https://github.com/rhpds/osp-on-ocp.git
+    type: git
+    version: main
+
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
-# --- Infra Workloads (YAML List)
-infra_workloads:
-- ocp4_workload_rhoso_ipam4lab
-- ocp4_workload_external_odf
-- ocp4_workload_authentication
-- ocp4_workload_cert_manager
-- ocp4_workload_ansible_automation_platform_25
-- ocp4_workload_openshift_gitops
-- ocp4_workload_web_terminal
-- ocp4_workload_kubevirt
-- ocp4_workload_virt_roadshow_vms
-- ocp4_workload_virt_roadshow_vmware # will be needed when new version of lab is released
-- ocp4_workload_showroom
-# --- Workloads that have removal logic implemented that needs to be run (YAML List)
+infra_workloads: >-
+  {{
+    [
+      'ocp4_workload_rhoso_ipam4lab',
+      'ocp4_workload_external_odf',
+      'ocp4_workload_authentication',
+      'ocp4_workload_cert_manager',
+    ] +
+    (['agnosticd.osp_on_ocp.ocp4_workload_rhoso_deployment'] if enable_rhoso_migration | default(false) | bool else []) +
+    [
+      'ocp4_workload_ansible_automation_platform_25',
+      'ocp4_workload_openshift_gitops',
+      'ocp4_workload_web_terminal',
+      'ocp4_workload_kubevirt',
+      'ocp4_workload_virt_roadshow_vms',
+      'ocp4_workload_virt_roadshow_vmware',
+    ] +
+    (['agnosticd.osp_on_ocp.ocp4_workload_rhoso_migration_toolkit_aap_setup',
+      'agnosticd.osp_on_ocp.ocp4_workload_rhoso_migration_scenarios'] if enable_rhoso_migration | default(false) | bool else []) +
+    [
+      'agnosticd.showroom.ocp4_workload_ocp_console_embed',
+      'install-command-line-tools',
+      'agnosticd.showroom.ocp4_workload_showroom',
+    ]
+  }}
+
 remove_workloads:
-- ocp4_workload_virt_roadshow_vmware # will be needed when new version of lab is released
+- ocp4_workload_virt_roadshow_vmware
 
 # -------------------------------------------------------------------
 # Workload variables
@@ -129,6 +159,47 @@ common_password: >-
   {{
     lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits')
   }}
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.osp_on_ocp.ocp4_workload_rhoso_deployment
+# -------------------------------------------------------------------
+# Override bastion_home and workdir — /tmp is writable by any bastion connection user
+ocp4_workload_rhoso_deployment_bastion_home: "/tmp"
+ocp4_workload_rhoso_deployment_bastion_working_dir: "/tmp/openstack-files"
+
+ocp4_workload_rhoso_deployment_satellite_url: "{{ satellite_url }}"
+ocp4_workload_rhoso_deployment_satellite_org: "{{ satellite_org }}"
+ocp4_workload_rhoso_deployment_rhc_activation_key: !vault |
+    $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+    39353761376138313231303761336465653062393936356464623664393465373235333233333533
+    6363616433396362623836343232336235353165393034360a323334326661303534303530626130
+    37393236333635313738303034393433313134633439363038313265373835346435663131653262
+    3531356337353534370a626237356165366536393637316261346237653237346435636265623933
+    61646465656162623561616665653030323234656431303633316130383234376233
+
+ocp4_workload_rhoso_deployment_registry_username: "6340056|lb1404summit2026"
+# ocp4_workload_rhoso_deployment_registry_password — set via #include /includes/secrets/lb1404-rhoso-registry.yaml
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.osp_on_ocp.ocp4_workload_rhoso_migration_toolkit_aap_setup
+# -------------------------------------------------------------------
+ocp4_workload_rhoso_migration_toolkit_aap_setup_registry_username: "{{ ocp4_workload_rhoso_deployment_registry_username }}"
+ocp4_workload_rhoso_migration_toolkit_aap_setup_registry_password: "{{ ocp4_workload_rhoso_deployment_registry_password }}"
+# AAP already installed by ocp4_workload_ansible_automation_platform_25 — skip install phase
+ocp4_workload_rhoso_migration_toolkit_aap_setup_phase_install_aap: true
+# Fix bastion SSH key path (default has literal {{ guid }} bug)
+ocp4_workload_rhoso_migration_toolkit_aap_setup_bastion_ssh_private_key: "~/.ssh/{{ guid }}key.pem"
+# IPAM-allocated IPs from ocp4_workload_rhoso_ipam4lab via agnosticd_user_data lookup
+rhoso_conversion_host_ip: "{{ lookup('agnosticd_user_data', 'rhoso_conversion_host_ip') }}"
+rhoso_public_net_start: "{{ lookup('agnosticd_user_data', 'rhoso_public_net_start') }}"
+rhoso_public_net_end: "{{ lookup('agnosticd_user_data', 'rhoso_public_net_end') }}"
+rhoso_external_ip_worker_1: "{{ lookup('agnosticd_user_data', 'rhoso_external_ip_worker_1') }}"
+rhoso_external_ip_worker_2: "{{ lookup('agnosticd_user_data', 'rhoso_external_ip_worker_2') }}"
+rhoso_external_ip_worker_3: "{{ lookup('agnosticd_user_data', 'rhoso_external_ip_worker_3') }}"
+rhoso_external_ip_bastion: "{{ lookup('agnosticd_user_data', 'rhoso_external_ip_bastion') }}"
+ocp4_workload_rhoso_migration_toolkit_aap_setup_vcenter_hostname: "{{ lookup('agnosticd_user_data', 'vcenter_console') }}"
+ocp4_workload_rhoso_migration_toolkit_aap_setup_vcenter_username: "{{ lookup('agnosticd_user_data', 'vcenter_full_user') }}"
+ocp4_workload_rhoso_migration_toolkit_aap_setup_vcenter_password: "{{ lookup('agnosticd_user_data', 'vcenter_password') }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhoso_ipam4lab_service_url
@@ -156,7 +227,6 @@ ocp4_workload_authentication_remove_kubeadmin: true
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager
 # -------------------------------------------------------------------
-
 ocp4_workload_cert_manager_channel: stable-v1
 ocp4_workload_cert_manager_use_catalog_snapshot: false
 ocp4_workload_cert_manager_install_ingress_certificates: true
@@ -174,6 +244,7 @@ ocp4_workload_ansible_automation_platform_ocp_cluster_role: cluster-reader
 
 ocp4_workload_ansible_automation_platform_use_catalog_snapshot: false
 ocp4_workload_ansible_automation_platform_automatic_install_plan_approval: false
+ocp4_workload_ansible_automation_platform_disable_hub: true
 
 # -------------------------------------------------------------------
 # ocp4_workload_openshift_gitops
@@ -272,18 +343,42 @@ ocp4_workload_virt_roadshow_vmware_use_pool: false
 # ------------------------------------------------------
 # Showroom
 # ------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/osp-on-ocp-showroom
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_namespace_display: "Red Hat OpenStack Services on OpenShift Lab"
+ocp4_workload_showroom_deployment_type: helm
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: "2.1.4"
+ocp4_workload_showroom_terminal_enable: true
+ocp4_workload_showroom_content_only: false
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 40
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+  - name: Bastion
+    path: /wetty
+    port: 443
+  - name: OpenShift Console
+    url: 'https://console-openshift-console.{{ openshift_cluster_ingress_domain }}'
+  - name: Ansible Automation Platform
+    url: 'https://aap-aap.{{ openshift_cluster_ingress_domain }}'
+
+ocp4_workload_showroom_runtime_automation_enable: true
+ocp4_workload_showroom_runtime_automation_image: "quay.io/rhpds/zt-runner:v2.4.2"
 ocp4_workload_showroom_name: showroom
 ocp4_workload_showroom_namespace: showroom
-ocp4_workload_showroom_content_only: true
 
-#### IF YOU UPDATE THE CONTENT_GIT_REPO, PLEASE NOTIFY kodonnel@redhat.com and andharri@redhat.com
-#### FROM SERVICES SO THEY CAN MIGRATE TO ANOTHER REPO WITH US
-#### THEY ARE DOWNSTREAM
-ocp4_workload_showroom_content_git_repo: https://github.com/rh-osp-demo/showroom_osp-on-ocp-day2
-# ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-virt-roadshow.git
-####
-ocp4_workload_showroom_content_git_repo_ref: main
-
+# -------------------------------------------------------------------
+# Instances
+# -------------------------------------------------------------------
 instances:
 - name: bastion
   count: 1
@@ -339,62 +434,7 @@ instances:
   - tenant
   - external
   - default/networkrhovmt
-- name: compute02
-  count: 1
-  unique: true
-  memory: "{{ compute_memory }}"
-  cores: "{{ compute_cores }}"
-  image_size: "{{ compute_rootfs_size }}"
-  image: "{{ compute_adoption_instance_image }}"
-  metadata:
-  - AnsibleGroup: "isolated"
-  - user: "{{ student_name }}"
-  - project: "{{ project_tag }}"
-  - ostype: linux
-  - Purpose: "{{ purpose }}"
-  tags:
-  - key: "AnsibleGroup"
-    value: "isolated"
-  - key: "ostype"
-    value: "linux"
-  - key: "instance_filter"
-    value: "{{ env_type }}-{{ guid }}"
-  networks:
-  - default
-  - ctlplane
-  - internalapi
-  - storage
-  - tenant
-  - external
-  - default/networkrhovmt
-- name: compute03
-  count: 1
-  unique: true
-  memory: "{{ compute_memory }}"
-  cores: "{{ compute_cores }}"
-  image_size: "{{ compute_rootfs_size }}"
-  image: "{{ compute_adoption_instance_image }}"
-  metadata:
-  - AnsibleGroup: "isolated"
-  - user: "{{ student_name }}"
-  - project: "{{ project_tag }}"
-  - ostype: linux
-  - Purpose: "{{ purpose }}"
-  tags:
-  - key: "AnsibleGroup"
-    value: "isolated"
-  - key: "ostype"
-    value: "linux"
-  - key: "instance_filter"
-    value: "{{ env_type }}-{{ guid }}"
-  networks:
-  - default
-  - ctlplane
-  - internalapi
-  - storage
-  - tenant
-  - external
-  - default/networkrhovmt
+
 - name: nfsserver
   count: 1
   unique: true
@@ -419,35 +459,6 @@ instances:
   - default
   - storage
 
-- name: allinone
-  count: 1
-  unique: true
-  memory: "{{ compute_memory }}"
-  cores: "{{ compute_cores }}"
-  image_size: "{{ compute_rootfs_size }}"
-  image: "{{ compute_adoption_instance_image }}"
-  metadata:
-  - AnsibleGroup: "isolated"
-  - user: "{{ student_name }}"
-  - project: "{{ project_tag }}"
-  - ostype: linux
-  - Purpose: "{{ purpose }}"
-  tags:
-  - key: "AnsibleGroup"
-    value: "isolated"
-  - key: "ostype"
-    value: "linux"
-  - key: "instance_filter"
-    value: "{{ env_type }}-{{ guid }}"
-  networks:
-  - default
-  - ctlplane
-  - internalapi
-  - storage
-  - tenant
-  - external
-  - default/networkrhovmt
-
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
@@ -457,13 +468,15 @@ __meta__:
     maintainer:
     - name: Alberto Gonzalez Rodriguez
       email: josegonz@redhat.com
+    - name: Juliano Mohr
+      email: juliano@redhat.com
     instructions:
     - name: Pedro Navarro Perez
       email: pperez@redhat.com
 
   deployer:
     execution_environment:
-      image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.1
+      image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.6
       pull: missing
 
   sandbox_api:
@@ -486,4 +499,17 @@ __meta__:
       Provider: RHDP
     reportingLabels:
       assetGroup: Virtualization
+      primaryBU: Hybrid_Platforms
+    parameters:
+    - name: enable_rhoso_migration
+      description: >-
+        Deploy RHOSO and VMware migration workloads.
+        When enabled, the lab automatically deploys Red Hat OpenStack Services
+        and configures the VMware Migration Toolkit via AAP.
+      formLabel: Deploy RHOSO and VMware Migration Toolkit automatically
+      openAPIV3Schema:
+        default: false
+        type: boolean
     workshop_user_mode: none
+  tower:
+    timeout: 18000
