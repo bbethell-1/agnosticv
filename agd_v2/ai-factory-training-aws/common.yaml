@@ -2,7 +2,6 @@
 # This item is restricted to devs only.
 # It should be ordered by regular users using the Virtual CI
 # in the `published` directory.
-#include /includes/access-restriction-devs-only.yaml
 
 #include /includes/agd-v2-mapping.yaml
 #include /includes/catalog-icon-openshift-data-science.yaml
@@ -13,9 +12,9 @@
 #include /includes/parameters/aws-regions-6.yaml
 #include /includes/parameters/salesforce-id.yaml
 
-#include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+#include /includes/secrets/acme-bifrost.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: AI Factory Training (AWS)
@@ -107,11 +106,13 @@ workloads:
 # -------------------------------------------------------------------
 ocp4_workload_cert_manager_channel: stable-v1
 ocp4_workload_cert_manager_use_catalog_snapshot: false
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
 ocp4_workload_cert_manager_aws_region: "{{ aws_region }}"
 ocp4_workload_cert_manager_aws_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
 ocp4_workload_cert_manager_aws_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
-ocp4_workload_cert_manager_install_ingress_certificates: true
-ocp4_workload_cert_manager_install_api_certificates: false
+ocp4_workload_cert_manager_cloud_provider: aws
+ocp4_workload_cert_manager_acme_bifrost_webhook_image: "quay.io/rhpds/acme-bifrost-webhook:v0.2.27"
 
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_authentication
@@ -232,8 +233,16 @@ ocp4_workload_openshift_ai_hardware_profile_gpu_identifiers:
 # Babylon Meta Variables
 # -------------------------------------------------------------------
 __meta__:
+  access_control:
+    allow_groups:
+    - rhpds-devs-ptl
   asset_uuid: 7c8a9f3e-5d2b-4a1c-8e6f-9b3c7d4e5a2f
-
+  sandboxes:
+  - kind: AwsSandbox
+  - kind: SSLSandbox
+    cloud_selector:
+      purpose: production
+    var: ssl_sandbox
   deployer:
     scm_url: https://github.com/rhpds/agnosticd-v2
     scm_ref: main
@@ -252,7 +261,6 @@ __meta__:
         enable: true
       stop:
         enable: true
-
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: "AI Factory Training with GPU (AWS)"
