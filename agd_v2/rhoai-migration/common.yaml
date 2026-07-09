@@ -16,6 +16,9 @@
 
 #include /includes/parameters/purpose.yaml
 
+# Required by host_ocp4_assisted_scale
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
 # -------------------------------------------------------------------
 # Top Variables
 # -------------------------------------------------------------------
@@ -27,18 +30,31 @@ clusters:
     api_token: "{{ openshift_api_key }}"
 
 # -------------------------------------------------------------------
+# CNV Worker Nodes
+# -------------------------------------------------------------------
+openshift_cnv_scale_cluster: true
+worker_instance_count: 3
+ai_workers_cores: 16
+ai_workers_memory: 64Gi
+
+# -------------------------------------------------------------------
 # Tags / Revisions
 # -------------------------------------------------------------------
 tag: main
 tag_showroom: v1.6.9
-gitops_repo_revision: main
-showroom_repo_revision: main
+tag_assisted_installer: v0.0.9
+gitops_repo_revision: v1.0.0
+showroom_repo_revision: v1.0.0
 
 # -------------------------------------------------------------------
 # Additional Collections & roles to be installed
 # -------------------------------------------------------------------
 requirements_content:
   collections:
+  # Required by host_ocp4_assisted_scale
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: "{{ tag_assisted_installer }}"
   - name: https://github.com/rhpds/core_workloads.git
     type: git
     version: "{{ tag }}"
@@ -161,10 +177,19 @@ __meta__:
     display_name: OpenShift Cluster
     item: agd-v2/ocp-cluster-cnv-pools
     parameter_values:
-      cluster_size: sno
+      cluster_size: multinode
       host_ocp4_installer_version: "4.21"
     propagate_provision_data:
     - name: openshift_api_url
       var: openshift_api_url
     - name: openshift_cluster_admin_token
       var: openshift_api_key
+    # Required by host_ocp4_assisted_scale
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
