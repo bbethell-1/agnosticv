@@ -1,0 +1,173 @@
+---
+# -------------------------------------------------------------------
+# Catalog Item: OpenShift AI MaaS Platform (CNV)
+# Deploys OpenShift AI 3.4 on a CNV-based OpenShift 4.21 cluster,
+# preparing it for manual MaaS (Models-as-a-Service) configuration.
+# -------------------------------------------------------------------
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift-data-science.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# -------------------------------------------------------------------
+# AgnosticD v2 variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_api_key }}"
+
+# -------------------------------------------------------------------
+# Cluster Sizing
+# -------------------------------------------------------------------
+openshift_cnv_scale_cluster: true
+worker_instance_count: 2
+ai_workers_cores: 8
+ai_workers_memory: 32Gi
+worker_only: true
+
+# -------------------------------------------------------------------
+# Collections
+# -------------------------------------------------------------------
+tag: main
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: v0.0.9
+
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+    - name: https://github.com/rhpds/ai_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+    - name: https://github.com/rhpds/openshift_ai_maas.git
+      type: git
+      version: "{{ tag }}"
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_authentication
+  - agnosticd.ai_workloads.ocp4_workload_openshift_ai
+  - rhpds.openshift_ai_maas.ocp4_workload_openshift_ai_maas
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_ai
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_channel: stable-3.4
+ocp4_workload_openshift_ai_use_catalog_snapshot: false
+ocp4_workload_openshift_ai_deploy_dsc: true
+
+# DSC Components — Managed
+ocp4_workload_openshift_ai_dashboard: Managed
+ocp4_workload_openshift_ai_datasciencepipelines: Managed
+ocp4_workload_openshift_ai_workbenches: Managed
+ocp4_workload_openshift_ai_kserve: Managed
+ocp4_workload_openshift_ai_modelmeshserving: Managed
+ocp4_workload_openshift_ai_modelregistry: Managed
+ocp4_workload_openshift_ai_aipipelines: Managed
+ocp4_workload_openshift_ai_llamastackoperator: Managed
+
+# DSC Components — Removed (not needed for MaaS gateway)
+ocp4_workload_openshift_ai_ray: Removed
+ocp4_workload_openshift_ai_trustyai: Removed
+ocp4_workload_openshift_ai_trainingoperator: Removed
+ocp4_workload_openshift_ai_codeflare: Removed
+ocp4_workload_openshift_ai_feastoperator: Removed
+ocp4_workload_openshift_ai_kueue: Removed
+
+# -------------------------------------------------------------------
+# Babylon Meta Variables
+# -------------------------------------------------------------------
+__meta__:
+  access_control:
+    allow_groups:
+      - rhpds-devs-rhai-maas
+  asset_uuid: 12b1a9dc-bf08-4b85-baa7-fe3015066ec1
+  owners:
+    maintainer:
+      - name: Tony Kay
+        email: ankay@redhat.com
+  catalog:
+    display_name: "OpenShift AI MaaS Platform (CNV)"
+    category: Labs
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+      - openshift-ai
+      - maas
+      - models-as-a-service
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_AI
+      Product_Family: Red_Hat_AI
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters: []
+    workshopUiDisabled: true
+
+  components:
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools
+      parameter_values:
+        cluster_size: multinode
+        host_ocp4_installer_version: "4.21"
+      propagate_provision_data:
+        - name: openshift_api_ca_cert
+          var: openshift_api_ca_cert
+        - name: openshift_api_url
+          var: openshift_api_url
+        - name: openshift_cluster_admin_token
+          var: openshift_api_key
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: bastion_public_hostname
+          var: bastion_ansible_host
+        - name: bastion_ssh_user_name
+          var: bastion_ansible_user
+        - name: bastion_ssh_password
+          var: bastion_ansible_ssh_pass
+        - name: bastion_ssh_port
+          var: bastion_ansible_port
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: false
+      status:
+        disable: true
+      stop:
+        disable: false
+      update:
+        disable: true
