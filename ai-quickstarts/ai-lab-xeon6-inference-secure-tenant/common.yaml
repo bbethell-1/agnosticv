@@ -1,7 +1,21 @@
+# -------------------------------------------------------------------
+# --- Catalog Item: AI Inference on Intel Xeon 6 — Confidential (TDX)
+# --- Per-tenant provisioning for the Confidential Computing variant.
+# --- Deploys onto a shared base cluster (ai-lab-xeon6-inference-cluster)
+# --- via the OpenShift Sandbox API.
+# -------------------------------------------------------------------
+---
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
 config: namespace
 cloud_provider: none
 tag: main
 
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
 requirements_content:
   collections:
   - name: https://github.com/agnosticd/namespaced_workloads.git
@@ -17,6 +31,9 @@ requirements_content:
     type: git
     version: v1.6.8
 
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
 workloads:
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
@@ -24,33 +41,49 @@ workloads:
 - agnosticd.ai_quickstarts.quickstart_deploy_via_make
 - agnosticd.showroom.ocp4_workload_showroom
 
+# ===================================================================
+# Common
+# ===================================================================
 common_password: '{{ lookup(''password'', output_dir ~ ''/common_password'', length=12, chars=[''ascii_letters'', ''digits'']) }}'
 
+# ===================================================================
+# Workload: ocp4_workload_tenant_keycloak_user
+# ===================================================================
 ocp4_workload_tenant_keycloak_username: user-{{ guid }}
 ocp4_workload_tenant_keycloak_user_password: '{{ common_password }}'
 ocp4_workload_tenant_keycloak_user_keycloak_namespace: keycloak
 ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
 
+# ===================================================================
+# Workload: ocp4_workload_tenant_namespace
+# ===================================================================
 ocp4_workload_tenant_namespace_username: user-{{ guid }}
 ocp4_workload_tenant_namespace_use_cluster_quota: true
 ocp4_workload_tenant_namespace_suffixes:
 - suffix: triforce
 
+# Total resource pool shared across all tenant namespaces via CRQ.
+# Right-sized for confidential computing variant (no VMs, lighter workload).
 ocp4_workload_tenant_namespace_default_quota:
-  limits.cpu: '16'
-  requests.cpu: '8'
-  limits.memory: 32Gi
-  requests.memory: 16Gi
-  requests.storage: 20Gi
+  limits.cpu: '8'
+  requests.cpu: '4'
+  limits.memory: 12Gi
+  requests.memory: 6Gi
+  requests.storage: 4Gi
 
+# LimitRange applied to every namespace.
+# Sets container defaults for pods that don't specify resource requests/limits.
 ocp4_workload_tenant_namespace_default_limit_range:
   default:
-    cpu: '2'
-    memory: 4Gi
+    cpu: '1'
+    memory: 2Gi
   defaultRequest:
     cpu: 100m
     memory: 256Mi
 
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
 ocp4_workload_litellm_virtual_keys_duration: 7d
 ocp4_workload_litellm_virtual_keys_models:
 - granite-2b-cpu
@@ -59,6 +92,9 @@ ocp4_workload_litellm_virtual_keys_models:
 - granite-3-2-8b-instruct-cpu
 - granite-4-0-h-tiny-cpu
 
+# -------------------------------------------------------------------
+# AI Model Requirements (capacity planning metadata for MAAS)
+# -------------------------------------------------------------------
 ai_model_requirements:
   models:
   - name: granite-2b-cpu
@@ -107,6 +143,9 @@ ai_model_requirements:
     max_concurrent_users: 1
     expected_total_users: 4
 
+# -------------------------------------------------------------------
+# Workload: quickstart_deploy_via_make
+# -------------------------------------------------------------------
 quickstart_deploy_via_make_repo_url: https://github.com/rhpds/triforce
 quickstart_deploy_via_make_scm_ref: main
 quickstart_deploy_via_make_directory: infrastructure/helm
@@ -130,6 +169,9 @@ quickstart_deploy_via_make_params:
 quickstart_deploy_via_make_uninstall_params:
   NAMESPACE: user-{{ guid }}-triforce
 
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
 ocp4_workload_showroom_content_url: https://github.com/rhpds/triforce
 ocp4_workload_showroom_content_ref: main
 ocp4_workload_showroom_content_dir: content-secure
@@ -148,18 +190,24 @@ ocp4_workload_showroom_user_data:
   semantic_router_url: https://semantic-router-user-{{ guid }}-triforce.{{ sandbox_openshift_ingress_domain }}
   mcp_gateway_url: https://mcp-gateway-user-{{ guid }}-triforce.{{ sandbox_openshift_ingress_domain }}
 
+# -------------------------------------------------------------------
+# Babylon / Sandbox API variables
+# -------------------------------------------------------------------
 requester_email: rhdp-{{ guid }}@demo.redhat.com
-catalog_item_name: ai-quickstarts.ai-qs-triforce-secure-tenant.event
+catalog_item_name: ai-quickstarts.ai-lab-xeon6-inference-secure-tenant.event
 openshift_api_url: '{{ sandbox_openshift_api_url }}'
 openshift_cluster_admin_token: '{{ cluster_admin_agnosticd_sa_token }}'
 ocp4_workload_showroom_passthrough_user_data: true
 
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
 __meta__:
   access_control:
     allow_groups:
     - rhpds-devs-quickstart-ai
     - email-domain.intel.com
-  asset_uuid: 39b4fb3d-900b-46a3-abd5-c758ac3edf8a
+  asset_uuid: 2546f0e7-1f26-47d3-9a0b-ffa37ebefd71
   owners:
     maintainer:
     - name: Jonathan Kershaw
@@ -169,20 +217,15 @@ __meta__:
       destroy:
         catch_all: false
   catalog:
-    display_name: 'Triforce Secure: Confidential AI on Intel Xeon 6 (TDX)'
+    display_name: 'AI Inference on Intel Xeon 6 — Confidential (TDX)'
     category: Labs
     namespace: babylon-catalog-{{ stage | default('?') }}
     keywords:
     - openshift
     - intel
     - xeon-6
-    - ai
     - cpu-inference
-    - tdx
-    - confidential
-    - kagenti
-    - multi-agent
-    - a2a
+    - confidential-computing
     labels:
       Provider: RHDP
     reportingLabels:

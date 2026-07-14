@@ -1,9 +1,21 @@
+# -------------------------------------------------------------------
+# --- Catalog Item: AI Inference on Intel Xeon 6 — VMs + AI
+# --- Per-tenant provisioning for the Virtualization variant.
+# --- Deploys onto a shared base cluster (ai-lab-xeon6-inference-cluster)
+# --- via the OpenShift Sandbox API.
+# -------------------------------------------------------------------
 ---
 
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
 config: namespace
 cloud_provider: none
 tag: main
 
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
 requirements_content:
   collections:
   - name: https://github.com/agnosticd/namespaced_workloads.git
@@ -19,6 +31,9 @@ requirements_content:
     type: git
     version: v1.6.8
 
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
 workloads:
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
 - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
@@ -26,33 +41,49 @@ workloads:
 - agnosticd.ai_quickstarts.quickstart_deploy_via_make
 - agnosticd.showroom.ocp4_workload_showroom
 
+# ===================================================================
+# Common
+# ===================================================================
 common_password: '{{ lookup(''password'', output_dir ~ ''/common_password'', length=12, chars=[''ascii_letters'', ''digits'']) }}'
 
+# ===================================================================
+# Workload: ocp4_workload_tenant_keycloak_user
+# ===================================================================
 ocp4_workload_tenant_keycloak_username: user-{{ guid }}
 ocp4_workload_tenant_keycloak_user_password: '{{ common_password }}'
 ocp4_workload_tenant_keycloak_user_keycloak_namespace: keycloak
 ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
 
+# ===================================================================
+# Workload: ocp4_workload_tenant_namespace
+# ===================================================================
 ocp4_workload_tenant_namespace_username: user-{{ guid }}
 ocp4_workload_tenant_namespace_use_cluster_quota: true
 ocp4_workload_tenant_namespace_suffixes:
 - suffix: triforce
 
+# Total resource pool shared across all tenant namespaces via CRQ.
+# Larger quota for virt variant (needs edge-agent + legacy VM).
 ocp4_workload_tenant_namespace_default_quota:
   limits.cpu: '16'
-  requests.cpu: '8'
-  limits.memory: 32Gi
+  requests.cpu: '10'
+  limits.memory: 24Gi
   requests.memory: 16Gi
-  requests.storage: 20Gi
+  requests.storage: 4Gi
 
+# LimitRange applied to every namespace.
+# Sets container defaults for pods that don't specify resource requests/limits.
 ocp4_workload_tenant_namespace_default_limit_range:
   default:
-    cpu: '2'
-    memory: 4Gi
+    cpu: '1'
+    memory: 2Gi
   defaultRequest:
     cpu: 100m
     memory: 256Mi
 
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
 ocp4_workload_litellm_virtual_keys_duration: 7d
 ocp4_workload_litellm_virtual_keys_models:
 - granite-2b-cpu
@@ -61,6 +92,9 @@ ocp4_workload_litellm_virtual_keys_models:
 - granite-3-2-8b-instruct-cpu
 - granite-4-0-h-tiny-cpu
 
+# -------------------------------------------------------------------
+# AI Model Requirements (capacity planning metadata for MAAS)
+# -------------------------------------------------------------------
 ai_model_requirements:
   models:
   - name: granite-2b-cpu
@@ -109,6 +143,9 @@ ai_model_requirements:
     max_concurrent_users: 1
     expected_total_users: 4
 
+# -------------------------------------------------------------------
+# Workload: quickstart_deploy_via_make
+# -------------------------------------------------------------------
 quickstart_deploy_via_make_repo_url: https://github.com/rhpds/triforce
 quickstart_deploy_via_make_scm_ref: main
 quickstart_deploy_via_make_directory: infrastructure/helm
@@ -118,6 +155,7 @@ quickstart_deploy_via_make_params:
     --set litellm.apiBase=https://maas-rhdp.apps.maas.redhatworkshops.io
     --set litellm.apiKey={{ ocp4_workload_litellm_virtual_keys_key }}
     --set postgres.password={{ common_password }}
+    --set virtualization.enabled=true
     --set modules.benchmarking.enabled=true
     --set modules.speculative.enabled=true
     --set modules.speculative.draftModel=granite-4-0-h-tiny-cpu
@@ -131,9 +169,12 @@ quickstart_deploy_via_make_params:
 quickstart_deploy_via_make_uninstall_params:
   NAMESPACE: user-{{ guid }}-triforce
 
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
 ocp4_workload_showroom_content_url: https://github.com/rhpds/triforce
 ocp4_workload_showroom_content_ref: main
-ocp4_workload_showroom_content_dir: content
+ocp4_workload_showroom_content_dir: content-virt
 ocp4_workload_showroom_user: user-{{ guid }}
 ocp4_workload_showroom_user_password: '{{ common_password }}'
 ocp4_workload_showroom_user_data:
@@ -149,18 +190,24 @@ ocp4_workload_showroom_user_data:
   semantic_router_url: https://semantic-router-user-{{ guid }}-triforce.{{ sandbox_openshift_ingress_domain }}
   mcp_gateway_url: https://mcp-gateway-user-{{ guid }}-triforce.{{ sandbox_openshift_ingress_domain }}
 
+# -------------------------------------------------------------------
+# Babylon / Sandbox API variables
+# -------------------------------------------------------------------
 requester_email: rhdp-{{ guid }}@demo.redhat.com
-catalog_item_name: ai-quickstarts.ai-qs-triforce-tenant.event
+catalog_item_name: ai-quickstarts.ai-lab-xeon6-inference-virt-tenant.event
 openshift_api_url: '{{ sandbox_openshift_api_url }}'
 openshift_cluster_admin_token: '{{ cluster_admin_agnosticd_sa_token }}'
 ocp4_workload_showroom_passthrough_user_data: true
 
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
 __meta__:
   access_control:
     allow_groups:
     - rhpds-devs-quickstart-ai
     - email-domain.intel.com
-  asset_uuid: 8b348e38-9251-4678-91fc-f3d2dcb14e62
+  asset_uuid: ea70ff51-43e0-4cc9-b63d-dbdda951cfc5
   owners:
     maintainer:
     - name: Jonathan Kershaw
@@ -170,19 +217,15 @@ __meta__:
       destroy:
         catch_all: false
   catalog:
-    display_name: 'Triforce: Multi-Agent AI on Intel Xeon 6'
+    display_name: 'AI Inference on Intel Xeon 6 — VMs + AI'
     category: Labs
     namespace: babylon-catalog-{{ stage | default('?') }}
     keywords:
     - openshift
     - intel
     - xeon-6
-    - ai
     - cpu-inference
-    - heterogeneous
-    - kagenti
-    - multi-agent
-    - a2a
+    - virtualization
     labels:
       Provider: RHDP
     reportingLabels:
@@ -192,7 +235,7 @@ __meta__:
     scm_url: https://github.com/agnosticd/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2026-05-04
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-02-23
       pull: missing
     actions:
       destroy:

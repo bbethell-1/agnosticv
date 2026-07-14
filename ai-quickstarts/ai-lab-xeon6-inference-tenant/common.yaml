@@ -1,0 +1,272 @@
+# -------------------------------------------------------------------
+# --- Catalog Item: AI Inference on Intel Xeon 6
+# --- Per-tenant provisioning for the base AI lab variant.
+# --- Deploys 9 pods (polyglot agents, router, MCP gateway, Kafka,
+# --- PostgreSQL) onto a shared OCP cluster. All LLM inference runs
+# --- remotely on Intel Xeon 6 / Gaudi via RHDP MAAS — no GPU or
+# --- model-serving pods are deployed in the tenant namespace.
+# -------------------------------------------------------------------
+---
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+config: namespace
+cloud_provider: none
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+requirements_content:
+  collections:
+    - name: https://github.com/agnosticd/namespaced_workloads.git
+      type: git
+      version: '{{ tag }}'
+
+    # LiteLLM Virtual Keys Collection
+    - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+      type: git
+      version: '{{ tag }}'
+
+    # AI Quickstarts deploy-via-make workload
+    - name: https://github.com/agnosticd/ai_quickstarts.git
+      type: git
+      version: '{{ tag }}'
+
+    # Showroom
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: v1.6.8
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+  - agnosticd.ai_quickstarts.quickstart_deploy_via_make
+  - agnosticd.showroom.ocp4_workload_showroom
+
+# ===================================================================
+# Common
+# ===================================================================
+common_password: '{{ lookup(''password'', output_dir ~ ''/common_password'', length=12, chars=[''ascii_letters'', ''digits'']) }}'
+
+# ===================================================================
+# Workload: ocp4_workload_tenant_keycloak_user
+# ===================================================================
+ocp4_workload_tenant_keycloak_username: user-{{ guid }}
+ocp4_workload_tenant_keycloak_user_password: '{{ common_password }}'
+ocp4_workload_tenant_keycloak_user_keycloak_namespace: keycloak
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+
+# ===================================================================
+# Workload: ocp4_workload_tenant_namespace
+# ===================================================================
+ocp4_workload_tenant_namespace_username: user-{{ guid }}
+ocp4_workload_tenant_namespace_use_cluster_quota: true
+ocp4_workload_tenant_namespace_suffixes:
+  - suffix: triforce
+
+# Total resource pool shared across all tenant namespaces via CRQ.
+# Base deployment requests ~1.6 CPU / ~3.2 GiB across 9 pods. Limits
+# include headroom for lab scaling exercises (e.g. HPA, extra replicas).
+# All inference runs remotely via MAAS — no local model-serving pods.
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: '8'
+  requests.cpu: '4'
+  limits.memory: 12Gi
+  requests.memory: 6Gi
+  requests.storage: 4Gi
+
+# LimitRange applied to every namespace.
+# Sets container defaults for pods that don't specify resource requests/limits.
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: '1'
+    memory: 2Gi
+  defaultRequest:
+    cpu: 100m
+    memory: 256Mi
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_duration: 7d
+ocp4_workload_litellm_virtual_keys_models:
+  - granite-2b-cpu
+  - qwen25-3b-cpu
+  - phi3-mini-cpu
+  - granite-3-2-8b-instruct-cpu
+  - granite-4-0-h-tiny-cpu
+
+# -------------------------------------------------------------------
+# Model budget declaration (litemaas capacity planning)
+#
+# Declares the models, expected usage patterns, and concurrency for
+# MAAS capacity planning. All models run on Intel Xeon 6 CPU ($0/token).
+# -------------------------------------------------------------------
+ai_model_requirements:
+  models:
+    - name: granite-2b-cpu
+      purpose: NER, fraud scoring
+      access_method: litemaas
+      estimated_input_tokens_per_request: 1000
+      estimated_output_tokens_per_request: 500
+      estimated_requests_per_session: 30
+      estimated_session_duration_hours: 4
+      max_concurrent_users: 1
+      expected_total_users: 4
+    - name: qwen25-3b-cpu
+      purpose: Classification, summarization
+      access_method: litemaas
+      estimated_input_tokens_per_request: 800
+      estimated_output_tokens_per_request: 300
+      estimated_requests_per_session: 30
+      estimated_session_duration_hours: 4
+      max_concurrent_users: 1
+      expected_total_users: 4
+    - name: phi3-mini-cpu
+      purpose: Complex reasoning, compliance
+      access_method: litemaas
+      estimated_input_tokens_per_request: 1200
+      estimated_output_tokens_per_request: 600
+      estimated_requests_per_session: 15
+      estimated_session_duration_hours: 4
+      max_concurrent_users: 1
+      expected_total_users: 4
+    - name: granite-3-2-8b-instruct-cpu
+      purpose: Fusion judge, complex reasoning
+      access_method: litemaas
+      estimated_input_tokens_per_request: 2000
+      estimated_output_tokens_per_request: 500
+      estimated_requests_per_session: 10
+      estimated_session_duration_hours: 4
+      max_concurrent_users: 1
+      expected_total_users: 4
+    - name: granite-4-0-h-tiny-cpu
+      purpose: Ultra-fast classification, semantic router
+      access_method: litemaas
+      estimated_input_tokens_per_request: 500
+      estimated_output_tokens_per_request: 50
+      estimated_requests_per_session: 40
+      estimated_session_duration_hours: 4
+      max_concurrent_users: 1
+      expected_total_users: 4
+
+# -------------------------------------------------------------------
+# Workload: quickstart_deploy_via_make
+#
+# Clones the app repo and runs `make deploy` with EXTRA_HELM_ARGS
+# to install the Helm chart into the tenant namespace. EXTRA_HELM_ARGS
+# enables pluggable optimization modules — each --set flag toggles a
+# module that adds lab exercises (benchmarking, speculative decoding,
+# multi-model fusion, heterogeneous CPU/GPU routing, edge).
+# -------------------------------------------------------------------
+quickstart_deploy_via_make_repo_url: https://github.com/rhpds/triforce
+quickstart_deploy_via_make_scm_ref: main
+quickstart_deploy_via_make_directory: infrastructure/helm
+quickstart_deploy_via_make_params:
+  NAMESPACE: user-{{ guid }}-triforce
+  EXTRA_HELM_ARGS: >-
+    --set litellm.apiBase=https://maas-rhdp.apps.maas.redhatworkshops.io
+    --set litellm.apiKey={{ ocp4_workload_litellm_virtual_keys_key }}
+    --set postgres.password={{ common_password }}
+    --set modules.benchmarking.enabled=true
+    --set modules.speculative.enabled=true
+    --set modules.speculative.draftModel=granite-4-0-h-tiny-cpu
+    --set modules.speculative.targetModel=granite-2b-cpu
+    --set modules.fusion.enabled=true
+    --set modules.heterogeneous.enabled=true
+    --set modules.heterogeneous.gpuApiBase=https://maas-rhdp.apps.maas.redhatworkshops.io
+    --set modules.heterogeneous.gpuApiKey={{ ocp4_workload_litellm_virtual_keys_key }}
+    --set modules.heterogeneous.gpuModel=granite-3-2-8b-instruct-cpu
+    --set modules.edge.enabled=true
+quickstart_deploy_via_make_uninstall_params:
+  NAMESPACE: user-{{ guid }}-triforce
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+#
+# Showroom user_data vars are passed as AsciiDoc attributes so that
+# lab instructions can embed live curl endpoints (e.g. {healthcare_url})
+# without hardcoding cluster-specific hostnames.
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_url: https://github.com/rhpds/triforce
+ocp4_workload_showroom_content_ref: main
+ocp4_workload_showroom_content_dir: content
+ocp4_workload_showroom_user: user-{{ guid }}
+ocp4_workload_showroom_user_password: '{{ common_password }}'
+ocp4_workload_showroom_user_data:
+  user: user-{{ guid }}
+  password: '{{ common_password }}'
+  openshift_api_url: '{{ sandbox_openshift_api_url }}'
+  openshift_console_url: '{{ sandbox_openshift_console_url }}'
+  openshift_cluster_ingress_domain: '{{ sandbox_openshift_ingress_domain }}'
+  frontend_url: https://triforce-user-{{ guid }}-triforce.{{ sandbox_openshift_ingress_domain }}
+  healthcare_url: https://healthcare-agent-user-{{ guid }}-triforce.{{ sandbox_openshift_ingress_domain }}
+  finserv_url: https://finserv-agent-user-{{ guid }}-triforce.{{ sandbox_openshift_ingress_domain }}
+  orchestrator_url: https://orchestrator-user-{{ guid }}-triforce.{{ sandbox_openshift_ingress_domain }}
+  semantic_router_url: https://semantic-router-user-{{ guid }}-triforce.{{ sandbox_openshift_ingress_domain }}
+  mcp_gateway_url: https://mcp-gateway-user-{{ guid }}-triforce.{{ sandbox_openshift_ingress_domain }}
+
+# These are required since the Showroom role doesn't natively know about
+# them like the other namespace workloads
+openshift_api_url: '{{ sandbox_openshift_api_url }}'
+openshift_cluster_admin_token: '{{ cluster_admin_agnosticd_sa_token }}'
+ocp4_workload_showroom_passthrough_user_data: true
+
+requester_email: rhdp-{{ guid }}@demo.redhat.com
+catalog_item_name: ai-quickstarts.ai-lab-xeon6-inference-tenant.event
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  access_control:
+    allow_groups:
+      - rhpds-devs-quickstart-ai
+      - email-domain.intel.com
+  asset_uuid: a181e24c-4354-4b37-bbac-29120aa82428
+  owners:
+    maintainer:
+      - name: Jonathan Kershaw
+        email: jkershaw@redhat.com
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  catalog:
+    display_name: 'AI Inference on Intel Xeon 6'
+    category: Labs
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+      - openshift
+      - intel
+      - xeon-6
+      - cpu-inference
+      - inference-optimization
+    labels:
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters: []
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-05-04
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: false
+      status:
+        disable: true
+      stop:
+        disable: false
+      update:
+        disable: true
