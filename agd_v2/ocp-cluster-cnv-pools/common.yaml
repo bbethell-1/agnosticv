@@ -13,16 +13,15 @@
 #include /includes/catalog-icon-openshift.yaml
 #include /includes/terms-of-service.yaml
 
-
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/ocp4-fips-enable.yaml
 #include /includes/parameters/salesforce-id.yaml
-
-#include /includes/secrets/dynamic-aws-dns.yaml
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 #include /includes/secrets/demosat-rhel-9-10-latest.yaml
-#include /includes/secrets/letsencrypt_with_zerossl_fallback.yaml
+
+#include /includes/secrets/dynamic-dns.yaml
+#include /includes/secrets/acme-bifrost.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -133,19 +132,6 @@ ocp4_workload_external_odf_operator_use_catalog_snapshot: false
 # Workload: ocp4_workload_cert_manager
 # -------------------------------------------------------------------
 ocp4_workload_cert_manager_channel: stable-v1
-ocp4_workload_cert_manager_cloud_provider: aws
-
-# Values from /includes/secrets/dynamic-aws-dns.yaml
-# cluster_dns_zone: dynamic.redhatworkshops.io
-# route53_aws_zone_id:
-# route53_aws_access_key_id:
-# route53_aws_secret_access_key:
-ocp4_workload_cert_manager_aws_region: us-east-2
-ocp4_workload_cert_manager_aws_access_key_id: "{{ route53_aws_access_key_id }}"
-ocp4_workload_cert_manager_aws_secret_access_key: "{{ route53_aws_secret_access_key }}"
-ocp4_workload_cert_manager_aws_hostedzoneid: "{{ route53_aws_zone_id }}"
-
-ocp4_workload_cert_manager_use_catalog_snapshot: false
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -215,6 +201,17 @@ __meta__:
       variable: host_ocp4_installer_version
     workshopUiDisabled: true
   sandboxes:
+  - kind: DNSSandbox
+    annotations:
+      prefix: cluster
+    cloud_selector:
+      provider: ddns
+      domain: "dyn.redhatworkshops.io"
+    var: dns_sandbox
+  - kind: SSLSandbox
+    cloud_selector:
+      purpose: production
+    var: ssl_sandbox
   - kind: OcpSandbox
     namespace_suffix: ocp4-cluster
     cloud_selector:
