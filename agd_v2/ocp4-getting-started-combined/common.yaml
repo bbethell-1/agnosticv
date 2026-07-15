@@ -26,9 +26,11 @@
 # JIRA: GPTEINFRA-17014
 # ===================================================================
 
+# -------------------------------------------------------------------
 # This item is restricted to devs only.
 # It should be ordered by regular users using the Virtual CI
 # in the `published` directory.
+# -------------------------------------------------------------------
 #include /includes/access-restriction-devs-only.yaml
 
 #include /includes/agd-v2-mapping.yaml
@@ -78,16 +80,19 @@ ocp4_workload_tenant_namespace_openshift_api_url: "{{ openshift_api_url }}"
 ocp4_workload_tenant_namespace_openshift_api_token: "{{ openshift_api_key }}"
 
 # ===================================================================
-# Cluster Sizing (from ocp4-getting-started-cluster/common.yaml)
+# Cluster Sizing
+# worker_instance_count scales with num_users: 1 worker per 8 users
+# (lightweight tenants — datasphere app, gitea, gitops per user).
+# Minimum 2 workers for cluster stability.
 # ===================================================================
 openshift_cnv_scale_cluster: true
-worker_instance_count: 2
+worker_instance_count: "{{ [2, (num_users / 8) | round(0, 'ceil') | int] | max }}"
 ai_workers_cores: 8
 ai_workers_memory: 16Gi
 
 # ===================================================================
 # Collections (union of cluster + tenant CIs, deduplicated)
-# showroom pinned to v1.6.9 (matches all three module tenant CIs)
+# showroom pinned to v1.6.11
 # assisted_installer pinned to v0.0.9 (from cluster CI)
 # ===================================================================
 requirements_content:
@@ -106,7 +111,7 @@ requirements_content:
 
     - name: https://github.com/agnosticd/showroom.git
       type: git
-      version: v1.6.9
+      version: v1.6.11
 
 # ===================================================================
 # Cluster-level workloads (run once)
@@ -126,13 +131,6 @@ workloads:
 
 # ===================================================================
 # Phase 0 — cluster-level gitops_bootstrap, runs ONCE
-#
-# WHY tenant_cluster_workloads instead of workloads:
-#   Top-level AgnosticV vars become AAP extra_vars (highest Ansible
-#   precedence). If gitops_bootstrap vars are extra_vars, the per-user
-#   tenant overrides in tenant_workload_vars cannot override them.
-#   Phase 0 runs inside the bridge where set_fact CAN override role
-#   defaults per-invocation.
 # ===================================================================
 tenant_cluster_workloads:
   - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
@@ -179,16 +177,6 @@ tenant_cluster_workloads_vars:
 
 # ===================================================================
 # Tenant workloads (run per user by bridge role)
-#
-# Order is critical:
-#   1. keycloak user — creates user in Keycloak realm
-#   2. namespace — creates OCP namespaces, quotas, limit ranges
-#   3. gitea user — creates student Gitea account
-#   4. gitops_bootstrap — deploys per-tenant ArgoCD application
-#      (tenant path + module-specific helm_values via tenant_workload_vars)
-#   5. showroom_user_data_seed — seeds user/password into ConfigMap
-#      BEFORE showroom creates the Antora content configmap
-#   6. ocp4_workload_showroom — LAST (reads seed ConfigMap)
 # ===================================================================
 tenant_workloads:
   - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
@@ -198,28 +186,14 @@ tenant_workloads:
   - agnosticd.showroom.ocp4_workload_showroom_user_data_seed
   - agnosticd.showroom.ocp4_workload_showroom
 
-# No external resources to clean per user beyond what the bridge destroys.
 tenant_remove_workloads: []
 
-# Bridge handles destroy loop. Component tears down the cluster.
 remove_workloads:
   - agnosticd.core_workloads.ocp4_workload_multi_tenant_loop
 
 # ===================================================================
 # Module-specific lookup maps
-#
-# Used in tenant_workload_vars via Jinja2 dict lookup on `module`.
-# Defining full dicts here keeps tenant_workload_vars clean and avoids
-# inline Jinja2 conditionals that are hard to read and test.
-#
-# _module_gitops_helm_values_map: per-module gitops_bootstrap helm_values
-# _module_namespace_suffixes_map: per-module ocp4_workload_tenant_namespace_suffixes
 # ===================================================================
-
-# gitops_bootstrap helm_values differ by module:
-#   Module 1: datasphere only, studentArgoCD disabled
-#   Module 2: datasphere + resilience features (probes, HPA, resources)
-#   Module 3: datasphere + studentArgoCD enabled (student deploys via GitOps)
 _module_gitops_helm_values_map:
   "1":
     tenant:
@@ -270,10 +244,6 @@ _module_gitops_helm_values_map:
         enabled: true
         namespace: "{{ ocp4_workload_tenant_keycloak_username }}-gitops"
 
-# Namespace suffixes differ by module:
-#   Module 1: datasphere, lab, lab-helm
-#   Module 2: datasphere, lab
-#   Module 3: datasphere, gitops (with ArgoCD managed-by label)
 _module_namespace_suffixes_map:
   "1":
     - suffix: datasphere
@@ -289,14 +259,6 @@ _module_namespace_suffixes_map:
         labels:
           argocd.argoproj.io/managed-by: "{{ ocp4_workload_tenant_keycloak_username }}-gitops"
 
-# ===================================================================
-# tenant_workload_vars — per-role variable overrides for tenant loop
-#
-# CRITICAL: gitops_bootstrap appears at BOTH cluster (Phase 0) and
-# tenant level. These overrides replace cluster-level vars ONLY during
-# the tenant loop. Without this block, bootstrap-infra would be
-# re-applied with tenant paths, corrupting the cluster bootstrap.
-# ===================================================================
 tenant_workload_vars:
   agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace:
     ocp4_workload_tenant_namespace_suffixes: "{{ _module_namespace_suffixes_map[module] }}"
@@ -313,28 +275,19 @@ tenant_workload_vars:
     _showroom_user: "{{ ocp4_workload_tenant_keycloak_username }}"
 
 # ===================================================================
-# Cluster workload variables (from ocp4-getting-started-cluster)
+# Cluster workload variables
 # ===================================================================
 ocp4_workload_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
 ocp4_workload_catalogsource_tag: v4.21_2026_02_23
 
-# -------------------------------------------------------------------
-# ocp4_workload_authentication
-# -------------------------------------------------------------------
 ocp4_workload_authentication_provider: keycloak
 ocp4_workload_authentication_keycloak_channel: stable-v26.4
 
-# -------------------------------------------------------------------
-# ocp4_workload_pipelines
-# -------------------------------------------------------------------
 ocp4_workload_pipelines_channel: pipelines-1.21
 ocp4_workload_pipelines_use_catalog_snapshot: false
 ocp4_workload_pipelines_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp4_workload_pipelines_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
-# -------------------------------------------------------------------
-# ocp4_workload_gitea_operator
-# -------------------------------------------------------------------
 ocp4_workload_gitea_operator_project: gitea
 ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
 ocp4_workload_gitea_operator_catalog_image_tag: v2.3.2
@@ -357,9 +310,6 @@ ocp4_workload_gitea_operator_admin_password: ""  # auto-generated; readable from
 
 ocp4_workload_gitea_operator_create_users: false
 
-# -------------------------------------------------------------------
-# ocp4_workload_openshift_gitops
-# -------------------------------------------------------------------
 ocp4_workload_openshift_gitops_channel: latest
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_update_route_tls: true
@@ -375,22 +325,8 @@ ocp4_workload_openshift_gitops_rbac_scopes: "[name,groups]"
 common_password: >-
   {{ lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits']) }}
 
-# -------------------------------------------------------------------
-# ocp4_workload_tenant_keycloak_user
-# DO NOT define ocp4_workload_tenant_keycloak_username here.
-# Top-level vars become Babylon extra_vars (highest Ansible precedence).
-# The bridge sets username per user (user1, user2...) via set_fact.
-# Defining it here locks ALL users to the same GUID-based username
-# → ArgoCD app name collision on user 2+.
-# -------------------------------------------------------------------
 ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
 
-# -------------------------------------------------------------------
-# ocp4_workload_tenant_namespace
-# Suffixes are module-specific — set via tenant_workload_vars above
-# using _module_namespace_suffixes_map[module] dict lookup.
-# These defaults are NEVER used (tenant_workload_vars overrides them).
-# -------------------------------------------------------------------
 ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
 ocp4_workload_tenant_namespace_use_cluster_quota: true
 
@@ -410,9 +346,6 @@ ocp4_workload_tenant_namespace_default_limit_range:
     cpu: 100m
     memory: 128Mi
 
-# -------------------------------------------------------------------
-# ocp4_workload_tenant_gitea_user
-# -------------------------------------------------------------------
 ocp4_workload_tenant_gitea_user_namespace: gitea
 ocp4_workload_tenant_gitea_user_name: gitea
 ocp4_workload_tenant_gitea_user_username: "{{ ocp4_workload_tenant_keycloak_username }}"
@@ -421,39 +354,12 @@ ocp4_workload_tenant_gitea_user_repositories: []
 ocp4_workload_tenant_gitea_user_openshift_api_url: "{{ openshift_api_url }}"
 ocp4_workload_tenant_gitea_user_openshift_api_token: "{{ openshift_api_key }}"
 
-# ===================================================================
-# PICKLIST-driven module selection
-#
-# `module` is set by the Babylon order form PICKLIST parameter.
-# extra_vars always win so the default ("1") is overridden at order time.
-# Valid values: "1", "2", "3" (strings, NOT integers — YAML will
-# interpret bare 1/2/3 as integers which breaks the dict key lookup).
-# ===================================================================
 module: "1"
 
-# ===================================================================
-# Showroom variables
-#
-# All three modules use the same git repo (zt-ocp4-getting-started).
-# Content selection is driven by agnosticd_passthrough_user_data.module
-# which is passed to Antora conditional attributes.
-#
-# Module 3 gets an additional ArgoCD tab in the UI config.
-# ===================================================================
-
-# -------------------------------------------------------------------
-# ocp4_workload_showroom_user_data_seed
-# Seeds user/password (and module) into a ConfigMap BEFORE showroom
-# runs. Required so showroom renders {user} and {password} correctly.
-# -------------------------------------------------------------------
 ocp4_workload_showroom_user_data_seed:
   user: "{{ ocp4_workload_tenant_keycloak_username }}"
   password: "{{ common_password }}"
   module: "{{ module }}"
-
-# -------------------------------------------------------------------
-# ocp4_workload_showroom
-# -------------------------------------------------------------------
 
 agnosticd_passthrough_user_data:
   module: "{{ module }}"
@@ -465,8 +371,6 @@ ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/zt-ocp4-gettin
 ocp4_workload_showroom_terminal_type: showroom
 ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-11
 
-# Module 3 adds an ArgoCD tab; modules 1 and 2 do not have it.
-# This var is evaluated at Ansible runtime after the PICKLIST resolves.
 _module_showroom_ui_config_map:
   "1": |
     type: showroom
@@ -518,9 +422,6 @@ _module_showroom_ui_config_map:
 
 ocp4_workload_showroom_content_ui_config: "{{ _module_showroom_ui_config_map[module] }}"
 
-# -------------------------------------------------------------------
-# Per-user portal data (registered by bridge after tenant loop)
-# -------------------------------------------------------------------
 tenant_user_info_data:
   lab_ui_url: >-
     https://showroom-{{ ocp4_workload_tenant_keycloak_username }}-showroom.{{ openshift_cluster_ingress_domain }}
@@ -537,11 +438,11 @@ __meta__:
   asset_uuid: c7f3a1b2-4d8e-4f9a-b5c6-2e1d0a3f7b8c
   owners:
     maintainer:
-      - name: Shachar Borenstein
-        email: sborenst@redhat.com
+      - name: Juliano Mohr
+        email: juliano@redhat.com
 
   deployer:
-    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_url: https://github.com/rhpds/agnosticd-v2
     scm_ref: main
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:chained-2026-05-04
@@ -560,13 +461,9 @@ __meta__:
     workshopLabUiRedirect: true
     workshop_user_mode: multi
     keywords:
-      - openshift
+      - summit-2026
       - getting-started
       - combined
-      - module1
-      - module2
-      - module3
-      - WeAreDevelopers
     labels:
       Product: Red_Hat_OpenShift_Container_Platform
       Provider: RHDP
@@ -584,6 +481,10 @@ __meta__:
             - "1"
             - "2"
             - "3"
+          enumNames:
+            - "3 Ways to Deploy the App"
+            - "Apps That Never Go Down"
+            - "Git Is Your Source of Truth"
       - name: num_users
         description: "Number of tenant users to provision"
         formLabel: "Number of Users"
@@ -591,7 +492,7 @@ __meta__:
           type: integer
           default: 1
           minimum: 1
-          maximum: 10
+          maximum: 15
 
   components:
     - name: openshift

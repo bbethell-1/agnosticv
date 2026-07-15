@@ -34,8 +34,8 @@
 # This item is restricted to devs only.
 # It should be ordered by regular users using the Virtual CI
 # in the `published` directory.
-#include /includes/access-restriction-devs-only.yaml
 # -------------------------------------------------------------------
+#include /includes/access-restriction-devs-only.yaml
 
 #include /includes/agd-v2-mapping.yaml
 #include /includes/sandbox-api.yaml
@@ -59,7 +59,6 @@ clusters:
       api_token: "{{ openshift_api_key }}"
 
 # Default — overridden by dev.yaml (1 for fast dev testing).
-# Portal dropdown caps at maximum: 10 (cluster max_placements).
 num_users: 1
 
 # Seconds to wait after cluster workloads complete before starting
@@ -68,39 +67,30 @@ tenant_pre_loop_delay: 120
 
 # -------------------------------------------------------------------
 # Token/URL mapping for ALL tenant roles
-#
-# In the combined CI the cluster's admin token (from component
-# propagate_provision_data) is used by every tenant role.
-# Sandbox defaults (sandbox_openshift_api_url / SA token) are NOT
-# appropriate here — the cluster comes from the agd-v2 component.
 # -------------------------------------------------------------------
 cluster_admin_agnosticd_sa_token: "{{ openshift_api_key }}"
 
-# ocp4_workload_tenant_keycloak_user
 ocp4_workload_tenant_keycloak_user_openshift_api_url: "{{ openshift_api_url }}"
 ocp4_workload_tenant_keycloak_user_openshift_api_token: "{{ openshift_api_key }}"
 ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
 
-# ocp4_workload_tenant_namespace
 ocp4_workload_tenant_namespace_openshift_api_url: "{{ openshift_api_url }}"
 ocp4_workload_tenant_namespace_openshift_api_token: "{{ openshift_api_key }}"
 
 # ===================================================================
-# Cluster scaling (copied from ai-lightning-labs-cluster/common.yaml)
-# dev.yaml uses defaults; event.yaml bumps workers to 6.
+# Cluster scaling
+# worker_instance_count scales with num_users: 1 worker per 5 users
+# (AI workloads are heavier — RHOAI, MaaS tokenizer, openclaw per tenant).
+# Minimum 3 workers for cluster stability and shared AI infrastructure.
 # ===================================================================
 openshift_cnv_scale_cluster: true
-worker_instance_count: 3
+worker_instance_count: "{{ [3, (num_users / 5) | round(0, 'ceil') | int] | max }}"
 ai_workers_cores: 8
 ai_workers_memory: 32Gi
 ai_workers_root_disk_size: 300Gi
 
 # ===================================================================
-# Collections (union of cluster + tenant CIs, deduplicated)
-# showroom pinned to v1.6.11 (cluster CI level, latest stable).
-# Note: tenant CIs use v1.6.6 — combined CI upgrades to v1.6.11.
-# Confirm with Mike Hepburn that ocp4_workload_showroom_user_data_seed
-# API is unchanged between v1.6.6 and v1.6.11 before merging.
+# Collections
 # ===================================================================
 requirements_content:
   collections:
@@ -122,9 +112,6 @@ requirements_content:
 
 # ===================================================================
 # Cluster-level workloads (run once)
-#
-# Bridge role (ocp4_workload_multi_tenant_loop) is LAST.
-# Everything above it runs once to set up shared cluster infra.
 # ===================================================================
 workloads:
   - agnosticd.core_workloads.ocp4_workload_authentication
@@ -134,15 +121,6 @@ workloads:
 
 # ===================================================================
 # Tenant workloads (run per user by bridge role)
-#
-# Order is critical:
-#   1. keycloak user — creates user in Keycloak realm
-#   2. namespace — creates OCP namespaces, quotas, limit ranges
-#   3. gitops_bootstrap — deploys per-tenant ArgoCD application
-#      (tenant path and app name via tenant_workload_vars below)
-#   4. showroom_user_data_seed — seeds user/password into ConfigMap
-#      BEFORE showroom creates the Antora content configmap
-#   5. ocp4_workload_showroom — LAST (reads seed ConfigMap)
 # ===================================================================
 tenant_workloads:
   - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
@@ -151,22 +129,11 @@ tenant_workloads:
   - agnosticd.showroom.ocp4_workload_showroom_user_data_seed
   - agnosticd.showroom.ocp4_workload_showroom
 
-# No external resources to clean per user (no LiteMaaS keys).
 tenant_remove_workloads: []
 
-# Bridge handles destroy loop. Component tears down the cluster.
 remove_workloads:
   - agnosticd.core_workloads.ocp4_workload_multi_tenant_loop
 
-# ===================================================================
-# tenant_workload_vars — per-role variable overrides for tenant loop
-#
-# CRITICAL: gitops_bootstrap appears at BOTH cluster and tenant level.
-# Top-level vars set the cluster defaults (cluster/infra/bootstrap).
-# These overrides replace those values ONLY during the tenant loop.
-# Without this block, the cluster-level bootstrap would run with
-# tenant paths and vice versa (YAML last-key-wins semantics).
-# ===================================================================
 tenant_workload_vars:
   agnosticd.core_workloads.ocp4_workload_gitops_bootstrap:
     ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ ocp4_workload_tenant_keycloak_username }}"
@@ -184,15 +151,6 @@ tenant_workload_vars:
 
 # ===================================================================
 # Phase 0 — cluster-level workloads (run ONCE by bridge, before user loop)
-#
-# WHY tenant_cluster_workloads instead of workloads::
-#   Any var defined at the AgnosticV top level becomes an AAP extra_var
-#   (highest Ansible precedence). If gitops_bootstrap's application_name,
-#   repo_path, or helm_values are extra_vars they CANNOT be overridden
-#   by set_fact in tenant_workload_vars. Moving the role to Phase 0 and
-#   defining ALL its conflicting vars here (in tenant_cluster_workloads_vars)
-#   keeps them as dict entries, NOT extra_vars. set_fact CAN override role
-#   defaults, so the per-user overrides in tenant_workload_vars work correctly.
 # ===================================================================
 tenant_cluster_workloads:
   - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
@@ -215,7 +173,6 @@ tenant_cluster_workloads_vars:
 
 # ===================================================================
 # Cluster workload variables
-# (from ai-lightning-labs-cluster/common.yaml)
 # ===================================================================
 common_admin_password: >-
   {{ lookup('password', output_dir ~ '/common_admin_password', length=16, chars=['ascii_letters', 'digits']) }}
@@ -224,9 +181,6 @@ common_admin_username: admin
 ocp4_workload_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
 ocp4_workload_catalogsource_tag: v4.21_2026_02_23
 
-# -------------------------------------------------------------------
-# ocp4_workload_authentication
-# -------------------------------------------------------------------
 ocp4_workload_authentication_provider: keycloak
 ocp4_workload_authentication_keycloak_channel: stable-v26.4
 ocp4_workload_authentication_keycloak_use_catalog_source: true
@@ -239,9 +193,6 @@ ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
 ocp4_workload_authentication_num_users: 0
 ocp4_workload_authentication_enable_user_info_data: true
 
-# -------------------------------------------------------------------
-# ocp4_workload_openshift_gitops
-# -------------------------------------------------------------------
 ocp4_workload_openshift_gitops_channel: latest
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_update_route_tls: true
@@ -263,12 +214,6 @@ ocp4_workload_openshift_gitops_controller_requests_memory: 1Gi
 ocp4_workload_openshift_gitops_controller_limits_cpu: "2"
 ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
 
-# -------------------------------------------------------------------
-# ocp4_workload_gitops_bootstrap vars are defined in tenant_cluster_workloads_vars
-# and tenant_workload_vars — NOT at top-level to avoid becoming extra_vars.
-
-# Vault secrets required by gitops_bootstrap (MaaS tokenizer platform bootstrap).
-# Copied from ai-lightning-labs-cluster/common.yaml — same cluster, same tokens.
 maas_bearer: !vault |
   $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
   32653363636464376132663466346563306666383437306463393563373036393261643133306461
@@ -409,26 +354,14 @@ stt_token: !vault |
   32356631653763626530613439376634653266613966386539663832333166323966643837363239
   66613032656266626162
 
-
 # ===================================================================
 # Tenant workload variables
-# (from all three tenant CIs — identical except showroom repo)
 # ===================================================================
 common_password: >-
   {{ lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits']) }}
 
-# -------------------------------------------------------------------
-# ocp4_workload_tenant_keycloak_user
-# -------------------------------------------------------------------
-# DO NOT define ocp4_workload_tenant_keycloak_username here.
-# Top-level vars become Babylon extra_vars (highest Ansible precedence).
-# The bridge sets this per user (user1, user2...) via set_fact.
-# Defining it here would lock ALL users to user-{{ guid }}.
 ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
 
-# -------------------------------------------------------------------
-# ocp4_workload_tenant_namespace
-# -------------------------------------------------------------------
 ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
 ocp4_workload_tenant_namespace_use_cluster_quota: true
 
@@ -451,15 +384,6 @@ ocp4_workload_tenant_namespace_default_limit_range:
     cpu: 250m
     memory: 128Mi
 
-# ===================================================================
-# PICKLIST-driven Showroom selection
-#
-# showroom_lab is set by the Babylon order form PICKLIST parameter.
-# extra_vars always win, so the default (fft) is overridden at order time.
-# _showroom_repo_map resolves the repo URL via Jinja2 dict lookup.
-# If the dict key is invalid, Ansible raises KeyError at runtime.
-# Valid values: fft, wordswarm, voice-agents
-# ===================================================================
 showroom_lab: fft
 
 _showroom_repo_map:
@@ -467,19 +391,10 @@ _showroom_repo_map:
   wordswarm: https://github.com/rhpds/ai-lightning-wordswarm-showroom.git
   voice-agents: https://github.com/rhpds/ai-lightning-voice-agents-showroom.git
 
-# -------------------------------------------------------------------
-# ocp4_workload_showroom_user_data_seed
-# Seeds user/password into a ConfigMap BEFORE showroom runs.
-# Required so showroom renders {user} and {password} variables correctly.
-# -------------------------------------------------------------------
 ocp4_workload_showroom_user_data_seed:
   user: "{{ ocp4_workload_tenant_keycloak_username }}"
   password: "{{ common_password }}"
 
-# -------------------------------------------------------------------
-# ocp4_workload_showroom
-# -------------------------------------------------------------------
-# Required so showroom renders {user}/{password} vars from seed ConfigMap.
 ocp4_workload_showroom_passthrough_user_data: true
 ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
 ocp4_workload_showroom_content_git_repo: "{{ _showroom_repo_map[showroom_lab] }}"
@@ -496,9 +411,6 @@ ocp4_workload_showroom_content_ui_config: |
   - name: RedHat AI Console
     url: 'https://rh-ai.{{ openshift_cluster_ingress_domain }}'
 
-# -------------------------------------------------------------------
-# Per-user portal data (registered by bridge after tenant loop)
-# -------------------------------------------------------------------
 tenant_user_info_data:
   lab_ui_url: >-
     https://showroom-{{ ocp4_workload_tenant_keycloak_username }}-showroom.{{ openshift_cluster_ingress_domain }}
@@ -542,11 +454,9 @@ __meta__:
     keywords:
       - summit-2026
       - ai-lightning-labs
-      - combined
       - fft
       - wordswarm
       - voice-agents
-      - picklist
     labels:
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: AI_BU
@@ -566,14 +476,18 @@ __meta__:
             - fft
             - wordswarm
             - voice-agents
+          enumNames:
+            - "Factory Floor Tycoon: Agentic AI"
+            - "Wordswarm"
+            - "Pizza Voice Agent"
       - name: num_users
-        description: "Number of tenant users to provision (max 10 — cluster supports up to 10 simultaneous placements)"
+        description: "Number of tenant users to provision on the shared cluster"
         formLabel: "Number of Users"
         openAPIV3Schema:
           type: integer
           default: 1
           minimum: 1
-          maximum: 10
+          maximum: 15
 
   components:
     - name: openshift
