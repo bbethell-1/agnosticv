@@ -1,0 +1,127 @@
+---
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-future-technologies.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/access-restriction-admins-only.yaml
+#include /includes/secrets/troshka-seed-s4.yaml
+#include /includes/secrets/pull-through-registry.yaml
+
+cloud_provider: none
+config: namespace
+
+cluster_admin_agnosticd_sa_token: "{{ sandbox_openshift_api_key }}"
+openshift_api_key: "{{ sandbox_openshift_api_key }}"
+
+# ===================================================================
+# Additional collections to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+    - name: https://github.com/agnosticd/namespaced_workloads.git
+      type: git
+      version: replace-minio-with-s4
+
+workloads:
+  - agnosticd.namespaced_workloads.ocp4_workload_troshka_dedicated
+
+remove_workloads:
+  - agnosticd.namespaced_workloads.ocp4_workload_troshka_dedicated
+
+troshka_backend_image: "quay.io/redhat-gpte/troshka-backend:latest"
+troshka_frontend_image: "quay.io/redhat-gpte/troshka-frontend:latest"
+
+troshka_seed_images:
+  - name: "Prebuilt RHEL 10.2 Bastion"
+    type: image
+    format: qcow2
+    s3_object: "prebuilt-rhel-10.2-bastion.qcow2"
+    tags: ["ocp_default_image"]
+  - name: "RHEL 10.2 KVM Guest Image"
+    type: image
+    format: qcow2
+    s3_object: "rhel-10.2-x86_64-kvm.qcow2"
+    tags: []
+  - name: "RHEL 10.2 Binary DVD"
+    type: iso
+    format: iso
+    s3_object: "rhel-10.2-x86_64-dvd.iso"
+    tags: ["ocp_default_iso"]
+
+__meta__:
+  asset_uuid: b0951cfa-935b-4a7e-b248-43a21aa34942
+
+  owners:
+    maintainer:
+      - name: Patrick Rutledge
+        email: prutledg@redhat.com
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2025-12-17
+      pull: missing
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Troshka Dedicated Instance"
+    category: Open_Environments
+    keywords:
+      - troshka
+      - virtualization
+      - lab
+    multiuser: false
+    parameters:
+      - name: troshka_host_vcpus
+        description: Number of vCPUs for the Troshka agent host VM
+        formLabel: Host vCPUs
+        openAPIV3Schema:
+          type: integer
+          default: 16
+          minimum: 16
+          enum: [16, 32, 64]
+      - name: troshka_host_memory_gb
+        description: Memory (GB) for the Troshka agent host VM
+        formLabel: Host Memory (GB)
+        openAPIV3Schema:
+          type: integer
+          default: 64
+          minimum: 64
+          enum: [64, 128, 256]
+      - name: troshka_host_disk_gb
+        description: Data disk size (GB) for VM images and pattern cache
+        formLabel: Host Disk (GB)
+        openAPIV3Schema:
+          type: integer
+          default: 200
+          minimum: 200
+          enum: [200, 500]
+
+  lifespan:
+    default: 7d
+    maximum: 30d
+    relativeMaximum: 7d
+  runtime:
+    default: 7d
+    maximum: 30d
+
+  sandbox_api:
+    actions:
+      destroy: {}
+
+  sandboxes:
+    - kind: OcpSandbox
+      alias: cluster
+      namespace_suffix: troshka
+      cloud_selector:
+        cloud: cnv
+        virt: "yes"
+        keycloak: "yes"
+      quota:
+        limits.cpu: "96"
+        requests.cpu: "96"
+        limits.memory: "544Gi"
+        requests.memory: "544Gi"
+        requests.storage: "1175Gi"
