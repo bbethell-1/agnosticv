@@ -196,6 +196,37 @@ $(cat ${babylon_checks_output})
 EOF
 fi
 
+# ci-inspector validation (informational — never fails the pipeline)
+if command -v ci-inspector &>/dev/null; then
+    ci_inspector_output=$(mktemp)
+    for i in $(cat ${changed_ci_uniq}); do
+        ci_name=$(basename $(dirname "$i"))
+        stage=$(basename "$i" | sed 's/\.ya\?ml$//')
+        merged_yaml=$(agnosticv --git=false --merge "$i" 2>/dev/null | sed '/^#/d')
+        if [ -z "$merged_yaml" ]; then
+            continue
+        fi
+        echo "$merged_yaml" | ci-inspector validate-merged - \
+            --ci-name "$ci_name" \
+            --stage "$stage" \
+            --format table >> ${ci_inspector_output} 2>/dev/null
+        echo "" >> ${ci_inspector_output}
+    done
+
+    if [ -s "${ci_inspector_output}" ]; then
+        read -r -d '' data << EOF
+${data}
+
+:mag: Infrastructure validation:
+
+\`\`\`
+$(cat ${ci_inspector_output})
+\`\`\`
+EOF
+    fi
+    rm -f ${ci_inspector_output}
+fi
+
 if [ ! -z "${data}" ]; then
     comment "$(head -c 65535 <<< "${data}")"
 fi
