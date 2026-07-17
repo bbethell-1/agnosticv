@@ -1,6 +1,6 @@
 ---
 # -------------------------------------------------------------------
-# --- Catalog Item: OpenShift Container Platform 5 Cluster (AWS) - AgdV2
+# --- Catalog Item: OpenShift 5 Early Access Cluster (AWS) - AgdV2
 # -------------------------------------------------------------------
 
 # --------------------------------------------------------------------
@@ -11,8 +11,6 @@
 #include /includes/catalog-icon-openshift.yaml
 #include /includes/terms-of-service.yaml
 
-#include /includes/parameters/agnosticd_open_environment.yaml
-#include /includes/parameters/ocp4-fips-enable.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/aws-regions-3.yaml
@@ -20,6 +18,7 @@
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/demosat-rhel-9-10-latest.yaml
 #include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
+#include /includes/secrets/litemaas-master_api.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -37,6 +36,18 @@ requirements_content:
   - name: https://github.com/rhpds/core_workloads.git
     type: git
     version: main
+  # OCP5 Early Access automation (provides rhdp.workshop.ocp5_ea)
+  - name: https://github.com/rhpds/ocp5-ea-automation
+    type: git
+    version: main
+  # LiteLLM Virtual Keys Collection
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: main
+  # Showroom Collection
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: "v1.5.2"
 
 # -------------------------------------------------------------------
 # Bastion VM Settings
@@ -64,18 +75,27 @@ host_ocp4_client_url: https://mirror.openshift.com/pub/openshift-v4/amd64/client
 host_ocp4_installer_info_set_user_data_kubeadmin_password: true
 openshift_cluster_admin_service_account_enable: true
 
-# -------------------------------------------------------------------
-# Cluster sizing based on selected size (sno/multinode)
-# -------------------------------------------------------------------
-# SNO: 1 control plane node only
-# Multinode: 3 control plane (compact)
-control_plane_instance_count: "{{ 1 if cluster_size == 'sno' else 3 }}"
+# Resolve cluster admin token from user_data for workloads
+openshift_cluster_admin_token: "{{ lookup('agnosticd_user_data', 'openshift_cluster_admin_token') | default('') }}"
+openshift_api_key: "{{ openshift_cluster_admin_token }}"
 
-control_plane_instance_type: "{{ 'm6a.8xlarge' if cluster_size == 'sno' else 'm6a.4xlarge' }}"
-control_plane_storage_type: "{{ 'io1' if cluster_size == 'sno' else 'gp3' }}"
+# -------------------------------------------------------------------
+# Cluster sizing
+# -------------------------------------------------------------------
+control_plane_instance_count: 3
+control_plane_instance_type: m6a.2xlarge
+control_plane_storage_type: gp3
 
-worker_instance_count: 2
-worker_instance_type: m6a.2xlarge
+worker_instance_count: 3
+worker_instance_type: m6a.4xlarge
+
+# -------------------------------------------------------------------
+# Common Password (used by OCP5 EA workloads)
+# -------------------------------------------------------------------
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits')
+  }}
 
 # -------------------------------------------------------------------
 # Workloads
@@ -84,6 +104,13 @@ worker_instance_type: m6a.2xlarge
 workloads:
 - agnosticd.core_workloads.ocp4_workload_cert_manager
 - agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- rhdp.workshop.ocp5_ea
+- agnosticd.showroom.ocp4_workload_showroom
+
+remove_workloads:
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager
@@ -114,6 +141,38 @@ ocp4_workload_authentication_keycloak_channel: stable-v26.6
 ocp4_workload_authentication_keycloak_use_catalog_source: false
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_virtualization
+# -------------------------------------------------------------------
+ocp4_workload_openshift_virtualization_channel: stable
+ocp4_workload_openshift_virtualization_enabled_nested_kvm: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_models:
+- qwen3-235b
+ocp4_workload_litellm_virtual_keys_duration: "21d"
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# Workload: ocp5_ea
+# -------------------------------------------------------------------
+ocp5_ea_gitops_repo_tag: main
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ocp5-ea-showroom
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_antora_playbook: site.yml
+ocp4_workload_showroom_antora_image: quay.io/rhpds/antora:v1.3.0
+
+# Enable Wetty terminal and auto-SSH to bastion
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+# -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
@@ -129,7 +188,7 @@ __meta__:
     scm_url: https://github.com/rhpds/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2026-05-04
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
       pull: missing
 
   sandbox_api:
@@ -152,15 +211,4 @@ __meta__:
     multiuser: false
     reportingLabels:
       primaryBU: Hybrid_Platforms
-    parameters:
-    - name: cluster_size
-      description: >-
-        Cluster size configuration that determines the number of control plane and worker nodes.
-      formLabel: Cluster Size
-      openAPIV3Schema:
-        type: string
-        default: 'sno'
-        enum:
-        - 'sno'
-        - 'multinode'
     workshopUiDisabled: true
