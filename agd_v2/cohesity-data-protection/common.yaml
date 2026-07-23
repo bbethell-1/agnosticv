@@ -1,0 +1,200 @@
+---
+
+# -------------------------------------------------------------------
+# --- Cohesity Data Protection for OpenShift Virtualization
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/catalog-icon-virtualization.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# -------------------------------------------------------------------
+# Top Variables
+# -------------------------------------------------------------------
+cloud_provider: none
+config: openshift-workloads
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# -------------------------------------------------------------------
+# Tags / Revisions
+# -------------------------------------------------------------------
+tag: main
+tag_showroom: v1.6.12
+tag_automation: v1.0.0
+showroom_repo_revision: v1.0.0
+
+# -------------------------------------------------------------------
+# Additional Collections
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: "{{ tag_showroom }}"
+  - name: https://github.com/rhpds/cohesity-data-protection-automation.git
+    type: git
+    version: "{{ tag_automation }}"
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+ocp4_workload_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.21_2026_04_13
+
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+# - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+# - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- rhpds.cohesity_data_protection.bootstrap_cluster
+- agnosticd.showroom.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+common_admin_password: "{{ lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits') }}"
+common_admin_username: admin
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_keycloak_use_catalog_source: true
+ocp4_workload_authentication_keycloak_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_authentication_keycloak_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_authentication_keycloak_default_realm: sso
+
+ocp4_workload_authentication_admin_username: "{{ common_admin_username }}"
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_num_users: 0
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+# -------------------------------------------------------------------
+ocp4_workload_openshift_virtualization_channel: stable
+ocp4_workload_openshift_virtualization_use_catalog_snapshot: true
+ocp4_workload_openshift_virtualization_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_virtualization_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops_channel: gitops-1.20
+# ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+# ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+# ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+#
+# ocp4_workload_openshift_gitops_setup_cluster_admin: true
+# ocp4_workload_openshift_gitops_update_route_tls: true
+#
+# ocp4_workload_openshift_gitops_rbac_update: true
+# ocp4_workload_openshift_gitops_rbac_policy: |
+#   g, {{ common_admin_username }}, role:admin
+# ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/cohesity-data-protection-automation
+# ocp4_workload_gitops_bootstrap_repo_revision: "{{ gitops_repo_revision }}"
+# ocp4_workload_gitops_bootstrap_repo_path: bootstrap-infra
+# ocp4_workload_gitops_bootstrap_application_name: bootstrap-infra
+#
+# ocp4_workload_gitops_bootstrap_helm_values:
+#   repoRevision: "{{ gitops_repo_revision }}"
+
+# -------------------------------------------------------------------
+# rhpds.cohesity_data_protection.bootstrap_cluster
+# -------------------------------------------------------------------
+cohesity_deploy_image_url: "https://s3.us-east-1.amazonaws.com/rhdp-images/cohesity-kvm-robo-7.3.2_release-20260123_529553a9.qcow2"
+
+cohesity_kvm_access_key_id: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          63343664383831613331616239396635383734363836306331343561366138303536336331613034
+          6363323138316563316130613139313736613262353633630a313438396432353830666438383834
+          61616266343437356531363231663562666362616234316230653637646330653562663262356336
+          3533323362643637300a353931623735313766396135356464353737323064366533646162313731
+          38636330393064356636366235373132373739656239333637383133653165326535
+
+cohesity_kvm_secret_access_key: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          32393066623564373863396262396530323765633934666137383934393861323164376466613762
+          6130626632633234333737383831646666353932353331330a366466373862613862383931656431
+          65633434663530636465353830303134383461333564633463306463393532383134373037383033
+          3636353463343963320a636162326138393165336563386662653334373336363536306330303337
+          32316534306232386464306563363963616439363638656166323037376638336366316232356564
+          3930616336623432623863653234396330333563666563633866
+
+# -------------------------------------------------------------------
+# agnosticd.showroom.ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/cohesity-data-protection-showroom
+ocp4_workload_showroom_content_git_repo_ref: "{{ showroom_repo_revision }}"
+
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_deployer_chart_version: 2.1.4
+ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-09
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 0c63771e-1ad9-42a4-ace6-b2fc8fbeef55
+  owners:
+    maintainer:
+    - name: Juliano Mohr
+      email: juliano@redhat.com
+    instructions:
+    - name: George James
+      email: gjames@redhat.com
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-05-04
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Cohesity Data Protection for OpenShift Virtualization"
+    category: Labs
+    multiuser: false
+    keywords:
+    - cohesity
+    - virtualization
+    - backup
+    - data-protection
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_OpenShift
+    reportingLabels:
+      primaryBU: Red_Hat_OpenShift
+
+  # -----------------------------------------------------------------
+  # Components / Cluster Pool
+  # -----------------------------------------------------------------
+  components:
+  - name: openshift
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools
+    parameter_values:
+      cluster_size: sno
+      host_ocp4_installer_version: "4.21"
+    propagate_provision_data:
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
