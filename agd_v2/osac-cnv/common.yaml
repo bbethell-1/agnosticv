@@ -124,7 +124,7 @@ bastion_student_user_name: lab-user
 cluster_name: "cluster-{{ guid }}"
 
 host_ocp4_installer_root_url: https://mirror.openshift.com/pub/openshift-v4/clients
-host_ocp4_installer_version: "4.20"
+host_ocp4_installer_version: "4.22"
 host_ocp4_deploy_installation_method: openshift_assisted
 
 openshift_cluster_admin_service_account_enable: true
@@ -133,6 +133,67 @@ openshift_cluster_ingress_controller_allow_wildcards: true
 ai_service_network_cidr: "172.231.0.0/16"
 ai_cluster_network_cidr: "10.232.0.0/14"
 ai_network_mtu: 8900
+
+networks:
+- name: cluster
+
+ai_install_use_network: "cluster{{ guid }}"
+bastion_extra_networks:
+- "cluster"
+
+bastion_userdata: |
+  #cloud-config
+  write_files:
+    - path: /etc/sysctl.d/99-ip-forwarding.conf
+      content: |
+        net.ipv4.ip_forward=1
+
+    - path: /etc/nftables/ruleset.nft
+      content: |
+        table inet nat {
+          chain postrouting {
+            type nat hook postrouting priority 100; policy accept;
+            oifname "eth0" masquerade
+          }
+        }
+
+        table inet filter {
+          chain forward {
+            type filter hook forward priority 0; policy drop;
+            iifname "eth1" oifname "eth0" accept
+            iifname "eth0" oifname "eth1" ct state related,established accept
+          }
+        }
+
+    - path: /etc/systemd/system/nftables-restore.service
+      content: |
+        [Unit]
+        Description=Restore nftables rules
+        After=network.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/bin/bash -c 'while [ ! -x /usr/sbin/nft ]; do sleep 2; done; /usr/sbin/nft -f /etc/nftables/ruleset.nft'
+        RemainAfterExit=yes
+
+        [Install]
+        WantedBy=multi-user.target
+
+  runcmd:
+    - sysctl --system
+    - systemctl daemon-reload
+    - systemctl enable --now nftables-restore.service
+
+bastion_networkdata: |
+  network:
+    version: 2
+    ethernets:
+      eth0:
+        dhcp4: yes
+      eth1:
+        dhcp4: no
+        addresses:
+          - 10.10.10.1/24
 
 # -------------------------------------------------------------------
 # Common Password
@@ -151,11 +212,11 @@ common_admin_password: >-
 workloads:
 - agnosticd.core_workloads.ocp4_workload_external_odf
 - agnosticd.core_workloads.ocp4_workload_cert_manager
-- agnosticd.core_workloads.ocp4_workload_authentication
-- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
-- agnosticd.core_workloads.ocp4_workload_metallb
-- agnosticd.core_workloads.ocp4_workload_openshift_gitops
-- agnosticd.core_workloads.ocp4_workload_rhacm
+# - agnosticd.core_workloads.ocp4_workload_authentication
+# - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+# - agnosticd.core_workloads.ocp4_workload_metallb
+# - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+# - agnosticd.core_workloads.ocp4_workload_rhacm
 
 # ===================================================================
 # Variables for specific workloads
@@ -169,7 +230,7 @@ ocp4_workload_external_odf_channel: >-
     {
       '4.20': 'stable-4.20',
       '4.21': 'stable-4.21',
-      '4.22': 'stable-4.21'
+      '4.22': 'stable-4.22'
     }.get(host_ocp4_installer_version, 'stable-' + host_ocp4_installer_version)
   }}
 ocp4_workload_external_odf_backingstore_custom_resources: true
@@ -190,69 +251,69 @@ ocp4_workload_cert_manager_use_catalog_snapshot: false
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
 # -------------------------------------------------------------------
-ocp4_workload_authentication_admin_username: admin
-ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
-ocp4_workload_authentication_num_users: 0
+# ocp4_workload_authentication_admin_username: admin
+# ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+# ocp4_workload_authentication_num_users: 0
 
-ocp4_workload_authentication_remove_kubeadmin: true
-ocp4_workload_authentication_enable_user_info_data: true
+# ocp4_workload_authentication_remove_kubeadmin: true
+# ocp4_workload_authentication_enable_user_info_data: true
 
-ocp4_workload_authentication_provider: keycloak
-ocp4_workload_authentication_keycloak_default_realm: keycloak
-ocp4_workload_authentication_keycloak_channel: stable-v26.6
-ocp4_workload_authentication_keycloak_use_catalog_source: false
+# ocp4_workload_authentication_provider: keycloak
+# ocp4_workload_authentication_keycloak_default_realm: keycloak
+# ocp4_workload_authentication_keycloak_channel: stable-v26.6
+# ocp4_workload_authentication_keycloak_use_catalog_source: false
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_virtualization
 # -------------------------------------------------------------------
-ocp4_workload_openshift_virtualization_channel: stable
-ocp4_workload_openshift_virtualization_use_catalog_snapshot: false
-ocp4_workload_openshift_virtualization_install_virtctl: true
+# ocp4_workload_openshift_virtualization_channel: stable
+# ocp4_workload_openshift_virtualization_use_catalog_snapshot: false
+# ocp4_workload_openshift_virtualization_install_virtctl: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_metallb
 # -------------------------------------------------------------------
-ocp4_workload_metallb_channel: stable
-ocp4_workload_metallb_enable_ipaddresspool: true
-ocp4_workload_metallb_ipaddresspool_name: ip-addresspool
-ocp4_workload_metallb_ipaddresspool_addresses:
-- "10.10.10.200-10.10.10.210"
+# ocp4_workload_metallb_channel: stable
+# ocp4_workload_metallb_enable_ipaddresspool: true
+# ocp4_workload_metallb_ipaddresspool_name: ip-addresspool
+# ocp4_workload_metallb_ipaddresspool_addresses:
+# - "10.10.10.200-10.10.10.210"
 
-# Configure L2Advertisement
-ocp4_workload_metallb_enable_l2advertisement: true
-ocp4_workload_metallb_l2advertisement_ipaddresspool:
-- ip-addresspool
-ocp4_workload_metallb_l2advertisement_interface:
-- br-ex
+# # Configure L2Advertisement
+# ocp4_workload_metallb_enable_l2advertisement: true
+# ocp4_workload_metallb_l2advertisement_ipaddresspool:
+# - ip-addresspool
+# ocp4_workload_metallb_l2advertisement_interface:
+# - br-ex
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.20
+# ocp4_workload_openshift_gitops_channel: gitops-1.21
 
-ocp4_workload_openshift_gitops_setup_cluster_admin: true
-ocp4_workload_openshift_gitops_update_route_tls: true
+# ocp4_workload_openshift_gitops_setup_cluster_admin: true
+# ocp4_workload_openshift_gitops_update_route_tls: true
 
-ocp4_workload_openshift_gitops_rbac_update: true
-ocp4_workload_openshift_gitops_rbac_policy: |
-  g, {{ ocp4_workload_authentication_admin_username }}, role:admin
-ocp4_workload_openshift_gitops_rbac_scopes: '[email,groups]'
+# ocp4_workload_openshift_gitops_rbac_update: true
+# ocp4_workload_openshift_gitops_rbac_policy: |
+#   g, {{ ocp4_workload_authentication_admin_username }}, role:admin
+# ocp4_workload_openshift_gitops_rbac_scopes: '[email,groups]'
 
-ocp4_workload_openshift_gitops_controller_update: true
-ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
-ocp4_workload_openshift_gitops_controller_requests_memory: 8Gi
-ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
-ocp4_workload_openshift_gitops_controller_limits_memory: 8Gi
+# ocp4_workload_openshift_gitops_controller_update: true
+# ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+# ocp4_workload_openshift_gitops_controller_requests_memory: 8Gi
+# ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+# ocp4_workload_openshift_gitops_controller_limits_memory: 8Gi
 
-ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+# ocp4_workload_openshift_gitops_use_catalog_snapshot: false
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm
 # -------------------------------------------------------------------
-ocp4_workload_rhacm_acm_channel: release-2.17
+# ocp4_workload_rhacm_acm_channel: release-2.17
 # Required for Catalog Items that will deploy hosted clusters to the local-cluster
 # Enable Wildcards to allow access to HCP Hosted Clusters console, etc.
-ocp4_workload_rhacm_enable_wildcards: true
+# ocp4_workload_rhacm_enable_wildcards: true
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -294,7 +355,7 @@ __meta__:
     scm_url: https://github.com/rhpds/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2026-05-04
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
       pull: missing
 
   sandbox_api:
