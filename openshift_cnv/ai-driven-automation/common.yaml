@@ -15,23 +15,25 @@
 #include /includes/secrets/ansible-tower-advanced-24.yaml
 #include /includes/secrets/registry-redhat.yaml
 #include /includes/secrets/litemaas-master_api.yaml
+#include /includes/agd-v2-mapping.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: Hands-On AIOps: Building Self-Healing, Observability-Driven Automation with Ansible
+# Testing AAP 2.6 upgrade
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # Platform
 # -------------------------------------------------------------------
-platform: RHPDS
-env_type: multi-cloud-base-infra
 cloud_provider: openshift_cnv
-software_to_deploy: none
+cloud_provider_version: main
+config: cloud-vms-base
+openshift_cnv_route_remove_x_frame_options_header: true
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-# bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}.{{ guid }}{{ subdomain_base_suffix }}"
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ subdomain }}"
 subdomain_base_short: "{{ guid }}"
 subdomain_base_suffix: ".{{ sandbox_openshift_apps_domain }}"
 subdomain_base: "{{ subdomain_base_short }}{{ subdomain_base_suffix }}"
@@ -50,6 +52,18 @@ tag: main
 
 requirements_content:
   collections:
+    - name: https://github.com/agnosticd/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/agnosticd/cloud_vm_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/agnosticd/showroom.git
+      type: git
+      version: v1.6.10
+    - name: https://github.com/rhpds/rhpds.manage_host.git
+      type: git
+      version: "{{ tag }}"
     - name: l3d.git
       version: 1.1.10
     - name: https://github.com/rhpds/lb2961.ai_driven_aap.git
@@ -77,7 +91,7 @@ requirements_content:
 bastion_instance_image: rhel-9.6
 bastion_rootfs_size: 50Gi
 
-controller_instance_image: base-zero-aap-2.5-container-ce
+controller_instance_image: aap-2.6-2-ceh-20251103
 controller_rootfs_size: 50Gi
 
 node_instance_image: rhel-9.6
@@ -208,12 +222,22 @@ instances:
     public_dns: false
     floating_ip: false
     image: "{{ controller_instance_image }}"
-    memory: 8G
-    cores: 4
+    memory: 32G
+    cores: 8
     image_size: "{{ controller_rootfs_size }}"
     tags:
       - key: "AnsibleGroup"
         value: "isolated"
+    userdata: |-
+      #cloud-config
+      user: rhel
+      password: ansible123!
+      chpasswd: { expire: False }
+      runcmd:
+        - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+        - systemctl reload sshd
+        - firewall-cmd --permanent --add-port=5000/tcp
+        - firewall-cmd --reload
     services:
       - name: controller
         ports:
@@ -244,38 +268,38 @@ instances:
         tls_termination: reencrypt
         tls_destinationCACertificate: |
           -----BEGIN CERTIFICATE-----
-          MIIF1jCCA76gAwIBAgIUBQZlbUZlOmMKhspO9U4/nTJAXAEwDQYJKoZIhvcNAQEL
+          MIIF1jCCA76gAwIBAgIUASi34Lss1upPyAS1YsA8eZTJOFAwDQYJKoZIhvcNAQEL
           BQAwgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQIDA5Ob3J0aCBDYXJvbGluYTEQMA4G
           A1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVkIEhhdDEQMA4GA1UECwwHQW5zaWJs
-          ZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0aW9uIFBsYXRmb3JtMB4XDTI1MDQy
-          MzA4MjEyOVoXDTM1MDQyMTA4MjEyOVowgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQI
+          ZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0aW9uIFBsYXRmb3JtMB4XDTI1MTEw
+          MzE5NDkyNVoXDTM1MTEwMTE5NDkyNVowgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQI
           DA5Ob3J0aCBDYXJvbGluYTEQMA4GA1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVk
           IEhhdDEQMA4GA1UECwwHQW5zaWJsZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0
-          aW9uIFBsYXRmb3JtMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2Ytu
-          a9MM9qr0UBvlIJPXmeSjzQXmx+CJwQAhDoR8MgOkjvWjjEdsX4VHBfQTO58d5sPr
-          oNg95GRe9y9Gjt6Lh7szLk70Q766Ncq8OIBYieiVKctIV+ZZmX7+bBcyzbII/0C9
-          Ili3lNd+XKfl5vmCWoYyuQncC1FZgVpHqZDP/+RCCMThdKEvugbQUmXF6pmEFF7Z
-          8PxYpxnVDX2ipOfWcjZDm6pTBd5+dzXHQVsWe25kY6QW0zEYzPJb3q0gP7oNz1uV
-          rXgYBnKQ8NdoSGtS7w9bvSw28Bf1ZFTvBKeCxWNeoJbiszqdsDd6PEwb4uE1Tr6D
-          qsLfPgvQzngQ+a7YrZ+M6GskQkfk+ZWMK8h6066p27Tzs6/9jMiCFuKwRuKWy9Qi
-          DdCSnwVIw4VB40ysoAHprxBHq4y/YJ2RDiC9EehTXsQf/uAy3M7KBBjVGlMfXxUE
-          NfjbeMdSQip04jKQGhJf8teXTymfcjlGaoCtymB+h4s3hc1T7DjfR0Q1Gd3AIL/p
-          lHOgU4TMBzeghqeDRbY4YQRSI1aF/hzTvAJzMaONs161buKOQ47O5UGGJYHHlJbf
-          aI0s3Mhld1YvIFk78A4tFI9GIwzj4IzVmCv4MZHg2BXKAU6m3Y6bYNabqP6Ho4Fs
-          DZOVkMvwTGKGfRxjdp0kx6HxNmjnVDMXGM9g8cECAwEAAaNCMEAwDgYDVR0PAQH/
-          BAQDAgIEMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFFugxH0taHxJ0/d71phl
-          a1Vt78fTMA0GCSqGSIb3DQEBCwUAA4ICAQApZCo7gI0xdk2TxjOcq+BdNsOvKjWL
-          ADceDM78oPy0xpgKd2u9INITzIY2f4KGcepXslnlMQQvny80N1LXu9Tkn4rhoU03
-          DXb9bXSr44T3fIf4JFU2iv5Hb6Az/DiQ3o9fZnhpW0AmzR1LmZUuFBJZefFBMMKl
-          s2W9C3f3nUPzi1qrGSXszXXbIDYsRMhax/MxWR9mxITuN3T6PhW8A1LyQ8dWRCLw
-          jFFcNuGjlR8w16XhRCw8uA1RzVwNWoUGvMiapboR25N0DLVCG8qf/mdEI4re8MhM
-          EYHugB/e7vRx6iV9ov7jJSB8BrBPWy/7ncebWIf8OvjM2UcUk0hciAQGD4Udbb3s
-          LGcpjZRJDrnpBdp+CJMCNNjoI0wLbmRDEVPGOSkJSmnj+8VTlQ5s+Dxvj2hh/rq7
-          APwxbIl1YBpTx65KwhacJbXSByk8bnwEQdRo240kC5ggC6twb/vvslRortZtyfqw
-          E/xGAKc9LOIFiqk1f0IU2ssEBvSFvYjypXsGnFITamNN2lMS2k5XQIA4avwWsoO4
-          rRLV87ua9S7g31PTYCMJBGw/B3PXhXjJG/eXgLyhEoUQP/fqeGiPEBzagyo71qL5
-          fH5qke1XR5LFGpndX1GuSVBhdZq94x0aGXWTQCDNIPQ3QtrQ64PBF1vRFdJ6o/FI
-          uEOWpQhGYHMC0A==
+          aW9uIFBsYXRmb3JtMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqNju
+          44XrKsBPTqv5J+OqRz3RsY1QIemHw3NIJF3d3UvimBHt42rHnwt4Lww3mYtYMJQ0
+          nzcRpr+EnFlC5YFl2Htrfq6NzUUqknTpaCeSKNCli4aKYe9JYSocWy/8ag+H7gMf
+          oUFJ7+PDh/S8HcP7ZA15RRXhyGdjzpUK9+ry/UcMcLE4ZOW2Z4YvFyjemh+c/yYY
+          KHsNjV56TRL5q4VqsxlKQuqNQos9lWoHjz363JxC9UrvTPqvl/UbHsQmTD8NKDnB
+          xxsaYTl41kVqscLSw5KR2c6CVVgSjIn5o0iAo01Sd4gONZ0ImhrzQ5Ea9Ya2kKG7
+          OCdg84V4hVmy/fnrcBC4k9RgNthWH9k4eMHwZf3B2P1xZds3dkV1k6yF3zSrQfJd
+          VJZ0AsaeGQGw26NQw0IG17P/jmho1jBhqSLaJyT9vVM/JMOjdojbD/dSFkccID1E
+          wUZeklYiLScD13rhckVk8MxrsFv99BO91tm07lwnj5jsyLoTvUOLuI4o7yw1AlsC
+          V/OjdpAohWbL0W6YxS/elBVgZhe7Gv2lnIF9L7TxTj/UQWaarouAIgyevqbP5dnt
+          mRccxZ38YGivRA+PgWwwSL9AQCFzIJW1Q45shUR2vkTsiWEEB+Lobkj5dcyLG0CH
+          Z7fnJnlKdNDcMbm2s6U1i+nHvv1dpfyveRvOiCsCAwEAAaNCMEAwDgYDVR0PAQH/
+          BAQDAgIEMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFHAFWQy/8in8Lg2TaG9g
+          NJyRxdMfMA0GCSqGSIb3DQEBCwUAA4ICAQBT5QI+nxhpEwPVp/BxZnxJWFBotHw3
+          rROgu1GBR3clZ+c+YFygAUs3LSpCLuDGnqJnh0822sIM+5FFP2ypqHdzeKo3TQEj
+          K4QiTBGeiSgqKqwHQdqPKywgFqAuxFC+clVrmFVR7dQJ8OiUZYNk5fwYLxnOftFQ
+          pxgpJyAX7vpZKnzujc5IGEqb3apjyxUuX3TFRq4uJp8ffWR9cgykeI8WFqAi33+K
+          RW8h9UQbS9mPjkJ3lbTtd06Jx2M0V2pwtQBMlp7aTboEqs+CB5moCIq1wTXvZBqB
+          dcqcpRGppYHL+QuUguBIlZcxn/8JpfoEsYVOJszp4YLEKzr68RoXvevObbrjJxfq
+          BnEPFKqt+pQpjEJktn8JDqp8G6gMc9n+Nkx88f3MR8yr2nhMl9YL6jSZLklH4JJV
+          2UjYg+KU/u/JttFmDydmys1xN9hiFM2wtRjp+r8gAQw95pyUhMraA01qLYWP5wAO
+          KsMpndKg6rUIycxNNr+eLGNafbUNsp9qayRSull5jKok43Goi8oF8edRlPY4qpZW
+          6WvY8+YjBLTCY1rQBb6/Rfr5PHSaRlGLi3Os6xG84gt69dLtMZBz4O232fc5sG5M
+          wMQ+MKwOpgDyuy79XKvsPanlAfP8WgJi79pJdHu3BGTLlDFil9CK8l2sncM1FdaE
+          57Ys1npOUx+oxw==
           -----END CERTIFICATE-----
 
   - name: "node1"
@@ -495,37 +519,34 @@ instances:
 # -------------------------------------------------------------------
 pre_software_workloads:
   all:
-    - set_env_authorized_key
-    - set-repositories
+    - host_satellite_repositories
   bastions:
-    - common
-    - bastion-lite
-    - control-user
-    - asset_injector
-    - lb2961.ai_driven_aap.controller_firewall
+    - host_common_packages
+    - bastion
+    - agnosticd.cloud_vm_workloads.control_user
+    - rhpds.manage_host.asset_injector
+    # - lb2961.ai_driven_aap.controller_firewall
   rhel9_nodes:
-    - control-user
-    - asset_injector
+    - agnosticd.cloud_vm_workloads.control_user
+    - rhpds.manage_host.asset_injector
   servers:
     - lb2961.ai_driven_aap.mattermost
     - lb2961.ai_driven_aap.kafka
 
 software_workloads:
   bastions:
-    - vscode-server
-    - gitea_vm_setup
+    - rhpds.manage_host.vscode_server
+    - rhpds.manage_host.gitea_vm_setup
     - lb2961.ai_driven_aap.splunk
   rhel9_nodes:
-    - lb2961.ai_driven_aap.fix_rhel_repos
     - lb2961.ai_driven_aap.filebeat
-    - lb2961.ai_driven_aap.rhel_log_forwarding
   servers:
     - lb2961.ai_driven_aap.gitea_create
 
 post_software_workloads:
   bastions:
     - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
-    - ansible_automation_platform_configuration
+    - infra.aap_configuration.dispatch
     - lb2961.ai_driven_aap.mcp_server
     - lb2961.ai_driven_aap.lightspeed_mcp_server
     - lb2961.ai_driven_aap.ansible_dev_env
@@ -533,9 +554,9 @@ post_software_workloads:
 
 post_software_final_workloads:
   localhost:
-    - agnosticv-userdata-import
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
   bastions:
-    - showroom
+    - agnosticd.showroom.vm_workload_showroom
 
 # -------------------------------------------------------------------
 # Pre-destroy workloads (cleanup before environment is destroyed)
@@ -545,24 +566,17 @@ pre_destroy_workloads:
     - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 
 # -------------------------------------------------------------------
-# Role: set_env_authorized_key
+# Workload: host_satellite_repositories
 # -------------------------------------------------------------------
-set_env_authorized_key: true
-env_authorized_key: "{{ guid }}key"
-ansible_ssh_private_key_file: ~/.ssh/{{ env_authorized_key }}.pem
-ansible_service_account_user_ssh_config: ssh_config.j2
+install_satellite_repositories: true
 
 # -------------------------------------------------------------------
-# Role: set-repositories
+# Workload: host_common_packages
 # -------------------------------------------------------------------
-repo_method: satellite
-use_content_view: true
+install_common_packages: true
+host_common_packages_update_all: false
 
-# -------------------------------------------------------------------
-# Role: common
-# -------------------------------------------------------------------
-install_common: true
-common_packages_el9:
+host_common_packages_extra:
   - at
   - bash-completion
   - bind-utils
@@ -586,35 +600,32 @@ common_packages_el9:
   - unzip
 
 # -------------------------------------------------------------------
-# Role: bastion-lite
+# Workload: agnosticd.cloud_vm_workloads.control_user
 # -------------------------------------------------------------------
-install_bastion_lite: true
-
-# -------------------------------------------------------------------
-# Role: control-user
-# -------------------------------------------------------------------
+env_authorized_key: "{{guid}}key"
 install_control_user: true
 student_name: lab-user
 student_password: "{{ common_password }}"
 control_user_name: "{{ student_name }}"
 control_user_password: "{{ common_password }}"
 control_user_private_group: "{{ omit }}"
-control_user_enable_user_data: false
 
 # -------------------------------------------------------------------
-# asset_injector_assets
+# Role: rhpds.manage_host.asset_injector
 # -------------------------------------------------------------------
-asset_injector_assets:
+asset_injector_modules:
   - description: Remove 50-cloud-init.conf, ssh issue
-    type: remove
+    module: file
+    state: remove
     path: /etc/ssh/sshd_config.d/50-cloud-init.conf
 
   - description: Remove 50-redhat.conf, ssh issue
-    type: remove
+    module: file
+    state: remove
     path: /etc/ssh/sshd_config.d/50-redhat.conf
 
   - description: Update sshd_config for password auth
-    type: blockinfile
+    module: blockinfile
     path: /etc/ssh/sshd_config
     state: present
     marker: "# {mark} Our custom SSH settings via Ansible"
@@ -625,36 +636,36 @@ asset_injector_assets:
       UsePAM yes
 
   - description: Restart sshd to pick up new password support configuration
-    type: service
+    module: service
     name: sshd
     state: restarted
 
-# -------------------------------------------------------------------
-# Role: lb2961.ai_driven_aap.controller_firewall
-# -------------------------------------------------------------------
-controller_firewall_hostname: controller
-controller_firewall_user: rhel
-controller_firewall_password: "{{ aap_image_admin_password }}"
+# # -------------------------------------------------------------------
+# # Role: lb2961.ai_driven_aap.controller_firewall
+# # -------------------------------------------------------------------
+# controller_firewall_hostname: controller
+# controller_firewall_user: rhel
+# controller_firewall_password: "{{ aap_image_admin_password }}"
+
+# # -------------------------------------------------------------------
+# # Role: rhel-firewalld (for controller/isolated group)
+# # -------------------------------------------------------------------
+# rhel_firewalld_open_ports:
+#   - 5000/tcp
 
 # -------------------------------------------------------------------
-# Role: rhel-firewalld (for controller/isolated group)
-# -------------------------------------------------------------------
-rhel_firewalld_open_ports:
-  - 5000/tcp
-
-# -------------------------------------------------------------------
-# Role: vscode-server
+# Workload: rhpds.manage_host.vscode_server
 # -------------------------------------------------------------------
 install_vscode_server: true
+vscode_server_install_nginx: false
+vscode_use_automationcontroller_nginx: false
+vscode_server_bind_addr_ip: 0.0.0.0
+vscode_server_bind_addr_port: 8080
 
 vscode_server_version: "4.112.0"
 vscode_server_rpm_url: >-
   https://github.com/coder/code-server/releases/download/v{{ vscode_server_version }}/code-server-{{ vscode_server_version }}-amd64.rpm
 
-vscode_server_install_nginx: false
-vscode_use_automationcontroller_nginx: false
-vscode_server_bind_addr_ip: 0.0.0.0
-vscode_server_bind_addr_port: 8080
 vscode_server_ansible_become: true
 vscode_user_workspace_path: "/home/{{ student_name }}"
 vscode_auth_type: password
@@ -707,10 +718,10 @@ vscode_server_additional_settings: |
   }
 
 # -------------------------------------------------------------------
-# Workload: gitea_vm_setup
+# Workload: rhpds.manage_host.gitea_vm_setup
 # -------------------------------------------------------------------
 gitea_http_listen: "0.0.0.0"
-gitea_db_pasword: "{{ common_password }}"
+gitea_db_password: "{{ common_password }}"
 gitea_create_url: "https://gitea-{{ subdomain_base }}"
 gitea_create_password: "{{ common_password }}"
 
@@ -745,8 +756,6 @@ ansible_automation_platform_configuration_host: "https://controller-{{ subdomain
 ansible_automation_platform_configuration_username: admin
 ansible_automation_platform_configuration_password: "{{ aap_image_admin_password }}"
 ansible_automation_platform_configuration_verify_ssl: false
-ansible_automation_platform_configuration_create_controller_token: false
-ansible_automation_platform_configuration_generate_ocp_token: false
 
 controller_dependency_check: false
 
@@ -755,10 +764,8 @@ aap_username: "{{ ansible_automation_platform_configuration_username }}"
 aap_password: "{{ ansible_automation_platform_configuration_password }}"
 aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
 
-private_key_paths: >-
-  {{ hostvars.localhost.ssh_provision_key_path
-  | default(hostvars.localhost.env_authorized_key_path)
-  }}
+# Environment ssh key
+private_key_paths: "{{ hostvars.localhost.ssh_provision_key_path }}"
 ssh_privatekey: "{{ lookup('file',private_key_paths) }}"
 
 # --------------------------------------
@@ -784,7 +791,7 @@ aap_ansible_vault_password: !vault |
 # EDA vars
 # --------------------------------------
 eda_decision_environment_name: "Kafka Decision Environment"
-eda_decision_environment_image: "quay.io/nmartins/network_de"
+eda_decision_environment_image: "quay.io/acme_corp/network_de"
 eda_repo_url: "https://github.com/ansible-tmm/aiops-summitlab.git"
 
 aap_configuration_dispatcher_roles:
@@ -880,7 +887,6 @@ controller_credentials:
     inputs:
       username: "{{ rhel_lightspeed_user }}"
       password: "{{ rhel_lightspeed_password }}"
-
 controller_inventories:
   - name: "lab-gateway-inventory"
     description: "Gateway Inventory lab"
@@ -938,27 +944,27 @@ controller_hosts:
   - name: "controller"
     inventory: "aap-controller"
     variables:
-      ansible_host: "controller.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+      ansible_host: "controller.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
       ansible_user: "rhel"
       ansible_password: "{{ common_password }}"
   # Network Hosts
   - name: "cisco-rtr1"
     inventory: "network-inventory"
     variables:
-      ansible_host: "cisco-rtr1.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+      ansible_host: "cisco-rtr1.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
       ansible_network_os: cisco.ios.ios
       ansible_connection: ansible.netcommon.network_cli
   - name: "cisco-rtr2"
     inventory: "network-inventory"
     variables:
-      ansible_host: "cisco-rtr2.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+      ansible_host: "cisco-rtr2.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
       ansible_network_os: cisco.ios.ios
       ansible_connection: ansible.netcommon.network_cli
   # Windows Host
   - name: "windows"
     inventory: "windows-inventory"
     variables:
-      ansible_host: "windows.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+      ansible_host: "windows.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
       ansible_connection: psrp
       ansible_psrp_auth: negotiate
       ansible_psrp_cert_validation: ignore
@@ -1155,7 +1161,7 @@ controller_templates:
       - "Network Credential"
     verbosity: 1
     extra_vars:
-      bastion_ip: "bastion.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+      bastion_ip: "bastion.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
   - name: "Network AIOps"
     description: "Generate OSPF remediation playbook using Lightspeed AI"
     organization: "Default"
@@ -1312,6 +1318,7 @@ controller_templates:
     playbook: "playbooks/ai_route_cron_remediation.yml"
     credentials:
       - "AAP"
+      - "ansible-vault"
     verbosity: 1
     ask_variables_on_launch: true
     extra_vars:
@@ -1534,6 +1541,7 @@ controller_launch_jobs:
   - name: "Create Network AIOps Workflow"
   - name: "Setup Winlogbeat on Windows"
   - name: "Fix Node Repos"
+    wait: true
   - name: "✅ Restore Apache"
   - name: "Create RHEL Self-Healing Workflow"
   - name: "Create Cron AIOps Workflow"
@@ -1625,15 +1633,6 @@ eda_rulebook_activations:
     enabled: false
     eda_credentials: "AAP"
     state: disabled
-
-# -------------------------------------------------------------------
-# Workload: lb2961.ai_driven_aap.rhelai_model_serve
-# -------------------------------------------------------------------
-# rhelai_model_serve_model_name: "granite-8b-lab-v1"
-# rhelai_model_serve_api_token: "{{ common_password }}"
-# rhelai_model_serve_rh_registry_user: "{{ registry_credentials_username }}"
-# rhelai_model_serve_rh_registry_password: "{{ registry_credentials_password }}"
-# rhelai_model_serve_instance_type: "{{ rhelai_instance_type }}"
 
 # -------------------------------------------------------------------
 # Standalone MCP server container (runs on bastion, connects to controller)
@@ -1749,6 +1748,7 @@ agnosticv_importdata:
   insights_username: "{{ rhel_lightspeed_user }}"
   insights_password: "{{ rhel_lightspeed_password }}"
   windows_host: "windows"
+  guid: "{{ guid }}"
 
 # -------------------------------------------------------------------
 # Role: showroom
@@ -1756,29 +1756,42 @@ agnosticv_importdata:
 showroom_git_repo: https://github.com/rhpds/ai-driven-automation-showroom.git
 showroom_git_ref: main
 showroom_user: showroom
-showroom_ui: default
 showroom_tls_provider: none
-showroom_user_password: "{{ common_password }}"
-showroom_ssh_method: sshkey
-showroom_ttys_enable_tmux: false
-showroom_tab_services:
-  - web1
-  - web2
-  - double_tty
+showroom_host: "showroom-{{ subdomain }}"
 showroom_lab_users:
   - "{{ student_name }}"
+showroom_user_password: "{{ common_password }}"
 
-showroom_tab_double_tty_top_username: "{{ student_name }}"
-showroom_tab_double_tty_bottom_username: "{{ student_name }}"
+showroom_ssh_method: password
 showroom_ssh_host: "{{ openshift_cnv_ssh_address }}"
 showroom_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
 showroom_ssh_username: "{{ student_name }}"
-showroom_host: "showroom-{{ subdomain_base }}"
+showroom_ssh_password: "{{ common_password }}"
+showroom_tab_services:
+  - single_terminal
+  - second_terminal
 
-showroom_tab_web1_url: "https://controller-{{ subdomain_base }}"
-showroom_tab_web1_name: "AAP"
-showroom_tab_web2_url: "https://vscode-{{ subdomain_base }}"
-showroom_tab_web2_name: "@Codeserver"
+showroom_antora_enable_dev_mode: "false"
+showroom_content_ui_config: |
+  type: showroom
+  default_width: 30
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+    - name: '>_Terminal-01'
+      path: /wetty
+      port: 443
+      secondary_name: '>_Terminal-02'
+      secondary_path: /terminal2/
+      secondary_port: 443
+    - name: '@Codeserver'
+      url: "https://vscode-{{ subdomain }}"
+    - name: AAP
+      url: "https://controller-{{ subdomain }}"
+    - name: Gitea
+      url: "https://gitea-{{ subdomain }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -1820,6 +1833,19 @@ __meta__:
         purpose: prod
         virt: "yes"
   deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: false
+      status:
+        disable: true
+      stop:
+        disable: false
+      update:
+        disable: true
     execution_environment:
-      image: quay.io/agnosticd/ee-ubi9-aap2.5:2.1.0
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
       pull: missing

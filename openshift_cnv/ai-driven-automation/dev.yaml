@@ -2,13 +2,16 @@
 # -------------------------------------------------------------------
 # Purpose: Dev/testing - full lab with all modules (1-5)
 # Includes: Apache remediation, Splunk/OSPF, Windows, Lightspeed, Cron AIOps
+# Testing AAP 2.6 upgrade
 # -------------------------------------------------------------------
-purpose: dev
+# purpose: dev
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
+  deployer:
+    scm_ref: main
   sandboxes:
     - kind: OcpSandbox
       namespace_suffix: ocp4-cluster
@@ -16,1361 +19,1359 @@ __meta__:
         cloud: cnv
         purpose: dev
         virt: "yes"
-  deployer:
-    scm_ref: development
 
-# -------------------------------------------------------------------
-# Full instances: bastion, controller, node1-3, service1, cisco-rtr1/2, windows
-# -------------------------------------------------------------------
-networks:
-  - name: default
-  - name: kafka
+# # -------------------------------------------------------------------
+# # Full instances: bastion, controller, node1-3, service1, cisco-rtr1/2, windows
+# # -------------------------------------------------------------------
+# networks:
+#   - name: default
+#   - name: kafka
 
-instances:
-  - name: "bastion"
-    count: 1
-    unique: true
-    public_dns: false
-    floating_ip: false
-    image: "{{ bastion_instance_image }}"
-    memory: 12G
-    cores: 6
-    image_size: 100Gi
-    tags:
-      - key: "AnsibleGroup"
-        value: "bastions,showroom"
-      - key: "ostype"
-        value: "linux"
-    networks:
-      - default
-    services:
-      - name: showroom
-        ports:
-          - port: 80
-            protocol: TCP
-            targetPort: 80
-            name: showroom
-      - name: bastion
-        ports:
-          - port: 80
-            protocol: TCP
-            targetPort: 80
-            name: showroom
-          - port: 443
-            protocol: TCP
-            targetPort: 443
-            name: bastion-443
-          - port: 3000
-            protocol: TCP
-            targetPort: 3000
-            name: bastion-3000
-          - port: 8080
-            protocol: TCP
-            targetPort: 8080
-            name: bastion-8080
-          - port: 8000
-            protocol: TCP
-            targetPort: 8000
-            name: bastion-8000
-          - port: 5514
-            protocol: TCP
-            targetPort: 5514
-            name: bastion-5514-tcp
-          - port: 5514
-            protocol: UDP
-            targetPort: 5514
-            name: bastion-5514-udp
-          - port: 1514
-            protocol: TCP
-            targetPort: 1514
-            name: bastion-1514-tcp
-          - port: 1514
-            protocol: UDP
-            targetPort: 1514
-            name: bastion-1514-udp
-    routes:
-      - name: showroom
-        host: showroom
-        service: showroom
-        targetPort: 80
-        tls: true
-        tls_termination: edge
-      - name: bastion-443
-        host: bastion-443
-        service: bastion
-        targetPort: 443
-        tls: true
-        tls_termination: edge
-      - name: bastion-3000
-        host: gitea
-        service: bastion
-        targetPort: 3000
-        tls: true
-        tls_termination: edge
-      - name: bastion-8000
-        host: splunk
-        service: bastion
-        targetPort: 8000
-        tls: true
-        tls_termination: edge
-      - name: bastion-8080
-        host: vscode
-        service: bastion
-        targetPort: 8080
-        tls: true
-        tls_termination: edge
+# instances:
+#   - name: "bastion"
+#     count: 1
+#     unique: true
+#     public_dns: false
+#     floating_ip: false
+#     image: "{{ bastion_instance_image }}"
+#     memory: 12G
+#     cores: 6
+#     image_size: 100Gi
+#     tags:
+#       - key: "AnsibleGroup"
+#         value: "bastions,showroom"
+#       - key: "ostype"
+#         value: "linux"
+#     networks:
+#       - default
+#     services:
+#       - name: showroom
+#         ports:
+#           - port: 80
+#             protocol: TCP
+#             targetPort: 80
+#             name: showroom
+#       - name: bastion
+#         ports:
+#           - port: 80
+#             protocol: TCP
+#             targetPort: 80
+#             name: showroom
+#           - port: 443
+#             protocol: TCP
+#             targetPort: 443
+#             name: bastion-443
+#           - port: 3000
+#             protocol: TCP
+#             targetPort: 3000
+#             name: bastion-3000
+#           - port: 8080
+#             protocol: TCP
+#             targetPort: 8080
+#             name: bastion-8080
+#           - port: 8000
+#             protocol: TCP
+#             targetPort: 8000
+#             name: bastion-8000
+#           - port: 5514
+#             protocol: TCP
+#             targetPort: 5514
+#             name: bastion-5514-tcp
+#           - port: 5514
+#             protocol: UDP
+#             targetPort: 5514
+#             name: bastion-5514-udp
+#           - port: 1514
+#             protocol: TCP
+#             targetPort: 1514
+#             name: bastion-1514-tcp
+#           - port: 1514
+#             protocol: UDP
+#             targetPort: 1514
+#             name: bastion-1514-udp
+#     routes:
+#       - name: showroom
+#         host: showroom
+#         service: showroom
+#         targetPort: 80
+#         tls: true
+#         tls_termination: edge
+#       - name: bastion-443
+#         host: bastion-443
+#         service: bastion
+#         targetPort: 443
+#         tls: true
+#         tls_termination: edge
+#       - name: bastion-3000
+#         host: gitea
+#         service: bastion
+#         targetPort: 3000
+#         tls: true
+#         tls_termination: edge
+#       - name: bastion-8000
+#         host: splunk
+#         service: bastion
+#         targetPort: 8000
+#         tls: true
+#         tls_termination: edge
+#       - name: bastion-8080
+#         host: vscode
+#         service: bastion
+#         targetPort: 8080
+#         tls: true
+#         tls_termination: edge
 
-  - name: "controller"
-    count: 1
-    unique: true
-    public_dns: false
-    floating_ip: false
-    image: "{{ controller_instance_image }}"
-    memory: 8G
-    cores: 4
-    image_size: "{{ controller_rootfs_size }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "isolated"
-    services:
-      - name: controller
-        ports:
-          - name: controller-443
-            port: 443
-            protocol: TCP
-            targetPort: 443
-          - name: controller-5000
-            port: 5000
-            protocol: TCP
-            targetPort: 5000
-          - name: controller-8448
-            port: 8448
-            protocol: TCP
-            targetPort: 8448
-    routes:
-      - name: controller-5000
-        host: eda-webhook
-        service: controller
-        targetPort: 5000
-        tls: true
-        tls_termination: edge
-      - name: controller-443
-        host: controller
-        service: controller
-        targetPort: 443
-        tls: true
-        tls_termination: reencrypt
-        tls_destinationCACertificate: |
-          -----BEGIN CERTIFICATE-----
-          MIIF1jCCA76gAwIBAgIUBQZlbUZlOmMKhspO9U4/nTJAXAEwDQYJKoZIhvcNAQEL
-          BQAwgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQIDA5Ob3J0aCBDYXJvbGluYTEQMA4G
-          A1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVkIEhhdDEQMA4GA1UECwwHQW5zaWJs
-          ZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0aW9uIFBsYXRmb3JtMB4XDTI1MDQy
-          MzA4MjEyOVoXDTM1MDQyMTA4MjEyOVowgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQI
-          DA5Ob3J0aCBDYXJvbGluYTEQMA4GA1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVk
-          IEhhdDEQMA4GA1UECwwHQW5zaWJsZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0
-          aW9uIFBsYXRmb3JtMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2Ytu
-          a9MM9qr0UBvlIJPXmeSjzQXmx+CJwQAhDoR8MgOkjvWjjEdsX4VHBfQTO58d5sPr
-          oNg95GRe9y9Gjt6Lh7szLk70Q766Ncq8OIBYieiVKctIV+ZZmX7+bBcyzbII/0C9
-          Ili3lNd+XKfl5vmCWoYyuQncC1FZgVpHqZDP/+RCCMThdKEvugbQUmXF6pmEFF7Z
-          8PxYpxnVDX2ipOfWcjZDm6pTBd5+dzXHQVsWe25kY6QW0zEYzPJb3q0gP7oNz1uV
-          rXgYBnKQ8NdoSGtS7w9bvSw28Bf1ZFTvBKeCxWNeoJbiszqdsDd6PEwb4uE1Tr6D
-          qsLfPgvQzngQ+a7YrZ+M6GskQkfk+ZWMK8h6066p27Tzs6/9jMiCFuKwRuKWy9Qi
-          DdCSnwVIw4VB40ysoAHprxBHq4y/YJ2RDiC9EehTXsQf/uAy3M7KBBjVGlMfXxUE
-          NfjbeMdSQip04jKQGhJf8teXTymfcjlGaoCtymB+h4s3hc1T7DjfR0Q1Gd3AIL/p
-          lHOgU4TMBzeghqeDRbY4YQRSI1aF/hzTvAJzMaONs161buKOQ47O5UGGJYHHlJbf
-          aI0s3Mhld1YvIFk78A4tFI9GIwzj4IzVmCv4MZHg2BXKAU6m3Y6bYNabqP6Ho4Fs
-          DZOVkMvwTGKGfRxjdp0kx6HxNmjnVDMXGM9g8cECAwEAAaNCMEAwDgYDVR0PAQH/
-          BAQDAgIEMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFFugxH0taHxJ0/d71phl
-          a1Vt78fTMA0GCSqGSIb3DQEBCwUAA4ICAQApZCo7gI0xdk2TxjOcq+BdNsOvKjWL
-          ADceDM78oPy0xpgKd2u9INITzIY2f4KGcepXslnlMQQvny80N1LXu9Tkn4rhoU03
-          DXb9bXSr44T3fIf4JFU2iv5Hb6Az/DiQ3o9fZnhpW0AmzR1LmZUuFBJZefFBMMKl
-          s2W9C3f3nUPzi1qrGSXszXXbIDYsRMhax/MxWR9mxITuN3T6PhW8A1LyQ8dWRCLw
-          jFFcNuGjlR8w16XhRCw8uA1RzVwNWoUGvMiapboR25N0DLVCG8qf/mdEI4re8MhM
-          EYHugB/e7vRx6iV9ov7jJSB8BrBPWy/7ncebWIf8OvjM2UcUk0hciAQGD4Udbb3s
-          LGcpjZRJDrnpBdp+CJMCNNjoI0wLbmRDEVPGOSkJSmnj+8VTlQ5s+Dxvj2hh/rq7
-          APwxbIl1YBpTx65KwhacJbXSByk8bnwEQdRo240kC5ggC6twb/vvslRortZtyfqw
-          E/xGAKc9LOIFiqk1f0IU2ssEBvSFvYjypXsGnFITamNN2lMS2k5XQIA4avwWsoO4
-          rRLV87ua9S7g31PTYCMJBGw/B3PXhXjJG/eXgLyhEoUQP/fqeGiPEBzagyo71qL5
-          fH5qke1XR5LFGpndX1GuSVBhdZq94x0aGXWTQCDNIPQ3QtrQ64PBF1vRFdJ6o/FI
-          uEOWpQhGYHMC0A==
-          -----END CERTIFICATE-----
+#   - name: "controller"
+#     count: 1
+#     unique: true
+#     public_dns: false
+#     floating_ip: false
+#     image: "{{ controller_instance_image }}"
+#     memory: 8G
+#     cores: 4
+#     image_size: "{{ controller_rootfs_size }}"
+#     tags:
+#       - key: "AnsibleGroup"
+#         value: "isolated"
+#     services:
+#       - name: controller
+#         ports:
+#           - name: controller-443
+#             port: 443
+#             protocol: TCP
+#             targetPort: 443
+#           - name: controller-5000
+#             port: 5000
+#             protocol: TCP
+#             targetPort: 5000
+#           - name: controller-8448
+#             port: 8448
+#             protocol: TCP
+#             targetPort: 8448
+#     routes:
+#       - name: controller-5000
+#         host: eda-webhook
+#         service: controller
+#         targetPort: 5000
+#         tls: true
+#         tls_termination: edge
+#       - name: controller-443
+#         host: controller
+#         service: controller
+#         targetPort: 443
+#         tls: true
+#         tls_termination: reencrypt
+#         tls_destinationCACertificate: |
+#           -----BEGIN CERTIFICATE-----
+#           MIIF1jCCA76gAwIBAgIUBQZlbUZlOmMKhspO9U4/nTJAXAEwDQYJKoZIhvcNAQEL
+#           BQAwgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQIDA5Ob3J0aCBDYXJvbGluYTEQMA4G
+#           A1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVkIEhhdDEQMA4GA1UECwwHQW5zaWJs
+#           ZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0aW9uIFBsYXRmb3JtMB4XDTI1MDQy
+#           MzA4MjEyOVoXDTM1MDQyMTA4MjEyOVowgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQI
+#           DA5Ob3J0aCBDYXJvbGluYTEQMA4GA1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVk
+#           IEhhdDEQMA4GA1UECwwHQW5zaWJsZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0
+#           aW9uIFBsYXRmb3JtMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2Ytu
+#           a9MM9qr0UBvlIJPXmeSjzQXmx+CJwQAhDoR8MgOkjvWjjEdsX4VHBfQTO58d5sPr
+#           oNg95GRe9y9Gjt6Lh7szLk70Q766Ncq8OIBYieiVKctIV+ZZmX7+bBcyzbII/0C9
+#           Ili3lNd+XKfl5vmCWoYyuQncC1FZgVpHqZDP/+RCCMThdKEvugbQUmXF6pmEFF7Z
+#           8PxYpxnVDX2ipOfWcjZDm6pTBd5+dzXHQVsWe25kY6QW0zEYzPJb3q0gP7oNz1uV
+#           rXgYBnKQ8NdoSGtS7w9bvSw28Bf1ZFTvBKeCxWNeoJbiszqdsDd6PEwb4uE1Tr6D
+#           qsLfPgvQzngQ+a7YrZ+M6GskQkfk+ZWMK8h6066p27Tzs6/9jMiCFuKwRuKWy9Qi
+#           DdCSnwVIw4VB40ysoAHprxBHq4y/YJ2RDiC9EehTXsQf/uAy3M7KBBjVGlMfXxUE
+#           NfjbeMdSQip04jKQGhJf8teXTymfcjlGaoCtymB+h4s3hc1T7DjfR0Q1Gd3AIL/p
+#           lHOgU4TMBzeghqeDRbY4YQRSI1aF/hzTvAJzMaONs161buKOQ47O5UGGJYHHlJbf
+#           aI0s3Mhld1YvIFk78A4tFI9GIwzj4IzVmCv4MZHg2BXKAU6m3Y6bYNabqP6Ho4Fs
+#           DZOVkMvwTGKGfRxjdp0kx6HxNmjnVDMXGM9g8cECAwEAAaNCMEAwDgYDVR0PAQH/
+#           BAQDAgIEMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFFugxH0taHxJ0/d71phl
+#           a1Vt78fTMA0GCSqGSIb3DQEBCwUAA4ICAQApZCo7gI0xdk2TxjOcq+BdNsOvKjWL
+#           ADceDM78oPy0xpgKd2u9INITzIY2f4KGcepXslnlMQQvny80N1LXu9Tkn4rhoU03
+#           DXb9bXSr44T3fIf4JFU2iv5Hb6Az/DiQ3o9fZnhpW0AmzR1LmZUuFBJZefFBMMKl
+#           s2W9C3f3nUPzi1qrGSXszXXbIDYsRMhax/MxWR9mxITuN3T6PhW8A1LyQ8dWRCLw
+#           jFFcNuGjlR8w16XhRCw8uA1RzVwNWoUGvMiapboR25N0DLVCG8qf/mdEI4re8MhM
+#           EYHugB/e7vRx6iV9ov7jJSB8BrBPWy/7ncebWIf8OvjM2UcUk0hciAQGD4Udbb3s
+#           LGcpjZRJDrnpBdp+CJMCNNjoI0wLbmRDEVPGOSkJSmnj+8VTlQ5s+Dxvj2hh/rq7
+#           APwxbIl1YBpTx65KwhacJbXSByk8bnwEQdRo240kC5ggC6twb/vvslRortZtyfqw
+#           E/xGAKc9LOIFiqk1f0IU2ssEBvSFvYjypXsGnFITamNN2lMS2k5XQIA4avwWsoO4
+#           rRLV87ua9S7g31PTYCMJBGw/B3PXhXjJG/eXgLyhEoUQP/fqeGiPEBzagyo71qL5
+#           fH5qke1XR5LFGpndX1GuSVBhdZq94x0aGXWTQCDNIPQ3QtrQ64PBF1vRFdJ6o/FI
+#           uEOWpQhGYHMC0A==
+#           -----END CERTIFICATE-----
 
-  - name: "node1"
-    count: 1
-    unique: true
-    public_dns: false
-    floating_ip: false
-    image: "{{ node_instance_image }}"
-    memory: 8G
-    cores: 4
-    image_size: "{{ node_rootfs_size }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "rhel9_nodes"
-      - key: "ostype"
-        value: "linux"
-    services:
-      - name: node
-        ports:
-          - port: 80
-            protocol: TCP
-            targetPort: 80
-            name: node-80
-    routes:
-      - name: node-80
-        host: node
-        service: node
-        targetPort: 80
-        tls: false
+#   - name: "node1"
+#     count: 1
+#     unique: true
+#     public_dns: false
+#     floating_ip: false
+#     image: "{{ node_instance_image }}"
+#     memory: 8G
+#     cores: 4
+#     image_size: "{{ node_rootfs_size }}"
+#     tags:
+#       - key: "AnsibleGroup"
+#         value: "rhel9_nodes"
+#       - key: "ostype"
+#         value: "linux"
+#     services:
+#       - name: node
+#         ports:
+#           - port: 80
+#             protocol: TCP
+#             targetPort: 80
+#             name: node-80
+#     routes:
+#       - name: node-80
+#         host: node
+#         service: node
+#         targetPort: 80
+#         tls: false
 
-  - name: "node2"
-    count: 1
-    unique: true
-    public_dns: false
-    floating_ip: false
-    image: "{{ node_instance_image }}"
-    memory: 8G
-    cores: 4
-    image_size: "{{ node_rootfs_size }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "rhel9_nodes"
-      - key: "ostype"
-        value: "linux"
-    services:
-      - name: node2
-        ports:
-          - port: 80
-            protocol: TCP
-            targetPort: 80
-            name: node2-80
-    routes:
-      - name: node2-80
-        host: node2
-        service: node2
-        targetPort: 80
-        tls: false
+#   - name: "node2"
+#     count: 1
+#     unique: true
+#     public_dns: false
+#     floating_ip: false
+#     image: "{{ node_instance_image }}"
+#     memory: 8G
+#     cores: 4
+#     image_size: "{{ node_rootfs_size }}"
+#     tags:
+#       - key: "AnsibleGroup"
+#         value: "rhel9_nodes"
+#       - key: "ostype"
+#         value: "linux"
+#     services:
+#       - name: node2
+#         ports:
+#           - port: 80
+#             protocol: TCP
+#             targetPort: 80
+#             name: node2-80
+#     routes:
+#       - name: node2-80
+#         host: node2
+#         service: node2
+#         targetPort: 80
+#         tls: false
 
-  - name: "node3"
-    count: 1
-    unique: true
-    public_dns: false
-    floating_ip: false
-    image: "{{ node_instance_image }}"
-    memory: 8G
-    cores: 4
-    image_size: "{{ node_rootfs_size }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "rhel9_nodes"
-      - key: "ostype"
-        value: "linux"
-    services:
-      - name: node3
-        ports:
-          - port: 80
-            protocol: TCP
-            targetPort: 80
-            name: node3-80
-    routes:
-      - name: node3-80
-        host: node3
-        service: node3
-        targetPort: 80
-        tls: false
+#   - name: "node3"
+#     count: 1
+#     unique: true
+#     public_dns: false
+#     floating_ip: false
+#     image: "{{ node_instance_image }}"
+#     memory: 8G
+#     cores: 4
+#     image_size: "{{ node_rootfs_size }}"
+#     tags:
+#       - key: "AnsibleGroup"
+#         value: "rhel9_nodes"
+#       - key: "ostype"
+#         value: "linux"
+#     services:
+#       - name: node3
+#         ports:
+#           - port: 80
+#             protocol: TCP
+#             targetPort: 80
+#             name: node3-80
+#     routes:
+#       - name: node3-80
+#         host: node3
+#         service: node3
+#         targetPort: 80
+#         tls: false
 
-  - name: "service1"
-    count: 1
-    unique: true
-    public_dns: false
-    floating_ip: false
-    image: "{{ service_instance_image }}"
-    memory: 4G
-    cores: 2
-    image_size: "{{ service_rootfs_size }}"
-    networks:
-      - default
-      - kafka
-    userdata: |
-      #cloud-config
-      prefer_fqdn_over_hostname: true
-      manage_etc_hosts: true
-    tags:
-      - key: "AnsibleGroup"
-        value: "servers"
-      - key: "ostype"
-        value: "linux"
-    services:
-      - name: service1-fip
-        type: LoadBalancer
-        ports:
-          - port: 8065
-            protocol: TCP
-            targetPort: 8065
-            name: service1-8065
-          - port: 9092
-            protocol: TCP
-            targetPort: 9092
-            name: service1-9092
-          - port: 9093
-            protocol: TCP
-            targetPort: 9093
-            name: service1-9093
-    routes:
-      - name: service-8065
-        host: mattermost
-        service: service1-fip
-        targetPort: 8065
-        tls: true
-        tls_termination: edge
+#   - name: "service1"
+#     count: 1
+#     unique: true
+#     public_dns: false
+#     floating_ip: false
+#     image: "{{ service_instance_image }}"
+#     memory: 4G
+#     cores: 2
+#     image_size: "{{ service_rootfs_size }}"
+#     networks:
+#       - default
+#       - kafka
+#     userdata: |
+#       #cloud-config
+#       prefer_fqdn_over_hostname: true
+#       manage_etc_hosts: true
+#     tags:
+#       - key: "AnsibleGroup"
+#         value: "servers"
+#       - key: "ostype"
+#         value: "linux"
+#     services:
+#       - name: service1-fip
+#         type: LoadBalancer
+#         ports:
+#           - port: 8065
+#             protocol: TCP
+#             targetPort: 8065
+#             name: service1-8065
+#           - port: 9092
+#             protocol: TCP
+#             targetPort: 9092
+#             name: service1-9092
+#           - port: 9093
+#             protocol: TCP
+#             targetPort: 9093
+#             name: service1-9093
+#     routes:
+#       - name: service-8065
+#         host: mattermost
+#         service: service1-fip
+#         targetPort: 8065
+#         tls: true
+#         tls_termination: edge
 
-  - name: "cisco-rtr1"
-    count: 1
-    unique: true
-    public_dns: false
-    floating_ip: false
-    image: "{{ cisco_instance_image }}"
-    memory: 8G
-    cores: 4
-    image_size: "{{ cisco_rootfs_size }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "isolated"
-      - key: "ostype"
-        value: "network"
-      - key: "ansible_network_os"
-        value: "ios"
-    networks:
-      - default
-    cdroms:
-      - metadata:
-          name: "cisco-rtr1-config"
-        spec:
-          source:
-            pvc:
-              name: "ans-bu-cisco-rhdp-config"
-              namespace: cnv-images
-          pvc:
-            accessModes:
-              - ReadWriteMany
-            volumeMode: Block
-            resources:
-              requests:
-                storage: "20Mi"
+#   - name: "cisco-rtr1"
+#     count: 1
+#     unique: true
+#     public_dns: false
+#     floating_ip: false
+#     image: "{{ cisco_instance_image }}"
+#     memory: 8G
+#     cores: 4
+#     image_size: "{{ cisco_rootfs_size }}"
+#     tags:
+#       - key: "AnsibleGroup"
+#         value: "isolated"
+#       - key: "ostype"
+#         value: "network"
+#       - key: "ansible_network_os"
+#         value: "ios"
+#     networks:
+#       - default
+#     cdroms:
+#       - metadata:
+#           name: "cisco-rtr1-config"
+#         spec:
+#           source:
+#             pvc:
+#               name: "ans-bu-cisco-rhdp-config"
+#               namespace: cnv-images
+#           pvc:
+#             accessModes:
+#               - ReadWriteMany
+#             volumeMode: Block
+#             resources:
+#               requests:
+#                 storage: "20Mi"
 
-  - name: "cisco-rtr2"
-    count: 1
-    unique: true
-    public_dns: false
-    floating_ip: false
-    image: "{{ cisco_instance_image }}"
-    memory: 8G
-    cores: 4
-    image_size: "{{ cisco_rootfs_size }}"
-    tags:
-      - key: "AnsibleGroup"
-        value: "isolated"
-      - key: "ostype"
-        value: "network"
-      - key: "ansible_network_os"
-        value: "ios"
-    networks:
-      - default
-    cdroms:
-      - metadata:
-          name: "cisco-rtr2-config"
-        spec:
-          source:
-            pvc:
-              name: "ans-bu-cisco-rhdp-config"
-              namespace: cnv-images
-          pvc:
-            accessModes:
-              - ReadWriteMany
-            volumeMode: Block
-            resources:
-              requests:
-                storage: "20Mi"
+#   - name: "cisco-rtr2"
+#     count: 1
+#     unique: true
+#     public_dns: false
+#     floating_ip: false
+#     image: "{{ cisco_instance_image }}"
+#     memory: 8G
+#     cores: 4
+#     image_size: "{{ cisco_rootfs_size }}"
+#     tags:
+#       - key: "AnsibleGroup"
+#         value: "isolated"
+#       - key: "ostype"
+#         value: "network"
+#       - key: "ansible_network_os"
+#         value: "ios"
+#     networks:
+#       - default
+#     cdroms:
+#       - metadata:
+#           name: "cisco-rtr2-config"
+#         spec:
+#           source:
+#             pvc:
+#               name: "ans-bu-cisco-rhdp-config"
+#               namespace: cnv-images
+#           pvc:
+#             accessModes:
+#               - ReadWriteMany
+#             volumeMode: Block
+#             resources:
+#               requests:
+#                 storage: "20Mi"
 
-  - name: "windows"
-    count: 1
-    unique: true
-    public_dns: false
-    floating_ip: false
-    image: "{{ windows_instance_image }}"
-    memory: 16G
-    cores: 4
-    image_size: "{{ windows_rootfs_size }}"
-    interface_model: "e1000e"
-    tags:
-      - key: "AnsibleGroup"
-        value: "isolated"
-      - key: "ostype"
-        value: "windows"
-    networks:
-      - default
-    services:
-      - name: windows
-        ports:
-          - port: 22
-            protocol: TCP
-            targetPort: 22
-            name: ssh
-          - port: 5986
-            protocol: TCP
-            targetPort: 5986
-            name: windows-winrm
-          - port: 80
-            protocol: TCP
-            targetPort: 80
-            name: windows-http
-      - name: windows-rdp
-        ports:
-          - port: 3389
-            protocol: TCP
-            targetPort: 3389
-            name: windows-rdp
+#   - name: "windows"
+#     count: 1
+#     unique: true
+#     public_dns: false
+#     floating_ip: false
+#     image: "{{ windows_instance_image }}"
+#     memory: 16G
+#     cores: 4
+#     image_size: "{{ windows_rootfs_size }}"
+#     interface_model: "e1000e"
+#     tags:
+#       - key: "AnsibleGroup"
+#         value: "isolated"
+#       - key: "ostype"
+#         value: "windows"
+#     networks:
+#       - default
+#     services:
+#       - name: windows
+#         ports:
+#           - port: 22
+#             protocol: TCP
+#             targetPort: 22
+#             name: ssh
+#           - port: 5986
+#             protocol: TCP
+#             targetPort: 5986
+#             name: windows-winrm
+#           - port: 80
+#             protocol: TCP
+#             targetPort: 80
+#             name: windows-http
+#       - name: windows-rdp
+#         ports:
+#           - port: 3389
+#             protocol: TCP
+#             targetPort: 3389
+#             name: windows-rdp
 
-# -------------------------------------------------------------------
-# Collection
-# -------------------------------------------------------------------
-requirements_content:
-  collections:
-    - name: l3d.git
-      version: 1.1.10
-    - name: https://github.com/rhpds/lb2961.ai_driven_aap.git
-      type: git
-      version: main
-    - name: ansible.netcommon
-      version: ">=6.0.0"
-    - name: cisco.ios
-      version: ">=5.0.0"
-    - name: "https://github.com/rhpds/rhpds.litellm_virtual_keys.git"
-      type: git
-      version: "1.3.1"
-    - name: ansible.windows
-      version: ">=2.0.0"
-    - name: microsoft.ad
-      version: ">=1.0.0"
-    - name: community.windows
-      version: ">=2.0.0"
-    - name: ansible.platform
-      version: ">=2.0.0"
+# # -------------------------------------------------------------------
+# # Collection
+# # -------------------------------------------------------------------
+# requirements_content:
+#   collections:
+#     - name: l3d.git
+#       version: 1.1.10
+#     - name: https://github.com/rhpds/lb2961.ai_driven_aap.git
+#       type: git
+#       version: main
+#     - name: ansible.netcommon
+#       version: ">=6.0.0"
+#     - name: cisco.ios
+#       version: ">=5.0.0"
+#     - name: "https://github.com/rhpds/rhpds.litellm_virtual_keys.git"
+#       type: git
+#       version: "1.3.1"
+#     - name: ansible.windows
+#       version: ">=2.0.0"
+#     - name: microsoft.ad
+#       version: ">=1.0.0"
+#     - name: community.windows
+#       version: ">=2.0.0"
+#     - name: ansible.platform
+#       version: ">=2.0.0"
 
-# -------------------------------------------------------------------
-# Workloads
-# -------------------------------------------------------------------
-pre_software_workloads:
-  all:
-    - set_env_authorized_key
-    - set-repositories
-  bastions:
-    - common
-    - bastion-lite
-    - control-user
-    - asset_injector
-    - lb2961.ai_driven_aap.controller_firewall
-  rhel9_nodes:
-    - control-user
-    - asset_injector
-  servers:
-    - lb2961.ai_driven_aap.mattermost
-    - lb2961.ai_driven_aap.kafka
+# # -------------------------------------------------------------------
+# # Workloads
+# # -------------------------------------------------------------------
+# pre_software_workloads:
+#   all:
+#     - set_env_authorized_key
+#     - set-repositories
+#   bastions:
+#     - common
+#     - bastion-lite
+#     - control-user
+#     - asset_injector
+#     - lb2961.ai_driven_aap.controller_firewall
+#   rhel9_nodes:
+#     - control-user
+#     - asset_injector
+#   servers:
+#     - lb2961.ai_driven_aap.mattermost
+#     - lb2961.ai_driven_aap.kafka
 
-software_workloads:
-  bastions:
-    - vscode-server
-    - gitea_vm_setup
-    - lb2961.ai_driven_aap.splunk
-  rhel9_nodes:
-    - lb2961.ai_driven_aap.fix_rhel_repos
-    - lb2961.ai_driven_aap.filebeat
-    - lb2961.ai_driven_aap.rhel_log_forwarding
-  servers:
-    - lb2961.ai_driven_aap.gitea_create
+# software_workloads:
+#   bastions:
+#     - vscode-server
+#     - gitea_vm_setup
+#     - lb2961.ai_driven_aap.splunk
+#   rhel9_nodes:
+#     - lb2961.ai_driven_aap.fix_rhel_repos
+#     - lb2961.ai_driven_aap.filebeat
+#     - lb2961.ai_driven_aap.rhel_log_forwarding
+#   servers:
+#     - lb2961.ai_driven_aap.gitea_create
 
-post_software_workloads:
-  bastions:
-    - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
-    - ansible_automation_platform_configuration
-    - lb2961.ai_driven_aap.mcp_server
-    - lb2961.ai_driven_aap.lightspeed_mcp_server
-    - lb2961.ai_driven_aap.ansible_dev_env
-    - lb2961.ai_driven_aap.code_server_ai_client
+# post_software_workloads:
+#   bastions:
+#     - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+#     - ansible_automation_platform_configuration
+#     - lb2961.ai_driven_aap.mcp_server
+#     - lb2961.ai_driven_aap.lightspeed_mcp_server
+#     - lb2961.ai_driven_aap.ansible_dev_env
+#     - lb2961.ai_driven_aap.code_server_ai_client
 
-post_software_final_workloads:
-  localhost:
-    - agnosticv-userdata-import
-  bastions:
-    - showroom
+# post_software_final_workloads:
+#   localhost:
+#     - agnosticv-userdata-import
+#   bastions:
+#     - showroom
 
-# -------------------------------------------------------------------
-# Showroom variables: add node hostnames, IDE, and Insights for new modules
-# -------------------------------------------------------------------
-agnosticv_importdata:
-  controller_url: "https://controller-{{ subdomain_base }}"
-  controller_username: "{{ ansible_automation_platform_configuration_username }}"
-  controller_password: "{{ ansible_automation_platform_configuration_password }}"
-  eda_webhook_url: "https://eda-webhook-{{ subdomain_base }}"
-  mattermost_url: "https://mattermost-{{ subdomain_base }}"
-  mattermost_username: ansibleadmin@ansible.com
-  mattermost_password: "{{ common_password }}"
-  splunk_url: "https://splunk-{{ subdomain_base }}"
-  splunk_username: "admin"
-  splunk_password: "{{ common_password }}"
-  gitea_url: "https://gitea-{{ subdomain_base }}"
-  gitea_username: "{{ student_name }}"
-  gitea_password: "{{ common_password }}"
-  vscode_server_url: "https://vscode-{{ subdomain_base }}"
-  vscode_server_password: "{{ common_password }}"
-  ssh_command: >-
-    ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
-    -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
-  ssh_hostname: "{{ openshift_cnv_ssh_address }}"
-  ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
-  ssh_username: "{{ student_name }}"
-  ssh_password: "{{ common_password }}"
-  rhel_node1: "{{ groups['rhel9_nodes'][0].split('.')[0] }}"
-  rhel_node2: "{{ groups['rhel9_nodes'][1].split('.')[0] }}"
-  rhel_node3: "{{ groups['rhel9_nodes'][2].split('.')[0] }}"
-  ide_url: "https://vscode-{{ subdomain_base }}"
-  ide_username: "{{ student_name }}"
-  ide_password: "{{ common_password }}"
-  insights_username: "{{ rhel_lightspeed_user }}"
-  insights_password: "{{ rhel_lightspeed_password }}"
-  windows_host: "windows"
+# # -------------------------------------------------------------------
+# # Showroom variables: add node hostnames, IDE, and Insights for new modules
+# # -------------------------------------------------------------------
+# agnosticv_importdata:
+#   controller_url: "https://controller-{{ subdomain_base }}"
+#   controller_username: "{{ ansible_automation_platform_configuration_username }}"
+#   controller_password: "{{ ansible_automation_platform_configuration_password }}"
+#   eda_webhook_url: "https://eda-webhook-{{ subdomain_base }}"
+#   mattermost_url: "https://mattermost-{{ subdomain_base }}"
+#   mattermost_username: ansibleadmin@ansible.com
+#   mattermost_password: "{{ common_password }}"
+#   splunk_url: "https://splunk-{{ subdomain_base }}"
+#   splunk_username: "admin"
+#   splunk_password: "{{ common_password }}"
+#   gitea_url: "https://gitea-{{ subdomain_base }}"
+#   gitea_username: "{{ student_name }}"
+#   gitea_password: "{{ common_password }}"
+#   vscode_server_url: "https://vscode-{{ subdomain_base }}"
+#   vscode_server_password: "{{ common_password }}"
+#   ssh_command: >-
+#     ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
+#     -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
+#   ssh_hostname: "{{ openshift_cnv_ssh_address }}"
+#   ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+#   ssh_username: "{{ student_name }}"
+#   ssh_password: "{{ common_password }}"
+#   rhel_node1: "{{ groups['rhel9_nodes'][0].split('.')[0] }}"
+#   rhel_node2: "{{ groups['rhel9_nodes'][1].split('.')[0] }}"
+#   rhel_node3: "{{ groups['rhel9_nodes'][2].split('.')[0] }}"
+#   ide_url: "https://vscode-{{ subdomain_base }}"
+#   ide_username: "{{ student_name }}"
+#   ide_password: "{{ common_password }}"
+#   insights_username: "{{ rhel_lightspeed_user }}"
+#   insights_password: "{{ rhel_lightspeed_password }}"
+#   windows_host: "windows"
 
-# -------------------------------------------------------------------
-# Workload: Lightspeed MCP credentials
-# -------------------------------------------------------------------
-rhel_lightspeed_user: !vault |
-    $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
-    37303032353232346430353831366361613239343830346562656166313862306639343732393739
-    3162646639633461356266393364356237303863376663610a333866626431303632376135343430
-    62626666303337313263316364613265656162646135343934386630393563623730366564643231
-    6263383439616463610a623865613133353032353232323137316366636163613138383930346138
-    3666
-rhel_lightspeed_password: !vault |
-    $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
-    39636436336138633234653632383864366166333863313063306133316232623031396237333238
-    6239653866343739323939346362646661323035613139610a383961306232656438656266346662
-    30613231323162613661626432626332353461663739336465343263333235316135366263333566
-    3062653230623364370a663031623165613531336133363861626437646335373937343432373633
-    3039
+# # -------------------------------------------------------------------
+# # Workload: Lightspeed MCP credentials
+# # -------------------------------------------------------------------
+# rhel_lightspeed_user: !vault |
+#     $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+#     37303032353232346430353831366361613239343830346562656166313862306639343732393739
+#     3162646639633461356266393364356237303863376663610a333866626431303632376135343430
+#     62626666303337313263316364613265656162646135343934386630393563623730366564643231
+#     6263383439616463610a623865613133353032353232323137316366636163613138383930346138
+#     3666
+# rhel_lightspeed_password: !vault |
+#     $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+#     39636436336138633234653632383864366166333863313063306133316232623031396237333238
+#     6239653866343739323939346362646661323035613139610a383961306232656438656266346662
+#     30613231323162613661626432626332353461663739336465343263333235316135366263333566
+#     3062653230623364370a663031623165613531336133363861626437646335373937343432373633
+#     3039
 
-lightspeed_mcp_client_id: !vault |
-    $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
-    33633163303262303133393464393965643130656161333963313161343834346630633233666238
-    6533346432313832343461333330386665383139653032620a633061643538303634333965626138
-    34366436623139316233656561313366653238636634333734373963343761613335616665376131
-    3034393832383831630a656263313261353738666439646162313131646436323432373532646131
-    38653033666262633335636435396262643936343532343733353730373030383336333132646539
-    6165326636333866343631396439383737666662333739383566
-lightspeed_mcp_client_secret: !vault |
-    $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
-    65656566323232306162353236306536333334336135343135393230663764646332333938396636
-    6637366564613131623736646538363134313736326537390a323130353234346638623238393439
-    62313463336635626338326430626633306539313764636532366531653361656566363766396436
-    3836313661393862660a643264643665363339393632383261353265343864396462626331333134
-    35656263616634346234386335393837666335646535313436363165376661666663333863363863
-    3861633338636465613861636265366331666338643732613834
+# lightspeed_mcp_client_id: !vault |
+#     $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+#     33633163303262303133393464393965643130656161333963313161343834346630633233666238
+#     6533346432313832343461333330386665383139653032620a633061643538303634333965626138
+#     34366436623139316233656561313366653238636634333734373963343761613335616665376131
+#     3034393832383831630a656263313261353738666439646162313131646436323432373532646131
+#     38653033666262633335636435396262643936343532343733353730373030383336333132646539
+#     6165326636333866343631396439383737666662333739383566
+# lightspeed_mcp_client_secret: !vault |
+#     $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+#     65656566323232306162353236306536333334336135343135393230663764646332333938396636
+#     6637366564613131623736646538363134313736326537390a323130353234346638623238393439
+#     62313463336635626338326430626633306539313764636532366531653361656566363766396436
+#     3836313661393862660a643264643665363339393632383261353265343864396462626331333134
+#     35656263616634346234386335393837666335646535313436363165376661666663333863363863
+#     3861633338636465613861636265366331666338643732613834
 
-kafka_additional_topics:
-  - "windows-events"
+# kafka_additional_topics:
+#   - "windows-events"
 
-# -------------------------------------------------------------------
-# Showroom: Sean's fork with updated content + extra tabs
-# -------------------------------------------------------------------
-showroom_git_repo: https://github.com/ipvsean/ai-driven-automation-showroom.git
-showroom_git_ref: main
+# # -------------------------------------------------------------------
+# # Showroom: Sean's fork with updated content + extra tabs
+# # -------------------------------------------------------------------
+# showroom_git_repo: https://github.com/ipvsean/ai-driven-automation-showroom.git
+# showroom_git_ref: main
 
-showroom_tab_services:
-  - web1
-  - web2
-  - double_tty
+# showroom_tab_services:
+#   - web1
+#   - web2
+#   - double_tty
 
-showroom_tab_web1_url: "https://controller-{{ subdomain_base }}"
-showroom_tab_web1_name: "AAP"
-showroom_tab_web2_url: "https://vscode-{{ subdomain_base }}"
-showroom_tab_web2_name: "@Codeserver"
-showroom_tab_double_tty_top_username: "{{ student_name }}"
-showroom_tab_double_tty_bottom_username: "{{ student_name }}"
-showroom_antora_enable_dev_mode: "true"
+# showroom_tab_web1_url: "https://controller-{{ subdomain_base }}"
+# showroom_tab_web1_name: "AAP"
+# showroom_tab_web2_url: "https://vscode-{{ subdomain_base }}"
+# showroom_tab_web2_name: "@Codeserver"
+# showroom_tab_double_tty_top_username: "{{ student_name }}"
+# showroom_tab_double_tty_bottom_username: "{{ student_name }}"
+# showroom_antora_enable_dev_mode: "true"
 
-# -------------------------------------------------------------------
-# Standalone MCP server container (runs on bastion, connects to controller)
-# No token needed on container -- clients authenticate directly
-# -------------------------------------------------------------------
-mcp_server_enabled: true
-mcp_server_aap_url: "https://controller.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+# # -------------------------------------------------------------------
+# # Standalone MCP server container (runs on bastion, connects to controller)
+# # No token needed on container -- clients authenticate directly
+# # -------------------------------------------------------------------
+# mcp_server_enabled: true
+# mcp_server_aap_url: "https://controller.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
 
-# -------------------------------------------------------------------
-# LiteLLM virtual key: add Claude models for AI client
-# -------------------------------------------------------------------
-ocp4_workload_litellm_virtual_keys_models:
-  - openai/granite-3-2-8b-instruct
-  - claude-sonnet-4-6
-  - gemini-2.5-pro
+# # -------------------------------------------------------------------
+# # LiteLLM virtual key: add Claude models for AI client
+# # -------------------------------------------------------------------
+# ocp4_workload_litellm_virtual_keys_models:
+#   - openai/granite-3-2-8b-instruct
+#   - claude-sonnet-4-6
+#   - gemini-2.5-pro
 
 
-# -------------------------------------------------------------------
-# Claude Code AI client configuration
-# Proxy strips unsupported anthropic-beta headers for MaaS/Vertex AI
-# Gateway token created by the role using ansible.platform.token
-# -------------------------------------------------------------------
-ai_client: claude_code
-ai_client_mcp_enabled: true
-ai_client_mcp_mode: standalone
-ai_client_proxy_enabled: true
-ai_client_lightspeed_mcp_enabled: true
-ai_client_lightspeed_mcp_port: 8001
-ai_client_lightspeed_mcp_client_id: "{{ lightspeed_mcp_client_id }}"
-ai_client_lightspeed_mcp_client_secret: "{{ lightspeed_mcp_client_secret }}"
+# # -------------------------------------------------------------------
+# # Claude Code AI client configuration
+# # Proxy strips unsupported anthropic-beta headers for MaaS/Vertex AI
+# # Gateway token created by the role using ansible.platform.token
+# # -------------------------------------------------------------------
+# ai_client: claude_code
+# ai_client_mcp_enabled: true
+# ai_client_mcp_mode: standalone
+# ai_client_proxy_enabled: true
+# ai_client_lightspeed_mcp_enabled: true
+# ai_client_lightspeed_mcp_port: 8001
+# ai_client_lightspeed_mcp_client_id: "{{ lightspeed_mcp_client_id }}"
+# ai_client_lightspeed_mcp_client_secret: "{{ lightspeed_mcp_client_secret }}"
 
-# Lightspeed MCP server on port 8001 (8000 used by Splunk)
-lightspeed_mcp_port: 8001
-ai_client_proxy_upstream_url: "{{ litellm_api_endpoint }}"
-ai_client_proxy_upstream_api_key: "{{ litellm_virtual_key }}"
+# # Lightspeed MCP server on port 8001 (8000 used by Splunk)
+# lightspeed_mcp_port: 8001
+# ai_client_proxy_upstream_url: "{{ litellm_api_endpoint }}"
+# ai_client_proxy_upstream_api_key: "{{ litellm_virtual_key }}"
 
-# -------------------------------------------------------------------
-# AAP Controller Credentials (dev override with Red Hat Lightspeed)
-# -------------------------------------------------------------------
-controller_credentials:
-  - name: lab-credential
-    description: lab-user credential
-    organization: "Default"
-    credential_type: Machine
-    inputs:
-      username: cloud-user
-      ssh_key_data: "{{ ssh_privatekey }}"
-      become_method: sudo
-  - name: "AAP"
-    description: "Red Hat Ansible Automation Platform Credential"
-    organization: "Default"
-    credential_type: "Red Hat Ansible Automation Platform"
-    inputs:
-      host: "{{ ansible_automation_platform_configuration_host }}"
-      password: "{{ common_password }}"
-      username: "{{ student_name }}"
-      verify_ssl: false
-  - name: "ansible-vault"
-    description: "Ansible Vault Credentials"
-    organization: "Default"
-    credential_type: "Vault"
-    inputs:
-      vault_password: "{{ aap_ansible_vault_password }}"
-  - name: "Gitea"
-    description: "Gitea Credentials"
-    organization: Default
-    credential_type: "Source Control"
-    inputs:
-      username: "lab-user"
-      password: "{{ common_password }}"
-  # Network Credential for Cisco devices
-  - name: "Network Credential"
-    description: "Cisco Network Devices Credential"
-    organization: "Default"
-    credential_type: "Machine"
-    inputs:
-      username: admin
-      password: "{{ aap_image_admin_password }}"
-      become_method: enable
-  # Windows Credential
-  - name: "Windows"
-    description: "Windows Server Credential"
-    organization: "Default"
-    credential_type: Machine
-    inputs:
-      username: "{{ windows_admin_user }}"
-      password: "{{ windows_admin_password }}"
-  # Red Hat Lightspeed (username/password for broad AAP 2.5 compatibility)
-  - name: "Red Hat Lightspeed"
-    description: "Red Hat Lightspeed Credential"
-    organization: "Default"
-    credential_type: "Insights"
-    inputs:
-      username: "{{ rhel_lightspeed_user }}"
-      password: "{{ rhel_lightspeed_password }}"
+# # -------------------------------------------------------------------
+# # AAP Controller Credentials (dev override with Red Hat Lightspeed)
+# # -------------------------------------------------------------------
+# controller_credentials:
+#   - name: lab-credential
+#     description: lab-user credential
+#     organization: "Default"
+#     credential_type: Machine
+#     inputs:
+#       username: cloud-user
+#       ssh_key_data: "{{ ssh_privatekey }}"
+#       become_method: sudo
+#   - name: "AAP"
+#     description: "Red Hat Ansible Automation Platform Credential"
+#     organization: "Default"
+#     credential_type: "Red Hat Ansible Automation Platform"
+#     inputs:
+#       host: "{{ ansible_automation_platform_configuration_host }}"
+#       password: "{{ common_password }}"
+#       username: "{{ student_name }}"
+#       verify_ssl: false
+#   - name: "ansible-vault"
+#     description: "Ansible Vault Credentials"
+#     organization: "Default"
+#     credential_type: "Vault"
+#     inputs:
+#       vault_password: "{{ aap_ansible_vault_password }}"
+#   - name: "Gitea"
+#     description: "Gitea Credentials"
+#     organization: Default
+#     credential_type: "Source Control"
+#     inputs:
+#       username: "lab-user"
+#       password: "{{ common_password }}"
+#   # Network Credential for Cisco devices
+#   - name: "Network Credential"
+#     description: "Cisco Network Devices Credential"
+#     organization: "Default"
+#     credential_type: "Machine"
+#     inputs:
+#       username: admin
+#       password: "{{ aap_image_admin_password }}"
+#       become_method: enable
+#   # Windows Credential
+#   - name: "Windows"
+#     description: "Windows Server Credential"
+#     organization: "Default"
+#     credential_type: Machine
+#     inputs:
+#       username: "{{ windows_admin_user }}"
+#       password: "{{ windows_admin_password }}"
+#   # Red Hat Lightspeed (username/password for broad AAP 2.5 compatibility)
+#   - name: "Red Hat Lightspeed"
+#     description: "Red Hat Lightspeed Credential"
+#     organization: "Default"
+#     credential_type: "Insights"
+#     inputs:
+#       username: "{{ rhel_lightspeed_user }}"
+#       password: "{{ rhel_lightspeed_password }}"
 
-# -------------------------------------------------------------------
-# Controller hosts
-# -------------------------------------------------------------------
-controller_hosts:
-  - name: "{{ groups['rhel9_nodes'][0].split('.')[0] }}"
-    inventory: "lab-inventory"
-  - name: "{{ groups['rhel9_nodes'][1].split('.')[0] }}"
-    inventory: "lab-inventory"
-  - name: "{{ groups['rhel9_nodes'][2].split('.')[0] }}"
-    inventory: "lab-inventory"
-  - name: "{{ groups['servers'][0].split('.')[0] }}"
-    inventory: "service-inventory"
-  - name: "gitea"
-    inventory: "gitea-inventory"
-    variables:
-      ansible_host: "bastion"
-  - name: "cisco-rtr1"
-    inventory: "network-inventory"
-    variables:
-      ansible_host: "cisco-rtr1.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
-      ansible_network_os: cisco.ios.ios
-      ansible_connection: ansible.netcommon.network_cli
-  - name: "cisco-rtr2"
-    inventory: "network-inventory"
-    variables:
-      ansible_host: "cisco-rtr2.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
-      ansible_network_os: cisco.ios.ios
-      ansible_connection: ansible.netcommon.network_cli
-  - name: "windows"
-    inventory: "windows-inventory"
-    variables:
-      ansible_host: "windows"
-      ansible_connection: psrp
-      ansible_psrp_auth: negotiate
-      ansible_psrp_cert_validation: ignore
-  - name: "controller"
-    inventory: "aap-controller"
-    variables:
-      ansible_host: "controller.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
-      ansible_user: "rhel"
-      ansible_password: "{{ common_password }}"
+# # -------------------------------------------------------------------
+# # Controller hosts
+# # -------------------------------------------------------------------
+# controller_hosts:
+#   - name: "{{ groups['rhel9_nodes'][0].split('.')[0] }}"
+#     inventory: "lab-inventory"
+#   - name: "{{ groups['rhel9_nodes'][1].split('.')[0] }}"
+#     inventory: "lab-inventory"
+#   - name: "{{ groups['rhel9_nodes'][2].split('.')[0] }}"
+#     inventory: "lab-inventory"
+#   - name: "{{ groups['servers'][0].split('.')[0] }}"
+#     inventory: "service-inventory"
+#   - name: "gitea"
+#     inventory: "gitea-inventory"
+#     variables:
+#       ansible_host: "bastion"
+#   - name: "cisco-rtr1"
+#     inventory: "network-inventory"
+#     variables:
+#       ansible_host: "cisco-rtr1.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+#       ansible_network_os: cisco.ios.ios
+#       ansible_connection: ansible.netcommon.network_cli
+#   - name: "cisco-rtr2"
+#     inventory: "network-inventory"
+#     variables:
+#       ansible_host: "cisco-rtr2.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+#       ansible_network_os: cisco.ios.ios
+#       ansible_connection: ansible.netcommon.network_cli
+#   - name: "windows"
+#     inventory: "windows-inventory"
+#     variables:
+#       ansible_host: "windows"
+#       ansible_connection: psrp
+#       ansible_psrp_auth: negotiate
+#       ansible_psrp_cert_validation: ignore
+#   - name: "controller"
+#     inventory: "aap-controller"
+#     variables:
+#       ansible_host: "controller.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+#       ansible_user: "rhel"
+#       ansible_password: "{{ common_password }}"
 
-# -------------------------------------------------------------------
-# Enable code-server with Claude Code
-# -------------------------------------------------------------------
-install_vscode_server: true
+# # -------------------------------------------------------------------
+# # Enable code-server with Claude Code
+# # -------------------------------------------------------------------
+# install_vscode_server: true
 
-vscode_server_version: "4.112.0"
-vscode_server_rpm_url: >-
-  https://github.com/coder/code-server/releases/download/v{{ vscode_server_version }}/code-server-{{ vscode_server_version }}-amd64.rpm
+# vscode_server_version: "4.112.0"
+# vscode_server_rpm_url: >-
+#   https://github.com/coder/code-server/releases/download/v{{ vscode_server_version }}/code-server-{{ vscode_server_version }}-amd64.rpm
 
-vscode_server_ansible_become: true
-vscode_user_workspace_path: "/home/{{ student_name }}"
-vscode_auth_type: password
-vscode_user_name: "{{ student_name }}"
-vscode_user_password: "{{ common_password }}"
-vscode_server_hostname: "vscode-{{ subdomain_base }}"
-vscode_ansible_python_interpreter: /home/{{ student_name }}/.venv/bin/python3
+# vscode_server_ansible_become: true
+# vscode_user_workspace_path: "/home/{{ student_name }}"
+# vscode_auth_type: password
+# vscode_user_name: "{{ student_name }}"
+# vscode_user_password: "{{ common_password }}"
+# vscode_server_hostname: "vscode-{{ subdomain_base }}"
+# vscode_ansible_python_interpreter: /home/{{ student_name }}/.venv/bin/python3
 
-vscode_server_default_extensions: []
-vscode_server_extension_urls: []
+# vscode_server_default_extensions: []
+# vscode_server_extension_urls: []
 
-vscode_server_additional_settings: |
-  "ansible.python.interpreterPath": "/home/{{ student_name }}/.venv/bin/python3",
-  "ansible.ansible.path": "/home/{{ student_name }}/.venv/bin/ansible",
-  "ansible.validation.enabled": true,
-  "ansible.validation.lint.enabled": true,
-  "ansible.lightspeed.enabled": true,
-  "ansible.lightspeed.suggestions.enabled": true,
-  "security.workspace.trust.enabled": false,
-  "ansible.lightspeed.URL": "",
-  "terminal.integrated.defaultProfile.linux": "bash",
-  "editor.tabSize": 2,
-  "editor.insertSpaces": true,
-  "editor.detectIndentation": false,
-  "[yaml]": {
-    "editor.tabSize": 2,
-    "editor.insertSpaces": true,
-    "editor.detectIndentation": false
-  },
-  "claudeCode.disableLoginPrompt": true,
-  "extensions.ignoreRecommendations": true,
-  "python-envs.terminal.autoActivationType": "off",
-  "git.scanRepositories": ["/home/{{ student_name }}/lightspeed_playbooks"],
-  "files.exclude": {
-    "**/.git": true,
-    "**/.kube": true,
-    "**/.bash*": true,
-    "**/.vim*": true,
-    "**/.ssh": true,
-    "**/.vscode": true,
-    "**/.local": true,
-    "**/.config": true,
-    "**/.ansible": true,
-    "**/.cache": true,
-    "**/.claude": true,
-    "**/.mcp-auth": true,
-    "**/.npm": true,
-    "**/.nvm": true,
-    "**/.venv": true
-  }
+# vscode_server_additional_settings: |
+#   "ansible.python.interpreterPath": "/home/{{ student_name }}/.venv/bin/python3",
+#   "ansible.ansible.path": "/home/{{ student_name }}/.venv/bin/ansible",
+#   "ansible.validation.enabled": true,
+#   "ansible.validation.lint.enabled": true,
+#   "ansible.lightspeed.enabled": true,
+#   "ansible.lightspeed.suggestions.enabled": true,
+#   "security.workspace.trust.enabled": false,
+#   "ansible.lightspeed.URL": "",
+#   "terminal.integrated.defaultProfile.linux": "bash",
+#   "editor.tabSize": 2,
+#   "editor.insertSpaces": true,
+#   "editor.detectIndentation": false,
+#   "[yaml]": {
+#     "editor.tabSize": 2,
+#     "editor.insertSpaces": true,
+#     "editor.detectIndentation": false
+#   },
+#   "claudeCode.disableLoginPrompt": true,
+#   "extensions.ignoreRecommendations": true,
+#   "python-envs.terminal.autoActivationType": "off",
+#   "git.scanRepositories": ["/home/{{ student_name }}/lightspeed_playbooks"],
+#   "files.exclude": {
+#     "**/.git": true,
+#     "**/.kube": true,
+#     "**/.bash*": true,
+#     "**/.vim*": true,
+#     "**/.ssh": true,
+#     "**/.vscode": true,
+#     "**/.local": true,
+#     "**/.config": true,
+#     "**/.ansible": true,
+#     "**/.cache": true,
+#     "**/.claude": true,
+#     "**/.mcp-auth": true,
+#     "**/.npm": true,
+#     "**/.nvm": true,
+#     "**/.venv": true
+#   }
 
-# -------------------------------------------------------------------
-# AAP config overrides for dev (subset of common.yaml)
-# Drop: Network/OSPF, Windows (no cisco routers or windows VMs in dev)
-# Add: RHEL self-healing workflow
-# -------------------------------------------------------------------
-controller_projects:
-  - name: "AI-EDA"
-    description: "Project for AI EDA - ansible-tmm repository"
-    organization: "Default"
-    scm_type: "git"
-    scm_url: "https://github.com/ansible-tmm/aiops-summitlab.git"
-    scm_branch: "feat/rhel-self-healing"
-    scm_clean: false
-    scm_delete_on_update: false
-    scm_update_on_launch: false
-    wait: true
-  - name: "Lightspeed-Playbooks-Network"
-    description: "Network AIOps Lightspeed Playbooks from Gitea"
-    organization: "Default"
-    scm_type: "git"
-    scm_url: "{{ gitea_create_url }}/lab-user/lightspeed_playbooks.git"
-    scm_clean: true
-    scm_delete_on_update: false
-    scm_update_on_launch: true
-    scm_branch: "main"
-    credential: "Gitea"
-    wait: false
-  - name: "Lightspeed-Playbooks"
-    description: "Project to check AI generated Lightspeed Playbooks"
-    organization: "Default"
-    scm_type: "git"
-    scm_url: "{{ gitea_create_url }}/lab-user/lightspeed_playbooks.git"
-    scm_clean: true
-    scm_delete_on_update: false
-    scm_update_on_launch: false
-    scm_branch: "main"
-    credential: "Gitea"
-    wait: false
+# # -------------------------------------------------------------------
+# # AAP config overrides for dev (subset of common.yaml)
+# # Drop: Network/OSPF, Windows (no cisco routers or windows VMs in dev)
+# # Add: RHEL self-healing workflow
+# # -------------------------------------------------------------------
+# controller_projects:
+#   - name: "AI-EDA"
+#     description: "Project for AI EDA - ansible-tmm repository"
+#     organization: "Default"
+#     scm_type: "git"
+#     scm_url: "https://github.com/ansible-tmm/aiops-summitlab.git"
+#     scm_branch: "feat/rhel-self-healing"
+#     scm_clean: false
+#     scm_delete_on_update: false
+#     scm_update_on_launch: false
+#     wait: true
+#   - name: "Lightspeed-Playbooks-Network"
+#     description: "Network AIOps Lightspeed Playbooks from Gitea"
+#     organization: "Default"
+#     scm_type: "git"
+#     scm_url: "{{ gitea_create_url }}/lab-user/lightspeed_playbooks.git"
+#     scm_clean: true
+#     scm_delete_on_update: false
+#     scm_update_on_launch: true
+#     scm_branch: "main"
+#     credential: "Gitea"
+#     wait: false
+#   - name: "Lightspeed-Playbooks"
+#     description: "Project to check AI generated Lightspeed Playbooks"
+#     organization: "Default"
+#     scm_type: "git"
+#     scm_url: "{{ gitea_create_url }}/lab-user/lightspeed_playbooks.git"
+#     scm_clean: true
+#     scm_delete_on_update: false
+#     scm_update_on_launch: false
+#     scm_branch: "main"
+#     credential: "Gitea"
+#     wait: false
 
-controller_templates:
-  # Initialization
-  - name: "Initialize Lightspeed Gitea Repository"
-    description: "Create empty lightspeed-response-network.yml in Gitea"
-    organization: "Default"
-    job_type: "run"
-    inventory: "gitea-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/initialize_gitea_lightspeed.yml"
-    verbosity: 1
-    extra_vars:
-      gitea_url: "{{ gitea_create_url }}"
-      gitea_password: "{{ common_password }}"
-  # Part 1: Apache service remediation
-  - name: "❌ Break Apache"
-    description: "Break Apache config on node1"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/httpd_break.yml"
-    credentials:
-      - "lab-credential"
-    verbosity: 1
-    limit: "node1"
-  - name: "✅ Restore Apache"
-    description: "Restore Apache config on node1"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/httpd_fix.yml"
-    credentials:
-      - "lab-credential"
-    verbosity: 1
-    limit: "node1"
-  - name: "⚙️ Apache Service Status Check"
-    description: "Check httpd service status"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/systemd_check_status.yml"
-    credentials:
-      - "lab-credential"
-    verbosity: 1
-    limit: "node1"
-  - name: "📣 Notify via Mattermost"
-    description: "Send alert notification to Mattermost"
-    organization: "Default"
-    job_type: "run"
-    inventory: "Demo Inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/mattermost_first_message.yml"
-    credentials:
-      - "Demo Credential"
-    verbosity: 1
-    extra_vars:
-      mattermost_instance: "https://mattermost-{{ subdomain_base }}"
-      mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
-  - name: "🤖 RHEL AI: Analyze Incident"
-    description: "Use AI to analyze a service incident"
-    organization: "Default"
-    job_type: "run"
-    inventory: "Demo Inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/rhelai_inference_survey.yml"
-    verbosity: 1
-    extra_vars:
-      rhelai_url_proto: https
-      rhelai_port: 443
-      rhelai_server: "{{ litellm_api_endpoint | regex_replace('^https?://', '') }}"
-      rhelai_model_name: "openai/granite-3-2-8b-instruct"
-      rhelai_token: "{{ litellm_virtual_key }}"
-  - name: "⚙️ Build Ansible Lightspeed Job Template"
-    description: "Generate job template for Lightspeed playbook"
-    organization: "Default"
-    job_type: "run"
-    inventory: "Demo Inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/aap_create_job_template.yml"
-    credentials:
-      - "AAP"
-    verbosity: 1
-  - name: "🧾 Commit Fix to Gitea"
-    description: "Push the generated remediation playbook to Gitea"
-    organization: "Default"
-    job_type: "run"
-    inventory: "Demo Inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/scm_pr.yml"
-    verbosity: 1
-    extra_vars:
-      gitea_token: "{{ hostvars[groups['servers'][0]]['gitea_token_sha1'] }}"
-      gitea_url: "{{ gitea_create_url }}"
-  - name: "⚙️ Build HTTPD Remediation Template"
-    description: "Generate job template to fix httpd"
-    organization: "Default"
-    job_type: "run"
-    inventory: "Demo Inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/httpd_remediation_job_template.yml"
-    credentials:
-      - "AAP"
-    verbosity: 1
-  # Network Job Templates
-  - name: "Create Network AIOps Workflow"
-    description: "Create Network AIOps Workflow with all nodes"
-    organization: "Default"
-    job_type: "run"
-    inventory: "Demo Inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/create_network_aiops_workflow.yml"
-    credentials:
-      - "AAP"
-    verbosity: 1
-  - name: "Network Router Setup"
-    description: "Setup Cisco routers with OSPF configuration"
-    organization: "Default"
-    job_type: "run"
-    inventory: "network-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/setup_routers.yml"
-    credentials:
-      - "Network Credential"
-    verbosity: 1
-    extra_vars:
-      bastion_ip: "bastion.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
-  - name: "Network AIOps"
-    description: "Generate OSPF remediation playbook using Lightspeed AI"
-    organization: "Default"
-    job_type: "run"
-    inventory: "gitea-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/network_aiops.yml"
-    credentials:
-      - "ansible-vault"
-    ask_variables_on_launch: true
-    verbosity: 1
-    extra_vars:
-      gitea_url: "{{ gitea_create_url }}"
-      gitea_password: "{{ common_password }}"
-  # Windows Job Templates
-  - name: "Setup Winlogbeat on Windows"
-    description: "Install and configure Winlogbeat to forward Windows events to Kafka"
-    organization: "Default"
-    job_type: "run"
-    inventory: "windows-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/windows_install_winlogbeat.yml"
-    credentials:
-      - "Windows"
-    execution_environment: "Windows EE"
-    verbosity: 1
-    extra_vars:
-      winlogbeat_kafka_brokers: "service1:9092"
-      winlogbeat_kafka_topic: "windows-events"
-  - name: "Simulate AD Account Creation"
-    description: "Create a test local user account to trigger Event ID 4722"
-    organization: "Default"
-    job_type: "run"
-    inventory: "windows-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/windows_create_ad_user.yml"
-    credentials:
-      - "Windows"
-    execution_environment: "Windows EE"
-    verbosity: 1
-  - name: "Simulate Windows Firewall Toggle"
-    description: "Toggle Windows Firewall to generate firewall events"
-    organization: "Default"
-    job_type: "run"
-    inventory: "windows-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/windows_toggle_firewall.yml"
-    credentials:
-      - "Windows"
-    execution_environment: "Windows EE"
-    verbosity: 1
-  - name: "Windows: Create Mattermost Ticket"
-    description: "Create a Mattermost notification from Windows event data"
-    organization: "Default"
-    job_type: "run"
-    inventory: "Demo Inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/windows_create_ticket.yml"
-    ask_variables_on_launch: true
-    verbosity: 1
-    extra_vars:
-      mattermost_instance: "https://mattermost-{{ subdomain_base }}"
-      mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
-  - name: "Windows AI: Analyze and Ticket"
-    description: "Use AI to analyze a Windows event and create an enriched Mattermost ticket"
-    organization: "Default"
-    job_type: "run"
-    inventory: "Demo Inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/windows_ai_analyze_and_ticket.yml"
-    ask_variables_on_launch: true
-    verbosity: 1
-    extra_vars:
-      rhelai_url_proto: https
-      rhelai_port: 443
-      rhelai_server: "{{ litellm_api_endpoint | regex_replace('^https?://', '') }}"
-      rhelai_model_name: "openai/granite-3-2-8b-instruct"
-      rhelai_token: "{{ litellm_virtual_key }}"
-      mattermost_instance: "https://mattermost-{{ subdomain_base }}"
-      mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
-  # RHEL Self-Healing: Break scenarios
-  - name: "Break Cron - Bad Syntax"
-    description: "Insert invalid crontab entry to cause crond parse errors"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/break_cron_syntax.yml"
-    credentials:
-      - "lab-credential"
-    verbosity: 1
-    ask_limit_on_launch: true
-  - name: "Break Cron - Invalid User"
-    description: "Create crontab with nonexistent user causing crond ERROR every minute"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/break_cron_permissions.yml"
-    credentials:
-      - "lab-credential"
-    verbosity: 1
-    ask_limit_on_launch: true
-  # RHEL Self-Healing: Fix scenarios (AI router selects one)
-  - name: "Fix Cron - Syntax Error"
-    description: "Remove invalid crontab entry from /etc/cron.d/broken-job and restart crond"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/fix_cron_syntax.yml"
-    credentials:
-      - "lab-credential"
-    verbosity: 1
-    ask_limit_on_launch: true
-    ask_variables_on_launch: true
-  - name: "Fix Cron - Invalid User"
-    description: "Remove crontab with nonexistent user from /etc/cron.d/bad-user-job"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/fix_cron_permissions.yml"
-    credentials:
-      - "lab-credential"
-    verbosity: 1
-    ask_limit_on_launch: true
-    ask_variables_on_launch: true
-  # RHEL Self-Healing: AI router and dispatch
-  - name: "AI Route Cron Remediation"
-    description: "AI analyzes syslog alert and selects the correct cron fix template"
-    organization: "Default"
-    job_type: "run"
-    inventory: "Demo Inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/ai_route_cron_remediation.yml"
-    credentials:
-      - "AAP"
-    verbosity: 1
-    ask_variables_on_launch: true
-    extra_vars:
-      llm_api_url: "{{ litellm_api_endpoint }}/chat/completions"
-      llm_api_key: "{{ litellm_virtual_key }}"
-      llm_model: "claude-sonnet-4-6"
-      mattermost_instance: "https://mattermost-{{ subdomain_base }}"
-      mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
-  - name: "Dispatch Cron Remediation"
-    description: "Execute the AI-selected cron remediation template"
-    organization: "Default"
-    job_type: "run"
-    inventory: "Demo Inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/dispatch_cron_remediation.yml"
-    ask_variables_on_launch: true
-    credentials:
-      - "AAP"
-    verbosity: 1
-  # RHEL Self-Healing: Mattermost and workflow
-  - name: "Notify via Mattermost - RHEL"
-    description: "Send RHEL service failure alert to Mattermost"
-    organization: "Default"
-    job_type: "run"
-    inventory: "Demo Inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/mattermost_rhel_alert.yml"
-    credentials:
-      - "Demo Credential"
-    verbosity: 1
-    extra_vars:
-      mattermost_instance: "https://mattermost-{{ subdomain_base }}"
-      mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
-      input_linux_service: "crond"
-  - name: "Create RHEL Self-Healing Workflow"
-    description: "Create the RHEL-Self-Healing workflow with Mattermost notification"
-    organization: "Default"
-    job_type: "run"
-    inventory: "Demo Inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/create_rhel_workflow.yml"
-    credentials:
-      - "AAP"
-    verbosity: 1
-  - name: "Create Cron AIOps Workflow"
-    description: "Create the AI-driven cron remediation workflow (router -> approval -> dispatch)"
-    organization: "Default"
-    job_type: "run"
-    inventory: "Demo Inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/create_cron_aiops_workflow.yml"
-    credentials:
-      - "AAP"
-    verbosity: 1
-  # Lightspeed registration (student runs manually)
-  - name: "Register with Red Hat Lightspeed"
-    description: "Register RHEL nodes with Lightspeed and fix repos"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/register_lightspeed.yml"
-    credentials:
-      - "lab-credential"
-    verbosity: 1
-    extra_vars:
-      scm_username: "{{ rhel_lightspeed_user }}"
-      scm_password: "{{ rhel_lightspeed_password }}"
-      authentication: basic
-  # RHEL System Roles (student runs manually)
-  - name: "RHEL System Roles - Timesync"
-    description: "Configure chrony NTP time synchronization"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/rhel_system_roles_timesync.yml"
-    credentials:
-      - "lab-credential"
-    ask_limit_on_launch: true
-    verbosity: 1
-    survey_enabled: true
-    survey_spec:
-      name: "Timesync Configuration"
-      description: "Configure NTP provider and servers"
-      spec:
-        - question_name: "NTP Provider"
-          question_description: "NTP implementation to use"
-          variable: "ntp_provider"
-          type: "text"
-          default: "chrony"
-          required: true
-          min: 0
-          max: 128
-        - question_name: "NTP Server 1 Hostname"
-          question_description: "First NTP server hostname"
-          variable: "ntp_server_1"
-          type: "text"
-          default: "0.pool.ntp.org"
-          required: true
-          min: 0
-          max: 256
-        - question_name: "NTP Server 1 - Pool"
-          question_description: "Use as pool for server 1"
-          variable: "ntp_server_1_pool"
-          type: "multiplechoice"
-          choices: "true\nfalse"
-          default: "true"
-          required: true
-        - question_name: "NTP Server 1 - IBurst"
-          question_description: "Enable iburst for server 1"
-          variable: "ntp_server_1_iburst"
-          type: "multiplechoice"
-          choices: "true\nfalse"
-          default: "true"
-          required: true
-        - question_name: "NTP Server 2 Hostname"
-          question_description: "Second NTP server hostname"
-          variable: "ntp_server_2"
-          type: "text"
-          default: "1.pool.ntp.org"
-          required: true
-          min: 0
-          max: 256
-        - question_name: "NTP Server 2 - Pool"
-          question_description: "Use as pool for server 2"
-          variable: "ntp_server_2_pool"
-          type: "multiplechoice"
-          choices: "true\nfalse"
-          default: "true"
-          required: true
-        - question_name: "NTP Server 2 - IBurst"
-          question_description: "Enable iburst for server 2"
-          variable: "ntp_server_2_iburst"
-          type: "multiplechoice"
-          choices: "true\nfalse"
-          default: "true"
-          required: true
-  - name: "RHEL System Roles - Firewall"
-    description: "Configure firewalld with SSH and HTTP services"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/rhel_system_roles_firewall.yml"
-    credentials:
-      - "lab-credential"
-    ask_limit_on_launch: true
-    verbosity: 1
-  - name: "RHEL System Roles - SELinux"
-    description: "Set SELinux enforcing mode and configure booleans"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/rhel_system_roles_selinux.yml"
-    credentials:
-      - "lab-credential"
-    ask_limit_on_launch: true
-    verbosity: 1
-  - name: "RHEL System Roles - Cockpit"
-    description: "Install and enable the Cockpit web console"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/rhel_system_roles_cockpit.yml"
-    credentials:
-      - "lab-credential"
-    ask_limit_on_launch: true
-    verbosity: 1
-  - name: "RHEL System Roles - Crypto Policies"
-    description: "Set system-wide cryptographic policy"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/rhel_system_roles_crypto_policies.yml"
-    credentials:
-      - "lab-credential"
-    ask_limit_on_launch: true
-    verbosity: 1
-  - name: "RHEL System Roles - SSHD"
-    description: "Harden SSH server configuration"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/rhel_system_roles_sshd.yml"
-    credentials:
-      - "lab-credential"
-    ask_limit_on_launch: true
-    verbosity: 1
-  - name: "RHEL System Roles - Logging"
-    description: "Configure rsyslog local file logging"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/rhel_system_roles_logging.yml"
-    credentials:
-      - "lab-credential"
-    ask_limit_on_launch: true
-    verbosity: 1
-  - name: "RHEL System Roles - RHC Registration"
-    description: "Register system with Red Hat using rhc"
-    organization: "Default"
-    job_type: "run"
-    inventory: "lab-inventory"
-    project: "AI-EDA"
-    playbook: "playbooks/rhel_system_roles_rhc.yml"
-    credentials:
-      - "lab-credential"
-    ask_limit_on_launch: true
-    verbosity: 1
+# controller_templates:
+#   # Initialization
+#   - name: "Initialize Lightspeed Gitea Repository"
+#     description: "Create empty lightspeed-response-network.yml in Gitea"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "gitea-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/initialize_gitea_lightspeed.yml"
+#     verbosity: 1
+#     extra_vars:
+#       gitea_url: "{{ gitea_create_url }}"
+#       gitea_password: "{{ common_password }}"
+#   # Part 1: Apache service remediation
+#   - name: "❌ Break Apache"
+#     description: "Break Apache config on node1"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/httpd_break.yml"
+#     credentials:
+#       - "lab-credential"
+#     verbosity: 1
+#     limit: "node1"
+#   - name: "✅ Restore Apache"
+#     description: "Restore Apache config on node1"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/httpd_fix.yml"
+#     credentials:
+#       - "lab-credential"
+#     verbosity: 1
+#     limit: "node1"
+#   - name: "⚙️ Apache Service Status Check"
+#     description: "Check httpd service status"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/systemd_check_status.yml"
+#     credentials:
+#       - "lab-credential"
+#     verbosity: 1
+#     limit: "node1"
+#   - name: "📣 Notify via Mattermost"
+#     description: "Send alert notification to Mattermost"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "Demo Inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/mattermost_first_message.yml"
+#     credentials:
+#       - "Demo Credential"
+#     verbosity: 1
+#     extra_vars:
+#       mattermost_instance: "https://mattermost-{{ subdomain_base }}"
+#       mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
+#   - name: "🤖 RHEL AI: Analyze Incident"
+#     description: "Use AI to analyze a service incident"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "Demo Inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/rhelai_inference_survey.yml"
+#     verbosity: 1
+#     extra_vars:
+#       rhelai_url_proto: https
+#       rhelai_port: 443
+#       rhelai_server: "{{ litellm_api_endpoint | regex_replace('^https?://', '') }}"
+#       rhelai_model_name: "openai/granite-3-2-8b-instruct"
+#       rhelai_token: "{{ litellm_virtual_key }}"
+#   - name: "⚙️ Build Ansible Lightspeed Job Template"
+#     description: "Generate job template for Lightspeed playbook"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "Demo Inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/aap_create_job_template.yml"
+#     credentials:
+#       - "AAP"
+#     verbosity: 1
+#   - name: "🧾 Commit Fix to Gitea"
+#     description: "Push the generated remediation playbook to Gitea"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "Demo Inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/scm_pr.yml"
+#     verbosity: 1
+#     extra_vars:
+#       gitea_token: "{{ hostvars[groups['servers'][0]]['gitea_token_sha1'] }}"
+#       gitea_url: "{{ gitea_create_url }}"
+#   - name: "⚙️ Build HTTPD Remediation Template"
+#     description: "Generate job template to fix httpd"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "Demo Inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/httpd_remediation_job_template.yml"
+#     credentials:
+#       - "AAP"
+#     verbosity: 1
+#   # Network Job Templates
+#   - name: "Create Network AIOps Workflow"
+#     description: "Create Network AIOps Workflow with all nodes"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "Demo Inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/create_network_aiops_workflow.yml"
+#     credentials:
+#       - "AAP"
+#     verbosity: 1
+#   - name: "Network Router Setup"
+#     description: "Setup Cisco routers with OSPF configuration"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "network-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/setup_routers.yml"
+#     credentials:
+#       - "Network Credential"
+#     verbosity: 1
+#     extra_vars:
+#       bastion_ip: "bastion.lab.sandbox-{{ guid }}-ocp4-cluster.svc.cluster.local"
+#   - name: "Network AIOps"
+#     description: "Generate OSPF remediation playbook using Lightspeed AI"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "gitea-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/network_aiops.yml"
+#     credentials:
+#       - "ansible-vault"
+#     ask_variables_on_launch: true
+#     verbosity: 1
+#     extra_vars:
+#       gitea_url: "{{ gitea_create_url }}"
+#       gitea_password: "{{ common_password }}"
+#   # Windows Job Templates
+#   - name: "Setup Winlogbeat on Windows"
+#     description: "Install and configure Winlogbeat to forward Windows events to Kafka"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "windows-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/windows_install_winlogbeat.yml"
+#     credentials:
+#       - "Windows"
+#     execution_environment: "Windows EE"
+#     verbosity: 1
+#     extra_vars:
+#       winlogbeat_kafka_brokers: "service1:9092"
+#       winlogbeat_kafka_topic: "windows-events"
+#   - name: "Simulate AD Account Creation"
+#     description: "Create a test local user account to trigger Event ID 4722"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "windows-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/windows_create_ad_user.yml"
+#     credentials:
+#       - "Windows"
+#     execution_environment: "Windows EE"
+#     verbosity: 1
+#   - name: "Simulate Windows Firewall Toggle"
+#     description: "Toggle Windows Firewall to generate firewall events"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "windows-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/windows_toggle_firewall.yml"
+#     credentials:
+#       - "Windows"
+#     execution_environment: "Windows EE"
+#     verbosity: 1
+#   - name: "Windows: Create Mattermost Ticket"
+#     description: "Create a Mattermost notification from Windows event data"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "Demo Inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/windows_create_ticket.yml"
+#     ask_variables_on_launch: true
+#     verbosity: 1
+#     extra_vars:
+#       mattermost_instance: "https://mattermost-{{ subdomain_base }}"
+#       mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
+#   - name: "Windows AI: Analyze and Ticket"
+#     description: "Use AI to analyze a Windows event and create an enriched Mattermost ticket"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "Demo Inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/windows_ai_analyze_and_ticket.yml"
+#     ask_variables_on_launch: true
+#     verbosity: 1
+#     extra_vars:
+#       rhelai_url_proto: https
+#       rhelai_port: 443
+#       rhelai_server: "{{ litellm_api_endpoint | regex_replace('^https?://', '') }}"
+#       rhelai_model_name: "openai/granite-3-2-8b-instruct"
+#       rhelai_token: "{{ litellm_virtual_key }}"
+#       mattermost_instance: "https://mattermost-{{ subdomain_base }}"
+#       mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
+#   # RHEL Self-Healing: Break scenarios
+#   - name: "Break Cron - Bad Syntax"
+#     description: "Insert invalid crontab entry to cause crond parse errors"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/break_cron_syntax.yml"
+#     credentials:
+#       - "lab-credential"
+#     verbosity: 1
+#     ask_limit_on_launch: true
+#   - name: "Break Cron - Invalid User"
+#     description: "Create crontab with nonexistent user causing crond ERROR every minute"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/break_cron_permissions.yml"
+#     credentials:
+#       - "lab-credential"
+#     verbosity: 1
+#     ask_limit_on_launch: true
+#   # RHEL Self-Healing: Fix scenarios (AI router selects one)
+#   - name: "Fix Cron - Syntax Error"
+#     description: "Remove invalid crontab entry from /etc/cron.d/broken-job and restart crond"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/fix_cron_syntax.yml"
+#     credentials:
+#       - "lab-credential"
+#     verbosity: 1
+#     ask_limit_on_launch: true
+#     ask_variables_on_launch: true
+#   - name: "Fix Cron - Invalid User"
+#     description: "Remove crontab with nonexistent user from /etc/cron.d/bad-user-job"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/fix_cron_permissions.yml"
+#     credentials:
+#       - "lab-credential"
+#     verbosity: 1
+#     ask_limit_on_launch: true
+#     ask_variables_on_launch: true
+#   # RHEL Self-Healing: AI router and dispatch
+#   - name: "AI Route Cron Remediation"
+#     description: "AI analyzes syslog alert and selects the correct cron fix template"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "Demo Inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/ai_route_cron_remediation.yml"
+#     credentials:
+#       - "AAP"
+#     verbosity: 1
+#     ask_variables_on_launch: true
+#     extra_vars:
+#       llm_api_url: "{{ litellm_api_endpoint }}/chat/completions"
+#       llm_api_key: "{{ litellm_virtual_key }}"
+#       llm_model: "claude-sonnet-4-6"
+#       mattermost_instance: "https://mattermost-{{ subdomain_base }}"
+#       mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
+#   - name: "Dispatch Cron Remediation"
+#     description: "Execute the AI-selected cron remediation template"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "Demo Inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/dispatch_cron_remediation.yml"
+#     ask_variables_on_launch: true
+#     credentials:
+#       - "AAP"
+#     verbosity: 1
+#   # RHEL Self-Healing: Mattermost and workflow
+#   - name: "Notify via Mattermost - RHEL"
+#     description: "Send RHEL service failure alert to Mattermost"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "Demo Inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/mattermost_rhel_alert.yml"
+#     credentials:
+#       - "Demo Credential"
+#     verbosity: 1
+#     extra_vars:
+#       mattermost_instance: "https://mattermost-{{ subdomain_base }}"
+#       mattermost_token: "{{ hostvars[groups['servers'][0]]['mattermost_incoming_token'] }}"
+#       input_linux_service: "crond"
+#   - name: "Create RHEL Self-Healing Workflow"
+#     description: "Create the RHEL-Self-Healing workflow with Mattermost notification"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "Demo Inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/create_rhel_workflow.yml"
+#     credentials:
+#       - "AAP"
+#     verbosity: 1
+#   - name: "Create Cron AIOps Workflow"
+#     description: "Create the AI-driven cron remediation workflow (router -> approval -> dispatch)"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "Demo Inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/create_cron_aiops_workflow.yml"
+#     credentials:
+#       - "AAP"
+#     verbosity: 1
+#   # Lightspeed registration (student runs manually)
+#   - name: "Register with Red Hat Lightspeed"
+#     description: "Register RHEL nodes with Lightspeed and fix repos"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/register_lightspeed.yml"
+#     credentials:
+#       - "lab-credential"
+#     verbosity: 1
+#     extra_vars:
+#       scm_username: "{{ rhel_lightspeed_user }}"
+#       scm_password: "{{ rhel_lightspeed_password }}"
+#       authentication: basic
+#   # RHEL System Roles (student runs manually)
+#   - name: "RHEL System Roles - Timesync"
+#     description: "Configure chrony NTP time synchronization"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/rhel_system_roles_timesync.yml"
+#     credentials:
+#       - "lab-credential"
+#     ask_limit_on_launch: true
+#     verbosity: 1
+#     survey_enabled: true
+#     survey_spec:
+#       name: "Timesync Configuration"
+#       description: "Configure NTP provider and servers"
+#       spec:
+#         - question_name: "NTP Provider"
+#           question_description: "NTP implementation to use"
+#           variable: "ntp_provider"
+#           type: "text"
+#           default: "chrony"
+#           required: true
+#           min: 0
+#           max: 128
+#         - question_name: "NTP Server 1 Hostname"
+#           question_description: "First NTP server hostname"
+#           variable: "ntp_server_1"
+#           type: "text"
+#           default: "0.pool.ntp.org"
+#           required: true
+#           min: 0
+#           max: 256
+#         - question_name: "NTP Server 1 - Pool"
+#           question_description: "Use as pool for server 1"
+#           variable: "ntp_server_1_pool"
+#           type: "multiplechoice"
+#           choices: "true\nfalse"
+#           default: "true"
+#           required: true
+#         - question_name: "NTP Server 1 - IBurst"
+#           question_description: "Enable iburst for server 1"
+#           variable: "ntp_server_1_iburst"
+#           type: "multiplechoice"
+#           choices: "true\nfalse"
+#           default: "true"
+#           required: true
+#         - question_name: "NTP Server 2 Hostname"
+#           question_description: "Second NTP server hostname"
+#           variable: "ntp_server_2"
+#           type: "text"
+#           default: "1.pool.ntp.org"
+#           required: true
+#           min: 0
+#           max: 256
+#         - question_name: "NTP Server 2 - Pool"
+#           question_description: "Use as pool for server 2"
+#           variable: "ntp_server_2_pool"
+#           type: "multiplechoice"
+#           choices: "true\nfalse"
+#           default: "true"
+#           required: true
+#         - question_name: "NTP Server 2 - IBurst"
+#           question_description: "Enable iburst for server 2"
+#           variable: "ntp_server_2_iburst"
+#           type: "multiplechoice"
+#           choices: "true\nfalse"
+#           default: "true"
+#           required: true
+#   - name: "RHEL System Roles - Firewall"
+#     description: "Configure firewalld with SSH and HTTP services"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/rhel_system_roles_firewall.yml"
+#     credentials:
+#       - "lab-credential"
+#     ask_limit_on_launch: true
+#     verbosity: 1
+#   - name: "RHEL System Roles - SELinux"
+#     description: "Set SELinux enforcing mode and configure booleans"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/rhel_system_roles_selinux.yml"
+#     credentials:
+#       - "lab-credential"
+#     ask_limit_on_launch: true
+#     verbosity: 1
+#   - name: "RHEL System Roles - Cockpit"
+#     description: "Install and enable the Cockpit web console"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/rhel_system_roles_cockpit.yml"
+#     credentials:
+#       - "lab-credential"
+#     ask_limit_on_launch: true
+#     verbosity: 1
+#   - name: "RHEL System Roles - Crypto Policies"
+#     description: "Set system-wide cryptographic policy"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/rhel_system_roles_crypto_policies.yml"
+#     credentials:
+#       - "lab-credential"
+#     ask_limit_on_launch: true
+#     verbosity: 1
+#   - name: "RHEL System Roles - SSHD"
+#     description: "Harden SSH server configuration"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/rhel_system_roles_sshd.yml"
+#     credentials:
+#       - "lab-credential"
+#     ask_limit_on_launch: true
+#     verbosity: 1
+#   - name: "RHEL System Roles - Logging"
+#     description: "Configure rsyslog local file logging"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/rhel_system_roles_logging.yml"
+#     credentials:
+#       - "lab-credential"
+#     ask_limit_on_launch: true
+#     verbosity: 1
+#   - name: "RHEL System Roles - RHC Registration"
+#     description: "Register system with Red Hat using rhc"
+#     organization: "Default"
+#     job_type: "run"
+#     inventory: "lab-inventory"
+#     project: "AI-EDA"
+#     playbook: "playbooks/rhel_system_roles_rhc.yml"
+#     credentials:
+#       - "lab-credential"
+#     ask_limit_on_launch: true
+#     verbosity: 1
 
-controller_launch_jobs:
-  - name: "Initialize Lightspeed Gitea Repository"
-  - name: "Register with Red Hat Lightspeed"
-  - name: "Create Network AIOps Workflow"
-  - name: "Setup Winlogbeat on Windows"
-  - name: "✅ Restore Apache"
-  - name: "Create RHEL Self-Healing Workflow"
-  - name: "Create Cron AIOps Workflow"
+# controller_launch_jobs:
+#   - name: "Initialize Lightspeed Gitea Repository"
+#   - name: "Register with Red Hat Lightspeed"
+#   - name: "Create Network AIOps Workflow"
+#   - name: "Setup Winlogbeat on Windows"
+#   - name: "✅ Restore Apache"
+#   - name: "Create RHEL Self-Healing Workflow"
+#   - name: "Create Cron AIOps Workflow"
 
-eda_projects:
-  - name: "ai-eda"
-    description: "Event-driven Ansible rulebooks for AIOps"
-    organization: Default
-    url: "{{ eda_repo_url }}"
-    scm_branch: "main"
-    tls_validation: true
+# eda_projects:
+#   - name: "ai-eda"
+#     description: "Event-driven Ansible rulebooks for AIOps"
+#     organization: Default
+#     url: "{{ eda_repo_url }}"
+#     scm_branch: "main"
+#     tls_validation: true
 
-eda_rulebook_activations:
-  - name: "Web App"
-    description: "Capture service errors"
-    organization: Default
-    project: "ai-eda"
-    rulebook: "web_app.yml"
-    decision_environment: "{{ eda_decision_environment_name }}"
-    restart_policy: "on-failure"
-    enabled: true
-    eda_credentials: "AAP"
-    state: present
-  - name: "OSPF Neighbor"
-    description: "Detect and remediate OSPF neighbor issues via Splunk webhook"
-    organization: Default
-    project: "ai-eda"
-    rulebook: "ospf.yml"
-    decision_environment: "{{ eda_decision_environment_name }}"
-    restart_policy: "on-failure"
-    enabled: true
-    eda_credentials: "AAP"
-    state: present
-  - name: "Windows Events"
-    description: "Detect Windows security and firewall events via Kafka"
-    organization: Default
-    project: "ai-eda"
-    rulebook: "windows_events.yml"
-    decision_environment: "{{ eda_decision_environment_name }}"
-    restart_policy: "on-failure"
-    enabled: true
-    eda_credentials: "AAP"
-    state: present
-  - name: "RHEL Cron AIOps"
-    description: "Route cron failures through AI-driven remediation workflow"
-    organization: Default
-    project: "ai-eda"
-    rulebook: "rhel_service.yml"
-    decision_environment: "{{ eda_decision_environment_name }}"
-    restart_policy: "on-failure"
-    enabled: false
-    eda_credentials: "AAP"
-    state: disabled
+# eda_rulebook_activations:
+#   - name: "Web App"
+#     description: "Capture service errors"
+#     organization: Default
+#     project: "ai-eda"
+#     rulebook: "web_app.yml"
+#     decision_environment: "{{ eda_decision_environment_name }}"
+#     restart_policy: "on-failure"
+#     enabled: true
+#     eda_credentials: "AAP"
+#     state: present
+#   - name: "OSPF Neighbor"
+#     description: "Detect and remediate OSPF neighbor issues via Splunk webhook"
+#     organization: Default
+#     project: "ai-eda"
+#     rulebook: "ospf.yml"
+#     decision_environment: "{{ eda_decision_environment_name }}"
+#     restart_policy: "on-failure"
+#     enabled: true
+#     eda_credentials: "AAP"
+#     state: present
+#   - name: "Windows Events"
+#     description: "Detect Windows security and firewall events via Kafka"
+#     organization: Default
+#     project: "ai-eda"
+#     rulebook: "windows_events.yml"
+#     decision_environment: "{{ eda_decision_environment_name }}"
+#     restart_policy: "on-failure"
+#     enabled: true
+#     eda_credentials: "AAP"
+#     state: present
+#   - name: "RHEL Cron AIOps"
+#     description: "Route cron failures through AI-driven remediation workflow"
+#     organization: Default
+#     project: "ai-eda"
+#     rulebook: "rhel_service.yml"
+#     decision_environment: "{{ eda_decision_environment_name }}"
+#     restart_policy: "on-failure"
+#     enabled: false
+#     eda_credentials: "AAP"
+#     state: disabled
