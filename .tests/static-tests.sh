@@ -222,20 +222,29 @@ fi
 rm -f ${secret_docs_output}
 
 # ci-inspector validation (informational — never fails the pipeline)
+# Identical stages are grouped (e.g. "dev, event" shown once if configs match)
 if command -v ci-inspector &>/dev/null; then
     ci_inspector_output=$(mktemp)
+    ci_inspector_tmpdir=$(mktemp -d)
+
     for i in $(cat ${changed_ci_uniq}); do
         ci_name=$(basename $(dirname "$i"))
         stage=$(basename "$i" | sed 's/\.ya\?ml$//')
-        merged_yaml=$(agnosticv --git=false --merge "$i" 2>/dev/null | sed '/^#/d')
-        if [ -z "$merged_yaml" ]; then
-            continue
+        mkdir -p "${ci_inspector_tmpdir}/${ci_name}"
+        agnosticv --git=false --merge "$i" 2>/dev/null | sed '/^#/d' \
+            > "${ci_inspector_tmpdir}/${ci_name}/${stage}.yml"
+    done
+
+    for ci_dir in "${ci_inspector_tmpdir}"/*/; do
+        [ -d "$ci_dir" ] || continue
+        ci_name=$(basename "$ci_dir")
+        stage_files=$(find "$ci_dir" -name "*.yml" -size +0 | sort)
+        if [ -n "$stage_files" ]; then
+            ci-inspector validate-merged $stage_files \
+                --ci-name "$ci_name" \
+                --format table >> ${ci_inspector_output} 2>/dev/null
+            echo "" >> ${ci_inspector_output}
         fi
-        echo "$merged_yaml" | ci-inspector validate-merged - \
-            --ci-name "$ci_name" \
-            --stage "$stage" \
-            --format table >> ${ci_inspector_output} 2>/dev/null
-        echo "" >> ${ci_inspector_output}
     done
 
     if [ -s "${ci_inspector_output}" ]; then
@@ -250,6 +259,7 @@ $(cat ${ci_inspector_output})
 EOF
     fi
     rm -f ${ci_inspector_output}
+    rm -rf ${ci_inspector_tmpdir}
 fi
 
 if [ ! -z "${data}" ]; then
