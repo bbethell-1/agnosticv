@@ -196,6 +196,31 @@ $(cat ${babylon_checks_output})
 EOF
 fi
 
+# Check secret documentation for changed secret files
+secret_docs_output=$(mktemp)
+changed_secrets=$(grep '^includes/secrets/.*\.yaml$' ${changed_git} || true)
+
+if [ -n "${changed_secrets}" ]; then
+    echo "${changed_secrets}" | ${ORIG}/check_secret_docs.py --from-stdin > ${secret_docs_output} 2>&1
+
+    if [ $? != 0 ]; then
+        RC=2
+        sync
+
+        read -r -d '' data << EOF
+${data}
+
+:lock: Secret documentation errors:
+
+\`\`\`
+$(cat ${secret_docs_output})
+\`\`\`
+EOF
+    fi
+fi
+
+rm -f ${secret_docs_output}
+
 # ci-inspector validation (informational — never fails the pipeline)
 if command -v ci-inspector &>/dev/null; then
     ci_inspector_output=$(mktemp)
