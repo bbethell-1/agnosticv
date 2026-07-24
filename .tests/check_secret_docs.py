@@ -18,8 +18,8 @@ from datetime import datetime
 
 REQUIRED_FIELDS = ('owner', 'purpose', 'impact', 'expiration', 'rotation', 'source', 'exposure')
 VALID_IMPACT_LEVELS = ('HIGH', 'MEDIUM', 'LOW')
-FIELD_RE = re.compile(r'^#\s*@(\w+):\s*(.+)$')
-VAULT_RE = re.compile(r'^(\S+):\s*!vault\s*\|')
+FIELD_RE = re.compile(r'^\s*#\s*@(\w+):\s*(.+)$')
+VAULT_RE = re.compile(r'^\s*(\S+):\s*!vault\s*\|')
 
 
 def parse_file(filepath):
@@ -53,7 +53,8 @@ def parse_file(filepath):
 
         # Non-@ comment or blank line: keep accumulating (don't reset).
         # A YAML key that is NOT vault resets the block.
-        if line and not line.startswith('#') and not line.startswith('---'):
+        stripped = line.lstrip()
+        if stripped and not stripped.startswith('#') and not stripped.startswith('---'):
             current_fields = {}
 
     return variables

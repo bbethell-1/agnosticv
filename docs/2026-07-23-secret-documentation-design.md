@@ -88,14 +88,14 @@ rosa_aws_secret_access_key: !vault |
 
 ### Scope: Gradual Adoption
 
-Only secret files **touched in the current PR** are checked. Existing undocumented secrets pass CI until someone modifies them. This avoids a big-bang migration while ensuring all new or updated secrets are documented going forward.
+Any YAML file **touched in the current PR** is scanned for `!vault` variables. Each vault variable must have the required `@` comment block. Files not modified in the PR are not checked. This avoids a big-bang migration while ensuring all new or updated secrets are documented going forward.
 
 ### Implementation
 
 A new validation script (`.tests/check_secret_docs.py`) called from `.tests/static-tests.sh`:
 
 1. **Identify changed files:** Use the `$PR` environment variable (already available in the `all-checks-pr.yml` workflow) to get the list of files changed in the PR via GitHub API, or use `git diff` against the base branch.
-2. **Filter to secrets:** Keep only files matching `includes/secrets/*.yaml`.
+2. **Filter to YAML:** Keep only files matching `*.yaml` or `*.yml`.
 3. **Parse per-variable:** Walk lines top to bottom. Accumulate `# @key: value` lines (regex: `^# @(\w+):\s*(.+)$`) into a current block. When a `!vault` variable is encountered, validate the accumulated block against the 7 required fields, then reset the block.
 4. **Validate field formats:**
    - `@impact` must start with `HIGH`, `MEDIUM`, or `LOW`.

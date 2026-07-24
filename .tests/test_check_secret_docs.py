@@ -50,6 +50,9 @@ class TestOKFixtures(unittest.TestCase):
     def test_unknown_mixed_with_real_values(self):
         self._assert_clean('ok_unknown_mixed.yaml')
 
+    def test_indented_vault_documented(self):
+        self._assert_clean('ok_indented_vault.yaml')
+
 
 # ---------------------------------------------------------------------------
 # Fixture-based integration tests: files that should FAIL
@@ -85,6 +88,9 @@ class TestFailFixtures(unittest.TestCase):
 
     def test_docs_reset_by_plain_var(self):
         self._assert_fails('fail_docs_reset_by_plain_var.yaml', expected_errors=1, expected_substring='my_token')
+
+    def test_indented_vault_no_docs(self):
+        self._assert_fails('fail_indented_no_docs.yaml', expected_errors=1, expected_substring='ssh_key_data')
 
 
 # ---------------------------------------------------------------------------

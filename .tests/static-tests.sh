@@ -196,12 +196,12 @@ $(cat ${babylon_checks_output})
 EOF
 fi
 
-# Check secret documentation for changed secret files
+# Check secret documentation for changed YAML files containing vault variables
 secret_docs_output=$(mktemp)
-changed_secrets=$(grep '^includes/secrets/.*\.yaml$' ${changed_git} || true)
+changed_yaml=$(grep '\.ya\?ml$' ${changed_git} | grep -v '^\.tests/fixtures/' || true)
 
-if [ -n "${changed_secrets}" ]; then
-    echo "${changed_secrets}" | ${ORIG}/check_secret_docs.py --from-stdin > ${secret_docs_output} 2>&1
+if [ -n "${changed_yaml}" ]; then
+    echo "${changed_yaml}" | ${ORIG}/check_secret_docs.py --from-stdin > ${secret_docs_output} 2>&1
 
     if [ $? != 0 ]; then
         RC=2
