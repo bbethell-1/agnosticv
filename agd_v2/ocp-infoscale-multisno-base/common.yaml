@@ -2,7 +2,7 @@
 # -------------------------------------------------------------------
 # --- Catalog Item: Infoscale Demo - MultiSNO Base Config
 # -------------------------------------------------------------------
-
+#
 # The workshop is a TWO SNO environemnt.
 #
 # -------------------------------------------------------------------
@@ -15,12 +15,12 @@
 
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/salesforce-id.yaml
-
-#include /includes/secrets/dynamic-aws-dns.yaml
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 #include /includes/secrets/demosat-rhel-9-10-latest.yaml
-#include /includes/secrets/letsencrypt_with_zerossl_fallback.yaml
+
+#include /includes/secrets/dynamic-dns.yaml
+#include /includes/secrets/acme-bifrost.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -30,7 +30,7 @@ tag: main
 cloud_provider: openshift_cnv
 # github.com/rhpds/cloud_provider_openshift_cnv -- pinned via cloud_provider_version in prod.yaml
 # (uses its own 1.x.x versioning, not the ocp-cnv-pool-x.x.x scheme)
-cloud_provider_version: "{{ tag }}"
+cloud_provider_version: "1.2.3"
 config: openshift-cluster
 
 # Required to scale up the cluster, but we don't do this for infoscale lab
@@ -46,7 +46,7 @@ requirements_content:
     version: v0.0.9
   - name: https://github.com/rhpds/core_workloads.git
     type: git
-    version: "main"
+    version: "{{ tag }}"
 
 # -------------------------------------------------------------------
 # Bastion VM settings
@@ -170,18 +170,6 @@ workloads:
 # Workload: ocp4_workload_cert_manager
 # -------------------------------------------------------------------
 ocp4_workload_cert_manager_channel: stable-v1
-ocp4_workload_cert_manager_cloud_provider: aws
-
-# Values from /includes/secrets/dynamic-aws-dns.yaml
-# cluster_dns_zone: dynamic.redhatworkshops.io
-# route53_aws_zone_id:
-# route53_aws_access_key_id:
-# route53_aws_secret_access_key:
-ocp4_workload_cert_manager_aws_region: us-east-2
-ocp4_workload_cert_manager_aws_access_key_id: "{{ route53_aws_access_key_id }}"
-ocp4_workload_cert_manager_aws_secret_access_key: "{{ route53_aws_secret_access_key }}"
-ocp4_workload_cert_manager_aws_hostedzoneid: "{{ route53_aws_zone_id }}"
-
 ocp4_workload_cert_manager_use_catalog_snapshot: false
 
 # -------------------------------------------------------------------
@@ -223,6 +211,17 @@ __meta__:
     parameters: []
 
   sandboxes:
+  - kind: DNSSandbox
+    annotations:
+      prefix: cluster
+    cloud_selector:
+      provider: ddns
+      domain: "dyn.redhatworkshops.io"
+    var: dns_sandbox
+  - kind: SSLSandbox
+    cloud_selector:
+      purpose: production
+    var: ssl_sandbox
   - kind: OcpSandbox
     namespace_suffix: ocp4-cluster
     cloud_selector:
