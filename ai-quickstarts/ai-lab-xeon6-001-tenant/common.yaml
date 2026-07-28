@@ -1,0 +1,246 @@
+# -------------------------------------------------------------------
+# --- Catalog Item: Intel Xeon 6 001 — Your First AI Inference
+# --- Episode 001: Lightweight tenant (~20 min, container-only).
+# --- No Helm deploy — learner runs inference from the terminal via
+# --- podman and curl against MAAS/LiteLLM. No OpenShift apps deployed.
+# -------------------------------------------------------------------
+---
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/access-restriction-quickstarts-ai.yaml
+#include /includes/secrets/litemaas-master_api.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+config: namespace
+cloud_provider: none
+tag: main
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  - name: https://github.com/agnosticd/namespaced_workloads.git
+    type: git
+    version: '{{ tag }}'
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: '{{ tag }}'
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: v1.6.8
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- agnosticd.showroom.ocp4_workload_showroom
+
+# ===================================================================
+# Common
+# ===================================================================
+common_password: '{{ lookup(''password'', output_dir ~ ''/common_password'', length=12, chars=[''ascii_letters'', ''digits'']) }}'
+
+# ===================================================================
+# Workload: ocp4_workload_tenant_keycloak_user
+# ===================================================================
+ocp4_workload_tenant_keycloak_username: user-{{ guid }}
+ocp4_workload_tenant_keycloak_user_password: '{{ common_password }}'
+ocp4_workload_tenant_keycloak_user_keycloak_namespace: keycloak
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+
+# ===================================================================
+# Workload: ocp4_workload_tenant_namespace
+# ===================================================================
+ocp4_workload_tenant_namespace_username: user-{{ guid }}
+ocp4_workload_tenant_namespace_use_cluster_quota: true
+ocp4_workload_tenant_namespace_suffixes:
+- suffix: triforce
+
+# Minimal quota for container-only lab. Learner runs podman containers
+# and curl commands — no OpenShift deployments in this episode.
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: '4'
+  requests.cpu: '2'
+  limits.memory: 4Gi
+  requests.memory: 2Gi
+  requests.storage: 4Gi
+
+# LimitRange applied to every namespace.
+# Sets container defaults for pods that don't specify resource requests/limits.
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: '1'
+    memory: 2Gi
+  defaultRequest:
+    cpu: 100m
+    memory: 256Mi
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_duration: 7d
+ocp4_workload_litellm_virtual_keys_models:
+- granite-2b-cpu
+- qwen25-3b-cpu
+- phi3-mini-cpu
+- granite-3-2-8b-instruct-cpu
+- granite-4-0-h-tiny-cpu
+
+# -------------------------------------------------------------------
+# AI Model Requirements (capacity planning metadata for MAAS)
+# -------------------------------------------------------------------
+ai_model_requirements:
+  models:
+  - name: granite-2b-cpu
+    purpose: NER, fraud scoring
+    access_method: litemaas
+    estimated_input_tokens_per_request: 1000
+    estimated_output_tokens_per_request: 500
+    estimated_requests_per_session: 30
+    estimated_session_duration_hours: 4
+    max_concurrent_users: 1
+    expected_total_users: 4
+  - name: qwen25-3b-cpu
+    purpose: Classification, summarization
+    access_method: litemaas
+    estimated_input_tokens_per_request: 800
+    estimated_output_tokens_per_request: 300
+    estimated_requests_per_session: 30
+    estimated_session_duration_hours: 4
+    max_concurrent_users: 1
+    expected_total_users: 4
+  - name: phi3-mini-cpu
+    purpose: Complex reasoning, compliance
+    access_method: litemaas
+    estimated_input_tokens_per_request: 1200
+    estimated_output_tokens_per_request: 600
+    estimated_requests_per_session: 15
+    estimated_session_duration_hours: 4
+    max_concurrent_users: 1
+    expected_total_users: 4
+  - name: granite-3-2-8b-instruct-cpu
+    purpose: Fusion judge, complex reasoning
+    access_method: litemaas
+    estimated_input_tokens_per_request: 2000
+    estimated_output_tokens_per_request: 500
+    estimated_requests_per_session: 10
+    estimated_session_duration_hours: 4
+    max_concurrent_users: 1
+    expected_total_users: 4
+  - name: granite-4-0-h-tiny-cpu
+    purpose: Ultra-fast classification, semantic router
+    access_method: litemaas
+    estimated_input_tokens_per_request: 500
+    estimated_output_tokens_per_request: 50
+    estimated_requests_per_session: 40
+    estimated_session_duration_hours: 4
+    max_concurrent_users: 1
+    expected_total_users: 4
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+#
+# NOTE: This episode requires podman access in the Showroom terminal
+# for `podman run` exercises. The terminal image must support rootless
+# podman (container-in-container).
+# -------------------------------------------------------------------
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/triforce.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_antora_playbook: site-001.yml
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:latest
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 35
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+  - name: Terminal
+    path: /terminal
+    port: 443
+ocp4_workload_showroom_user: user-{{ guid }}
+ocp4_workload_showroom_user_password: '{{ common_password }}'
+ocp4_workload_showroom_user_data:
+  user: user-{{ guid }}
+  password: '{{ common_password }}'
+  openshift_api_url: '{{ sandbox_openshift_api_url }}'
+  openshift_console_url: '{{ sandbox_openshift_console_url }}'
+  openshift_cluster_ingress_domain: '{{ openshift_cluster_ingress_domain }}'
+  maas_url: https://maas-rhdp.apps.maas.redhatworkshops.io
+  litellm_api_key: '{{ litellm_virtual_key }}'
+
+# -------------------------------------------------------------------
+# Babylon / Sandbox API variables
+# -------------------------------------------------------------------
+requester_email: rhdp-{{ guid }}@demo.redhat.com
+catalog_item_name: ai-quickstarts.ai-lab-xeon6-001-tenant.event
+openshift_api_url: '{{ sandbox_openshift_api_url }}'
+openshift_cluster_admin_token: '{{ cluster_admin_agnosticd_sa_token }}'
+ocp4_workload_showroom_passthrough_user_data: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  access_control:
+    allow_groups:
+    - rhpds-devs-quickstart-ai
+    - email-domain.intel.com
+  asset_uuid: 0279abad-840f-4119-a26d-0c91765ffa74
+  owners:
+    maintainer:
+    - name: Jonathan Kershaw
+      email: jkershaw@redhat.com
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  catalog:
+    display_name: 'Intel Xeon 6 001 — Your First AI Inference'
+    category: Labs
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+    - openshift
+    - intel
+    - xeon-6
+    - ai
+    - cpu-inference
+    - vllm
+    - container
+    - inference-server
+    - '001'
+    labels:
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters: []
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-05-04
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: false
+      status:
+        disable: true
+      stop:
+        disable: false
+      update:
+        disable: true
