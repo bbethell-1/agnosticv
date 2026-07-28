@@ -47,16 +47,21 @@ requirements_content:
   - name: https://github.com/rhpds/acm_demo.git
     type: git
     version: main
+  # Showroom
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: v1.6.12
 
 # ===================================================================
 # List of workloads to be deployed
 # ===================================================================
 workloads:
-- agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+- agnosticd.core_workloads.ocp4_workload_authentication
 - agnosticd.core_workloads.ocp4_workload_rhacm
-- agnosticd.ai_workloads.ocp4_workload_ols
-# - agnosticd.core_workloads.ocp4_workload_showroom
 - rhpds.acm_demo.ocp4_workload_bastion_packages
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+- agnosticd.showroom.ocp4_workload_showroom
+- agnosticd.ai_workloads.ocp4_workload_ols
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_bastion_packages
@@ -68,30 +73,25 @@ bastion_pip_packages:
 - awscli
 - boto3
 
-# ===================================================================
-# Workload: agnosticd.core_workloads.ocp4_workload_authentication_keycloak
-# ===================================================================
-# Red Hat Build of Keycloak (RHBK) - User Authentication
-# Creates Keycloak instance and manages user accounts
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_admin_username: admin
+ocp4_workload_authentication_admin_password: ""
+ocp4_workload_authentication_num_users: "{{ (num_users | default('1')) | int }}"
 
-# Operator configuration
-ocp4_workload_authentication_keycloak_namespace: keycloak
-ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
+
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_default_realm: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.6
 ocp4_workload_authentication_keycloak_use_catalog_source: false
-
-ocp4_workload_authentication_keycloak_admin_create: true
-ocp4_workload_authentication_keycloak_admin_username: admin
-ocp4_workload_authentication_keycloak_admin_password: ''
-ocp4_workload_authentication_keycloak_remove_kubeadmin: true
-
-ocp4_workload_authentication_keycloak_num_users: "{{ (num_users | default('1')) | int }}"
-ocp4_workload_authentication_keycloak_user_username_base: user
-ocp4_workload_authentication_keycloak_user_password: ''
 
 # -------------------------------------------------------------------
 # ocp4_workload_rhacm
 # -------------------------------------------------------------------
-ocp4_workload_rhacm_acm_channel: release-2.15
+ocp4_workload_rhacm_acm_channel: release-2.17
 # This is required by the ocp4_workload_rhacm multiclusterhub.yaml.j2 template
 master_instance_count: 1
 
@@ -107,13 +107,16 @@ ocp4_workload_ols_get_token: true
 # -------------------------------------------------------------------
 # ocp4_workload_showroom
 # -------------------------------------------------------------------
-# ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/acm-demo-showroom.git
-# ocp4_workload_showroom_content_git_repo_ref: main
-# ocp4_workload_showroom_deployment_type: helm
-# ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
-# ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
-# ocp4_workload_showroom_deployer_chart_version: 1.3.4
-# ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2025-07-29
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom-rhacm-demo.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_antora_playbook: site.yml
+
+# Enable Wetty and auto-SSH to bastion
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+# Dev Mode is overridden in dev.yaml
+ocp4_workload_showroom_antora_enable_dev_mode: "false"
 
 # ===================================================================
 # Workloads to remove on destroy
@@ -130,6 +133,8 @@ __meta__:
     maintainer:
     - name: Nate Stephany
       email: nstephan@redhat.com
+    - name: Wolfgang Kulhanek
+      email: wkulhane@redhat.com
     instructions:
     - name: Jimmy Alverez
       email: jalverez@redhat.com
@@ -159,7 +164,7 @@ __meta__:
     item: agd-v2/ocp-cluster-cnv-pools/prod
     parameter_values:
       cluster_size: sno
-      host_ocp4_installer_version: '4.20'
+      host_ocp4_installer_version: '4.22'
       ocp4_fips_enable: false
     propagate_provision_data:
     - name: sandbox_openshift_api_key
@@ -192,7 +197,7 @@ __meta__:
     scm_url: https://github.com/rhpds/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2026-05-04
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
       pull: missing
     actions:
       start:

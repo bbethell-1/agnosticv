@@ -81,14 +81,16 @@ def repo_from_url(url):
 # --- GitHub CLI wrappers ---
 
 def gh_check_auth():
-    """Verify gh CLI is authenticated."""
+    """Verify gh CLI is authenticated (interactive login or GH_TOKEN)."""
+    if os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN"):
+        return
     result = subprocess.run(
         ["gh", "auth", "status"],
         capture_output=True, text=True,
     )
     if result.returncode != 0:
         print("ERROR: GitHub CLI is not authenticated.", file=sys.stderr)
-        print("Run 'gh auth login' to authenticate.", file=sys.stderr)
+        print("Run 'gh auth login' to authenticate, or set GH_TOKEN.", file=sys.stderr)
         sys.exit(1)
 
 

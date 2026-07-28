@@ -14,10 +14,10 @@ jobs:
     name: Validate promotion tags
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.x'
       - run: pip install pyyaml
@@ -25,9 +25,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RHPDS_BOT_REPO }}
         run: |
-          files=$(git diff --name-only --diff-filter=AM \
-            origin/${{ github.base_ref }}...${{ github.sha }} \
-            -- 'agd_v2/*/prod.yaml' 'agd_v2/*/event.yaml' \
-               'summit-2026/*/prod.yaml' 'summit-2026/*/event.yaml')
+          files=$(gh pr view ${{ github.event.number }} \
+            --json files --jq '.files[].path' \
+            | grep -E '^(agd_v2|summit-2026)/[^/]+/(prod|event)\.yaml$')
           [ -z "$files" ] && exit 0
           echo "$files" | xargs python scripts/agd-promote.py --validate-pr
