@@ -7,6 +7,30 @@ purpose: development
 
 ocp4_workload_showroom_antora_enable_dev_mode: "true"
 
+# -------------------------------------------------------------------
+# LiteMaaS streaming fix
+# Use patched branch that overlays base.py and _chat_handler.py
+# to disable streaming (LiteMaaS returns 503 on ~90% of streaming
+# requests to gpt-oss-120b) and handle non-streaming LLM responses.
+# Tracked in: https://redhat.atlassian.net/browse/RHDPOPS-24028
+#             https://github.com/rh-ai-quickstart/multi-agent-loan-origination/pull/189
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_revision: fix/litemaas-streaming
+ocp4_workload_gitops_bootstrap_helm_values:
+  deployer:
+    domain: "{{ openshift_cluster_ingress_domain }}"
+    apiUrl: "{{ openshift_api_url }}"
+  user:
+    count: "{{ num_users | default(1) }}"
+  remotellm:
+    id: "{{ llm_model }}"
+    url: "{{ litellm_api_endpoint }}"
+    apiToken: "{{ litellm_virtual_key }}"
+    enabled: true
+  api:
+    streamingFix:
+      enabled: true
+
 __meta__:
   access_control:
     allow_groups:
