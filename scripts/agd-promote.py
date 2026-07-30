@@ -830,7 +830,18 @@ Examples:
         if tag_value:
             primary_stage = stage
             if not tag_prefix:
-                prefix, version = parse_tag(tag_value)
+                try:
+                    prefix, version = parse_tag(tag_value)
+                except ValueError:
+                    print(
+                        f"ERROR: 'tag: {tag_value}' in {stage}.yaml is not a"
+                        f" versioned tag (expected format: <prefix>-X.Y.Z).\n"
+                        f"  Set an initial versioned tag first, e.g.:\n"
+                        f"    tag: {args.item_path}-0.1.0\n"
+                        f"  Or use --tag-prefix to specify the prefix explicitly.",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
                 tag_prefix = prefix
                 current_version = version
             break
