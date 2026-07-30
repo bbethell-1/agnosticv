@@ -1,0 +1,239 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog: Red Workshops
+# --- Catalog Item: OCP demo: Cross-cluster live migration
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-virtualization.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/access-restriction-rh1-2026-devs.yaml
+#include /includes/secrets/dynamic-dns.yaml
+#include /includes/secrets/acme-bifrost.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# Repository Tag
+# Tag for all repositories that are used in this config.
+# ===================================================================
+tag: main
+# -------------------------------------------------------------------
+cloud_provider: openshift_cnv
+cloud_provider_version: "{{ tag }}"
+config: openshift-cluster
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # Assisted Installer Collection
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.9
+  # Core OpenShift Workloads
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+  # Showroom
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: v1.2.0
+
+# -------------------------------------------------------------------
+# Bastion VM settings
+# -------------------------------------------------------------------
+bastion_setup_student_user: true
+bastion_student_user_name: student
+bastion_student_user_sudo: true
+
+# -------------------------------------------------------------------
+# CNV Specific
+# -------------------------------------------------------------------
+ai_control_plane_cores: 16
+ai_control_plane_memory: 32Gi
+
+worker_instance_count: 3
+ai_workers_cores: 16
+ai_workers_memory: 32Gi
+
+ai_attach_control_plane_networks:
+- default/flatnetwork
+
+ai_attach_workers_networks:
+- default/flatnetwork
+
+bastion_extra_networks:
+- default/flatnetwork
+
+# -------------------------------------------------------------------
+# OpenShift settings
+# -------------------------------------------------------------------
+cluster_name: "virt-{{ guid }}"
+
+host_ocp4_installer_root_url: https://mirror.openshift.com/pub/openshift-v4/clients
+# Version from parameter
+host_ocp4_installer_version: "4.21"
+host_ocp4_deploy_installation_method: openshift_assisted
+
+# Save kubeadmin password in user data - only necessary if
+# no authentication is set up for the cluster
+host_ocp4_installer_set_user_data_kubeadmin_password: true
+
+openshift_cluster_admin_service_account_enable: true
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+- agnosticd.core_workloads.ocp4_workload_external_odf
+- agnosticd.core_workloads.ocp4_workload_cert_manager
+- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+- agnosticd.core_workloads.ocp4_workload_nmstate
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+#- agnosticd.showroom.ocp4_workload_showroom
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_external_odf
+# -------------------------------------------------------------------
+ocp4_workload_external_odf_channel: stable-4.21
+ocp4_workload_external_odf_volume_binding_mode: Immediate
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_htpasswd
+# -------------------------------------------------------------------
+ocp4_workload_authentication_htpasswd_admin_user: admin
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+ocp4_workload_authentication_htpasswd_user_base: user
+# Generate user password
+ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_password_randomized: true
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('2')) | int }}"
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_nmstate
+# -------------------------------------------------------------------
+ocp4_workload_nmstate_channel: stable
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_virtualization
+# -------------------------------------------------------------------
+ocp4_workload_openshift_virtualization_channel: stable
+ocp4_workload_openshift_virtualization_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_mtv
+# -------------------------------------------------------------------
+ocp4_workload_mtv_channel: release-v2.10
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_metallb
+# -------------------------------------------------------------------
+ocp4_workload_metallb_channel: stable
+ocp4_workload_metallb_enable_ipaddresspool: false
+ocp4_workload_metallb_enable_l2advertisement: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_virt_network_config
+# -------------------------------------------------------------------
+ocp4_workload_virt_network_config_multi_user: false
+ocp4_workload_virt_network_config_networks: "{{ ai_attach_workers_networks | default([]) }}"
+
+# ------------------------------------------------------
+# Showroom
+# ------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/jenbam/etx-virt_delivery.git
+ocp4_workload_showroom_content_git_repo_ref: main
+# Default antora playbook is default-site.yml, override here if needed
+# ocp4_workload_showroom_content_antora_playbook: site.yml
+ocp4_workload_showroom_content_only: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 264ddbf5-dfaa-41e8-b855-7b248f680101
+  anarchy:
+    namespace: babylon-anarchy-0
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: DNSSandbox
+    annotations:
+      prefix: cluster
+    cloud_selector:
+      provider: ddns
+      domain: "dyn.redhatworkshops.io"
+    var: dns_sandbox
+  - kind: SSLSandbox
+    cloud_selector:
+      purpose: production
+    var: ssl_sandbox
+  - kind: OcpSandbox
+    namespace_suffix: ocp4-cluster
+    cloud_selector:
+      cloud: cnv
+      name: ocpv01
+      virt: "yes"
+    quota:
+      limits.cpu: "128"
+      requests.cpu: "128"
+      limits.memory: "400Gi"
+      requests.memory: "400Gi"
+  catalog:
+    display_name: "OCP Demo: Cross-cluster live migration"
+    category: Brand_Events
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    multiuser: false
+    workshopLabUiRedirect: false
+    workshopUiMaxInstances: 3
+    keywords:
+    - virt
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+    reportingLabels:
+      assetGroup: Virtualization
+      primaryBU: Hybrid_Platforms
+  owners:
+    maintainer:
+    - name: Alberto Gonzales Rodriguez
+      email: josegonz@redhat.com
+    sme:
+    - name: Alberto Gonzales Rodriguez
+      email: josegonz@redhat.com
+  tower:
+    timeout: 21600
