@@ -25,6 +25,9 @@
 #include /includes/secrets/dynamic-dns.yaml
 #include /includes/secrets/acme-bifrost.yaml
 
+# Include AAP License
+#include /agd_v2/osac-cnv/includes/include_osac_aap_license.yaml
+
 # ===================================================================
 # Mandatory Variables
 # ===================================================================
@@ -97,9 +100,10 @@ requirements_content:
   - name: https://github.com/rhpds/core_workloads.git
     type: git
     version: "{{ tag }}"
-  # - name: https://github.com/rhpds/sovereign_cloud.git
-  #   type: git
-  #   version: "{{ tag }}"
+  - name: https://github.com/rhpds/sovereign_cloud.git
+    type: git
+    version: add_osac_workload
+    # version: "{{ tag }}"
 
 # -------------------------------------------------------------------
 # Bastion VM settings
@@ -191,6 +195,8 @@ bastion_networkdata: |
 # -------------------------------------------------------------------
 common_admin_password: >-
   {{ lookup('password', output_dir ~ '/common_admin_password', length=12, chars=['ascii_letters', 'digits']) }}
+common_user_password: >-
+  {{ lookup('password', output_dir ~ '/common_user_password', length=12, chars=['ascii_letters', 'digits']) }}
 
 # These need to be set in the pooled base catalog item
 # ai_service_network_cidr: "172.231.0.0/16"
@@ -200,10 +206,21 @@ common_admin_password: >-
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
-workloads:
-- agnosticd.core_workloads.ocp4_workload_external_odf
-- agnosticd.core_workloads.ocp4_workload_cert_manager
-# - rhpds.sovereign_cloud.ocp4_workload_osac
+workloads: >-
+  {{
+    [
+      'agnosticd.core_workloads.ocp4_workload_external_odf',
+      'agnosticd.core_workloads.ocp4_workload_cert_manager'
+    ] +
+    (
+      [
+        'rhpds.sovereign_cloud.ocp4_workload_osac',
+        'rhpds.sovereign_cloud.ocp4_workload_osac_demo'
+      ]
+      if deploy_osac | default(false) | bool
+      else []
+    )
+  }}
 
 # ===================================================================
 # Variables for specific workloads
@@ -249,8 +266,34 @@ ocp4_workload_osac_cluster_versions:
 - version: "4.22.0"
   image: "quay.io/openshift-release-dev/ocp-release:4.22.0-multi"
   default: true
-# From vaulted secret
+# From vaulted secret (include in this directory)
 # ocp4_workload_osac_aap_license: ""
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_osac_demo
+# -------------------------------------------------------------------
+ocp4_workload_osac_demo_namespace: "{{ ocp4_workload_osac_namespace }}"
+ocp4_workload_osac_demo_storage_class: ocs-external-storagecluster-ceph-rbd
+ocp4_workload_osac_demo_cli_version: "fulfillment-service/v0.0.82"
+ocp4_workload_osac_demo_admin_user: admin
+ocp4_workload_osac_demo_admin_password: "{{ common_admin_password }}"
+ocp4_workload_osac_demo_user_password: "{{ common_user_password }}"
+ocp4_workload_osac_demo_tenant_name: tenant1
+ocp4_workload_osac_demo_tenant_users:
+- tenant1_admin
+- tenant1_user
+ocp4_workload_osac_demo_public_ip_cidr: ""
+ocp4_workload_osac_demo_public_ip_pool_name: demo-public-pool
+
+# InstanceType for demo VM
+ocp4_workload_osac_demo_instance_type_name: small-1-2
+ocp4_workload_osac_demo_instance_type_cores: 1
+ocp4_workload_osac_demo_instance_type_memory_gib: 2
+ocp4_workload_osac_demo_instance_type_description: >-
+  Demo VM size: 1 vCPU, 2 GiB RAM
+
+# CatalogItem
+ocp4_workload_osac_demo_catalog_item_name: demo-linux-vm
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -288,6 +331,14 @@ __meta__:
     # assigned directly to the workshop seat.
     workshop_user_mode: none
     parameters:
+    - name: deploy_osac
+      description: >-
+        Deploy the OSAC stack on top of this cluster (adds approximately 30 minutes to provisioning time)
+      formLabel: Deploy OSAC
+      openAPIV3Schema:
+        type: boolean
+        default: false
+
     - name: num_workers
       description: >-
         Number of worker nodes to provision within the environment.
