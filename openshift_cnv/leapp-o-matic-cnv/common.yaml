@@ -70,6 +70,9 @@ requirements_content:
     - name: https://github.com/rhpds/showroom.git
       type: git
       version: v1.6.8
+    - name: https://github.com/rhpds/rhpds.manage_host.git
+      type: git
+      version: "{{ tag }}"
     # TODO: Add Amaya's leapp collection once moved to rhpds org (GPTEINFRA-16373)
     # - name: https://github.com/rhpds/rhpds.leapp_o_matic.git
     #   type: git
@@ -87,6 +90,8 @@ pre_software_workloads:
     - host_satellite_repositories
 
 software_workloads:
+  bastions:
+    - rhpds.manage_host.vscode_server
   all:
     - agnosticd.cloud_vm_workloads.control_user
     - agnosticd.cloud_vm_workloads.asset_injector
@@ -161,6 +166,10 @@ instances:
             protocol: TCP
             targetPort: 7500
             name: bastion-7500
+          - port: 8080
+            protocol: TCP
+            targetPort: 8080
+            name: bastion-8080
     routes:
       - name: bastion-80
         host: bastion
@@ -172,6 +181,12 @@ instances:
         host: bastion-443
         service: bastion
         targetPort: 443
+        tls: true
+        tls_termination: edge
+      - name: bastion-8080
+        host: vscode
+        service: bastion
+        targetPort: 8080
         tls: true
         tls_termination: edge
 
@@ -360,6 +375,7 @@ instances:
     tags:
       - key: AnsibleGroup
         value: "nodes,rhel8_nodes"
+        # value: isolated
       - key: ostype
         value: linux
     networks:
@@ -423,8 +439,62 @@ asset_injector_assets:
     state: restarted
 
 # -------------------------------------------------------------------
+# Workload: rhpds.manage_host.vscode_server
+# -------------------------------------------------------------------
+install_vscode_server: true
+vscode_server_install_nginx: false
+vscode_use_automationcontroller_nginx: false
+vscode_server_bind_addr_ip: 0.0.0.0
+vscode_server_bind_addr_port: 8080
+
+vscode_server_version: "4.112.0"
+vscode_server_rpm_url: >-
+  https://github.com/coder/code-server/releases/download/v{{ vscode_server_version }}/code-server-{{ vscode_server_version }}-amd64.rpm
+
+vscode_server_ansible_become: true
+vscode_user_workspace_path: "/home/{{ student_name }}"
+vscode_auth_type: password
+vscode_user_name: "{{ student_name }}"
+vscode_user_password: "{{ common_password }}"
+vscode_server_hostname: "vscode-{{ subdomain_base }}"
+
+vscode_server_default_extensions: []
+vscode_server_extension_urls: []
+
+vscode_server_additional_settings: |
+  "security.workspace.trust.enabled": false,
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "[yaml]": {
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true,
+    "editor.detectIndentation": false
+  },
+  "extensions.ignoreRecommendations": true,
+  "files.exclude": {
+    "**/.git": true,
+    "**/.bash*": true,
+    "**/.vim*": true,
+    "**/.ssh": true,
+    "**/.vscode": true,
+    "**/.local": true,
+    "**/.config": true,
+    "**/.ansible": true,
+    "**/.cache": true
+  }
+
+# -------------------------------------------------------------------
 # Workload: infra.aap_configuration.dispatch (AAP Controller setup)
 # -------------------------------------------------------------------
+# @owner: Mitesh Sharma <mitsharm@redhat.com>
+# @purpose: AAP 2.6 container image admin password for controller VM
+# @impact: MEDIUM - grants admin access to AAP controller in lab environment
+# @expiration: never
+# @rotation: Update vault and reprovision the catalog item
+# @source: Generated and vaulted during initial catalog setup
+# @exposure: AgnosticD execution only, used to configure AAP via API
 aap_image_admin_password: !vault |
   $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
   32373239343436383338306534653935303666313835656336663537303765313731303463653934
@@ -452,15 +522,19 @@ aap_configuration_dispatcher_roles:
   - { role: controller_license, var: controller_license, tags: controller_license }
   - { role: gateway_settings, var: gateway_settings, tags: gateway_settings }
   - { role: gateway_users, var: aap_user_accounts, tags: gateway_users }
+  - { role: controller_credential_types, var: controller_credential_types, tags: controller_credential_types }
   - { role: controller_credentials, var: controller_credentials, tags: controller_credentials }
-  - { role: controller_execution_environments, var: controller_execution_environments, tags: controller_execution_environments }
   - { role: controller_inventories, var: controller_inventories, tags: controller_inventories }
   - { role: controller_hosts, var: controller_hosts, tags: controller_hosts }
-  # - { role: controller_projects, var: controller_projects, tags: controller_projects }
-  # - { role: controller_job_templates, var: controller_templates, tags: controller_job_templates }
+  - { role: controller_projects, var: controller_projects, tags: controller_projects }
+  - { role: controller_job_templates, var: controller_templates, tags: controller_job_templates }
+  - { role: controller_workflow_job_templates, var: controller_workflows, tags: controller_workflow_job_templates }
+
+controller_license:
+  manifest_url: "https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip"
 
 gateway_settings:
-  SESSION_COOKIE_AGE: 9000
+  SESSION_COOKIE_AGE: 43200
 
 aap_user_accounts:
   - username: "{{ student_name }}"
@@ -471,8 +545,30 @@ aap_user_accounts:
     first_name: lab
     last_name: User
 
-controller_license:
-  manifest_url: "https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip"
+controller_credential_types:
+  - name: RHSM Credential Type
+    description: Credential type for Red Hat Subscription Manager (RHSM) registration
+    kind: cloud
+    inputs:
+      fields:
+        - type: string
+          id: rhsm_username
+          label: RHSM Username
+          secret: false
+        - type: string
+          id: rhsm_password
+          label: RHSM Password
+          secret: true
+      required:
+        - rhsm_username
+        - rhsm_password
+    injectors:
+      env:
+        RHSM_USERNAME: '{  { rhsm_username }}'
+        RHSM_PASSWORD: '{  { rhsm_password }}'
+      extra_vars:
+        rhsm_username: '{  { rhsm_username }}'
+        rhsm_password: '{  { rhsm_password }}'
 
 controller_credentials:
   - name: "Workshop Credential"
@@ -491,23 +587,25 @@ controller_credentials:
       password: "{{ registry_credentials_password }}"
       verify_ssl: true
     state: present
-
-controller_execution_environments:
-  # TODO: Replace with Amaya's leapp-o-matic custom EE once published to rhpds org
-  - name: "Leapp-O-Matic EE"
-    image: "registry.redhat.io/ansible-automation-platform/ee-supported-rhel9:latest"
-    pull: missing
-    credential: "registry.redhat.io credential"
-    state: present
+  - name: "RHSM Credential"
+    description: Credential type for Red Hat Subscription Manager (RHSM) registration
+    organization: "Default"
+    credential_type: "RHSM Credential Type"
+    inputs:
+      rhsm_username: "admin"
+      rhsm_password: "{{ common_password }}"
 
 controller_inventories:
-  - name: "Workshop Inventory"
+  - name: "Workshop Host Inventory"
+    organization: Default
+    state: present
+  - name: "Workshop Controller Inventory"
     organization: Default
     state: present
 
 controller_hosts:
   - name: "controller"
-    inventory: "Workshop Inventory"
+    inventory: "Workshop Controller Inventory"
     enabled: true
     state: present
     variables:
@@ -515,41 +613,158 @@ controller_hosts:
       ansible_user: rhel
       ansible_password: "{{ aap_image_admin_password }}"
   - name: "node1"
-    inventory: "Workshop Inventory"
+    inventory: "Workshop Host Inventory"
     enabled: true
     state: present
   - name: "node2"
-    inventory: "Workshop Inventory"
+    inventory: "Workshop Host Inventory"
     enabled: true
     state: present
   - name: "node3"
-    inventory: "Workshop Inventory"
+    inventory: "Workshop Host Inventory"
     enabled: true
     state: present
   - name: "node4"
-    inventory: "Workshop Inventory"
+    inventory: "Workshop Host Inventory"
     enabled: true
     state: present
 
 controller_projects:
-  # TODO: Update scm_url to rhpds org once Amaya moves her repo (GPTEINFRA-16373)
-  - name: "Leapp-O-Matic"
+  - name: GitLab Playbook RHEL 10 Upgrader
     organization: Default
     scm_type: git
-    scm_url: "https://github.com/agilpipp-redhat/leapp-o-matic.git"
+    scm_url: https://gitlab.com/ansible-ssa/playbook-rhel10-upgrader.git
     scm_branch: main
-    scm_update_on_launch: false
-    scm_update_cache_timeout: 3600
-    default_environment: "Leapp-O-Matic EE"
+    scm_update_on_launch: true
 
 controller_templates:
-  - name: "Run RHEL 9 to 10 Upgrade"
-    project: "Leapp-O-Matic"
-    playbook: playbooks/upgrade.yml
-    inventory: "Workshop Inventory"
-    execution_environment: "Leapp-O-Matic EE"
-    credentials:
-      - "Workshop Credential"
+  - name: "Leapp: 01 - Preflight"
+    project: "GitLab Playbook RHEL 10 Upgrader"
+    playbook: "preflight.yml"
+    ask_variables_on_launch: true
+    ask_inventory_on_launch: true
+    ask_credential_on_launch: true
+    ask_limit_on_launch: true
+    inventory: "Workshop Host Inventory"
+
+  - name: "Leapp: 02 - RHSM Registration"
+    project: "GitLab Playbook RHEL 10 Upgrader"
+    playbook: "run_rhsm.yml"
+    ask_inventory_on_launch: true
+    ask_credential_on_launch: true
+    ask_limit_on_launch: true
+    ask_variables_on_launch: true
+    inventory: "Workshop Host Inventory"
+
+  - name: "Leapp: 03 - Insights Registration"
+    project: "GitLab Playbook RHEL 10 Upgrader"
+    playbook: "run_insights.yml"
+    ask_inventory_on_launch: true
+    ask_credential_on_launch: true
+    ask_limit_on_launch: true
+    inventory: "Workshop Host Inventory"
+
+  - name: "Leapp: 04 - Upgrade Execution"
+    project: "GitLab Playbook RHEL 10 Upgrader"
+    playbook: "run_upgrade.yml"
+    ask_inventory_on_launch: true
+    ask_credential_on_launch: true
+    ask_limit_on_launch: true
+    timeout: 3600
+    inventory: "Workshop Host Inventory"
+
+  - name: "Leapp: 05 - Post-Upgrade Verification"
+    project: "GitLab Playbook RHEL 10 Upgrader"
+    playbook: "post_upgrade.yml"
+    ask_inventory_on_launch: true
+    ask_credential_on_launch: true
+    ask_limit_on_launch: true
+    inventory: "Workshop Host Inventory"
+
+controller_workflows:
+  - name: "WORKFLOW: Leapp-O-Matic RHEL 10 Migration"
+    organization: "{{ cac_controller_organization | default('Default') }}"
+    destroy_current_nodes: true
+    ask_limit_on_launch: true
+    ask_inventory_on_launch: true
+    ask_credential_on_launch: true
+    survey_enabled: true
+    survey_spec:
+      name: "Host Selection"
+      description: "Select the target hosts for the RHEL 10 migration"
+      spec:
+        - question_name: "Target Hosts"
+          question_description: "Select one or more hosts to upgrade"
+          required: true
+          type: multiselect
+          variable: limit
+          choices: |
+            gazpacho
+            torrezno
+            target1
+            sporcizia
+            spazzina
+            fancazzista
+          default: ""
+    workflow_nodes:
+      - identifier: "node_preflight"
+        unified_job_template:
+          name: "Leapp: 01 - Preflight"
+          type: job_template
+          organization:
+            name: "{{ cac_controller_organization | default('Default') }}"
+        related:
+          success_nodes:
+            - identifier: "node_rhsm"
+          failure_nodes: []
+          always_nodes: []
+
+      - identifier: "node_rhsm"
+        unified_job_template:
+          name: "Leapp: 02 - RHSM Registration"
+          type: job_template
+          organization:
+            name: "{{ cac_controller_organization | default('Default') }}"
+        related:
+          success_nodes:
+            - identifier: "node_insights"
+          failure_nodes: []
+          always_nodes: []
+
+      - identifier: "node_insights"
+        unified_job_template:
+          name: "Leapp: 03 - Insights Registration"
+          type: job_template
+          organization:
+            name: "{{ cac_controller_organization | default('Default') }}"
+        related:
+          success_nodes:
+            - identifier: "node_upgrade"
+          failure_nodes: []
+          always_nodes: []
+
+      - identifier: "node_upgrade"
+        unified_job_template:
+          name: "Leapp: 04 - Upgrade Execution"
+          type: job_template
+          organization:
+            name: "{{ cac_controller_organization | default('Default') }}"
+        related:
+          success_nodes:
+            - identifier: "node_post_upgrade"
+          failure_nodes: []
+          always_nodes: []
+
+      - identifier: "node_post_upgrade"
+        unified_job_template:
+          name: "Leapp: 05 - Post-Upgrade Verification"
+          type: job_template
+          organization:
+            name: "{{ cac_controller_organization | default('Default') }}"
+        related:
+          success_nodes: []
+          failure_nodes: []
+          always_nodes: []
 
 # -------------------------------------------------------------------
 # Workload: agnosticv_userdata_import
@@ -570,6 +785,8 @@ agnosticv_importdata:
   ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
   ssh_username: "{{ student_name }}"
   ssh_password: "{{ common_password }}"
+  vscode_server_url: "https://vscode-{{ subdomain_base }}"
+  vscode_server_password: "{{ common_password }}"
 
 # -------------------------------------------------------------------
 # Workload: agnosticd.showroom.vm_workload_showroom
@@ -603,6 +820,8 @@ showroom_content_ui_config: |
     - name: '>_Terminal'
       path: /wetty
       port: 443
+    - name: VS Code
+      url: "https://vscode-{{ subdomain_base }}"
     - name: AAP
       url: "https://controller-{{ subdomain }}"
 
@@ -627,6 +846,7 @@ __meta__:
     scm_url: https://github.com/rhpds/agnosticd-v2
     scm_ref: main
     execution_environment:
+      # image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
       image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
       pull: missing
     actions:
