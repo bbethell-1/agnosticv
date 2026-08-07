@@ -86,8 +86,8 @@ pre_software_workloads:
     - host_satellite_repositories
     - host_common_packages
     - bastion
-  rhel9_nodes:
-    - host_satellite_repositories
+  # rhel9_nodes:
+  #   - host_satellite_repositories
 
 software_workloads:
   bastions:
@@ -297,7 +297,7 @@ instances:
     public_dns: false
     floating_ip: false
     image: "{{ rhel97_instance_image }}"
-    memory: 2G
+    memory: 4G
     cores: 2
     image_size: "{{ node_rootfs_size }}"
     metadata:
@@ -353,23 +353,20 @@ instances:
         expire: false
       ssh_pwauth: true
       runcmd:
-        # Install Satellite CA certificate
         - curl -sk https://{{ satellite_url }}/pub/katello-server-ca.crt -o /etc/pki/ca-trust/source/anchors/{{ satellite_url }}.ca.crt
         - update-ca-trust
-        # Remove existing repo files to avoid conflicts
         - rm -f /etc/yum.repos.d/*.repo
-        # Install Katello CA consumer RPM (disable GPG check — standard RHDP pattern)
         - yum install -y --disablerepo="*" --nogpgcheck https://{{ satellite_url }}/pub/katello-ca-consumer-latest.noarch.rpm
-        # Set FQDN fact for unique Satellite registration
         - mkdir -p /etc/rhsm/facts && echo '{"network.fqdn":"node4.{{ guid }}.internal"}' > /etc/rhsm/facts/katello.facts
-        # Register with Satellite HA (matching host_satellite_repositories role HA path)
         - subscription-manager register --org={{ satellite_org }} --activationkey={{ satellite_activationkey }} --serverurl=https://{{ satellite_url }}:443/rhsm --baseurl=https://{{ satellite_url }}/pulp/repos || true
-        # Enable all repos and install python38
         - subscription-manager config --rhsm.manage_repos=1
         - yum clean all
         - dnf install -y python38 || true
         - alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1 || true
         - dnf install -y python3-dnf || true
+        - subscription-manager unregister || true
+        - subscription-manager clean || true
+        - rm -f /etc/yum.repos.d/*.repo
     metadata:
       ansible_python_interpreter: /usr/bin/python3
     tags:
