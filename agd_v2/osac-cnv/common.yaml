@@ -25,9 +25,6 @@
 #include /includes/secrets/dynamic-dns.yaml
 #include /includes/secrets/acme-bifrost.yaml
 
-# Include AAP License
-#include /agd_v2/osac-cnv/includes/include_osac_aap_license.yaml
-
 # ===================================================================
 # Mandatory Variables
 # ===================================================================
@@ -102,8 +99,7 @@ requirements_content:
     version: "{{ tag }}"
   - name: https://github.com/rhpds/sovereign_cloud.git
     type: git
-    version: add_osac_workload
-    # version: "{{ tag }}"
+    version: "{{ tag }}"
 
 # -------------------------------------------------------------------
 # Bastion VM settings
@@ -266,8 +262,89 @@ ocp4_workload_osac_cluster_versions:
 - version: "4.22.0"
   image: "quay.io/openshift-release-dev/ocp-release:4.22.0-multi"
   default: true
-# From vaulted secret (include in this directory)
-# ocp4_workload_osac_aap_license: ""
+
+# AAP Licence. Expires 2026-12-31
+# ================================================
+# To get a new licence file:
+# Step 1: Create a Subscription Allocation
+# - Go to https://access.redhat.com/management/subscription_allocations
+# - Click "Create New subscription allocation"
+# - Name: Give it a descriptive name (e.g., osac-aap-lab)
+# - Type: Select one from the list (e.g. "Satellite 6.14" is known to work)
+# - Click Create
+# Step 2: Add Entitlements
+# - Open your newly created allocation
+# - Go to the "Subscriptions" tab
+# - Click "Add Subscriptions"
+# - Find "Red Hat Ansible Automation Platform" in the list
+# - Add the desired quantity (1 is enough for a lab)
+# Step 3: Export and Download the Manifest
+# - Go to https://console.redhat.com/subscriptions/manifests
+# - Search for your allocation name (e.g., osac-aap-lab), click on it
+# - Click "Export manifest", then download the ZIP file
+# Step 4: Replace the licence.zip file in the S3 bucket (below) with the new one
+
+# Log into AWS Infra Prod Account
+# Go to S3 Bucket rhdp-private
+# Upload the licence.zip file
+# Get the URL for the file: https://rhdp-private.s3.us-east-1.amazonaws.com/licence.zip
+# Go to IAM -> IAM Users
+# Create a new user "s3-osac-aap-licence"
+# Select "Attach Policies directly"
+# Create policy "s3-osac-aap-licence" with the following JSON:
+
+# {
+#     "Version": "2012-10-17",
+#     "Statement": [
+#         {
+#             "Sid": "VisualEditor0",
+#             "Effect": "Allow",
+#             "Action": "s3:GetObject",
+#             "Resource": "arn:aws:s3:::rhdp-private/aap-licence.zip"
+#         },
+#         {
+#             "Sid": "VisualEditor1",
+#             "Effect": "Allow",
+#             "Action": "s3:ListBucket",
+#             "Resource": "arn:aws:s3:::rhdp-private"
+#         }
+#     ]
+# }
+
+# Back at the IAM User Create an Access Key (Use case: Other)
+# Vault the credentials and put them here
+
+ocp4_workload_osac_aap_licence_s3_url: https://rhdp-private.s3.us-east-1.amazonaws.com/licence.zip
+# @owner: Wolfgang Kulhanek <wkulhane@redhat.com>
+# @purpose: AWS Access Key ID for OSAC AAP Licence
+# @impact: HIGH
+# @expiration: NEVER
+# @rotation: NEVER
+# @source: Red Hat
+# @exposure: UNKNOWN
+ocp4_workload_osac_aap_licence_s3_access_key_id: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          30643539613532643266653338636566346463623934356361373436663164396533303735343533
+          3966396534653337313264303533333763363130393736340a376230383236316432353834643164
+          66633363396231636465343131626262616439333637383234306532613035313331323339636139
+          6664336235653339350a643535303036306232353537333966373430666435393839353833616635
+          35333531383863333231663435363039656461653930333532656439303466623839
+
+# @owner: Wolfgang Kulhanek <wkulhane@redhat.com>
+# @purpose: AWS Secret Access Key for OSAC AAP Licence
+# @impact: HIGH
+# @expiration: NEVER
+# @rotation: NEVER
+# @source: Red Hat
+# @exposure: UNKNOWN
+ocp4_workload_osac_aap_licence_s3_secret_access_key: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          61353634386364393430623436346530313638666265373533336636663165323039333566323563
+          3433333139623636633963633331373361633131613163310a646166343364353033656162373862
+          38396437636537323030616338333461613137363631343065376462643636616363626233633063
+          3034326239376332630a613239333533346362323133303563623931623731306263643735656633
+          65346438623439626132383839373731323037313066613039323733616634623866306532336636
+          3435663532373461366165373562383835326566313065636663
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_osac_demo
