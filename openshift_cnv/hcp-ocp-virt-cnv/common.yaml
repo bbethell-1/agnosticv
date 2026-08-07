@@ -94,6 +94,10 @@ ai_control_plane_memory: 16Gi
 ai_workers_cores: 24
 # Lab needs 3x32Gi memory
 ai_workers_memory: 64Gi
+ai_workers_root_disk_size: 200Gi
+# Larger root disks take longer to provision on Ceph; give worker VMs
+# more time to reach Running (default in role is 120 = 20 min).
+ai_workers_vm_ready_retries: 360
 
 ai_service_network_cidr: "172.231.0.0/16"
 ai_cluster_network_cidr: "10.232.0.0/14"
@@ -110,7 +114,7 @@ ai_workers_extra_disks:
       volumeMode: Block
       resources:
         requests:
-          storage: "20Gi"
+          storage: "50Gi"
 
 # -------------------------------------------------------------------
 # Workloads
@@ -161,7 +165,7 @@ ocp4_workload_authentication_remove_kubeadmin: true
 # Workload: ocp4_workload_cert_manager
 # -------------------------------------------------------------------
 
-ocp4_workload_cert_manager_channel: stable-v1.15
+ocp4_workload_cert_manager_channel: stable-v1
 ocp4_workload_cert_manager_use_catalog_snapshot: false
 ocp4_workload_cert_manager_install_ingress_certificates: true
 ocp4_workload_cert_manager_install_api_certificates: false
@@ -197,6 +201,13 @@ ocp4_workload_rhacm_use_catalog_snapshot: false
 # -------------------------------------------------------------------
 ocp4_workload_metallb_enable_ipaddresspool: true
 ocp4_workload_metallb_enable_l2advertisement: true
+
+# -------------------------------------------------------------------
+# Prometheus Retention (cluster-monitoring-config)
+# Prevents emptyDir Prometheus from filling worker root disks.
+# -------------------------------------------------------------------
+ocp4_workload_cluster_monitoring_retention: 3d
+ocp4_workload_cluster_monitoring_retention_size: 40GB
 
 # ------------------------------------------------------
 # Showroom
@@ -264,6 +275,12 @@ __meta__:
       cloud: cnv
       purpose: prod
       virt: "yes"
+    quota:
+      requests.storage: "2000Gi"
+      limits.cpu: '999'
+      requests.cpu: '999'
+      limits.memory: 2500Gi
+      requests.memory: 2500Gi
   catalog:
     display_name: Using Hosted Control Planes for OpenShift on OpenShift
     category: Workshops
