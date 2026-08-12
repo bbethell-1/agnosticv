@@ -18,7 +18,6 @@
 
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/openshift_assisted_installer.yaml
-#include /includes/secrets/vmware-ibm-rs-clusters-access.yaml
 #include /includes/secrets/lb1404-rhoso-registry.yaml
 
 #include /includes/secrets/dynamic-dns.yaml
@@ -116,7 +115,7 @@ requirements_content:
     version: v1.6.6
   - name: https://github.com/rhpds/osp-on-ocp.git
     type: git
-    version: v1.0.0
+    version: v1.0.1
 
 # -------------------------------------------------------------------
 # Workloads
@@ -135,8 +134,7 @@ infra_workloads: >-
       'ocp4_workload_openshift_gitops',
       'ocp4_workload_web_terminal',
       'ocp4_workload_kubevirt',
-      'ocp4_workload_virt_roadshow_vms',
-      'ocp4_workload_virt_roadshow_vmware',
+      'ocp4_workload_virt_roadshow_vms'
     ] +
     (['agnosticd.osp_on_ocp.ocp4_workload_rhoso_migration_toolkit_aap_setup',
       'agnosticd.osp_on_ocp.ocp4_workload_rhoso_migration_scenarios'] if enable_rhoso_migration | default(false) | bool else []) +
@@ -202,9 +200,9 @@ rhoso_external_ip_worker_1: "{{ lookup('agnosticd_user_data', 'rhoso_external_ip
 rhoso_external_ip_worker_2: "{{ lookup('agnosticd_user_data', 'rhoso_external_ip_worker_2') }}"
 rhoso_external_ip_worker_3: "{{ lookup('agnosticd_user_data', 'rhoso_external_ip_worker_3') }}"
 rhoso_external_ip_bastion: "{{ lookup('agnosticd_user_data', 'rhoso_external_ip_bastion') }}"
-ocp4_workload_rhoso_migration_toolkit_aap_setup_vcenter_hostname: "{{ lookup('agnosticd_user_data', 'vcenter_console') }}"
-ocp4_workload_rhoso_migration_toolkit_aap_setup_vcenter_username: "{{ lookup('agnosticd_user_data', 'vcenter_full_user') }}"
-ocp4_workload_rhoso_migration_toolkit_aap_setup_vcenter_password: "{{ lookup('agnosticd_user_data', 'vcenter_password') }}"
+ocp4_workload_rhoso_migration_toolkit_aap_setup_vcenter_hostname: "{{ vcenter_hostname }}"
+ocp4_workload_rhoso_migration_toolkit_aap_setup_vcenter_username: "{{ vcenter_full_user }}"
+ocp4_workload_rhoso_migration_toolkit_aap_setup_vcenter_password: "{{ vcenter_password }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhoso_ipam4lab_service_url
@@ -337,19 +335,34 @@ ocp4_workload_virt_roadshow_vms_namespace: vmimported
 ocp4_workload_virt_roadshow_vms_roadshow_setup: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_virt_roadshow_vmware
+# Workload: ocp4_workload_virt_roadshow_fvmw
 # -------------------------------------------------------------------
-ocp4_workload_virt_roadshow_vmware_num_users: 1
-ocp4_workload_virt_roadshow_vmware_vcenter_folder: "ocpvirt-{{ guid }}"
-ocp4_workload_virt_roadshow_vmware_enable_mtv: false
-ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
-ocp4_workload_virt_roadshow_vmware_use_pool: false
+vcenter_hostname: "vcenter.apps.{{ sandbox_openshift_cluster }}.rhdp.net"
 
+# @owner: Alberto Gonzalez Rodriguez <josegonz@redhat.com>
+# @purpose: fvmw vcenter user password
+# @impact: HIGH - full access
+# @expiration: UNKNOWN
+# @rotation: Regenerate by contacting Alberto Gonzalez Rodriguez <josegonz@redhat.com>
+# @source: UNKNOWN
+# @exposure: To deploy workload on fvmw vcenter.
+vcenter_password: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          32366565636537643566623734366534363433306237613435323063363863383232343665623736
+          3439656538636364356363613130363930623637396662300a636333646430323062653235306363
+          36333037613136633263613531373535663563366435316366303131613961626533323162306332
+          3865336531643334340a653361356632386465393135643732346366656364653133336239386236
+          6638
+vcenter_full_user: user1
+vcenter_datastore: workloadshare
+
+ocp4_workload_rhoso_migration_toolkit_aap_setup_vms_to_migrate:
+- haproxy-user1
 # ------------------------------------------------------
 # Showroom
 # ------------------------------------------------------
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/osp-on-ocp-showroom
-ocp4_workload_showroom_content_git_repo_ref: v2.0.0
+ocp4_workload_showroom_content_git_repo_ref: v3.0.0
 ocp4_workload_showroom_namespace_display: "Red Hat OpenStack Services on OpenShift Lab"
 ocp4_workload_showroom_deployment_type: helm
 ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
@@ -364,6 +377,13 @@ ocp4_workload_showroom_runtime_automation_enable: true
 ocp4_workload_showroom_runtime_automation_image: "quay.io/rhpds/zt-runner:v2.4.2"
 ocp4_workload_showroom_name: showroom
 ocp4_workload_showroom_namespace: showroom
+
+ocp4_workload_showroom_passthrough_user_data: true
+agnosticd_passthrough_user_data:
+  vcenter_hostname: "{{ vcenter_hostname }}"
+  vcenter_full_user: "{{ vcenter_full_user }}"
+  vcenter_password: "{{ vcenter_password }}"
+  vcenter_datastore: "{{ vcenter_datastore }}"
 
 # -------------------------------------------------------------------
 # Instances
