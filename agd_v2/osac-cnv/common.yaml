@@ -206,12 +206,12 @@ workloads: >-
   {{
     [
       'agnosticd.core_workloads.ocp4_workload_external_odf',
+      'agnosticd.core_workloads.ocp4_workload_authentication',
       'agnosticd.core_workloads.ocp4_workload_cert_manager'
     ] +
     (
       [
-        'rhpds.sovereign_cloud.ocp4_workload_osac',
-        'rhpds.sovereign_cloud.ocp4_workload_osac_demo'
+        'rhpds.sovereign_cloud.ocp4_workload_osac'
       ]
       if deploy_osac | default(false) | bool
       else []
@@ -237,6 +237,15 @@ ocp4_workload_external_odf_backingstore_custom_resources: true
 ocp4_workload_external_odf_operator_use_catalog_snapshot: false
 
 # -------------------------------------------------------------------
+# Workload: agnosticd.core_workloads.ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_provider: htpasswd
+ocp4_workload_authentication_admin_username: admin
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_num_users: 0
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
 # Workload: ocp4_workload_cert_manager
 # -------------------------------------------------------------------
 ocp4_workload_cert_manager_channel: stable-v1
@@ -245,27 +254,29 @@ ocp4_workload_cert_manager_use_catalog_snapshot: false
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_osac
 # -------------------------------------------------------------------
-ocp4_workload_osac_namespace: osac-demo
-ocp4_workload_osac_installer_repo: https://github.com/osac-project/osac-installer.git
-ocp4_workload_osac_installer_version: main
-ocp4_workload_osac_helm_mirror: https://mirror.openshift.com/pub/openshift-v4/clients
-ocp4_workload_osac_openshift_version: "4.22"
-ocp4_workload_osac_rhcos_version: "9.8.20260428-0"
-ocp4_workload_osac_operator_image: ghcr.io/osac-project/osac-operator:latest
-ocp4_workload_osac_fulfillment_service_image: ghcr.io/osac-project/fulfillment-service:latest
-ocp4_workload_osac_envoy_image: ghcr.io/osac-project/envoy:v1.33.0
-ocp4_workload_osac_ui_image: ghcr.io/osac-project/osac-ui:latest
-ocp4_workload_osac_aap_bootstrap_image: ghcr.io/osac-project/osac-aap:latest
-ocp4_workload_osac_cluster_versions:
-- version: "4.20.0"
-  image: "quay.io/openshift-release-dev/ocp-release:4.20.0-multi"
-- version: "4.22.0"
-  image: "quay.io/openshift-release-dev/ocp-release:4.22.0-multi"
-  default: true
+ocp4_workload_osac_cli_version: "v0.0.85"
 
-# AAP Licence. Expires 2026-12-31
+ocp4_workload_osac_namespace: osac
+ocp4_workload_osac_repo: https://github.com/osac-project/osac.git
+ocp4_workload_osac_repo_version: main
+ocp4_workload_osac_installer_directory: osac/osac-installer
+ocp4_workload_osac_installer_values_directory: values/vmaas-ci
+
+# ocp4_workload_osac_cluster_versions:
+# - version: "4.20.0"
+#   image: "quay.io/openshift-release-dev/ocp-release:4.20.0-multi"
+# - version: "4.22.0"
+#   image: "quay.io/openshift-release-dev/ocp-release:4.22.0-multi"
+#   default: true
+
+# Set passwords to be able to run more than once (otherwise they will be generated again)
+ocp4_workload_osac_admin_user: osac-admin
+ocp4_workload_osac_admin_password: "{{ common_admin_password }}"
+ocp4_workload_osac_user_password: "{{ common_user_password }}"
+
+# AAP License. Expires 2026-12-31
 # ================================================
-# To get a new licence file:
+# To get a new license file:
 # Step 1: Create a Subscription Allocation
 # - Go to https://access.redhat.com/management/subscription_allocations
 # - Click "Create New subscription allocation"
@@ -282,16 +293,16 @@ ocp4_workload_osac_cluster_versions:
 # - Go to https://console.redhat.com/subscriptions/manifests
 # - Search for your allocation name (e.g., osac-aap-lab), click on it
 # - Click "Export manifest", then download the ZIP file
-# Step 4: Replace the licence.zip file in the S3 bucket (below) with the new one
+# Step 4: Replace the license.zip file in the S3 bucket (below) with the new one
 
 # Log into AWS Infra Prod Account
 # Go to S3 Bucket rhdp-private
-# Upload the licence.zip file
-# Get the URL for the file: https://rhdp-private.s3.us-east-1.amazonaws.com/licence.zip
+# Upload the license.zip file and rename to osac-aap-license.zip
+# Get the URL for the file: https://rhdp-private.s3.us-east-1.amazonaws.com/osac-aap-license.zip
 # Go to IAM -> IAM Users
-# Create a new user "s3-osac-aap-licence"
+# Create a new user "s3-osac-aap-license" (current user is called s3-osac-app-licence)
 # Select "Attach Policies directly"
-# Create policy "s3-osac-aap-licence" with the following JSON:
+# Create policy "s3-osac-aap-license" with the following JSON:
 
 # {
 #     "Version": "2012-10-17",
@@ -300,7 +311,7 @@ ocp4_workload_osac_cluster_versions:
 #             "Sid": "VisualEditor0",
 #             "Effect": "Allow",
 #             "Action": "s3:GetObject",
-#             "Resource": "arn:aws:s3:::rhdp-private/aap-licence.zip"
+#             "Resource": "arn:aws:s3:::rhdp-private/osac-aap-license.zip"
 #         },
 #         {
 #             "Sid": "VisualEditor1",
@@ -313,16 +324,16 @@ ocp4_workload_osac_cluster_versions:
 
 # Back at the IAM User Create an Access Key (Use case: Other)
 # Vault the credentials and put them here
-ocp4_workload_osac_aap_licence_s3_url: https://rhdp-private.s3.us-east-1.amazonaws.com/osac-aap-licence.zip
+ocp4_workload_osac_aap_license_s3_url: https://rhdp-private.s3.us-east-1.amazonaws.com/osac-aap-license.zip
 
 # @owner: Wolfgang Kulhanek <wkulhane@redhat.com>
-# @purpose: AWS Access Key ID for OSAC AAP Licence
+# @purpose: AWS Access Key ID for OSAC AAP License
 # @impact: HIGH
 # @expiration: NEVER
 # @rotation: NEVER
 # @source: Red Hat
 # @exposure: UNKNOWN
-ocp4_workload_osac_aap_licence_s3_access_key_id: !vault |
+ocp4_workload_osac_aap_license_s3_access_key_id: !vault |
           $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
           30643539613532643266653338636566346463623934356361373436663164396533303735343533
           3966396534653337313264303533333763363130393736340a376230383236316432353834643164
@@ -331,13 +342,13 @@ ocp4_workload_osac_aap_licence_s3_access_key_id: !vault |
           35333531383863333231663435363039656461653930333532656439303466623839
 
 # @owner: Wolfgang Kulhanek <wkulhane@redhat.com>
-# @purpose: AWS Secret Access Key for OSAC AAP Licence
+# @purpose: AWS Secret Access Key for OSAC AAP License
 # @impact: HIGH
 # @expiration: NEVER
 # @rotation: NEVER
 # @source: Red Hat
 # @exposure: UNKNOWN
-ocp4_workload_osac_aap_licence_s3_secret_access_key: !vault |
+ocp4_workload_osac_aap_license_s3_secret_access_key: !vault |
           $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
           61353634386364393430623436346530313638666265373533336636663165323039333566323563
           3433333139623636633963633331373361633131613163310a646166343364353033656162373862
@@ -345,32 +356,6 @@ ocp4_workload_osac_aap_licence_s3_secret_access_key: !vault |
           3034326239376332630a613239333533346362323133303563623931623731306263643735656633
           65346438623439626132383839373731323037313066613039323733616634623866306532336636
           3435663532373461366165373562383835326566313065636663
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_osac_demo
-# -------------------------------------------------------------------
-ocp4_workload_osac_demo_namespace: "{{ ocp4_workload_osac_namespace }}"
-ocp4_workload_osac_demo_storage_class: ocs-external-storagecluster-ceph-rbd
-ocp4_workload_osac_demo_cli_version: "fulfillment-service/v0.0.82"
-ocp4_workload_osac_demo_admin_user: admin
-ocp4_workload_osac_demo_admin_password: "{{ common_admin_password }}"
-ocp4_workload_osac_demo_user_password: "{{ common_user_password }}"
-ocp4_workload_osac_demo_tenant_name: tenant1
-ocp4_workload_osac_demo_tenant_users:
-- tenant1_admin
-- tenant1_user
-ocp4_workload_osac_demo_public_ip_cidr: ""
-ocp4_workload_osac_demo_public_ip_pool_name: demo-public-pool
-
-# InstanceType for demo VM
-ocp4_workload_osac_demo_instance_type_name: small-1-2
-ocp4_workload_osac_demo_instance_type_cores: 1
-ocp4_workload_osac_demo_instance_type_memory_gib: 2
-ocp4_workload_osac_demo_instance_type_description: >-
-  Demo VM size: 1 vCPU, 2 GiB RAM
-
-# CatalogItem
-ocp4_workload_osac_demo_catalog_item_name: demo-linux-vm
 
 # -------------------------------------------------------------------
 # Babylon meta variables
