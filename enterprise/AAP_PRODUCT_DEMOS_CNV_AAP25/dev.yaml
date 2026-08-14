@@ -26,7 +26,7 @@ ai_workers_memory: 64Gi
 
 common_admin_password: >-
   {{
-    lookup('password', output_dir ~ '/common_admin_password length=12 chars=ascii_letters,digits')
+    lookup('password', output_dir ~ '/common_admin_password length=12 chars=ascii_letters,digits,punctuation')
   }}
 
 
@@ -110,6 +110,8 @@ ocp4_workload_ansible_automation_platform_use_catalog_snapshot: false
 # --------------------------------------------------------------------
 # ansible_automation_platform_configuration
 # --------------------------------------------------------------------
+_aap_version: "{{ ocp4_workload_ansible_automation_platform_operator_channel | replace('stable-', '') | replace('.', '') }}"
+
 aap_hostname: "{{ lookup('agnosticd.core.agnosticd_user_data', 'aap_controller_web_url') }}"
 aap_username: admin
 aap_password: "{{ ocp4_workload_ansible_automation_platform_admin_password }}"
@@ -144,6 +146,12 @@ aap_user_accounts:
     email: apd-admin@example.com
     password: "{{ aap_password }}"
 
+gateway_role_user_assignments:
+  - user: apd-admin
+    role_definition: Organization Admin
+    object_ids:
+      - Ansible Product Demos (APD)
+
 gateway_settings:
   SESSION_COOKIE_AGE: 9000
 
@@ -152,7 +160,7 @@ controller_settings: []
 eda_decision_environments:
   - name: "Default Decision Environment"
     organization: Default
-    image_url: "registry.redhat.io/ansible-automation-platform-25/de-supported-rhel9:latest"
+    image_url: "registry.redhat.io/ansible-automation-platform-{{ _aap_version }}/de-supported-rhel9:latest"
 
 aws_access_key_id: "{{ aws_provision_data.aws_access_key_id | default('') }}"
 aws_secret_access_key: "{{ aws_provision_data.aws_secret_access_key | default('') }}"
@@ -205,7 +213,7 @@ controller_inventories:
 
 controller_execution_environments:
   - name: Product Demos EE
-    image: quay.io/ansible-product-demos/apd-ee-25:latest
+    image: quay.io/ansible-product-demos/apd-ee-{{ _aap_version }}:latest
 
 controller_projects:
   - name: Ansible Product Demos
@@ -215,6 +223,8 @@ controller_projects:
     scm_branch: '{{ apd_git_repo_branch }}'
     default_environment: Product Demos EE
     wait: true
+
+controller_configuration_projects_async_retries: 90
 
 controller_templates:
   - name: "APD | Single demo setup"
@@ -240,6 +250,7 @@ controller_templates:
             - cloud
             - network
             - openshift
+            - infrastructure
             - satellite
 
   - name: "APD | Multi-demo setup"
@@ -257,9 +268,10 @@ controller_templates:
           type: multiselect
           variable: demos
           required: true
-          default: "cloud\nlinux\nnetwork\nopenshift\nwindows"
+          default: "cloud\ninfrastructure\nlinux\nnetwork\nopenshift\nwindows"
           choices:
             - cloud
+            - infrastructure
             - linux
             - network
             - openshift
@@ -312,7 +324,6 @@ __meta__:
           default: "stable-2.7"
           type: string
           enum:
-            - "stable-2.5"
             - "stable-2.6"
             - "stable-2.7"
       - name: aws_open_environment_type
