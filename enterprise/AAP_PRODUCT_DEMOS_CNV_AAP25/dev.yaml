@@ -1,46 +1,295 @@
 ---
 # #include /includes/access-restriction-aap-product-demos.yaml
 
-# --------------------
-# common.yml overrides
-# --------------------
+# ---------------------------------
+# Agdv2 and openshift workloads
+# ---------------------------------
 
-# TODO enable once a newer version of infra.aap_configuration is available
-#gateway_role_user_assignments:
-#  - user: apd-admin
-#    role_definition: Organization Admin
-#    object_ids:
-#      - Ansible Product Demos (APD)
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
+num_users: 1
+
+# -------------------------------------------------------------------
+# OpenShift Autoscaling cluster settings
+# -------------------------------------------------------------------
+openshift_cnv_scale_cluster: false
+worker_instance_count: 0
+ai_workers_cores: 16
+ai_workers_memory: 64Gi
+
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_admin_password length=12 chars=ascii_letters,digits')
+  }}
+
+
+# -------------------------------------------------------------------
+# Custom collections for this environment
+# -------------------------------------------------------------------
+tag: main
+requirements_content:
+  collections:
+      # Assisted Installer Collection
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: v0.0.9
+    # Core OpenShift Workloads
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    # AI Workloads
+    - name: https://github.com/rhpds/ai_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/cloud_vm_workloads.git
+      type: git
+      version: "cnv_instances"
+    - name: https://github.com/rhpds/rhpds.manage_host.git
+      type: git
+      version: universal
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: v1.3.10
+    - name: amazon.aws
+      version: 8.2.0
+    - name: ansible.posix
+      version: 1.6.0
+    - name: ansible.utils
+      version: 5.1.0
+    - name: awx.awx
+      version: 24.6.0
+    - name: community.general
+      version: 9.5.0
+    - name: infra.controller_configuration
+      version: 2.11.0
+    - name: kubernetes.core
+      version: 5.0.0
+    - name: kubevirt.core
+      version: 2.1.0
+    - name: community.okd
+      version: 4.0.0
+
+# -------------------------------------------------------------------
+# List of workloads to be deployed
+# -------------------------------------------------------------------
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+  - infra.aap_configuration.dispatch
+  - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+  # - ocp4_workload_external_odf
+  # - ocp4_workload_cert_manager
+  # - ocp4_workload_ansible_automation_platform_25
+  # - ansible_automation_platform_configuration
+  # - automation_platform_bastion
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_admin_password: "{{ common_admin_password }}"
+ocp4_workload_ansible_automation_platform_disable_controller: false
+ocp4_workload_ansible_automation_platform_disable_eda: false
+ocp4_workload_ansible_automation_platform_disable_hub: false
+ocp4_workload_ansible_automation_platform_disable_lightspeed: true
+ocp4_workload_ansible_automation_platform_inject_manifest: true
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+ocp4_workload_ansible_automation_platform_create_eda_rolebinding: true
+ocp4_workload_ansible_automation_platform_ocp_cluster_role: cluster-reader
+ocp4_workload_ansible_automation_platform_hub_file_storage_file_class: ocs-external-storagecluster-cephfs
+ocp4_workload_ansible_automation_platform_hub_file_storage_access_mode: ReadWriteMany
+ocp4_workload_ansible_automation_platform_automatic_install_plan_approval: true
+ocp4_workload_ansible_automation_platform_use_catalog_snapshot: false
+
+# --------------------------------------------------------------------
+# ansible_automation_platform_configuration
+# --------------------------------------------------------------------
+aap_hostname: "{{ lookup('agnosticd.core.agnosticd_user_data', 'aap_controller_web_url') }}"
+aap_username: admin
+aap_password: "{{ ocp4_workload_ansible_automation_platform_admin_password }}"
+aap_validate_certs: false
+
+ansible_async_dir: /tmp/.ansible_async
+aap_configuration_async_timeout: 3600
+aap_configuration_async_retries: 120
+aap_configuration_async_delay: 30
+controller_dependency_check: false
+
+aap_configuration_dispatcher_roles:
+  - {role: gateway_organizations, var: aap_organizations, tags: organizations}
+  - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
+  - {role: gateway_users, var: aap_user_accounts, tags: users}
+  - {role: gateway_role_user_assignments, var: gateway_role_user_assignments, tags: role_user_assignments }
+  - {role: controller_settings, var: controller_settings, tags: controller_settings}
+  - {role: eda_decision_environments, var: eda_decision_environments, tags: eda_decision_environments}
+  - {role: controller_credentials, var: controller_credentials, tags: controller_credentials}
+  - {role: controller_execution_environments, var: controller_execution_environments, tags: controller_execution_environments}
+  - {role: controller_projects, var: controller_projects, tags: controller_projects}
+  - {role: controller_inventories, var: controller_inventories, tags: inventories}
+  - {role: controller_job_templates, var: controller_templates, tags: controller_templates}
+  - {role: controller_job_launch, var: controller_launch_jobs, tags: controller_job_launch}
+
+
+aap_organizations:
+  - name: Ansible Product Demos (APD)
+
+aap_user_accounts:
+  - username: apd-admin
+    email: apd-admin@example.com
+    password: "{{ aap_password }}"
+
+gateway_settings:
+  SESSION_COOKIE_AGE: 9000
+
+controller_settings: []
+
+eda_decision_environments:
+  - name: "Default Decision Environment"
+    organization: Default
+    image_url: "registry.redhat.io/ansible-automation-platform-25/de-supported-rhel9:latest"
+
+aws_access_key_id: "{{ aws_provision_data.aws_access_key_id | default('') }}"
+aws_secret_access_key: "{{ aws_provision_data.aws_secret_access_key | default('') }}"
+_controller_credentials_base:
+  - name: AAP Credential
+    description: AAP credential for applying configuration as code
+    credential_type: Red Hat Ansible Automation Platform
+    organization: Ansible Product Demos (APD)
+    state: exists
+    inputs:
+      host: "{{ aap_hostname }}"
+      username: "{{ aap_username }}"
+      password: "{{ aap_password }}"
+
+  # - name: APD Machine Credential
+  #   description: Machine credential for Windows (username/password) and Linux (SSH key) instances
+  #   credential_type: Machine
+  #   organization: Ansible Product Demos (APD)
+  #   update_secrets: true
+  #   inputs:
+  #     username: admin
+  #     ssh_key_data: "{{ ssh_privatekey }}"
+  #     password: "{{ common_password }}"
+
+  - name: OpenShift Credential
+    description: Credential for OpenShift cluster
+    organization: Ansible Product Demos (APD)
+    credential_type: "OpenShift or Kubernetes API Bearer Token"
+    inputs:
+      host: "{{ openshift_api_url }}"
+      verify_ssl: true
+      bearer_token: "{{ openshift_cluster_admin_token }}"
+
+_controller_credentials_aws:
+  - name: AWS
+    credential_type: Amazon Web Services
+    organization: Ansible Product Demos (APD)
+    update_secrets: false
+    inputs:
+      username: "{{ aws_provision_data.aws_access_key_id }}"
+      password: "{{ aws_provision_data.aws_secret_access_key }}"
+
+controller_credentials: >-
+  {{ _controller_credentials_base + (_controller_credentials_aws if aws_provision_data is defined else []) }}
+
+
+controller_inventories:
+  - name: Ansible Product Demos Inventory
+    organization: Ansible Product Demos (APD)
+
+controller_execution_environments:
+  - name: Product Demos EE
+    image: quay.io/ansible-product-demos/apd-ee-25:latest
+
+controller_projects:
+  - name: Ansible Product Demos
+    organization: Ansible Product Demos (APD)
+    scm_type: git
+    scm_url: '{{ apd_git_repo }}'
+    scm_branch: '{{ apd_git_repo_branch }}'
+    default_environment: Product Demos EE
+    wait: true
+
+controller_templates:
+  - name: "APD | Single demo setup"
+    job_type: run
+    inventory: Ansible Product Demos Inventory
+    project: Ansible Product Demos
+    playbook: setup_demo.yml
+    credentials: AAP Credential
+    execution_environment: Product Demos EE
+    allow_simultaneous: true
+    survey_enabled: true
+    survey_spec:
+      name: ''
+      description: ''
+      spec:
+        - type: multiplechoice
+          question_name: Demo Category
+          variable: demo
+          required: true
+          choices:
+            - linux
+            - windows
+            - cloud
+            - network
+            - openshift
+            - satellite
+
+  - name: "APD | Multi-demo setup"
+    project: Ansible Product Demos
+    playbook: multi_select_setup.yml
+    inventory: Ansible Product Demos Inventory
+    credentials: AAP Credential
+    execution_environment: Product Demos EE
+    survey_enabled: true
+    survey:
+      name: ''
+      description: ''
+      spec:
+        - question_name: "Which demos do you want to configure?"
+          type: multiselect
+          variable: demos
+          required: true
+          default: "cloud\nlinux\nnetwork\nopenshift\nwindows"
+          choices:
+            - cloud
+            - linux
+            - network
+            - openshift
+            - satellite
+            - windows
+
+controller_launch_jobs: []
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  ssh_username: "{{ bastion_ansible_user }}"
+  ssh_password: "{{ bastion_ansible_ssh_pass }}"
+  ssh_address: "{{ bastion_ansible_host }}"
+  ssh_port: "{{ bastion_ansible_port }}"
+  ssh_command: >-
+    ssh {{ bastion_ansible_user }}@{{ bastion_ansible_host }} -p {{ bastion_ansible_port }}
+  dev_testing_info_page: true
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
   deployer:
-    scm_url: https://github.com/redhat-cop/agnosticd.git
-    scm_ref: development
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-ubi9-aap2.5:1.0.6
-      pull: always
-
-  sandboxes:
-    - kind: DNSSandbox
-      annotations:
-        prefix: cluster
-      cloud_selector:
-        provider: ddns
-        domain: "dyn.redhatworkshops.io"
-      var: dns_sandbox
-    - kind: SSLSandbox
-      cloud_selector:
-        purpose: production
-      var: ssl_sandbox
-    - kind: OcpSandbox
-      namespace_suffix: ocp4-cluster
-      cloud_selector:
-        cloud: cnv
-        purpose: dev
-        virt: "yes"
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
 
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
@@ -60,12 +309,18 @@ __meta__:
       - name: ocp4_workload_ansible_automation_platform_operator_channel
         formLabel: AAP Version
         openAPIV3Schema:
-          default: "stable-2.6"
+          default: "stable-2.7"
           type: string
           enum:
             - "stable-2.5"
             - "stable-2.6"
             - "stable-2.7"
+      - name: aws_open_environment_type
+        formLabel: AWS
+        formGroup: Open Environments
+        openAPIV3Schema:
+          default: true
+          type: boolean
       - name: azure_open_environment_type
         formLabel: Azure
         formGroup: Open Environments
@@ -78,3 +333,53 @@ __meta__:
         openAPIV3Schema:
           default: false
           type: boolean
+
+  components:
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools/prod
+      parameter_values:
+        cluster_size: sno
+        host_ocp4_installer_version: '4.20'
+      # Propagate agnosticd_user_info data set by this component to variables.
+      propagate_provision_data:
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: openshift_api_url
+          var: openshift_api_url
+        # Propagate bastion data for infra_add_bastion role
+        - name: bastion_public_hostname
+          var: bastion_ansible_host
+        - name: bastion_ssh_user_name
+          var: bastion_ansible_user
+        - name: bastion_ssh_password
+          var: bastion_ansible_ssh_pass
+        - name: bastion_ssh_port
+          var: bastion_ansible_port
+        - name: openshift_cluster_ingress_domain
+          var: openshift_cluster_ingress_domain
+
+    - name: aws
+      display_name: AWS Open Environment
+      item: sandboxes-gpte/SANDBOX_OPEN
+      propagate_provision_data:
+        - var: aws_provision_data
+      when: aws_open_environment_type | default('false') | bool
+    - name: azure
+      display_name: Azure Open Environment
+      item: azure_gpte/OPEN_ENVIRONMENT_AZURE_SUBSCRIPTION
+      propagate_provision_data:
+        - var: azure_provision_data
+      when: azure_open_environment_type | default('false') | bool
+    - name: ibm
+      display_name: IBM Open Environment
+      item: ibm/SANDBOX_IBM
+      propagate_provision_data:
+        - var: ibm_provision_data
+      when: ibm_open_environment_type | default('false') | bool
