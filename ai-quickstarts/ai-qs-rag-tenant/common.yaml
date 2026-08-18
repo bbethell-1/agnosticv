@@ -33,6 +33,14 @@ cloud_provider: none
 #       api_url: "{{ sandbox_openshift_api_url }}"
 #       api_token: "{{ cluster_admin_agnosticd_sa_token }}"
 
+# -------------------------------------------------------------------
+# TenantCluster sandbox var remapping
+# The sandbox provides openshift_cluster_admin_token (via deployer_admin_sa_token_target_var).
+# namespaced_workloads roles expect cluster_admin_agnosticd_sa_token.
+# -------------------------------------------------------------------
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+cluster_admin_agnosticd_sa_token: "{{ openshift_cluster_admin_token }}"
+
 # ===================================================================
 # Additional Collections & roles to be installed for this config
 # ===================================================================
@@ -126,11 +134,6 @@ ocp4_workload_litellm_virtual_keys_models:
 # Deploys a per-tenant ArgoCD bootstrap Application pointing to the
 # RAG Helm chart. ArgoCD manages the RAG pipeline components.
 # -------------------------------------------------------------------
-# For reference: The `deployer` variables are defined by the gitops_boostrap workload
-# deployer:
-#   domain: "{{ lookup('agnosticd_user_data', 'openshift_cluster_ingress_domain') }}"
-#   apiUrl: "{{ lookup('agnosticd_user_data', 'openshift_api_url') }}"
-#   guid: "{{ guid }}"
 ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ guid }}"
 ocp4_workload_gitops_bootstrap_repo_path: "tenant/bootstrap"
 ocp4_workload_gitops_bootstrap_application_project: tenants
@@ -164,18 +167,8 @@ ocp4_workload_gitops_bootstrap_helm_values:
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
-#
-# Console embed is deployed once at the cluster level (ai-qs-rag-cluster).
-# openshift_cluster_ingress_domain is discovered by the tenant
-# keycloak_user role via cluster discovery.
 # -------------------------------------------------------------------
-# These are required since the Showroom role doesn't natively know about
-# them like the other namespace workloads
-openshift_api_url: "{{ sandbox_openshift_api_url }}"
-openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
-
 ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
-# Replace with your Showroom repo
 ocp4_workload_showroom_content_git_repo: https://github.com/rh-ai-quickstart/showroom-ai-quickstart-rag
 ocp4_workload_showroom_terminal_type: showroom
 ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-11
@@ -196,7 +189,6 @@ ocp4_workload_showroom_content_ui_config: |
     url: "https://rhods-dashboard-redhat-ods-applications.{{ openshift_cluster_ingress_domain }}"
   - name: RAG UI
     url: "https://{{ guid }}-rag-user-{{ guid }}-rag.{{ openshift_cluster_ingress_domain }}"
-# ocp4_workload_showroom_passthrough_user_data: true
 
 # -------------------------------------------------------------------
 # Babylon meta variables
