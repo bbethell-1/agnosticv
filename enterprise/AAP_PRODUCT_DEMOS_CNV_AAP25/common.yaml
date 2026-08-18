@@ -16,58 +16,64 @@
 #include /includes/secrets/acme-bifrost.yaml
 
 # -------------------------------------------------------------------
-# Platforms
+# --- Catalog Item: "Ansible Product Demos"
 # -------------------------------------------------------------------
-platform: RHPDS
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+cloud_provider: none
+config: openshift-workloads
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
+
+# -------------------------------------------------------------------
+# OpenShift Autoscaling cluster settings
+# -------------------------------------------------------------------
+openshift_cnv_scale_cluster: false
+worker_instance_count: 0
+ai_workers_cores: 16
+ai_workers_memory: 64Gi
 
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
-env_type: ocp4-cluster
-software_to_deploy: openshift4_assisted
-cloud_provider: openshift_cnv
-ocp4_installer_version: "4.20"
-ai_cluster_version: "{{ ocp4_installer_version }}"
-ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-master_instance_count: 1
-worker_instance_count: 0
-ai_control_plane_cores: 16
-ai_control_plane_memory: '64Gi'
-openshift_admin_user: kubeadmin
-bastion_instance_image: rhel-9.6
+num_users: 1
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=16') + '_1'
+  }}
+aws_access_key_id: "{{ aws_provision_data.aws_access_key_id | default('') }}"
+aws_secret_access_key: "{{ aws_provision_data.aws_secret_access_key | default('') }}"
 
 # -------------------------------------------------------------------
-# Other Variables
+# Custom collections for this environment
 # -------------------------------------------------------------------
-project_tag: "{{ env_type }}-{{ guid }}"
-common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + '_1' }}"
-ssh_privatekey: "{{ lookup('file', hostvars.localhost.ssh_provision_key_path) }}"
-ssh_publickey: "{{ hostvars.localhost.ssh_provision_pubkey_content }}"
-bastion_student_show_user_info: true
-create_ssh_provision_key_enable_user_info_data: true
-host_ocp4_installer_set_user_data_kubeadmin_password: true
-aws_access_key_id: "{{ aws_provision_data.aws_access_key_id }}"
-aws_secret_access_key: "{{ aws_provision_data.aws_secret_access_key }}"
-
-# -------------------------------------------------------------------
-# Repos
-# -------------------------------------------------------------------
-repo_method: satellite
-update_packages: true
-use_content_view: true
-
-# bastion node packages
-common_extra_packages:
-  - ansible-navigator
-  - ansible-builder
-  - ansible-lint
-  - ansible-test
-
-# -------------------------------------------------------------------
-# Ansible Collections and Roles
-# -------------------------------------------------------------------
+tag: main
 requirements_content:
   collections:
+      # Assisted Installer Collection
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: v0.0.9
+    # Core OpenShift Workloads
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    # AI Workloads
+    - name: https://github.com/rhpds/ai_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/cloud_vm_workloads.git
+      type: git
+      version: "cnv_instances"
+    - name: https://github.com/rhpds/rhpds.manage_host.git
+      type: git
+      version: universal
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: v1.3.10
     - name: amazon.aws
       version: 8.2.0
     - name: ansible.posix
@@ -82,42 +88,23 @@ requirements_content:
       version: 2.11.0
     - name: kubernetes.core
       version: 5.0.0
-    - name: https://github.com/rhpds/assisted_installer.git
-      type: git
-      version: v0.0.8
     - name: kubevirt.core
       version: 2.1.0
     - name: community.okd
       version: 4.0.0
 
 # -------------------------------------------------------------------
-# OCP Infra Workloads
+# List of workloads to be deployed
 # -------------------------------------------------------------------
-student_workloads: []
-
-infra_workloads:
-  - ocp4_workload_external_odf
-  - ocp4_workload_cert_manager
-  - ocp4_workload_ansible_automation_platform_25
-  - ansible_automation_platform_configuration
-  - automation_platform_bastion
-
-# --------------------------------------------------------------------
-# Workload: ocp4_workload_external_odf
-# --------------------------------------------------------------------
-odf_channel: "stable-4.20"
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+  - rhpds.manage_host.ocp4_workload_bastion_ssh_keygen
+  - infra.aap_configuration.dispatch
+  - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_cert_manager
-# -------------------------------------------------------------------
-
-ocp4_workload_cert_manager_ec2_region: us-east-2
-ocp4_workload_cert_manager_channel: stable-v1
-ocp4_workload_cert_manager_use_catalog_snapshot: false
-ocp4_workload_cert_manager_install_api_certificates: false
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_ansible_automation_platform_25
+# Workload: >-
+# agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
 # -------------------------------------------------------------------
 ocp4_workload_ansible_automation_platform_admin_password: "{{ common_password }}"
 ocp4_workload_ansible_automation_platform_disable_controller: false
@@ -129,36 +116,36 @@ ocp4_workload_ansible_automation_platform_manifest:
   url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
 ocp4_workload_ansible_automation_platform_create_eda_rolebinding: true
 ocp4_workload_ansible_automation_platform_ocp_cluster_role: cluster-reader
-
+ocp4_workload_ansible_automation_platform_hub_file_storage_file_class: ocs-external-storagecluster-cephfs
+ocp4_workload_ansible_automation_platform_hub_file_storage_access_mode: ReadWriteMany
+ocp4_workload_ansible_automation_platform_automatic_install_plan_approval: true
 ocp4_workload_ansible_automation_platform_use_catalog_snapshot: false
-ocp4_workload_ansible_automation_platform_automatic_install_plan_approval: false
 
-# -------------------------------------------------------------------
-# Workload: ansible_automation_platform_configuration
-# -------------------------------------------------------------------
-ansible_automation_platform_configuration_host: "{{ aap_controller_web_url }}"
-ansible_automation_platform_configuration_username: admin
-ansible_automation_platform_configuration_password: "{{ aap_controller_admin_password }}"
-ansible_automation_platform_configuration_verify_ssl: true
-ansible_automation_platform_configuration_create_controller_token: true
-ansible_automation_platform_configuration_generate_ocp_token: true
 
-# ------------------------
-# Config values
-# ------------------------
+# --------------------------------------------------------------------
+# ansible_automation_platform_configuration
+# --------------------------------------------------------------------
+_aap_version: "{{ ocp4_workload_ansible_automation_platform_operator_channel | replace('stable-', '') | replace('.', '') }}"
+
+aap_hostname: "{{ lookup('agnosticd.core.agnosticd_user_data', 'aap_controller_web_url') }}"
+aap_username: admin
+aap_password: "{{ ocp4_workload_ansible_automation_platform_admin_password }}"
+aap_validate_certs: false
+
+ansible_async_dir: /tmp/.ansible_async
+aap_configuration_async_timeout: 3600
+aap_configuration_async_retries: 120
+aap_configuration_async_delay: 30
+controller_dependency_check: false
+
+# ----------------------------------|
+# Aap project vars
+# ----------------------------------|
 apd_bootstrap_scm_branch: main
 apd_git_repo: https://github.com/ansible/product-demos
 apd_git_repo_branch: main
+# ----------------------------------|
 
-# ------------------------
-# AAP2.5 Dispatcher Role
-# ------------------------
-controller_dependency_check: false
-
-aap_hostname: "{{ ansible_automation_platform_configuration_host }}"
-aap_username: "{{ ansible_automation_platform_configuration_username }}"
-aap_password: "{{ ansible_automation_platform_configuration_password }}"
-aap_validate_certs: "{{ ansible_automation_platform_configuration_verify_ssl }}"
 
 aap_configuration_dispatcher_roles:
   - {role: gateway_organizations, var: aap_organizations, tags: organizations}
@@ -180,7 +167,13 @@ aap_organizations:
 aap_user_accounts:
   - username: apd-admin
     email: apd-admin@example.com
-    password: "{{ ansible_automation_platform_configuration_password }}"
+    password: "{{ aap_password }}"
+
+gateway_role_user_assignments:
+  - user: apd-admin
+    role_definition: Organization Admin
+    object_ids:
+      - Ansible Product Demos (APD)
 
 gateway_settings:
   SESSION_COOKIE_AGE: 9000
@@ -190,19 +183,19 @@ controller_settings: []
 eda_decision_environments:
   - name: "Default Decision Environment"
     organization: Default
-    image_url: "registry.redhat.io/ansible-automation-platform-25/de-supported-rhel9:latest"
+    image_url: "registry.redhat.io/ansible-automation-platform-{{ _aap_version }}/de-supported-rhel9:latest"
 
-controller_configuration_credentials_secure_logging: false
-controller_credentials:
+_controller_credentials_base:
   - name: AAP Credential
     description: AAP credential for applying configuration as code
     credential_type: Red Hat Ansible Automation Platform
     organization: Ansible Product Demos (APD)
     state: exists
     inputs:
-      host: "{{ ansible_automation_platform_configuration_host }}"
-      username: "{{ ansible_automation_platform_configuration_username }}"
-      password: "{{ ansible_automation_platform_configuration_password }}"
+      host: "{{ aap_hostname }}"
+      username: "{{ aap_username }}"
+      password: "{{ aap_password }}"
+      request_timeout: "{{ '10' if _aap_version is version('27', '==') else omit }}"
 
   - name: APD Machine Credential
     description: Machine credential for Windows (username/password) and Linux (SSH key) instances
@@ -211,7 +204,7 @@ controller_credentials:
     update_secrets: true
     inputs:
       username: admin
-      ssh_key_data: "{{ ssh_privatekey }}"
+      ssh_key_data: "{{ bastion_ssh_private_key }}"
       password: "{{ common_password }}"
 
   - name: OpenShift Credential
@@ -221,15 +214,20 @@ controller_credentials:
     inputs:
       host: "{{ openshift_api_url }}"
       verify_ssl: true
-      bearer_token: "{{ openshift_bearer_token }}"
+      bearer_token: "{{ openshift_cluster_admin_token }}"
 
+_controller_credentials_aws:
   - name: AWS
     credential_type: Amazon Web Services
     organization: Ansible Product Demos (APD)
     update_secrets: false
     inputs:
-      username: "{{ aws_access_key_id }}"
-      password: "{{ aws_secret_access_key }}"
+      username: "{{ aws_provision_data.aws_access_key_id }}"
+      password: "{{ aws_provision_data.aws_secret_access_key }}"
+
+controller_credentials: >-
+  {{ _controller_credentials_base + (_controller_credentials_aws if aws_provision_data is defined else []) }}
+
 
 controller_inventories:
   - name: Ansible Product Demos Inventory
@@ -237,7 +235,7 @@ controller_inventories:
 
 controller_execution_environments:
   - name: Product Demos EE
-    image: quay.io/ansible-product-demos/apd-ee-25:latest
+    image: quay.io/ansible-product-demos/apd-ee-{{ _aap_version }}:latest
 
 controller_projects:
   - name: Ansible Product Demos
@@ -247,6 +245,8 @@ controller_projects:
     scm_branch: '{{ apd_git_repo_branch }}'
     default_environment: Product Demos EE
     wait: true
+
+controller_configuration_projects_async_retries: 90
 
 controller_templates:
   - name: "APD | Single demo setup"
@@ -272,6 +272,7 @@ controller_templates:
             - cloud
             - network
             - openshift
+            - infrastructure
             - satellite
 
   - name: "APD | Multi-demo setup"
@@ -289,9 +290,10 @@ controller_templates:
           type: multiselect
           variable: demos
           required: true
-          default: "cloud\nlinux\nnetwork\nopenshift\nwindows"
+          default: "cloud\ninfrastructure\nlinux\nnetwork\nopenshift\nwindows"
           choices:
             - cloud
+            - infrastructure
             - linux
             - network
             - openshift
@@ -299,6 +301,18 @@ controller_templates:
             - windows
 
 controller_launch_jobs: []
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  ssh_username: "{{ bastion_ansible_user }}"
+  ssh_password: "{{ bastion_ansible_ssh_pass }}"
+  ssh_address: "{{ bastion_ansible_host }}"
+  ssh_port: "{{ bastion_ansible_port }}"
+  ssh_command: >-
+    ssh {{ bastion_ansible_user }}@{{ bastion_ansible_host }} -p {{ bastion_ansible_port }}
+  ssh_provision_pubkey: "{{ bastion_ssh_public_key }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -333,11 +347,17 @@ __meta__:
       - name: ocp4_workload_ansible_automation_platform_operator_channel
         formLabel: AAP Version
         openAPIV3Schema:
-          default: "stable-2.6"
+          default: "stable-2.7"
           type: string
           enum:
-            - "stable-2.5"
             - "stable-2.6"
+            - "stable-2.7"
+      - name: aws_open_environment_type
+        formLabel: AWS
+        formGroup: Open Environments
+        openAPIV3Schema:
+          default: true
+          type: boolean
       - name: azure_open_environment_type
         formLabel: Azure
         formGroup: Open Environments
@@ -352,17 +372,50 @@ __meta__:
           type: boolean
 
   components:
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools/prod
+      parameter_values:
+        cluster_size: sno
+        host_ocp4_installer_version: '4.20'
+      # Propagate agnosticd_user_info data set by this component to variables.
+      propagate_provision_data:
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: openshift_api_url
+          var: openshift_api_url
+        # Propagate bastion data for infra_add_bastion role
+        - name: bastion_public_hostname
+          var: bastion_ansible_host
+        - name: bastion_ssh_user_name
+          var: bastion_ansible_user
+        - name: bastion_ssh_password
+          var: bastion_ansible_ssh_pass
+        - name: bastion_ssh_port
+          var: bastion_ansible_port
+        - name: openshift_cluster_ingress_domain
+          var: openshift_cluster_ingress_domain
+
     - name: aws
       display_name: AWS Open Environment
       item: sandboxes-gpte/SANDBOX_OPEN
       propagate_provision_data:
         - var: aws_provision_data
+      when: aws_open_environment_type | default('false') | bool
+
     - name: azure
       display_name: Azure Open Environment
       item: azure_gpte/OPEN_ENVIRONMENT_AZURE_SUBSCRIPTION
       propagate_provision_data:
         - var: azure_provision_data
       when: azure_open_environment_type | default('false') | bool
+
     - name: ibm
       display_name: IBM Open Environment
       item: ibm/SANDBOX_IBM
@@ -371,11 +424,11 @@ __meta__:
       when: ibm_open_environment_type | default('false') | bool
 
   deployer:
-    scm_url: https://github.com/redhat-cop/agnosticd.git
-    scm_ref: development
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-ubi9-aap2.5:2.1.0
-      pull: always
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
 
   sandboxes:
     - kind: OcpSandbox
