@@ -38,51 +38,9 @@ cloud_provider: openshift_cnv
 # (uses its own 1.x.x versioning, not the ocp-cnv-pool-x.x.x scheme)
 cloud_provider_version: "{{ tag }}"
 config: openshift-cluster
-
-# Set num_users
-num_users: 1
-
 # ===================================================================
 # End Mandatory Variables
 # ===================================================================
-
-control_plane_instance_count: 3
-
-# Control plane configuration
-ai_control_plane_cores: 16
-ai_control_plane_memory: 32Gi
-
-worker_instance_count: "{{ num_workers | int }}"
-
-ai_workers_cores: 64
-ai_workers_sockets: 2
-ai_workers_memory: 128Gi
-ai_workers_root_disk_size: 512Gi
-ai_workers_extra_disks:
-- metadata:
-    name: sdb-INSTANCENAME
-  spec:
-    source:
-      blank: {}
-    pvc:
-      accessModes:
-      - ReadWriteMany
-      volumeMode: Block
-      resources:
-        requests:
-          storage: 2048Gi
-- metadata:
-    name: sdc-INSTANCENAME
-  spec:
-    source:
-      blank: {}
-    pvc:
-      accessModes:
-      - ReadWriteMany
-      volumeMode: Block
-      resources:
-        requests:
-          storage: 2048Gi
 
 # ===================================================================
 # Additional Collections & roles to be installed for this config
@@ -100,6 +58,24 @@ requirements_content:
   - name: https://github.com/rhpds/sovereign_cloud.git
     type: git
     version: "{{ tag }}"
+  # Showroom
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: v1.7.1
+
+# -------------------------------------------------------------------
+# Common Passwords
+# -------------------------------------------------------------------
+common_admin_password: >-
+  {{ lookup('password', output_dir ~ '/common_admin_password', length=12, chars=['ascii_letters', 'digits']) }}
+common_user_password: >-
+  {{ lookup('password', output_dir ~ '/common_user_password', length=12, chars=['ascii_letters', 'digits']) }}
+
+# -------------------------------------------------------------------
+# Network settings
+# -------------------------------------------------------------------
+networks:
+- name: cluster
 
 # -------------------------------------------------------------------
 # Bastion VM settings
@@ -109,25 +85,6 @@ requirements_content:
 bastion_setup_student_user: true
 bastion_student_user_name: lab-user
 
-# -------------------------------------------------------------------
-# OpenShift settings
-# -------------------------------------------------------------------
-cluster_name: "cluster-{{ guid }}"
-
-host_ocp4_installer_root_url: https://mirror.openshift.com/pub/openshift-v4/clients
-host_ocp4_installer_version: "4.22"
-host_ocp4_deploy_installation_method: openshift_assisted
-
-openshift_cluster_admin_service_account_enable: true
-openshift_cluster_ingress_controller_allow_wildcards: true
-
-ai_service_network_cidr: "172.231.0.0/16"
-ai_cluster_network_cidr: "10.232.0.0/14"
-
-networks:
-- name: cluster
-
-ai_install_use_network: "cluster{{ guid }}"
 bastion_extra_networks:
 - "cluster"
 
@@ -186,20 +143,78 @@ bastion_networkdata: |
           - 10.10.10.1/24
 
 # -------------------------------------------------------------------
-# Common Password
+# OpenShift settings
 # -------------------------------------------------------------------
-common_admin_password: >-
-  {{ lookup('password', output_dir ~ '/common_admin_password', length=12, chars=['ascii_letters', 'digits']) }}
-common_user_password: >-
-  {{ lookup('password', output_dir ~ '/common_user_password', length=12, chars=['ascii_letters', 'digits']) }}
+cluster_name: "cluster-{{ guid }}"
 
-# These need to be set in the pooled base catalog item
-# ai_service_network_cidr: "172.231.0.0/16"
-# ai_cluster_network_cidr: "10.232.0.0/14"
+host_ocp4_installer_root_url: https://mirror.openshift.com/pub/openshift-v4/clients
+host_ocp4_installer_version: "4.22"
+host_ocp4_deploy_installation_method: openshift_assisted
 
-# -------------------------------------------------------------------
+openshift_cluster_admin_service_account_enable: true
+openshift_cluster_ingress_controller_allow_wildcards: true
+
+ai_service_network_cidr: "172.231.0.0/16"
+ai_cluster_network_cidr: "10.232.0.0/14"
+
+ai_install_use_network: "cluster{{ guid }}"
+
+# We need the following:
+# Control Plane:
+#   3x16 cores, 32Gi memory, 100Gi root disk
+#   =: 48 cores, 96Gi memory
+# Worker:
+#   5x64 cores, 128Gi memory
+#   5x512Gi root disk
+#   5x2048Gi extra disk
+#   =: 320 cores, 640Gi memory
+#   Root Disk: 5x512Gi=2560Gi
+#   Extra Disk: 5x2048Gi=10240Gi
+#   All Disks: 2560Gi+10240Gi=12800Gi
+#   Safety for Control Plane Disks: 3x256Gi=768Gi
+#   Total Storage: 12800Gi+768Gi=13568Gi
+
+# Control plane configuration
+control_plane_instance_count: 3
+ai_control_plane_cores: 16
+ai_control_plane_memory: 32Gi
+
+# Worker node configuration
+worker_instance_count: "{{ num_workers | int }}"
+
+ai_workers_cores: 64
+ai_workers_sockets: 2
+ai_workers_memory: 128Gi
+ai_workers_root_disk_size: 512Gi
+ai_workers_extra_disks:
+- metadata:
+    name: sdb-INSTANCENAME
+  spec:
+    source:
+      blank: {}
+    pvc:
+      accessModes:
+      - ReadWriteMany
+      volumeMode: Block
+      resources:
+        requests:
+          storage: 2048Gi
+- metadata:
+    name: sdc-INSTANCENAME
+  spec:
+    source:
+      blank: {}
+    pvc:
+      accessModes:
+      - ReadWriteMany
+      volumeMode: Block
+      resources:
+        requests:
+          storage: 2048Gi
+
+# ===================================================================
 # Workloads
-# -------------------------------------------------------------------
+# ===================================================================
 workloads: >-
   {{
     [
@@ -209,7 +224,9 @@ workloads: >-
     ] +
     (
       [
-        'rhpds.sovereign_cloud.ocp4_workload_osac'
+        'rhpds.sovereign_cloud.ocp4_workload_osac',
+        'agnosticd.showroom.ocp4_workload_ocp_console_embed',
+        'agnosticd.showroom.ocp4_workload_showroom'
       ]
       if deploy_osac | default(false) | bool
       else []
@@ -223,14 +240,7 @@ workloads: >-
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_external_odf
 # -------------------------------------------------------------------
-ocp4_workload_external_odf_channel: >-
-  {{
-    {
-      '4.20': 'stable-4.20',
-      '4.21': 'stable-4.21',
-      '4.22': 'stable-4.22'
-    }.get(host_ocp4_installer_version, 'stable-' + host_ocp4_installer_version)
-  }}
+ocp4_workload_external_odf_channel: stable-4.22
 ocp4_workload_external_odf_backingstore_custom_resources: true
 ocp4_workload_external_odf_operator_use_catalog_snapshot: false
 
@@ -272,7 +282,7 @@ ocp4_workload_osac_admin_user: osac-admin
 ocp4_workload_osac_admin_password: "{{ common_admin_password }}"
 ocp4_workload_osac_user_password: "{{ common_user_password }}"
 
-# AAP License. Expires 2026-12-31
+# AAP license. Expires 2026-12-31
 # ================================================
 # To get a new license file:
 # Step 1: Create a Subscription Allocation
@@ -291,11 +301,11 @@ ocp4_workload_osac_user_password: "{{ common_user_password }}"
 # - Go to https://console.redhat.com/subscriptions/manifests
 # - Search for your allocation name (e.g., osac-aap-lab), click on it
 # - Click "Export manifest", then download the ZIP file
-# Step 4: Replace the license.zip file in the S3 bucket (below) with the new one
+# Step 4: Replace the osac-aap-license.zip file in the S3 bucket (below) with the new one
 
 # Log into AWS Infra Prod Account
 # Go to S3 Bucket rhdp-private
-# Upload the license.zip file and rename to osac-aap-license.zip
+# Upload the license.zip file
 # Get the URL for the file: https://rhdp-private.s3.us-east-1.amazonaws.com/osac-aap-license.zip
 # Go to IAM -> IAM Users
 # Create a new user "s3-osac-aap-license" (current user is called s3-osac-app-licence)
@@ -323,9 +333,8 @@ ocp4_workload_osac_user_password: "{{ common_user_password }}"
 # Back at the IAM User Create an Access Key (Use case: Other)
 # Vault the credentials and put them here
 ocp4_workload_osac_aap_license_s3_url: https://rhdp-private.s3.us-east-1.amazonaws.com/osac-aap-license.zip
-
 # @owner: Wolfgang Kulhanek <wkulhane@redhat.com>
-# @purpose: AWS Access Key ID for OSAC AAP License
+# @purpose: AWS Access Key ID for OSAC AAP license
 # @impact: HIGH
 # @expiration: NEVER
 # @rotation: NEVER
@@ -340,7 +349,7 @@ ocp4_workload_osac_aap_license_s3_access_key_id: !vault |
           35333531383863333231663435363039656461653930333532656439303466623839
 
 # @owner: Wolfgang Kulhanek <wkulhane@redhat.com>
-# @purpose: AWS Secret Access Key for OSAC AAP License
+# @purpose: AWS Secret Access Key for OSAC AAP license
 # @impact: HIGH
 # @expiration: NEVER
 # @rotation: NEVER
@@ -354,6 +363,21 @@ ocp4_workload_osac_aap_license_s3_secret_access_key: !vault |
           3034326239376332630a613239333533346362323133303563623931623731306263643735656633
           65346438623439626132383839373731323037313066613039323733616634623866306532336636
           3435663532373461366165373562383835326566313065636663
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/showroom-osac
+ocp4_workload_showroom_content_git_repo_ref: main
+
+ocp4_workload_showroom_content_antora_playbook: site.yml
+
+# Enable Wetty and auto-SSH to bastion
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+# Dev Mode is overridden in dev.yaml
+ocp4_workload_showroom_antora_enable_dev_mode: "false"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -397,8 +421,7 @@ __meta__:
       formLabel: Deploy OSAC
       openAPIV3Schema:
         type: boolean
-        default: false
-
+        default: true
     - name: num_workers
       description: >-
         Number of worker nodes to provision within the environment.
@@ -413,7 +436,7 @@ __meta__:
     scm_url: https://github.com/rhpds/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-08-05
       pull: missing
 
   sandbox_api:
@@ -447,18 +470,3 @@ __meta__:
       requests.cpu: '999'
       limits.memory: 2500Gi
       requests.memory: 2500Gi
-
-# We need the following:
-# Control Plane:
-#   3x16 cores, 32Gi memory, 100Gi root disk
-#   =: 48 cores, 96Gi memory
-# Worker:
-#   5x64 cores, 128Gi memory
-#   5x512Gi root disk
-#   5x2048Gi extra disk
-#   =: 320 cores, 640Gi memory
-#   Root Disk: 5x512Gi=2560Gi
-#   Extra Disk: 5x2048Gi=10240Gi
-#   All Disks: 2560Gi+10240Gi=12800Gi
-#   Safety for Control Plane Disks: 3x256Gi=768Gi
-#   Total Storage: 12800Gi+768Gi=13568Gi
