@@ -518,6 +518,7 @@ controller_configuration_async_delay: 30
 aap_configuration_dispatcher_roles:
   - { role: controller_license, var: controller_license, tags: controller_license }
   - { role: gateway_settings, var: gateway_settings, tags: gateway_settings }
+  - { role: controller_settings, var: controller_settings, tags: controller_settings }
   - { role: gateway_users, var: aap_user_accounts, tags: gateway_users }
   - { role: controller_credential_types, var: controller_credential_types, tags: controller_credential_types }
   - { role: controller_credentials, var: controller_credentials, tags: controller_credentials }
@@ -532,6 +533,12 @@ controller_license:
 
 gateway_settings:
   SESSION_COOKIE_AGE: 43200
+
+controller_settings:
+  - name: AWX_ROLES_ENABLED
+    value: true
+  - name: AWX_COLLECTIONS_ENABLED
+    value: true
 
 aap_user_accounts:
   - username: "{{ student_name }}"
@@ -575,25 +582,17 @@ controller_credentials:
       username: "cloud-user"
       ssh_key_data: "{{ lookup('file', hostvars.localhost.ssh_provision_key_path) }}"
     state: present
-  - name: "registry.redhat.io credential"
-    organization: Default
-    credential_type: "Container Registry"
-    inputs:
-      host: registry.redhat.io
-      username: "{{ registry_credentials_username }}"
-      password: "{{ registry_credentials_password }}"
-      verify_ssl: true
-    state: present
   - name: "RHSM Credential"
-    description: Credential type for Red Hat Subscription Manager (RHSM) registration
+    description: "Update with your Red Hat Subscription Manager credentials"
     organization: "Default"
     credential_type: "RHSM Credential Type"
     inputs:
-      rhsm_username: "admin"
-      rhsm_password: "{{ common_password }}"
+      rhsm_username: "your-rhsm-username"
+      rhsm_password: "your-rhsm-password"
+    state: present
 
 controller_inventories:
-  - name: "Workshop Host Inventory"
+  - name: "Demo Inventory"
     organization: Default
     state: present
   - name: "Workshop Controller Inventory"
@@ -610,19 +609,19 @@ controller_hosts:
       ansible_user: rhel
       ansible_password: "{{ aap_image_admin_password }}"
   - name: "node1"
-    inventory: "Workshop Host Inventory"
+    inventory: "Demo Inventory"
     enabled: true
     state: present
   - name: "node2"
-    inventory: "Workshop Host Inventory"
+    inventory: "Demo Inventory"
     enabled: true
     state: present
   - name: "node3"
-    inventory: "Workshop Host Inventory"
+    inventory: "Demo Inventory"
     enabled: true
     state: present
   - name: "node4"
-    inventory: "Workshop Host Inventory"
+    inventory: "Demo Inventory"
     enabled: true
     state: present
 
@@ -642,7 +641,10 @@ controller_templates:
     ask_inventory_on_launch: true
     ask_credential_on_launch: true
     ask_limit_on_launch: true
-    inventory: "Workshop Host Inventory"
+    credentials:
+      - "Workshop Credential"
+      - "RHSM Credential"
+    inventory: "Demo Inventory"
 
   - name: "Leapp: 02 - RHSM Registration"
     project: "GitLab Playbook RHEL 10 Upgrader"
@@ -650,8 +652,10 @@ controller_templates:
     ask_inventory_on_launch: true
     ask_credential_on_launch: true
     ask_limit_on_launch: true
-    ask_variables_on_launch: true
-    inventory: "Workshop Host Inventory"
+    credentials:
+      - "Workshop Credential"
+      - "RHSM Credential"
+    inventory: "Demo Inventory"
 
   - name: "Leapp: 03 - Insights Registration"
     project: "GitLab Playbook RHEL 10 Upgrader"
@@ -659,7 +663,9 @@ controller_templates:
     ask_inventory_on_launch: true
     ask_credential_on_launch: true
     ask_limit_on_launch: true
-    inventory: "Workshop Host Inventory"
+    credentials:
+      - "Workshop Credential"
+    inventory: "Demo Inventory"
 
   - name: "Leapp: 04 - Upgrade Execution"
     project: "GitLab Playbook RHEL 10 Upgrader"
@@ -668,7 +674,9 @@ controller_templates:
     ask_credential_on_launch: true
     ask_limit_on_launch: true
     timeout: 3600
-    inventory: "Workshop Host Inventory"
+    credentials:
+      - "Workshop Credential"
+    inventory: "Demo Inventory"
 
   - name: "Leapp: 05 - Post-Upgrade Verification"
     project: "GitLab Playbook RHEL 10 Upgrader"
@@ -676,7 +684,9 @@ controller_templates:
     ask_inventory_on_launch: true
     ask_credential_on_launch: true
     ask_limit_on_launch: true
-    inventory: "Workshop Host Inventory"
+    credentials:
+      - "Workshop Credential"
+    inventory: "Demo Inventory"
 
 controller_workflows:
   - name: "WORKFLOW: Leapp-O-Matic RHEL 10 Migration"
@@ -696,12 +706,10 @@ controller_workflows:
           type: multiselect
           variable: limit
           choices: |
-            gazpacho
-            torrezno
-            target1
-            sporcizia
-            spazzina
-            fancazzista
+            node1
+            node2
+            node3
+            node4
           default: ""
     workflow_nodes:
       - identifier: "node_preflight"
