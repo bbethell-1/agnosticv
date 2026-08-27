@@ -10,6 +10,7 @@
 #include /includes/catalog-icon-rhel.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/sandbox-api.yaml
+#include /includes/access-restriction-devs-only.yaml
 
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/salesforce-id.yaml
@@ -130,6 +131,12 @@ instances:
         targetPort: 443
         tls: true
         tls_termination: passthrough
+      - name: bastion-80
+        host: bastion
+        service: bastion
+        targetPort: 80
+        tls: false
+        path: "/.well-known/"
     disks:
       - metadata:
           name: "extradisk{{ guid }}"
@@ -147,7 +154,6 @@ instances:
 # -------------------------------------------------------------------
 # Bastion Configuration
 # -------------------------------------------------------------------
-# Student user will be created via control_user workload
 bastion_student_user_name: lab-user
 bastion_student_user_password: "{{ common_password }}"
 
@@ -161,11 +167,6 @@ update_packages: false
 # Satellite Repositories
 # -------------------------------------------------------------------
 install_satellite_repositories: true
-# These vars need to come from secrets:
-# host_satellite_repositories_hostname:
-# host_satellite_repositories_ha:
-# host_satellite_repositories_org:
-# host_satellite_repositories_activationkey:
 
 # -------------------------------------------------------------------
 # Workloads
@@ -188,16 +189,13 @@ post_software_workloads: {}
 # -------------------------------------------------------------------
 # Workload Variables
 # -------------------------------------------------------------------
-# Pull Secret for OpenShift operations
 pull_secret: "{{ ocp4_pull_secret }}"
 
-# Control User (Student User) Configuration
 control_user_name: "{{ bastion_student_user_name }}"
 control_user_password: "{{ bastion_student_user_password }}"
 control_user_enable_sudoers: true
 control_user_sudo_commands: 'NOPASSWD: ALL'
 
-# host_common_packages configuration
 host_common_packages_extra:
   - podman
   - buildah
@@ -224,7 +222,6 @@ asset_injector_modules:
     state: present
     marker: "# {mark} Custom SSH settings via Ansible"
     block: |
-      # Custom SSH settings via Ansible
       ChallengeResponseAuthentication no
       PasswordAuthentication yes
       UsePAM yes
@@ -236,7 +233,7 @@ asset_injector_modules:
     state: restarted
 
 # -------------------------------------------------------------------
-# AgnosticV User Data (for info messages)
+# AgnosticV User Data
 # -------------------------------------------------------------------
 agnosticv_importdata:
   bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{  subdomain }}"
@@ -257,16 +254,9 @@ __meta__:
     maintainer:
       - name: Alberto Losada Grande
         email: alosadag@redhat.com
-      - name: Mario Vazquez Cebrian
-        email: mavazque@redhat.com
-      - name: Billy Bethell
-        email: bbethell@redhat.com
-    sme:
-      - name: Alberto Gonzales Rodriguez
-        email: josegonz@redhat.com
+      - name: Tyrell Reddy
+        email: treddy@redhat.com
     instructions:
-      - name: Alberto Losada Grande
-        email: alosadag@redhat.com
       - name: Mario Vazquez Cebrian
         email: mavazque@redhat.com
   anarchy:
@@ -299,10 +289,10 @@ __meta__:
     display_name: "5G RAN RDS Deployments on OpenShift"
     category: Workshops
     keywords:
-      - workshop
-      - openshift
-      - ran
+      - telco
       - 5g
+      - ran
+      - rds
     labels:
       Provider: RHDP
       Product: Red_Hat_OpenShift_Container_Platform
