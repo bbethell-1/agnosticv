@@ -1,0 +1,190 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: OpenShift Dev Day (Tenant)
+# --- USER PROVISIONER -- per-user resources on shared cluster
+# --- Multi-user deployment on a shared pre-provisioned cluster
+# --- Tenant pattern
+# -------------------------------------------------------------------
+# --- This catalog item combines:
+# ---   - Sandbox/namespace architecture (no cluster provisioning)
+# ---   - Keycloak user authentication
+# ---   - Multi-user support with per-user namespaces
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/parameters/litellm_metadata.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# ===================================================================
+cloud_provider: none
+config: namespace
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+
+requirements_content:
+  collections:
+  - name: https://github.com/rhpds/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: v1.6.8
+
+  - name: https://github.com/rhpds/dev-day-roadshow.git
+    type: git
+    version: "{{ tag }}"
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.showroom.ocp4_workload_showroom
+
+remove_workloads:
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.showroom.ocp4_workload_showroom
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Common -- tenant username and password
+# All tenant resources reference the same username and password
+# Single-user tenant deployment
+# -------------------------------------------------------------------
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+openshift_cluster_admin_token: "{{ cluster_admin_agnosticd_sa_token }}"
+
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+ocp4_workload_tenant_keycloak_user_groups:
+- users
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_tenant_openshift_gitops_user: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_openshift_gitops_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/dev-day-roadshow.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_terminal_type: wetty
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/dev-day-roadshow.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: automation/gitops/tenant/bootstrap
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ ocp4_workload_tenant_keycloak_username }}"
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  gitops:
+    repoURL: "{{ ocp4_workload_gitops_bootstrap_repo_url }}"
+    targetRevision: "{{ ocp4_workload_gitops_bootstrap_repo_revision }}"
+  tenant:
+    username: "{{ ocp4_workload_tenant_keycloak_username }}"
+    password: "{{ common_password }}"
+    domain: "{{ openshift_cluster_ingress_domain }}"
+  gitlab:
+    host: "gitlab-gitlab.{{ openshift_cluster_ingress_domain }}"
+  cluster:
+    subdomain: "{{ openshift_cluster_ingress_domain }}"
+  registry:
+    host: "quay.{{ openshift_cluster_ingress_domain }}"
+
+ocp4_workload_gitops_bootstrap_health_retries: 10
+
+# ===================================================================
+# Babylon meta variables
+# ===================================================================
+__meta__:
+  asset_uuid: c59b38f8-e477-433c-adca-b77a41a875cd
+  owners:
+    maintainer:
+    - name: Tyrell Reddy
+      email: treddy@redhat.com
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+    actions:
+      status:
+        disable: true
+      update:
+        disable: true
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "lb2111: OpenShift Dev Day Roadshow"
+    category: Labs
+    keywords:
+    - gitops
+    - keycloak
+    - argocd
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Application_Developer
+      secondaryBU: Hybrid_Platforms
+    workshopLabUiRedirect: true
+    # Provision doesn't call `agnosticd_user_info` with `user` set and so does
+    # not report `users` in `provision_data`. All data and messages are
+    # assigned directly to the workshop seat.
+    workshop_user_mode: none
+    multiuser: true
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: OcpSandbox
+    alias: cluster
+    namespace_suffix: user
+    cloud_selector:
+      lab: lb2111-ocp-dev-day
+      purpose: prod

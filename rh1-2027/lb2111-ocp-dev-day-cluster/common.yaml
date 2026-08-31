@@ -1,0 +1,304 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: OpenShift Dev Day (Cluster)
+# --- A CI for OpenShift Dev Day. Details to follow...
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/parameters/litellm_metadata.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+cloud_provider: none
+config: openshift-workloads
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# -------------------------------------------------------------------
+# Autoscaling cluster
+# -------------------------------------------------------------------
+openshift_cnv_scale_cluster: true
+ai_workers_cores: 32
+ai_workers_memory: 64Gi
+worker_instance_count: 4
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+
+requirements_content:
+  collections:
+  # Assisted Installer Collection
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.9
+
+  # Core OpenShift Workloads
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # LiteLLM Virtual Keys Collection
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "1.0.0"
+
+  # Lab specific collection
+  - name: https://github.com/rhpds/dev-day-roadshow.git
+    type: git
+    version: "{{ tag }}"
+
+  # Showroom
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: v1.6.8
+
+  # FTL (for E2E testing)
+  - name: https://github.com/rhpds/rhpds-ftl.git
+    type: git
+    version: "{{ tag }}"
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+- dev_day_roadshow.automation.ocp4_workload_dev_days_rdshw_cluster_bootstrap
+
+remove_workloads: []
+
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.20
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: 250m
+ocp4_workload_openshift_gitops_controller_requests_memory: 1Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "4"
+ocp4_workload_openshift_gitops_repo_limits_memory: 4Gi
+ocp4_workload_openshift_gitops_resource_customizations: |
+  operators.coreos.com/Subscription:
+    health.lua: |
+      health_status = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          numDegraded = 0
+          numPending = 0
+          msg = ""
+          for i, condition in pairs(obj.status.conditions) do
+            msg = msg .. i .. ": " .. condition.type .. " | " .. condition.status .. "\n"
+            if condition.type == "InstallPlanPending" and condition.status == "True" then
+              numPending = numPending + 1
+            elseif (condition.type == "InstallPlanMissing" and condition.reason ~= "ReferencedInstallPlanNotFound") then
+              numDegraded = numDegraded + 1
+            elseif (condition.type == "CatalogSourcesUnhealthy" or condition.type == "InstallPlanFailed") and condition.status == "True" then
+              numDegraded = numDegraded + 1
+            end
+          end
+          if numDegraded == 0 and numPending == 0 then
+            health_status.status = "Healthy"
+            health_status.message = msg
+            return health_status
+          elseif numPending > 0 and numDegraded == 0 then
+            health_status.status = "Progressing"
+            health_status.message = "An install plan for a subscription is pending installation"
+            return health_status
+          else
+            health_status.status = "Degraded"
+            health_status.message = msg
+            return health_status
+          end
+        end
+      end
+      health_status.status = "Progressing"
+      health_status.message = "An install plan for a subscription is pending installation"
+      return health_status
+
+  quay.redhat.com/QuayRegistry:
+    health.lua: |
+      local hs={ status = "Progressing", message = "Waiting for initialization" }
+      found_status = false
+
+      if obj.status ~= nil then
+        found_status = true
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+
+            if condition.type == "Available" and condition.status ~= "True" then
+              if condition.reason == "ComponentNotReady" then
+                hs.status = "Progressing"
+              else
+                hs.status = "Degraded"
+              end
+              hs.message = condition.message or condition.reason
+            end
+            if condition.type == "Available" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "All instances are available"
+            end
+          end
+        end
+      end
+
+      if not found_status then
+        hs = { status = "Progressing", message = "Instance is waiting for initialization" }
+      end
+
+      return hs
+
+# -------------------------------------------------------------------
+# Workload: rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_models:
+- qwen3-235b
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_admin_username: admin
+ocp4_workload_authentication_admin_password: "{{ common_password }}"
+
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_num_users: 0
+
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_default_realm: sso
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+
+# OIDC clients for Red Hat Developer Hub
+ocp4_workload_authentication_keycloak_backstage_client_secret: >-
+  {{ lookup('password', output_dir ~ '/backstage_client_secret', length=32, chars=['ascii_letters', 'digits']) }}
+ocp4_workload_authentication_keycloak_backstage_plugin_client_secret: >-
+  {{ lookup('password', output_dir ~ '/backstage_plugin_client_secret', length=32, chars=['ascii_letters', 'digits']) }}
+
+ocp4_workload_authentication_keycloak_clients:
+- clientId: backstage
+  secret: "{{ ocp4_workload_authentication_keycloak_backstage_client_secret }}"
+  redirectUris:
+  - "https://backstage-developer-hub-rhdh.{{ openshift_cluster_ingress_domain }}/*"
+  description: "Red Hat Developer Hub OIDC Client"
+- clientId: backstage-plugin
+  secret: "{{ ocp4_workload_authentication_keycloak_backstage_plugin_client_secret }}"
+  description: "Red Hat Developer Hub Keycloak Plugin Client"
+  standardFlowEnabled: false
+  directAccessGrantsEnabled: true
+  serviceAccountsEnabled: true
+  serviceAccountRoles:
+    realm-management:
+    - query-users
+    - view-users
+    - query-groups
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 159d5bf1-ac18-454b-8e1f-914f88e73052
+  owners:
+    maintainer:
+    - name: Tyrell Reddy
+      email: treddy@redhat.com
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "lb2111: OpenShift Dev Day Roadshow (Cluster)"
+    category: Labs
+    keywords:
+    - gitops
+    - keycloak
+    - argocd
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Application_Developer
+      secondaryBU: Hybrid_Platforms
+    # This item only provisions shared infrastructure.
+    # It would not be appropriate to order a workshop of this item.
+    workshopUiDisabled: false
+    multiuser: true
+    workshop_user_mode: multi
+
+  components:
+  - name: openshift-base
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: "4.20"
+      ocp4_fips_enable: false
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    # Propagate bastion data for infra_add_bastion role
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    # Needed for scaling cluster with workers
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
