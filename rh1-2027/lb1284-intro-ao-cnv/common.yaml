@@ -1,0 +1,261 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog: Brand Events
+# --- Catalog Item: LB1284 - Intro AO Workshop
+# -------------------------------------------------------------------
+# This item is restricted to devs only!
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/access-restriction-devs-only.yaml
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/litellm_metadata.yaml
+
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+# Satellite credentials to subscribe the RHEL VM in the lab.
+
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# Repository Tag
+# Tag for all repositories that are used in this config.
+# ===================================================================
+tag: main
+# -------------------------------------------------------------------
+cloud_provider: none
+# cloud_provider_version: main
+config: openshift-workloads
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_api_key }}"
+
+# Set num_users for autoscale
+num_users: 1
+
+# ===================================================================
+# End Mandatory Variables
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Autoscaling cluster
+# -------------------------------------------------------------------
+openshift_cnv_scale_cluster: false
+worker_instance_count: 0
+ai_workers_cores: 32
+ai_workers_memory: 128Gi
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+    # Assisted Installer Collection
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: v0.0.9
+    # Core OpenShift Workloads
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    # AI Workloads
+    - name: https://github.com/rhpds/ai_workloads.git
+      type: git
+      version: "{{ tag }}"
+    # Sovereign Cloud Workloads
+    - name: https://github.com/rhpds/sovereign_cloud.git
+      type: git
+      version: "{{ tag }}"
+    # MaaS
+    - name: "https://github.com/rhpds/rhpds.litellm_virtual_keys.git"
+      type: git
+      version: "1.3.2"
+    # Showroom
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: v1.7.2
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_admin_password: >-
+  {{ lookup('password', output_dir ~ '/common_admin_password', length=12, chars=['ascii_letters', 'digits']) }}
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+  - infra.aap_configuration.dispatch
+  # - agnosticd.showroom.ocp4_workload_showroom
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Workshop:
+# rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+# Build model list based on checkbox selections
+ocp4_workload_litellm_virtual_keys_models:
+  - qwen3-14b
+# Duration selected by user
+ocp4_workload_litellm_virtual_keys_duration: "{{ litellm_duration | default('3d') }}"
+
+# Enable user.info messages and data
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# Workload:
+# agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_admin_password: "{{ common_admin_password }}"
+ocp4_workload_ansible_automation_platform_disable_controller: false
+ocp4_workload_ansible_automation_platform_disable_eda: false
+ocp4_workload_ansible_automation_platform_disable_hub: false
+ocp4_workload_ansible_automation_platform_disable_lightspeed: true
+ocp4_workload_ansible_automation_platform_inject_manifest: true
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+ocp4_workload_ansible_automation_platform_create_eda_rolebinding: true
+ocp4_workload_ansible_automation_platform_ocp_cluster_role: cluster-reader
+ocp4_workload_ansible_automation_platform_hub_file_storage_file_class: ocs-external-storagecluster-cephfs
+ocp4_workload_ansible_automation_platform_hub_file_storage_access_mode: ReadWriteMany
+ocp4_workload_ansible_automation_platform_automatic_install_plan_approval: true
+ocp4_workload_ansible_automation_platform_use_catalog_snapshot: false
+ocp4_workload_ansible_automation_platform_operator_channel: stable-2.7
+
+# --------------------------------------------------------------------
+# Workload: infra.aap_configuration.dispatch
+# --------------------------------------------------------------------
+aap_hostname: "{{ lookup('agnosticd.core.agnosticd_user_data', 'aap_controller_web_url') }}"
+aap_username: admin
+aap_password: "{{ ocp4_workload_ansible_automation_platform_admin_password }}"
+aap_validate_certs: false
+
+ansible_async_dir: /tmp/.ansible_async
+aap_configuration_async_timeout: 3600
+aap_configuration_async_retries: 120
+aap_configuration_async_delay: 30
+controller_dependency_check: false
+
+aap_configuration_dispatcher_roles:
+  - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
+
+gateway_settings:
+  SESSION_COOKIE_AGE: 9000
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+# -------------------------------------------------------------------
+# agnosticv_importdata:
+#   ssh_username: "{{ bastion_ansible_user }}"
+#   ssh_password: "{{ bastion_ansible_ssh_pass }}"
+#   ssh_address: "{{ bastion_ansible_host }}"
+#   ssh_port: "{{ bastion_ansible_port }}"
+#   ssh_command: >-
+#     ssh {{ bastion_ansible_user }}@{{ bastion_ansible_host }} -p {{ bastion_ansible_port }}
+#   ssh_provision_pubkey: "{{ bastion_ssh_public_key }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/intro-ao-workshop.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_antora_playbook: site.yml
+
+# Enable Wetty and auto-SSH to bastion
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+# Dev Mode is overridden in dev.yaml
+ocp4_workload_showroom_antora_enable_dev_mode: "false"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 9e44dbc4-0deb-4cd7-bd17-69a1a598a2f1
+  owners:
+    maintainer:
+      - name: Mitesh Sharma
+        email: mitsharm@redhat.com
+    sme:
+      - name: Roger Lopez
+        email: rlopez@redhat.com
+    instructions:
+      - name: Roger Lopez
+        email: rlopez@redhat.com
+
+  catalog:
+    supportLink: https://redhat.enterprise.slack.com/archives/C06QWD4A5TE
+    display_name: "LB1284 - Intro to Ansible Automation Orchestrator (AO)"
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    reportingLabels:
+      primaryBU: Automation
+    keywords:
+      - rh1-2027
+      - lb1284
+    category: Brand_Events
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Automation
+      Provider: RHDP
+      Brand_Event: Red_Hat_One_2027
+    parameters: []
+    workshopLabUiRedirect: true
+    workshop_user_mode: none
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-08-05
+      pull: missing
+
+  components:
+    - name: openshift-base
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools
+      parameter_values:
+        cluster_size: sno
+        host_ocp4_installer_version: "4.20"
+        ocp4_fips_enable: false
+      # Propagate agnosticd_user_info data set by this component to variables.
+      propagate_provision_data:
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+        - name: openshift_cluster_admin_token
+          var: openshift_api_key
+        - name: openshift_api_url
+          var: openshift_api_url
+        # Propagate bastion data for infra_add_bastion role
+        - name: bastion_public_hostname
+          var: bastion_ansible_host
+        - name: bastion_ssh_user_name
+          var: bastion_ansible_user
+        - name: bastion_ssh_password
+          var: bastion_ansible_ssh_pass
+        - name: bastion_ssh_port
+          var: bastion_ansible_port
+        - name: openshift_cluster_ingress_domain
+          var: openshift_cluster_ingress_domain
+        - name: bastion_ssh_public_key
+          var: bastion_ssh_public_key
