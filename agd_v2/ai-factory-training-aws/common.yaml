@@ -56,15 +56,15 @@ requirements_content:
 # -------------------------------------------------------------------
 # VM configuration
 # -------------------------------------------------------------------
-control_plane_instance_type: "{{ gpu_instance_type }}"
+control_plane_instance_type: m6a.4xlarge
 control_plane_instance_count: 1
-control_plane_storage_size: 1500
-control_plane_storage_type: io1
+control_plane_storage_size: 500
+control_plane_storage_type: gp3
 
 worker_instance_type: m6a.4xlarge
-worker_instance_count: 0
+worker_instance_count: 2
 worker_storage_type: gp3
-worker_storage_size: 1500
+worker_storage_size: 500
 
 bastion_instance_type: t3a.small
 bastion_instance_image: RHEL96GOLD-latest
@@ -92,6 +92,7 @@ bastion_setup_student_user: true
 workloads:
 - agnosticd.core_workloads.ocp4_workload_cert_manager
 - agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.core_workloads.ocp4_workload_machinesets
 - agnosticd.core_workloads.ocp4_workload_nfd
 - agnosticd.ai_workloads.ocp4_workload_nvidia_gpu_operator
 - agnosticd.core_workloads.ocp4_workload_authorino
@@ -144,6 +145,26 @@ ocp4_workload_nvidia_gpu_operator_use_catalog_snapshot: false
 ocp4_workload_nvidia_gpu_operator_create_dashboard: true
 ocp4_workload_nvidia_gpu_operator_wait_for_cluster_policy: false
 ocp4_workload_nvidia_gpu_operator_ignore_csv_error: true
+
+# -------------------------------------------------------------------
+# ocp4_workload_machinesets
+# -------------------------------------------------------------------
+ocp4_workload_machinesets_disable_default_machinesets: false
+ocp4_workload_machinesets_wait_for_nodes: false
+
+ocp4_workload_machinesets_machineset_groups:
+- name: worker-gpu
+  role: worker-gpu
+  instance_type: "{{ gpu_instance_type }}"
+  autoscale: false
+  total_replicas: "1"
+  total_replicas_min: "1"
+  total_replicas_max: "1"
+  root_volume_size: "500"
+  taints:
+  - key: nvidia.com/gpu
+    value: "true"
+    effect: NoSchedule
 
 # -------------------------------------------------------------------
 # ocp4_workload_authorino
@@ -210,23 +231,23 @@ ocp4_workload_openshift_ai_dashboard_config_notebook_controller:
   pvcSize: 20Gi
 
 ocp4_workload_openshift_ai_hardware_profile_gpu_identifiers:
-- defaultCount: '8'
+- defaultCount: 500m
   displayName: CPU
   identifier: cpu
-  maxCount: '24'
-  minCount: 1
+  maxCount: 4
+  minCount: 100m
   resourceType: CPU
-- defaultCount: 32Gi
+- defaultCount: 8Gi
   displayName: Memory
   identifier: memory
-  maxCount: 96Gi
+  maxCount: 12Gi
   minCount: 1Gi
   resourceType: Memory
 - defaultCount: 1
   displayName: GPU
   identifier: nvidia.com/gpu
   maxCount: 1
-  minCount: 0
+  minCount: 1
   resourceType: Accelerator
 
 # -------------------------------------------------------------------
@@ -286,11 +307,11 @@ __meta__:
       required: true
       openAPIV3Schema:
         type: string
-        default: g6.8xlarge
+        default: g6.2xlarge
         enum:
+        - g6.2xlarge
+        - g6.4xlarge
         - g6.8xlarge
-        - g6.12xlarge
-        - g6.16xlarge
 
   owners:
     maintainer:
