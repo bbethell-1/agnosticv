@@ -1,0 +1,248 @@
+---
+# -------------------------------------------------------------------
+# ZT AgnosticD v2 Migration - Phase 4 Base Component
+# -------------------------------------------------------------------
+# Shared base component for ZT AgnosticD v2 test/demo catalog items.
+# Mirrors the production `zt-rhelbu/zt-rhel-bu-lab-developer-cnv` base
+# component (zt-rhelbu-agnosticv repo): owns config/cloud_provider,
+# collections, workload wiring, and Showroom deployment. Per-lab leaf
+# items (e.g. tests/zt-agd-v2-demo) reference this via
+# `__meta__.components[].item: tests/zt-base-component` and only supply
+# `ocp4_workload_showroom_content_git_repo`/`_content_git_repo_ref` plus
+# their own catalog-facing metadata.
+#
+# This is never ordered directly - no `__meta__.catalog` block here
+# (matches the migration proposal's base-component draft; the v1 base's
+# own copy of catalog metadata is vestigial since it's only ever
+# referenced as a component).
+#
+# See the migration proposal for full context:
+# /home/andrew/src/proposals/zt-to-agd-v2/PROPOSAL-zerotouch-agd-v2-migration.md
+#
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+
+# -------------------------------------------------------------------
+# Platform - AgnosticD v2
+# -------------------------------------------------------------------
+platform: RHPDS
+cloud_provider: openshift_cnv
+config: cloud-vms-base
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+ansible_user: cloud-user
+remote_user: cloud-user
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + 'RM' }}"
+
+openshift_cnv_legacy_routes: false
+openshift_cnv_route_remove_x_frame_options_header: true
+
+# -------------------------------------------------------------------
+# Dynamic Lab Configuration (from content git repo)
+# -------------------------------------------------------------------
+# Loaded by rhpds.zerotouch.zt_base_config (first pre_infra_workloads
+# entry below) from config/{firewall,instances,networks}.yaml in the
+# lab's content repo (supplied by the leaf item via
+# ocp4_workload_showroom_content_git_repo / _content_git_repo_ref). Do
+# NOT set instances/networks/containers or the zero_touch_*_lockdown_rules
+# keys here unless you intend to override the git files — extra-vars
+# always beat the role's set_fact, so an empty list (instances: [])
+# would provision zero VMs.
+#
+# zt_base_config defaults zt_base_config_content_git_repo/_ref from
+# the ocp4_workload_showroom_content_git_repo/_ref variables below.
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo_ref: main
+
+# -------------------------------------------------------------------
+# Collections
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/zerotouch-collection.git
+      type: git
+      version: main
+    - name: https://github.com/rhpds/cloud_vm_workloads.git
+      type: git
+      version: main
+    # PR rhpds/showroom#78 (zerotouch_showroom role) merged to main.
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: main
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# zt_base_config must run first so its cacheable facts (instances,
+# networks, containers, lockdown rules) exist before zt_containers and
+# before cloud-vms-base creates VMs.
+pre_infra_workloads:
+  localhost:
+    - rhpds.zerotouch.zt_base_config
+    - rhpds.zerotouch.zt_containers
+
+pre_software_workloads:
+  bastions:
+    - agnosticd.cloud_vm_workloads.control_user
+    - agnosticd.cloud_vm_workloads.asset_injector
+
+post_software_final_workloads:
+  localhost:
+    - agnosticd.showroom.zerotouch_showroom
+    - rhpds.zerotouch.zt_security_lockdown
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.control_user / asset_injector
+# -------------------------------------------------------------------
+# Only applied to the `bastions` group, matching how the standard
+# AgnosticD v2 workloads.yml plays already exclude `isolated` hosts from
+# the generic pre_software_workloads. If isolated hosts are ever
+# introduced by a lab, do NOT give them the same "rename default user"
+# userdata pattern unless they're also excluded from any generic
+# Ansible/SSH-based host management.
+env_authorized_key: "{{ guid }}key"
+student_name: lab-user
+student_password: "{{ common_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ common_password }}"
+control_user_private_group: "{{ omit }}"
+
+bastion_asset_injector_assets:
+  - description: Remove cloud-init SSH config
+    module: file
+    state: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Enable password auth
+    module: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} ZT SSH settings"
+    block: |
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd
+    module: service
+    name: sshd
+    state: restarted
+
+asset_injector_modules: "{{ bastion_asset_injector_assets if 'bastions' in group_names else [] }}"
+
+# -------------------------------------------------------------------
+# Showroom Settings - reuse ZT's existing "zerotouch" chart via the
+# zerotouch_showroom role (agnosticd.showroom collection, not the generic
+# ocp4_workload_showroom role - see the migration proposal's "Showroom
+# Integration" section for why the zerotouch chart needs its own role),
+# in the same namespace as the CNV VMs.
+# -------------------------------------------------------------------
+# ocp4_workload_showroom_openshift_api_url/_token are commented out by
+# default in the role itself (roles/zerotouch_showroom/defaults/main.yaml)
+# and are NOT auto-populated by cloud-vms-base - every other production
+# catalog item using the sibling ocp4_workload_showroom role maps them
+# explicitly from the openshift_cnv cloud provider's sandbox facts, and
+# zerotouch_showroom follows the same convention. Without this,
+# setup-namespace.yaml's kubernetes.core.k8s task falls back to a local
+# kubeconfig file that doesn't exist in the runner container ("Could not
+# create API client: Invalid kube-config file. No configuration found." -
+# job 150504).
+ocp4_workload_showroom_openshift_api_url: "{{ sandbox_openshift_api_url }}"
+ocp4_workload_showroom_openshift_api_token: "{{ sandbox_openshift_api_key }}"
+# zerotouch_showroom defaults to looking up the cluster's Ingress config for
+# the apps domain (matching the generic role's behavior); CNV sandboxes
+# already expose sandbox_openshift_apps_domain directly, so skip that lookup.
+ocp4_workload_showroom_use_sandbox_domain: true
+ocp4_workload_showroom_namespace: "{{ sandbox_openshift_namespace }}"
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: zerotouch
+ocp4_workload_showroom_deployer_chart_version: "1.10.2"
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+ocp4_workload_showroom_content_antora_playbook: site.yml
+
+# bastion_public_hostname must be a top-level var, not just nested inside
+# _showroom_user_data below - agnosticd.cloud_vm_workloads.control_user's
+# report-user-data.yml reads it directly (as a fallback for
+# public_dns_name). This exact top-level pattern is used across dozens of
+# real cloud-vms-base/openshift_cnv catalog items (e.g. ai-driven-automation,
+# ctf-participant, leapp-o-matic-cnv).
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}"
+
+_showroom_user_data:
+  bastion_ssh_command: "ssh {{ control_user_name }}@{{ groups['bastions'][0] }}"
+  bastion_ssh_user_name: "{{ control_user_name }}"
+  bastion_ssh_password: "{{ control_user_password }}"
+  bastion_public_hostname: "{{ bastion_public_hostname }}"
+  guid: "{{ guid }}"
+  domain: "{{ sandbox_openshift_apps_domain }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 07b90b11-81ed-4883-b3c3-b9d8a66030f1
+  # anarchy.namespace intentionally NOT set here - controlled at the AgV
+  # repo top level (see github.com/rhpds/agnosticv/common.yaml).
+  #
+  # __meta__.catalog is required even though this item is never ordered
+  # directly: the repo-wide common.yaml defaults __meta__.deployer.type to
+  # `agnosticd` for every item (nothing here overrides it to null, unlike
+  # the leaf item), so this base component is treated as a fully deployable
+  # AgnosticD item by Babylon's validation (.tests/babylon_checks.py's
+  # check_component_catalog requires __meta__.catalog.parameters to exist).
+  #
+  # Do NOT set catalog.disable: true here - it disables ResourceProvider
+  # generation too (not just the orderable CatalogItem/Template), which
+  # breaks the leaf item's __meta__.components[].item reference ("...
+  # resourceproviders.poolboy.gpte.redhat.com \"tests.zt-base-component.dev\"
+  # not found"). Matches real precedent: neither tests/TEST_EMPTY_CONFIG nor
+  # the real production zt-rhelbu/zt-rhel-bu-lab-developer-cnv base component
+  # set disable, despite also never being ordered directly.
+  #
+  # catalog.parameters must declare every var the leaf item passes via
+  # __meta__.components[].parameter_values (ocp4_workload_showroom_content_git_repo
+  # and _content_git_repo_ref below) - values for undeclared parameters are
+  # silently dropped rather than merged into extravars, which is why
+  # zt_base_config failed with "requires zt_base_config_content_git_repo
+  # (or ocp4_workload_showroom_content_git_repo) ... to be set" even though
+  # the leaf item (tests/zt-agd-v2-demo) sets it. Matches the real
+  # production zt-rhelbu/zt-rhel-bu-lab-developer-cnv base component, which
+  # declares these same two parameters despite also never being ordered
+  # directly.
+  catalog:
+    display_name: "ZT AgnosticD v2 Base Component"
+    category: Workshops
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    labels:
+      Provider: RHDP
+    parameters:
+      - name: ocp4_workload_showroom_content_git_repo
+        description: Git repo containing the lab content and config/ files
+        formLabel: Git repo
+        required: true
+        openAPIV3Schema:
+          type: string
+      - name: ocp4_workload_showroom_content_git_repo_ref
+        description: Git branch/ref for the lab content repo
+        formLabel: Git branch
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: main
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+      quota:
+        requests.storage: "100Gi"
