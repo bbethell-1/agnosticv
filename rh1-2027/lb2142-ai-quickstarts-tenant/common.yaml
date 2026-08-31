@@ -1,0 +1,243 @@
+# -------------------------------------------------------------------
+# --- Catalog Item: LB2142 - Selling with AI Quickstarts (Tenant)
+# --- Per-tenant provisioning for LB2142, Module 2: RAG.
+# --- Deploys onto a shared base cluster (lb2142-ai-quickstarts-cluster)
+# --- via the OpenShift Sandbox API.
+# -------------------------------------------------------------------
+---
+
+#include /includes/access-restriction-devs-only.yaml
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/litellm_metadata.yaml
+
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/secrets/ai-quickstart-hugging-face-token.yaml
+#include /includes/secrets/ai-quickstart-tavily-token.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+config: namespace
+cloud_provider: none
+
+# -------------------------------------------------------------------
+# TenantCluster sandbox var remapping
+# The sandbox provides openshift_cluster_admin_token (via deployer_admin_sa_token_target_var).
+# namespaced_workloads roles expect cluster_admin_agnosticd_sa_token.
+# -------------------------------------------------------------------
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+cluster_admin_agnosticd_sa_token: "{{ openshift_cluster_admin_token }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/namespaced_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+    # LiteLLM Virtual Keys Collection
+    - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+      type: git
+      version: "{{ tag }}"
+
+    # Showroom
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: v1.6.8
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.showroom.ocp4_workload_showroom
+
+# ===================================================================
+# Common
+# ===================================================================
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+# ===================================================================
+# Workload: ocp4_workload_tenant_keycloak_user
+# ===================================================================
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_namespace: keycloak
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+
+# ===================================================================
+# Workload: ocp4_workload_tenant_namespace
+# ===================================================================
+ocp4_workload_tenant_namespace_username: "user-{{ guid }}"
+ocp4_workload_tenant_namespace_use_cluster_quota: true
+ocp4_workload_tenant_namespace_suffixes:
+  - suffix: rag
+
+# Total resource pool shared across all tenant namespaces via CRQ.
+# Adjust to match your workload's expected resource consumption.
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "40"
+  requests.cpu: "40"
+  limits.memory: 64Gi
+  requests.memory: 64Gi
+  requests.storage: 100Gi
+
+# LimitRange applied to every namespace.
+# Sets container defaults for pods that don't specify resource requests/limits.
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: "2"
+    memory: 4Gi
+  defaultRequest:
+    cpu: 100m
+    memory: 256Mi
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+
+ai_quickstart_rag_llm_model: llama-scout-17b
+
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_models:
+  - "{{ ai_quickstart_rag_llm_model }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_bootstrap
+#
+# Deploys a per-tenant ArgoCD bootstrap Application pointing to the
+# RAG Helm chart. ArgoCD manages the RAG pipeline components.
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ guid }}"
+ocp4_workload_gitops_bootstrap_repo_path: "tenant/bootstrap"
+ocp4_workload_gitops_bootstrap_application_project: tenants
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rh-ai-quickstart/RAG.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_helm_values:
+  tenant:
+    name: "{{ guid }}"
+    user:
+      name: "{{ ocp4_workload_tenant_keycloak_username }}"
+      password: "{{ common_password }}"
+  rag:
+    namespace: "user-{{ guid }}-rag"
+    git:
+      revision: main
+    values:
+      llm-service:
+        enabled: false
+        secret:
+          hf_token: "{{ ai_quickstart_hugging_face_token }}"
+      llama-stack:
+        secrets:
+          TAVILY_SEARCH_API_KEY: "{{ ai_quickstart_tavily_search_key }}"
+      global:
+        models:
+          remotellm:
+            id: "{{ ai_quickstart_rag_llm_model }}"
+            url: "{{ litellm_api_endpoint }}"
+            apiToken: "{{ litellm_virtual_key }}"
+            enabled: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/red-hat-1-quickstarts.git
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-11
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 40
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+  - name: Terminal
+    path: /terminal
+    port: 443
+  - name: OpenShift Console
+    url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
+  - name: OpenShift AI
+    url: "https://rhods-dashboard-redhat-ods-applications.{{ openshift_cluster_ingress_domain }}"
+  - name: RAG UI
+    url: "https://{{ guid }}-rag-user-{{ guid }}-rag.{{ openshift_cluster_ingress_domain }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: a09d15ed-da19-4f56-991c-de2c54b64c34
+  owners:
+    maintainer:
+      - name: Tony Kay
+        email: ankay@redhat.com
+      - name: Nate Stephany
+        email: nstephany@redhat.com
+
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+
+  catalog:
+    display_name: "LB2142: Selling with AI Quickstarts"
+    category: Labs
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+      - openshift
+      - quickstart
+      - ai
+      - rh1
+    labels:
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters: []
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-05-04
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: false
+      status:
+        disable: true
+      stop:
+        disable: false
+      update:
+        disable: true
+
+  sandboxes:
+    - kind: OcpSandbox
+      cloud_selector:
+        purpose: dev
+        cloud: cnv-dedicated-shared
+        lab: rh1-lb2142-ai-qs
+      tenant_cluster:
+        item: rh1-2027/lb2142-ai-quickstarts-cluster
