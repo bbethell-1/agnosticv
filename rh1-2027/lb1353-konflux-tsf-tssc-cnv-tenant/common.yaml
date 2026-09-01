@@ -1,0 +1,127 @@
+---
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-project-dance.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/sandbox-api.yaml
+
+config: openshift-workloads
+cloud_provider: none
+software_to_deploy: none
+openshift_cnv_scale_cluster: false
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
+num_users: 1
+current_cluster_name: default
+tag: main
+
+platform: rhpds
+
+bastion_instance_image: none
+bastion_cores: 0
+bastion_memory: 0
+worker_instance_count: 0
+
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: "v1.6.11"
+    - name: https://github.com/rhpds/namespaced_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+workloads:
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_authentication_user
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_gitlab
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_quay
+  - agnosticd.showroom.ocp4_workload_showroom
+
+remove_workloads: []
+
+# Tenant namespace configuration
+ocp4_workload_tenant_namespace_name: "user-{{ guid }}-tenant"
+ocp4_workload_tenant_namespace_user: "user-{{ guid }}"
+ocp4_workload_tenant_namespace_labels:
+  konflux-tenant: "user-{{ guid }}"
+
+# Managed namespace for release pipeline
+ocp4_workload_tenant_namespace_additional_namespaces:
+  - name: "user-{{ guid }}-managed"
+    labels:
+      konflux-managed: "user-{{ guid }}"
+
+# GitLab tenant configuration
+ocp4_workload_tenant_gitlab_namespace: gitlab
+ocp4_workload_tenant_gitlab_user: "user-{{ guid }}"
+ocp4_workload_tenant_gitlab_password: "{{ common_password }}"
+ocp4_workload_tenant_gitlab_group: tsf
+ocp4_workload_tenant_gitlab_repo_name: sample-component-golang
+ocp4_workload_tenant_gitlab_repo_import_url: https://github.com/konflux-ci/sample-component-golang
+
+# Quay tenant configuration
+ocp4_workload_tenant_quay_namespace: quay-enterprise
+ocp4_workload_tenant_quay_user: "user-{{ guid }}"
+ocp4_workload_tenant_quay_password: "{{ common_password }}"
+ocp4_workload_tenant_quay_organization: "user-{{ guid }}"
+
+# Tenant authentication user configuration (HTPasswd for OpenShift login)
+ocp4_workload_tenant_authentication_user_provider: htpasswd
+ocp4_workload_tenant_authentication_user_username: "user-{{ guid }}"
+ocp4_workload_tenant_authentication_user_password: "{{ common_password }}"
+ocp4_workload_tenant_authentication_user_create_rbac: true
+
+student_workloads: []
+
+# Showroom configuration for lab guide
+ocp4_workload_showroom_namespace: "user-{{ guid }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/konflux-tssc-lab.git
+ocp4_workload_showroom_content_git_repo_ref: "{{ tag }}"
+# Enable Wetty terminal with auto-SSH to bastion (pre-authenticated)
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+__meta__:
+  asset_uuid: 1C9E5A3F-4B2D-48F7-A5C8-9D7E2F8B4C6A
+  catalog:
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1353: Build, Sign, and Ship - Securing the Software Supply Chain with Konflux"
+    category: Labs
+    keywords:
+      - konflux
+      - tsf
+      - tssc
+      - rhtas
+      - supply-chain
+      - slsa
+      - lab
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+  owners:
+    maintainer:
+      - email: treddy@redhat.com
+        name: Tyrell Reddy
+  tower:
+    timeout: 7200

@@ -1,0 +1,201 @@
+---
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-project-dance.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/sandbox-api.yaml
+
+config: openshift-workloads
+cloud_provider: none
+software_to_deploy: none
+openshift_cnv_scale_cluster: false
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
+num_users: 0
+current_cluster_name: default
+tag: main
+
+platform: rhpds
+
+bastion_instance_image: rhel-9.5
+bastion_cores: 2
+bastion_memory: 4Gi
+worker_instance_count: 0
+
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_admin_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+ocp4_installer_version: "4.21"
+ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
+
+repo_method: satellite
+update_packages: true
+
+install_student_user: false
+
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: v0.0.8
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/rhpds.ads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: "v1.6.11"
+    - name: https://github.com/rhpds/konflux-tssc-lab.git#/automation/ansible
+      type: git
+      version: "{{ tag }}"
+
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_authentication
+  - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  - agnosticd.core_workloads.ocp4_workload_s4
+  - agnosticd.core_workloads.ocp4_workload_quay_operator
+  - agnosticd.core_workloads.ocp4_workload_gitlab
+  - rhpds.ads.ocp4_workload_trusted_software_factory
+
+remove_workloads: []
+
+ocp4_workload_openshift_gitops_channel: gitops-1.15
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+ocp4_workload_openshift_gitops_starting_csv: ""
+ocp4_workload_openshift_gitops_update_resources: true
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_s4_namespace: s4
+ocp4_workload_s4_buckets:
+  - quay-registry
+ocp4_workload_s4_access_key_id: s4admin
+ocp4_workload_s4_secret_access_key: "{{ common_admin_password }}"
+ocp4_workload_s4_auth_enabled: true
+ocp4_workload_s4_auth_username: s4admin
+ocp4_workload_s4_auth_password: "{{ common_admin_password }}"
+ocp4_workload_s4_route_enabled: true
+ocp4_workload_s4_s3_api_enabled: true
+ocp4_workload_s4_storage_data_size: 20Gi
+ocp4_workload_s4_wait_for_deployment: true
+
+ocp4_workload_quay_operator_namespace: quay-registry
+ocp4_workload_quay_operator_catalogsource_namespace: quay-registry
+ocp4_workload_quay_operator_channel: stable-3.16
+ocp4_workload_quay_operator_starting_csv: ""
+ocp4_workload_quay_operator_automatic_install_plan_approval: true
+ocp4_workload_quay_operator_use_catalog_snapshot: false
+ocp4_workload_quay_operator_registry_admin_password: "{{ common_admin_password }}"
+ocp4_workload_quay_operator_s4_storage_enabled: true
+ocp4_workload_quay_operator_s4_namespace: s4
+ocp4_workload_quay_operator_s4_bucket_name: quay-registry
+ocp4_workload_quay_operator_s4_access_key: s4admin
+ocp4_workload_quay_operator_s4_secret_key: "{{ common_admin_password }}"
+
+ocp4_workload_gitlab_namespace: gitlab
+ocp4_workload_gitlab_auth_mode: native
+ocp4_workload_gitlab_root_password: "{{ common_admin_password }}"
+ocp4_workload_gitlab_user_base: user
+ocp4_workload_gitlab_user_password: "{{ common_admin_password }}"
+ocp4_workload_gitlab_user_count: 0
+ocp4_workload_gitlab_user_repositories: []
+ocp4_workload_gitlab_runner_enabled: true
+
+ocp4_workload_authentication_provider: htpasswd
+ocp4_workload_authentication_admin_username: admin
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_num_users: 0
+ocp4_workload_authentication_remove_kubeadmin: true
+
+ocp4_workload_trusted_software_factory_namespace: tsf
+ocp4_workload_trusted_software_factory_cli_image: quay.io/rhpds/tsf-cli
+ocp4_workload_trusted_software_factory_cli_tag: latest
+ocp4_workload_trusted_software_factory_manage_cert_manager_subscription: false
+ocp4_workload_trusted_software_factory_tas_namespace: tsf-tas
+ocp4_workload_trusted_software_factory_konflux_namespace: konflux-ui
+ocp4_workload_trusted_software_factory_tpa_namespace: tsf-tpa
+ocp4_workload_trusted_software_factory_keycloak_namespace: tsf-keycloak
+ocp4_workload_trusted_software_factory_gitlab_namespace: gitlab
+ocp4_workload_trusted_software_factory_gitlab_group: tsf
+ocp4_workload_trusted_software_factory_quay_namespace: quay-enterprise
+ocp4_workload_trusted_software_factory_quay_admin_username: quayadmin
+ocp4_workload_trusted_software_factory_quay_organization: tsf
+
+student_workloads: []
+
+__meta__:
+  asset_uuid: 8F2A4C91-E7D3-4B29-9A12-5E8C3D7F6A94
+  components:
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools
+      parameter_values:
+        cluster_size: multinode
+        host_ocp4_installer_version: "4.21"
+        ocp4_fips_enable: false
+      propagate_provision_data:
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: openshift_api_url
+          var: openshift_api_url
+        - name: bastion_public_hostname
+          var: bastion_ansible_host
+        - name: bastion_ssh_user_name
+          var: bastion_ansible_user
+        - name: bastion_ssh_password
+          var: bastion_ansible_ssh_pass
+        - name: bastion_ssh_port
+          var: bastion_ansible_port
+  catalog:
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1353: Build, Sign, and Ship - Securing the Software Supply Chain with Konflux (Cluster)"
+    category: Labs
+    keywords:
+      - konflux
+      - tsf
+      - tssc
+      - rhtas
+      - supply-chain
+      - slsa
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+  owners:
+    maintainer:
+      - email: treddy@redhat.com
+        name: Tyrell Reddy
+  tower:
+    timeout: 21600
