@@ -3,8 +3,9 @@
 #include /includes/parameters/azure-region2.yaml
 #include /includes/sandbox-api.yaml
 
-purpose: development
-# env_type: test-empty-config
+config: minimal
+cloud_provider: none
+
 # --------------------------------------------------------------------
 # Showroom
 # --------------------------------------------------------------------
@@ -13,12 +14,18 @@ ocp4_workload_showroom_content_git_repo_ref: showroom-dev
 
 cost_center: "542"
 
+azure_user_data:
+  azure_service_principal_id: "{{ azure_sandbox.credentials[0].app_id }}"
+  azure_service_principal_password: "{{ azure_sandbox.credentials[0].password }}"
+  azure_tenant: "{{ azure_sandbox.credentials[0].tenant }}"
+  azure_subscription: "{{ azure_sandbox.credentials[0].subscription_id }}"
 agnosticd_passthrough_user_data: |
-  {{ {}
+  {{ azure_user_data
    | combine({
       "include_arc_content": true
    } if include_arc_content else {})
   }}
+
 
 # agnosticd_passthrough_user_data: |
 #   {{ {}
@@ -35,7 +42,12 @@ agnosticd_passthrough_user_data: |
 # --------------------------------------------------------------------
 __meta__:
   deployer:
-    scm_ref: development
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+
   sandboxes:
   - kind: AzureSandbox
     cloud_selector:
