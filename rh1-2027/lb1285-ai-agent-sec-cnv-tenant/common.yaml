@@ -1,0 +1,207 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: LB1285: AgentOps in Action: Evaluate, Secure,
+#                   and Operate Enterprise AI Agents (Tenant)
+# --- USER PROVISIONER -- per-user resources on shared cluster
+# --- Multi-user deployment on a shared pre-provisioned cluster
+# --- Tenant pattern
+# -------------------------------------------------------------------
+# --- This catalog item combines:
+# ---   - Sandbox/namespace architecture (no cluster provisioning)
+# ---   - Keycloak user authentication
+# ---   - Multi-user support with per-user namespaces
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/parameters/litellm_metadata.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# ===================================================================
+cloud_provider: none
+config: namespace
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+
+requirements_content:
+  collections:
+  - name: https://github.com/rhpds/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: v1.6.8
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.showroom.ocp4_workload_showroom
+
+remove_workloads:
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.showroom.ocp4_workload_showroom
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Common -- tenant username and password
+# All tenant resources reference the same username and password
+# Single-user tenant deployment
+# -------------------------------------------------------------------
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+cluster_admin_agnosticd_sa_token: "{{ openshift_cluster_admin_token }}"
+
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+ocp4_workload_tenant_keycloak_user_groups:
+- users
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_tenant_openshift_gitops_user: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_openshift_gitops_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/agentops-in-action-workshop.git
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-11
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 40
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+  - name: Terminal
+    path: /terminal
+    port: 443
+  - name: OpenShift Console
+    url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
+  - name: OpenShift AI
+    url: "https://rhods-dashboard-redhat-ods-applications.{{ openshift_cluster_ingress_domain }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/agentops-in-action-workshop.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: automation/gitops/bootstrap-tenant
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ ocp4_workload_tenant_keycloak_username }}"
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  gitops:
+    repoURL: "{{ ocp4_workload_gitops_bootstrap_repo_url }}"
+    targetRevision: "{{ ocp4_workload_gitops_bootstrap_repo_revision }}"
+  tenant:
+    username: "{{ ocp4_workload_tenant_keycloak_username }}"
+    password: "{{ common_password }}"
+    domain: "{{ openshift_cluster_ingress_domain }}"
+  gitlab:
+    host: "gitlab-gitlab.{{ openshift_cluster_ingress_domain }}"
+  cluster:
+    subdomain: "{{ openshift_cluster_ingress_domain }}"
+  registry:
+    host: "quay.{{ openshift_cluster_ingress_domain }}"
+
+ocp4_workload_gitops_bootstrap_health_retries: 10
+
+# ===================================================================
+# Babylon meta variables
+# ===================================================================
+__meta__:
+  asset_uuid: B8EB4087-A6D3-412B-B19B-B26667731309
+  owners:
+    maintainer:
+    - name: Philip Hayes
+      email: phayes@redhat.com
+    - name: Cansu Kavili Oernek
+      email: ckavili@redhat.com
+    - name: Ritesh Shah
+      email: rshah@redhat.com
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+    actions:
+      status:
+        disable: true
+      update:
+        disable: true
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1285: AgentOps in Action: Evaluate, Secure, and Operate Enterprise AI Agents"
+    category: Labs
+    keywords:
+    - lb1285
+    - gitops
+    - keycloak
+    - argocd
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+      Tenant_Type: CNV
+    reportingLabels:
+      primaryBU: Artificial_Intelligence
+      secondaryBU: Hybrid_Platforms
+    workshopLabUiRedirect: true
+    # Provision doesn't call `agnosticd_user_info` with `user` set and so does
+    # not report `users` in `provision_data`. All data and messages are
+    # assigned directly to the workshop seat.
+    workshop_user_mode: none
+    multiuser: true
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: OcpSandbox
+    alias: cluster
+    namespace_suffix: user
+    cloud_selector:
+      cloud: cnv-dedicated-shared
+      lab: lb1285-ai-agent-sec
+      purpose: dev
