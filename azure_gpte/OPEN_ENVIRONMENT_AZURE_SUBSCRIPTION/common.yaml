@@ -5,8 +5,8 @@
 #include /includes/parameters/student-email.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/parameters/open-environment-annotation-hidden.yaml
+#include /includes/sandbox-api.yaml
 #include /includes/parameters/salesforce-id.yaml
-#include /includes/secrets/azure_redhat0.yaml
 #include /includes/runtime-unlimited.yaml
 #include /includes/parameters/azure-region5.yaml
 
@@ -17,14 +17,20 @@
 
 platform: RHPDS
 
-env_type: open-environment-azure-subscription
+config: namespace
 
 agnosticd_open_environment: true
 
-cloud_provider: azure
-az_dnszone_resource_group: rhpds-dns-handler
-# Azure pool to use
-az_pool_id: "01"
+cloud_provider: none
+
+azure_user_data:
+  azure_service_principal_id: "{{ azure_sandbox.credentials[0].app_id }}"
+  azure_service_principal_password: "{{ azure_sandbox.credentials[0].password }}"
+  azure_tenant: "{{ azure_sandbox.credentials[0].tenant }}"
+  azure_subscription: "{{ azure_sandbox.credentials[0].subscription_id }}"
+  guid: "{{ guid }}"
+agnosticd_passthrough_user_data: |
+  {{ azure_user_data }}
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -32,6 +38,11 @@ az_pool_id: "01"
 
 __meta__:
   asset_uuid: 24220c8d-56e3-4c30-b511-f3c733bd66b5
+  sandboxes:
+    - kind: AzureSandbox
+      cloud_selector:
+        purpose: production
+      var: azure_sandbox
   owners:
     maintainer:
       - name: Patrick Rutledge
@@ -55,6 +66,8 @@ __meta__:
       Product: Red_Hat_OpenShift_Container_Platform
       Provider: RHDP
   deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.2
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
       pull: missing
