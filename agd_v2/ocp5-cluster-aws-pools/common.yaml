@@ -1,0 +1,167 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: Red Hat OpenShift Container Platform 5
+#                   Cluster (AWS Pools)
+# -------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+# AgnosticV includes
+# --------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/aws-sandbox-meta.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/agnosticd_open_environment.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-regions-3.yaml
+
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
+
+# Does FIPS work in OpenShift 5?
+#include /includes/parameters/ocp4-fips-enable.yaml
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+tag: main
+
+cloud_provider: aws
+cloud_provider_version: "{{ tag }}"
+config: openshift-cluster
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # Core OpenShift Workloads
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: main
+
+# -------------------------------------------------------------------
+# Bastion VM Settings
+# -------------------------------------------------------------------
+bastion_setup_student_user: true
+bastion_student_user_name: lab-user
+
+host_common_packages_update_all: false
+
+bastion_instance_image: RHEL-10-GOLD-latest
+
+# -------------------------------------------------------------------
+# OpenShift Settings
+# -------------------------------------------------------------------
+# Catalog parameter is 'latest' (OCP 5 preview stream). Pin to the
+# current candidate payloads; update these URLs as RCs land.
+host_ocp4_installer_use_dev_preview: true
+host_ocp4_installer_url: https://mirror.openshift.com/pub/openshift-v5/amd64/clients/ocp/candidate-5.0/openshift-install-linux.tar.gz
+host_ocp4_client_url: https://mirror.openshift.com/pub/openshift-v5/amd64/clients/ocp/candidate-5.0/openshift-client-linux-amd64-rhel9.tar.gz
+
+host_ocp4_installer_info_set_user_data_kubeadmin_password: true
+openshift_cluster_admin_service_account_enable: true
+openshift_cluster_ingress_controller_allow_wildcards: true
+
+# Resolve cluster admin token from user_data for workloads
+openshift_cluster_admin_token: "{{ lookup('agnosticd_user_data', 'openshift_cluster_admin_token') | default('') }}"
+openshift_api_key: "{{ openshift_cluster_admin_token }}"
+
+# -------------------------------------------------------------------
+# Cluster sizing based on selected size (sno/multinode)
+# -------------------------------------------------------------------
+# SNO: 1 control plane node only
+# Multinode: 3 control plane (compact)
+control_plane_instance_count: "{{ 1 if cluster_size == 'sno' else 3 }}"
+worker_instance_count: 0
+
+# Control plane configuration
+control_plane_instance_type_family: m5a
+#TODO Make this more flexible for sizes of non-sno clusters
+control_plane_instance_type: "{{ 'm6a.8xlarge' if cluster_size == 'sno' else 'm6a.4xlarge' }}"
+control_plane_storage_type: "{{ 'io1' if cluster_size == 'sno' else 'gp3' }}"
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# --- Workloads to deploy on the cluster (YAML List)
+workloads:
+- agnosticd.core_workloads.ocp4_workload_cert_manager
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1
+
+ocp4_workload_cert_manager_aws_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
+ocp4_workload_cert_manager_aws_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
+ocp4_workload_cert_manager_aws_region: "{{ aws_region }}"
+
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+ocp4_workload_cert_manager_ignore_errors: false
+
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 2f41b9dc-c3c2-41f1-bd52-3a49ccfca9dc
+  owners:
+    maintainer:
+    - name: Nate Stephany
+      email: nstephan@redhat.com
+    - name: Wolfgang Kulhanek
+      email: wkulhane@redhat.com
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+
+  sandbox_api:
+    actions:
+      destroy:
+        # Allow remove_workloads to run before sandbox is destroyed
+        catch_all: false
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OpenShift Container Platform 5 Cluster (AWS Pools)
+    category: Open_Environments
+    keywords: []
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    multiuser: false
+    workshopUiDisabled: true
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters:
+    - name: cluster_size
+      description: >-
+        Cluster size configuration that determines the number of control plane and worker nodes.
+      formLabel: Cluster Size
+      openAPIV3Schema:
+        type: string
+        default: 'sno'
+        enum:
+        - 'sno'
+        - 'multinode'
+
+    # - name: host_ocp4_installer_version
+    #   description: Version of OpenShift to Install
+    #   formLabel: OpenShift Version
+    #   required: false
+    #   openAPIV3Schema:
+    #     type: string
+    #     default: 'latest'
+    #     enum:
+    #     - 'latest'
+    #   annotation: demo.redhat.com/ocp-version
+    #   variable: host_ocp4_installer_version

@@ -1,0 +1,247 @@
+---
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: OpenShift Container Platform
+#
+# No changes should be made to this CI, other than __meta__
+# All changes to the functional CI should be made to the component(s):
+#
+# agd_v2/ocp-cluster-aws
+# agd_v2/ocp-cluster-cnv
+#
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Babylon Meta Variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 3e1f592f-e1f1-400d-9591-701fc5894c00
+  owners:
+    maintainer:
+    - name: Nate Stephany
+      email: nstephan@redhat.com
+
+  catalog:
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OpenShift Container Platform Cluster 5 (Multi-Cloud)
+    category: Open_Environments
+    workshopUiDisabled: true
+    multiuser: false
+    workshop_user_mode: multi
+    keywords: []
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      SLA: Featured
+    num_users_parameter: num_users_param
+    parameters:
+    - name: ocp_cloud_provider
+      formLabel: Cloud Provider
+      openAPIV3Schema:
+        type: string
+        default: cnv
+        enum:
+        - cnv
+        - aws
+      components:
+      - name: current
+
+    # - name: host_ocp4_installer_version
+    #   description: Version of OpenShift to Install
+    #   formLabel: OpenShift Version
+    #   required: false
+    #   openAPIV3Schema:
+    #     type: string
+    #     default: '4.21'
+    #     enum:
+    #     - '4.20'
+    #     - '4.21'
+    #     - '4.22'
+    #   annotation: demo.redhat.com/ocp-version
+    #   variable: ocp4_installer_version
+    #   components:
+    #   - name: all
+
+    - name: cluster_size
+      description: cluster size
+      formLabel: cluster size
+      openAPIV3Schema:
+        type: string
+        default: sno
+        enum:
+        - 'sno'
+        - 'multinode'
+      components:
+      - name: all
+
+    - name: worker_instance_count_param
+      description: OpenShift Worker count
+      formLabel: OpenShift Worker count
+      formHideCondition: cluster_size != 'multinode'
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 10
+      components:
+      - name: all
+
+    - name: ai_workers_cores
+      description: OpenShift Worker CPU
+      formLabel: OpenShift Worker CPU
+      formHideCondition: >-
+        cluster_size != 'multinode' || ocp_cloud_provider != 'cnv'
+      openAPIV3Schema:
+        type: integer
+        default: 4
+        enum:
+        - 4
+        - 8
+        - 16
+        - 32
+        - 64
+      components:
+      - name: ocp5_cnv
+
+    - name: ai_workers_memory
+      description: OpenShift Worker memory
+      formLabel: OpenShift Worker memory
+      formHideCondition: >-
+        cluster_size != 'multinode' || ocp_cloud_provider != 'cnv'
+      openAPIV3Schema:
+        type: string
+        default: 8Gi
+        enum:
+        - '8Gi'
+        - '16Gi'
+        - '32Gi'
+        - '64Gi'
+        - '128Gi'
+        minimum: 8Gi
+        maximum: 128Gi
+      components:
+      - name: ocp5_cnv
+
+    - name: worker_instance_type
+      description: OpenShift Worker instance type
+      formLabel: OpenShift Worker instance type
+      formHideCondition: >-
+        cluster_size != 'multinode' || ocp_cloud_provider != 'aws'
+      openAPIV3Schema:
+        type: string
+        default: 'm5a.2xlarge'
+        enum:
+        - 'm5a.2xlarge'
+        - 'm5a.4xlarge'
+        - 'm5a.8xlarge'
+      components:
+      - name: ocp5_aws
+
+    - name: create_multi_user
+      description: Create users on cluster?
+      formLabel: Create users on cluster?
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: all
+
+    - name: num_users_param
+      description: >-
+        Number of users to provision within the environment.
+      formLabel: User Count
+      formHideCondition: create_multi_user == false
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 50
+      components:
+      - name: all
+
+    - name: open_environment
+      description: >-
+        Charge back cloud costs to your cost center, allow full control of auto-stop and auto-destroy,
+        and provider cloud infrastructure credentials.
+      formLabel: Enable OPEN Environment?
+      formHideCondition: ocp_cloud_provider != 'aws'
+      openAPIV3Schema:
+        default: false
+        type: boolean
+      annotation: demo.redhat.com/open-environment
+      variable: agnosticd_open_environment
+      components:
+      - name: ocp5_aws
+
+    # - name: enable_ols
+    #   description: >-
+    #     Optionally enable OpenShift Lightspeed
+    #   formLabel: Enable OpenShift Lightspeed?
+    #   openAPIV3Schema:
+    #     default: false
+    #     type: boolean
+    #   components:
+    #   - name: all
+
+    # - name: ocp4_fips_enable
+    #   description: >-
+    #     Federal Information Processing Standards - Allow only FIPS-validated cryptographic algorithms
+    #   formLabel: Enable FIPS?
+    #   formHideCondition: ocp_cloud_provider != 'aws'
+    #   openAPIV3Schema:
+    #     default: false
+    #     type: boolean
+    #   components:
+    #   - name: ocp4_aws
+
+  components:
+  - name: ocp5_cnv
+    display_name: Red Hat OpenShift Container Platform Cluster (CNV)
+    item: agd_v2/ocp5-cluster-cnv
+    when: ocp_cloud_provider | default('') == 'cnv'
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+
+  - name: ocp5_aws
+    display_name: Red Hat OpenShift Container Platform Cluster (AWS)
+    item: agd_v2/ocp5-cluster-aws
+    when: ocp_cloud_provider | default('') == 'aws'
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+
+  deployer:
+    type: null
