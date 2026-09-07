@@ -1,0 +1,197 @@
+---
+#include /includes/catalog-icon-virtualization.yaml
+
+#include /includes/sandbox-api.yaml
+#include /includes/agd-v2-mapping.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# Required by host_ocp4_assisted_scale
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: LB1898: OpenShift Virtualization Troubleshooting (Cluster)
+#
+# JIRA: RHDPCD-1470
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticDv2 variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# -------------------------------------------------------------------
+# CNV Worker Nodes
+# -------------------------------------------------------------------
+openshift_cnv_scale_cluster: true
+worker_instance_count: 3
+ai_workers_cores: 16
+ai_workers_memory: 64Gi
+
+ai_control_plane_memory: 32Gi
+
+# -------------------------------------------------------------------
+# Tags / Revisions
+# -------------------------------------------------------------------
+tag: main
+tag_assisted_installer: v0.0.9
+tag_showroom: v1.7.2
+gitops_repo_revision: main
+
+# -------------------------------------------------------------------
+# Collections
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  # Required by openshift_cnv_scale_cluster (host_ocp4_assisted_scale)
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: "{{ tag_assisted_installer }}"
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: "{{ tag_showroom }}"
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+ocp4_workload_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.21_2026_04_13
+
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+- agnosticd.core_workloads.ocp4_workload_nmstate
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+common_admin_username: admin
+common_admin_password: "{{ lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits') }}"
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_keycloak_use_catalog_source: true
+ocp4_workload_authentication_keycloak_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_authentication_keycloak_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_authentication_keycloak_default_realm: sso
+ocp4_workload_authentication_keycloak_namespace: keycloak
+ocp4_workload_authentication_keycloak_host_prefix: "sso-{{ ocp4_workload_authentication_keycloak_namespace }}"
+
+ocp4_workload_authentication_admin_username: "{{ common_admin_username }}"
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_num_users: 0
+ocp4_workload_authentication_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.18
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ common_admin_username }}, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+# -------------------------------------------------------------------
+ocp4_workload_openshift_virtualization_channel: stable
+ocp4_workload_openshift_virtualization_use_catalog_snapshot: true
+ocp4_workload_openshift_virtualization_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_virtualization_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_nmstate
+# -------------------------------------------------------------------
+ocp4_workload_nmstate_channel: stable
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/openshift-4-virt-troubleshooting
+ocp4_workload_gitops_bootstrap_repo_revision: "{{ gitops_repo_revision }}"
+ocp4_workload_gitops_bootstrap_repo_path: automation/gitops/bootstrap-infra
+ocp4_workload_gitops_bootstrap_application_name: bootstrap-infra
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  guid: "{{ guid }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: b1b0a68b-0a61-4aca-9f4a-ab98b4373608
+  owners:
+    maintainer:
+    - name: Juliano Mohr
+      email: juliano@redhat.com
+    instructions:
+    - name: Mohit Vardhani
+      email: mvardhan@redhat.com
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1898: OpenShift Virtualization Troubleshooting (Cluster)"
+    category: Brand_Events
+    multiuser: false
+    keywords:
+    - rh1-2027
+    - lb1898
+    - virtualization
+    - cnv
+    - kubevirt
+    - troubleshooting
+    - day2
+    labels:
+      Product: Red_Hat_OpenShift_Virtualization
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+
+  components:
+  - name: openshift
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: '4.21'
+    propagate_provision_data:
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    # Required by openshift_cnv_scale_cluster (host_ocp4_assisted_scale)
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
