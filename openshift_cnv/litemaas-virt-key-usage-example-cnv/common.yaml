@@ -7,8 +7,7 @@
 #include /includes/agd-v2-mapping.yaml
 #include /includes/terms-of-service.yaml
 #include /includes/parameters/purpose.yaml
-#include /includes/secrets/litemaas-master_api.yaml
-#include /includes/parameters/litellm_metadata.yaml
+#include /includes/sandbox-api.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -23,6 +22,7 @@ clusters:
   - default:
       api_url: "{{ openshift_api_url }}"
       api_token: "{{ openshift_cluster_admin_token }}"
+
 
 # -------------------------------------------------------------------
 # Collection Requirements
@@ -45,12 +45,8 @@ requirements_content:
 workloads:
   - agnosticd.showroom.ocp4_workload_ocp_console_embed
   - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
-  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
   - agnosticd.showroom.ocp4_workload_showroom
 
-# Runs during destroy to delete the virtual key from LiteLLM
-remove_workloads:
-  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 
 # -------------------------------------------------------------------
 # Authentication — htpasswd admin user
@@ -71,43 +67,13 @@ ocp4_workload_showroom_terminal_type: wetty
 ocp4_workload_showroom_wetty_ssh_bastion_login: true
 
 # -------------------------------------------------------------------
-# LiteLLM Virtual Keys Configuration
-# -------------------------------------------------------------------
-# Build model list based on checkbox selections
-ocp4_workload_litellm_virtual_keys_models: >-
-  {{
-    (litellm_model_granite_3_2_8b_instruct | default(true) | bool | ternary(['granite-3-2-8b-instruct'], [])) +
-    (litellm_model_granite_4_0_h_tiny | default(false) | bool | ternary(['granite-4-0-h-tiny'], [])) +
-    (litellm_model_llama_scout_17b | default(false) | bool | ternary(['llama-scout-17b'], [])) +
-    (litellm_model_deepseek_r1 | default(false) | bool | ternary(['deepseek-r1-distill-qwen-14b'], [])) +
-    (litellm_model_microsoft_phi_4 | default(false) | bool | ternary(['microsoft-phi-4'], [])) +
-    (litellm_model_qwen3_14b | default(false) | bool | ternary(['qwen3-14b'], [])) +
-    (litellm_model_codellama_7b_instruct | default(false) | bool | ternary(['codellama-7b-instruct'], [])) +
-    (litellm_model_llama_guard | default(false) | bool | ternary(['Llama-Guard-3-1B'], [])) +
-    (litellm_model_nomic_embed | default(false) | bool | ternary(['nomic-embed-text-v1-5'], [])) +
-    (litellm_model_minimax_m2 | default(false) | bool | ternary(['minimax-m2'], [])) +
-    (litellm_model_qwen3_235b | default(false) | bool | ternary(['qwen3-235b'], [])) +
-    (litellm_model_gpt_oss_120b_ext | default(false) | bool | ternary(['gpt-oss-120b'], [])) +
-    (litellm_model_gpt_oss_20b | default(false) | bool | ternary(['gpt-oss-20b'], [])) +
-    (litellm_model_gemini_25_pro | default(false) | bool | ternary(['gemini-2.5-pro'], [])) +
-    (litellm_model_claude_sonnet_46 | default(false) | bool | ternary(['claude-sonnet-4-6'], [])) +
-    (litellm_model_claude_opus_46 | default(false) | bool | ternary(['claude-opus-4-6'], [])) +
-    (litellm_model_claude_sonnet_45 | default(false) | bool | ternary(['claude-sonnet-4-5'], [])) +
-    (litellm_model_claude_haiku | default(false) | bool | ternary(['claude-3-5-haiku'], []))
-  }}
 
-# Enable Docling document conversion when checkbox is selected
-# The role adds granite-docling-258m to the key's models list
-# and outputs Docling endpoint info in user info messages
-ocp4_workload_litellm_virtual_keys_include_docling: "{{ litellm_model_granite_docling | default(false) | bool }}"
-
-# Duration selected by user
-ocp4_workload_litellm_virtual_keys_duration: "{{ litellm_duration | default('3d') }}"
-
-# Enable user.info messages and data
-ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
-ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
-
+agnosticd_passthrough_user_data:
+  litellm_api_base_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+  litellm_virtual_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
+  litellm_available_models: "{{  maas_sandbox.credentials[0].available_models }}"
+  litellm_available_models_list: "{{ maas_sandbox.credentials[0].available_models | join(', ') }}"
+  litellm_key_duration: ""
 # -------------------------------------------------------------------
 # Babylon Metadata
 # -------------------------------------------------------------------
@@ -122,7 +88,31 @@ __meta__:
 
   anarchy:
     namespace: babylon-anarchy-ocp-wksp
-
+  sandboxes:
+    - kind: MaaSSandbox
+      cloud_selector:
+        purpose: production
+      models: "{{
+        ((job_vars.litellm_model_granite_3_2_8b_instruct | default(true) | bool | ternary(['granite-3-2-8b-instruct'], [])) +
+        (job_vars.litellm_model_granite_4_0_h_tiny | default(false) | bool | ternary(['granite-4-0-h-tiny'], [])) +
+        (job_vars.litellm_model_llama_scout_17b | default(false) | bool | ternary(['llama-scout-17b'], [])) +
+        (job_vars.litellm_model_deepseek_r1 | default(false) | bool | ternary(['deepseek-r1-distill-qwen-14b'], [])) +
+        (job_vars.litellm_model_microsoft_phi_4 | default(false) | bool | ternary(['microsoft-phi-4'], [])) +
+        (job_vars.litellm_model_qwen3_14b | default(false) | bool | ternary(['qwen3-14b'], [])) +
+        (job_vars.litellm_model_codellama_7b_instruct | default(false) | bool | ternary(['codellama-7b-instruct'], [])) +
+        (job_vars.litellm_model_llama_guard | default(false) | bool | ternary(['Llama-Guard-3-1B'], [])) +
+        (job_vars.litellm_model_nomic_embed | default(false) | bool | ternary(['nomic-embed-text-v1-5'], [])) +
+        (job_vars.litellm_model_minimax_m2 | default(false) | bool | ternary(['minimax-m2'], [])) +
+        (job_vars.litellm_model_qwen3_235b | default(false) | bool | ternary(['qwen3-235b'], [])) +
+        (job_vars.litellm_model_gpt_oss_120b_ext | default(false) | bool | ternary(['gpt-oss-120b'], [])) +
+        (job_vars.litellm_model_gpt_oss_20b | default(false) | bool | ternary(['gpt-oss-20b'], [])) +
+        (job_vars.litellm_model_gemini_25_pro | default(false) | bool | ternary(['gemini-2.5-pro'], [])) +
+        (job_vars.litellm_model_claude_sonnet_46 | default(false) | bool | ternary(['claude-sonnet-4-6'], [])) +
+        (job_vars.litellm_model_claude_opus_46 | default(false) | bool | ternary(['claude-opus-4-6'], [])) +
+        (job_vars.litellm_model_claude_sonnet_45 | default(false) | bool | ternary(['claude-sonnet-4-5'], [])) +
+        (job_vars.litellm_model_claude_haiku | default(false) | bool | ternary(['claude-3-5-haiku'], []))) | join(',')
+      }}"
+      var: maas_sandbox
   components:
     - name: openshift-base
       display_name: OpenShift SNO Cluster
@@ -153,7 +143,7 @@ __meta__:
     scm_url: https://github.com/rhpds/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2025-10-09
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
       pull: missing
 
   catalog:
@@ -335,22 +325,3 @@ __meta__:
         openAPIV3Schema:
           type: boolean
           default: false
-
-      # Duration selection
-      - name: litellm_duration
-        description: |
-          Select how long your virtual key will be valid.
-
-          Options:
-          - 3d: 3 days
-          - 7d: 7 days
-          - 10d: 10 days
-          - 30d: 30 days
-        formLabel: Key Duration
-        required: true
-        openAPIV3Schema:
-          type: string
-          default: '1d'
-          enum:
-            - '1d'
-            - '3d'
