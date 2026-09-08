@@ -4,44 +4,53 @@ Do not order this item unless you are a developer and are working on the CI.
 Order the parent CI instead, which can be found link:https://catalog.demo.redhat.com/catalog?item=babylon-catalog-prod/published.ocp-field-asset.prod[here^].
 ====
 
-Provides an OpenShift cluster with OpenShift GitOps installed and optional LiteMaaS/MaaS integration for AI/LLM demos.
-You must provide the URL to your GitOps repo that has all of the code you need in order to deploy your demo or workshop environment.
-
-You can write your automation using native OpenShift/Kubernetes manifests or Ansible, which will be run via a GitOps configured job on your OpenShift cluster.
+Provides an OpenShift cluster with GitOps already installed. You bring a Helm chart — manifests, Ansible, or both — and OpenShift GitOps deploys it.
 
 [NOTE]
 ====
-The GitOps controlled deployment is not monitored or verified by the RHDP platform.
+The GitOps-controlled deployment is not monitored or verified by the RHDP platform.
 You have control (and responsibility) over exactly what is deployed to the cluster.
 ====
 
 == Instructions
 
-You will receive an OpenShift cluster with the selected number of nodes (SNO or multi-node) that you specify. Only an authenication provider (RHBK), OpenShift Lightspeed, and OpenShift GitOps will be installed and configured in the cluster.
+When you order, start with cluster size (SNO or multi-node) and OpenShift version. If you picked multi-node, you can also set worker count, CPU, and memory. The cluster always comes with an authentication provider (RHBK), OpenShift Lightspeed, and OpenShift GitOps.
 
-* Everything else is defined by you and is deployed by OpenShift GitOps. If you want to know how this works, you can find our link:https://github.com/rhpds/core_workloads/tree/main/roles/ocp4_workload_field_content[GitOps Bootstrap role^] in the Agnosticd v2 core workloads repository.
-* There are two examples in the template repo. Both are deployed as Helm charts using OpenShift GitOps.
-** The `examples/helm` path deploys an App of Apps with each component optionally enabled or disabled. Each of the apps or components are defined in the `components` folder.
-** The `examples/ansible` path deploys several components, the most important being the Ansible Runner job. This will run the playbook (and associated roles) that you define.
-** All (or most) values & vars should be controlled through the `values.yaml` file that is used by the Helm chart.
+Next, you can check one or more *base workloads* so those operators are installed before GitOps runs:
 
-To get started, you have the option of cloning the template link:https://github.com/rhpds/field-sourced-content-template.git[Field Sourced Assets^] repo and making changes or adding your code and configuration. If you do not want to use this template repo and want to start with your own, just make sure that you have a Helm chart in the GitOps Path you provide when ordering.
+* *OpenShift Virtualization* — operator and HyperConverged instance, ready to run VMs
+* *OpenShift AI 3* — operator and Data Science Cluster. On this CNV item there is no GPU; use LiteMaaS if you need model access.
+* *Ansible Automation Platform* — licensed Automation Controller (Hub, EDA, and AAP Lightspeed are not included)
 
-[IMPORTANT]
-====
-This catalog item lets you use a private Github repo.
-In the order form, you can select the option and provide an access token.
-====
+Leave all three unchecked if you just want vanilla OpenShift and GitOps.
 
-=== LiteMaaS/MaaS Integration (Optional)
+After that, the rest of the form is optional:
 
-For AI/LLM demos, you can enable LiteMaaS API key provisioning when ordering. This will:
+* *Create users on cluster?* — extra users besides the admin, with a user count when enabled.
+* *Existing GitOps Repo?* — check this to have GitOps deploy your chart. Fill in the GitOps URL, revision, and *GitOps Path*. The path is the entry point: the directory that contains the Helm chart GitOps will start from. For the link:https://github.com/rhpds/field-sourced-content-template.git[Field Sourced Assets^] template that is `examples/helm` or `examples/ansible`. If you are using your own repo, use the equivalent path to your chart.
+** `examples/helm` — an App of Apps. Each component lives under `components/` and can be turned on or off.
+** `examples/ansible` — an Ansible Runner job that runs the playbook and roles you define.
+** Private GitHub repos work. Check that option and provide an access token.
+* *Enable LiteMaaS/MaaS API Keys* — for AI/LLM demos. Provisions a temporary key for a selected model (3, 7, 10, or 30 days) and injects `litemaas.*` into your Helm chart.
 
-* Automatically provision a temporary virtual API key for a selected LLM model
-* Inject the credentials into your Helm chart values as `litemaas.apiUrl`, `litemaas.apiKey`, and `litemaas.model`
-* Support configurable key duration (3, 7, 10, or 30 days)
+=== Values passed to your Helm chart
 
-To use LiteMaaS, check the *Enable LiteMaaS/MaaS API Keys* checkbox when ordering and select your preferred model from the dropdown.
+Your chart gets a handful of values so it can talk to the cluster and the bases you selected:
+
+* `deployer.domain` and `deployer.apiUrl`
+* `guid` and `user.count`
+* `bases.virt`, `bases.rhoai`, and `bases.aap` — booleans for the base workloads you selected
+* OpenShift console URL and admin credentials
+* Keycloak console URL and admin credentials
+* AAP controller URL and admin credentials, when AAP is selected
+* OpenShift AI dashboard URL, when AI is selected
+* `litemaas.apiUrl`, `litemaas.apiKey`, and `litemaas.model`, when LiteMaaS is enabled
+
+You can gate optional templates on the `bases.*` flags so they only render when that operator is actually on the cluster.
+
+=== How GitOps bootstrap works
+
+The catalog creates an Argo CD Application pointing at your chart. The role that does that is link:https://github.com/rhpds/core_workloads/tree/main/roles/ocp4_workload_field_content[ocp4_workload_field_content^] in the AgnosticD v2 core workloads repository.
 
 == Product List
 
@@ -52,6 +61,9 @@ To use LiteMaaS, check the *Enable LiteMaaS/MaaS API Keys* checkbox when orderin
 * OpenShift GitOps
 ** Your GitOps repo
 ** Access to private git repos (optional)
+* OpenShift Virtualization (optional)
+* OpenShift AI 3 (optional, CPU-only on CNV)
+* Ansible Automation Platform (optional)
 * LiteMaaS/MaaS (optional)
 ** Temporary API keys for AI/LLM models
 

@@ -66,28 +66,46 @@ ai_workers_cores: "{{ ai_workers_cores }}"
 ai_workers_memory: "{{ ai_workers_memory }}"
 
 # ===================================================================
+# Workload groups — assembled from catalog parameters
+# ===================================================================
+# Always deployed: authentication, Lightspeed, GitOps.
+# Optional bases (enable_base_virt / enable_base_rhoai / enable_base_aap) are additive.
+# LiteMaaS and field-content GitOps stay optional, as before.
+# Field content is last so GitOps charts can consume operators already installed.
+
+_base_workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.ai_workloads.ocp4_workload_ols
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+
+_virt_workloads:
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+
+_rhoai_workloads:
+- agnosticd.ai_workloads.ocp4_workload_openshift_ai
+
+_aap_workloads:
+- agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+
+# ===================================================================
 # List of workloads to be deployed
 # ===================================================================
-# Build workload list conditionally:
-# Only include LiteMaaS if checkbox enabled
-# Only include Field Content role if existing_gitops checkbox enabled
 workloads: >-
   {{
-    [
-      'agnosticd.core_workloads.ocp4_workload_authentication',
-      'agnosticd.ai_workloads.ocp4_workload_ols',
-      'agnosticd.core_workloads.ocp4_workload_openshift_gitops'
-    ] +
     (
-      ['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys']
-      if (enable_litemaas_keys | default(false) | bool)
-      else []
-    ) +
-    (
-      ['agnosticd.core_workloads.ocp4_workload_field_content']
-      if (existing_gitops | default(false) | bool)
-      else []
-    )
+      _base_workloads +
+      (_virt_workloads if enable_base_virt | default(false) | bool else []) +
+      (_rhoai_workloads if enable_base_rhoai | default(false) | bool else []) +
+      (_aap_workloads if enable_base_aap | default(false) | bool else []) +
+      (
+        ['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys']
+        if enable_litemaas_keys | default(false) | bool else []
+      ) +
+      (
+        ['agnosticd.core_workloads.ocp4_workload_field_content']
+        if existing_gitops | default(false) | bool else []
+      )
+    ) | unique | list
   }}
 
 # ===================================================================
@@ -173,10 +191,84 @@ ocp4_workload_field_content_litemaas_api_url: "{{ lookup('agnosticd_user_data', 
 ocp4_workload_field_content_litemaas_api_key: "{{ lookup('agnosticd_user_data', 'litellm_virtual_key', default='') }}"
 ocp4_workload_field_content_litemaas_model: "{{ litemaas_model | default('llama-scout-17b') }}"
 
-# Pass num_users to GitOps Helm chart as user.count
-ocp4_workload_field_content_helm_values:
-  user:
-    count: "{{ num_users }}"
+# Helm values injected into the field-content ArgoCD Application.
+# Lookups run when field_content runs, after earlier workloads have written user_data.
+# bases.* are real booleans so Helm `if .Values.bases.virt` works.
+# Do not pass cluster-admin tokens, sandbox_*, bastion SSH, or CA certs.
+ocp4_workload_field_content_helm_values: >-
+  {{
+    {
+      'guid': guid,
+      'bases': {
+        'virt': enable_base_virt | default(false) | bool,
+        'rhoai': enable_base_rhoai | default(false) | bool,
+        'aap': enable_base_aap | default(false) | bool
+      },
+      'user': {
+        'count': num_users | default(1) | int
+      },
+      'openshift': {
+        'consoleUrl': lookup('agnosticd_user_data', 'openshift_cluster_console_url', default=''),
+        'adminUsername': lookup('agnosticd_user_data', 'openshift_cluster_admin_username', default=''),
+        'adminPassword': lookup('agnosticd_user_data', 'openshift_cluster_admin_password', default='')
+      },
+      'keycloak': {
+        'consoleUrl': lookup('agnosticd_user_data', 'keycloak_admin_console', default=''),
+        'adminUser': lookup('agnosticd_user_data', 'keycloak_admin_user', default=''),
+        'adminPassword': lookup('agnosticd_user_data', 'keycloak_admin_password', default='')
+      },
+      'aap': {
+        'url': lookup('agnosticd_user_data', 'aap_controller_web_url', default=''),
+        'adminUser': lookup('agnosticd_user_data', 'aap_controller_admin_user', default=''),
+        'adminPassword': lookup('agnosticd_user_data', 'aap_controller_admin_password', default='')
+      },
+      'rhoai': {
+        'dashboardUrl': lookup('agnosticd_user_data', 'rhoai_dashboard', default='')
+      }
+    }
+  }}
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_virtualization
+# CONDITIONAL - Only runs if enable_base_virt is true
+# Operator plus HyperConverged instance (kubevirt-hyperconverged).
+# boot_sources_shapshot is misspelled in the role. False on CNV+Ceph.
+# -------------------------------------------------------------------
+ocp4_workload_openshift_virtualization_channel: stable
+ocp4_workload_openshift_virtualization_use_catalog_snapshot: false
+ocp4_workload_openshift_virtualization_deploy_hyperconverged: true
+ocp4_workload_openshift_virtualization_boot_sources_shapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_ai
+# CONDITIONAL - Only runs if enable_base_rhoai is true
+# Channel selects RHOAI 3; empty starting_csv = latest in stable-3.x.
+# Role detects v3 from the installed CSV (rhods-operator.3.*).
+# CNV has no GPUs. Operator + DataScienceCluster only (role defaults).
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_channel: stable-3.x
+ocp4_workload_openshift_ai_starting_csv: ""
+ocp4_workload_openshift_ai_deploy_dsc: true
+ocp4_workload_openshift_ai_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ansible_automation_platform
+# CONDITIONAL - Only runs if enable_base_aap is true
+# Manifest vars are always defined; the role only fetches the zip when invoked.
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_admin_password: >-
+  {{ lookup('password', output_dir ~ '/aap_admin_password', length=16, chars=['ascii_letters', 'digits']) }}
+ocp4_workload_ansible_automation_platform_save_admin_credentials: true
+ocp4_workload_ansible_automation_platform_disable_controller: false
+ocp4_workload_ansible_automation_platform_disable_eda: true
+ocp4_workload_ansible_automation_platform_disable_hub: true
+ocp4_workload_ansible_automation_platform_disable_lightspeed: true
+ocp4_workload_ansible_automation_platform_operator_channel: stable-2.6
+ocp4_workload_ansible_automation_platform_inject_manifest: true
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+ocp4_workload_ansible_automation_platform_manifest_inject_retries: 60
+ocp4_workload_ansible_automation_platform_manifest_inject_delay: 10
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -217,8 +309,7 @@ __meta__:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: "Field Sourced Content - OpenShift Base (CNV)"
     category: Workshops
-    keywords:
-    - openshift
+    keywords: []
     labels:
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: Red_Hat_Cloud
@@ -246,7 +337,7 @@ __meta__:
       required: false
       openAPIV3Schema:
         type: string
-        default: '4.21'
+        default: '4.22'
         enum:
         - '4.20'
         - '4.21'
@@ -305,9 +396,46 @@ __meta__:
       components:
       - name: current
 
+    - name: enable_base_virt
+      description: >-
+        Install OpenShift Virtualization (operator and HyperConverged instance).
+      formLabel: OpenShift Virtualization
+      formGroup: Select Base Workloads
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: current
+
+    - name: enable_base_rhoai
+      description: >-
+        Install OpenShift AI 3 (operator and Data Science Cluster).
+        On CNV this is CPU-only; there is no GPU operator.
+      formLabel: OpenShift AI
+      formGroup: Select Base Workloads
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: current
+
+    - name: enable_base_aap
+      description: >-
+        Install Ansible Automation Platform (licensed controller).
+        Hub, EDA, and AAP Lightspeed are not included.
+      formLabel: Ansible Automation Platform
+      formGroup: Select Base Workloads
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: current
+
     - name: create_multi_user
-      description: Create users on cluster?
+      description: >-
+        Create a configurable number of users on cluster.
       formLabel: Create users on cluster?
+      formGroup: Users
       openAPIV3Schema:
         type: boolean
         default: false
@@ -318,6 +446,7 @@ __meta__:
       description: >-
         Number of users to provision within the environment.
       formLabel: User Count
+      formGroup: Users
       formHideCondition: create_multi_user == false
       openAPIV3Schema:
         type: integer
@@ -331,6 +460,7 @@ __meta__:
       description: >-
         Do you want to provide an existing GitOps repo to deploy from?
       formLabel: Existing Gitops Repo?
+      formGroup: GitOps
       openAPIV3Schema:
         type: boolean
         default: false
@@ -341,6 +471,7 @@ __meta__:
       description: >-
         The URL to the GitOps repo containing automation
       formLabel: GitOps Repo
+      formGroup: GitOps
       formHideCondition: existing_gitops == false
       formRequireCondition: existing_gitops == true
       openAPIV3Schema:
@@ -353,6 +484,7 @@ __meta__:
       description: >-
         The branch or tag of the repo that you want to use
       formLabel: GitOps Revision
+      formGroup: GitOps
       formHideCondition: existing_gitops == false
       formRequireCondition: existing_gitops == true
       openAPIV3Schema:
@@ -365,6 +497,7 @@ __meta__:
       description: >-
         The path in your GitOps repo that contains the initial application
       formLabel: GitOps Path
+      formGroup: GitOps
       formHideCondition: existing_gitops == false
       formRequireCondition: existing_gitops == true
       openAPIV3Schema:
@@ -377,6 +510,7 @@ __meta__:
       description: >-
         Is your GitOps repo private and requires an access token?
       formLabel: Private GitOps repo?
+      formGroup: GitOps
       openAPIV3Schema:
         type: boolean
         default: false
@@ -387,6 +521,7 @@ __meta__:
       description: >-
         Provide an access token for a private Git repo
       formLabel: GitOps access key
+      formGroup: GitOps
       formHideCondition: private_gitops == false
       formRequireCondition: private_gitops == true
       openAPIV3Schema:
@@ -404,7 +539,7 @@ __meta__:
         Only check this if your GitOps repository deploys AI models (RAG, chatbots, etc.).
         This will create a temporary API key with configurable expiration.
       formLabel: Enable LiteMaaS/MaaS API Keys (for AI/LLM demos)
-      formGroup: AI/LLM Configuration (Optional)
+      formGroup: AI/LLM Configuration
       openAPIV3Schema:
         type: boolean
         default: false
@@ -416,7 +551,7 @@ __meta__:
         Select the AI/LLM model to provision API access for.
         Your GitOps deployment can use this model via the auto-generated API key.
       formLabel: LiteMaaS Model
-      formGroup: AI/LLM Configuration (Optional)
+      formGroup: AI/LLM Configuration
       formHideCondition: enable_litemaas_keys == false
       required: false
       openAPIV3Schema:
@@ -444,7 +579,7 @@ __meta__:
         How long the API key remains valid.
         The key will automatically expire after this period.
       formLabel: API Key Validity Period
-      formGroup: AI/LLM Configuration (Optional)
+      formGroup: AI/LLM Configuration
       formHideCondition: enable_litemaas_keys == false
       required: false
       openAPIV3Schema:
