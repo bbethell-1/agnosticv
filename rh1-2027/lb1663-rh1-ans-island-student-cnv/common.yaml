@@ -1,0 +1,276 @@
+---
+# -------------------------------------------------------------------
+# Catalog Item: LB1663: Ansible Island Adventure Student
+# Jira Epic: RHDPCD-1137
+# -------------------------------------------------------------------
+
+#include /includes/catalog-icon-aap.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/agd-v2-mapping.yaml
+
+# Parameters
+#include /includes/parameters/purpose.yaml
+
+# Secrets
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+
+# -------------------------------------------------------------------
+# Tags / Revisions
+# -------------------------------------------------------------------
+tag: main
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+cloud_provider: openshift_cnv
+cloud_provider_version: main
+config: cloud-vms-base
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ subdomain }}"
+subdomain_base_short: "{{ guid }}"
+subdomain_base_suffix: ".{{ sandbox_openshift_apps_domain }}"
+subdomain_base: "{{ subdomain_base_short }}{{ subdomain_base_suffix }}"
+subdomain: "{{ guid }}{{ subdomain_base_suffix }}"
+ansible_user: cloud-user
+remote_user: cloud-user
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=16, chars=['ascii_letters', 'digits', '_'])
+  }}
+
+# -------------------------------------------------------------------
+# Ansible Module, Collections, and Roles Requirements
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/cloud_vm_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/rhpds.manage_host.git
+      type: git
+      version: "{{ tag }}"
+
+# -------------------------------------------------------------------
+# Instance Config
+# -------------------------------------------------------------------
+bastion_instance_image: rhel-9.6
+bastion_rootfs_size: 50Gi
+
+networks:
+  - name: default
+
+instances:
+  - name: "rhel"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ bastion_instance_image }}"
+    memory: 12G
+    cores: 6
+    image_size: 100Gi
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions"
+      - key: "ostype"
+        value: "linux"
+    networks:
+      - default
+    services:
+      - name: bastion
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: bastion-22
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: bastion-80
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: bastion-443
+    routes:
+      - name: bastion-80
+        host: bastion
+        service: bastion-80
+        targetPort: 80
+        tls: false
+      - name: bastion-443
+        host: bastion
+        service: bastion-443
+        targetPort: 443
+        tls: true
+        tls_termination: edge
+
+# -------------------------------------------------------------------
+# Workloads: Pre/Software/Post
+# -------------------------------------------------------------------
+pre_software_workloads:
+  bastions:
+    - host_satellite_repositories
+    - host_common_packages
+    - bastion
+    - agnosticd.cloud_vm_workloads.control_user
+    - rhpds.manage_host.asset_injector
+
+
+# -------------------------------------------------------------------
+# Workload: host_satellite_repositories
+# -------------------------------------------------------------------
+install_satellite_repositories: true
+
+# -------------------------------------------------------------------
+# Workload: host_common_packages
+# -------------------------------------------------------------------
+install_common_packages: true
+host_common_packages_update_all: false
+
+host_common_packages_extra:
+  - at
+  - bash-completion
+  - bind-utils
+  - buildah
+  - git
+  - httpd-tools
+  - nano
+  - podman
+  - python3
+  - python3-pip
+  - tmux
+  - tree
+  - unzip
+  - vim-enhanced
+  - wget
+  - ansible
+  - nginx
+  - python-devel
+  - socat
+  - systemd-container
+  - unzip
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.control_user
+# -------------------------------------------------------------------
+env_authorized_key: "{{guid}}key"
+install_control_user: true
+student_name: lab-user
+student_password: "{{ common_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ common_password }}"
+control_user_private_group: "{{ omit }}"
+
+# -------------------------------------------------------------------
+# Role: rhpds.manage_host.asset_injector
+# -------------------------------------------------------------------
+asset_injector_modules:
+  - description: Remove 50-cloud-init.conf, ssh issue
+    module: file
+    state: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Remove 50-redhat.conf, ssh issue
+    module: file
+    state: remove
+    path: /etc/ssh/sshd_config.d/50-redhat.conf
+
+  - description: Update sshd_config for password auth
+    module: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} Our custom SSH settings via Ansible"
+    block: |
+      # Our custom SSH settings via Ansible
+      ChallengeResponseAuthentication no
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Restart sshd to pick up new password support configuration
+    module: service
+    name: sshd
+    state: restarted
+
+# -------------------------------------------------------------------
+# Workload: agnosticv_userdata_import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  ssh_command: >-
+    ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
+    -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
+  ssh_hostname: "{{ openshift_cnv_ssh_address }}"
+  ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+  ssh_username: "{{ student_name }}"
+  ssh_password: "{{ common_password }}"
+  guid: "{{ guid }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 3a99ff38-f012-4ec4-b692-aea7213a1648
+  owners:
+    maintainer:
+      - name: Mitesh Sharma
+        email: mitsharm@redhat.com
+    sme:
+      - name: Matthew Fernandez
+        email: matferna@redhat.com
+    instructions:
+      - name: Matthew Fernandez
+        email: matferna@redhat.com
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1663: Ansible Island Adventure Student"
+    category: Brand_Events
+    multiuser: false
+    keywords:
+      - rh1-2027
+      - lb1663
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Automation
+      Provider: RHDP
+      Brand_Event: Red_Hat_One_2027
+    reportingLabels:
+      primaryBU: Automation
+    workshop_user_mode: none
+
+    parameters:
+      - name: aap_leaderboard_url
+        description: AAP URL from LeaderBoard CI
+        formLabel: LeaderBoard AAP URL
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: https://aap.example.com
+      - name: aap_leaderboard_admin_password
+        description: AAP Admin Password from LeaderBoard CI
+        formLabel: LeaderBoard AAP Admin Password
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: "enter admin password"
+
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"

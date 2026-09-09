@@ -1,0 +1,216 @@
+---
+# -------------------------------------------------------------------
+# Catalog Item: LB1663: Ansible Island Adventure LeaderBoard
+# Jira Epic: RHDPCD-1137
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/catalog-icon-aap.yaml
+
+#include /includes/sandbox-api.yaml
+#include /includes/agd-v2-mapping.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# Required by host_ocp4_assisted_scale
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+# -------------------------------------------------------------------
+# Tags / Revisions
+# -------------------------------------------------------------------
+tag: main
+tag_assisted_installer: v0.0.9
+tag_showroom: v1.7.2
+
+# -------------------------------------------------------------------
+# AgnosticDv2 variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_api_key }}"
+
+# -------------------------------------------------------------------
+# CNV Worker Nodes
+# -------------------------------------------------------------------
+openshift_cnv_scale_cluster: true
+worker_instance_count: 3
+ai_workers_cores: 16
+ai_workers_memory: 64Gi
+ai_control_plane_memory: 32Gi
+
+# -------------------------------------------------------------------
+# Collections
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    # Required by openshift_cnv_scale_cluster (host_ocp4_assisted_scale)
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: "{{ tag_assisted_installer }}"
+    # Core OpenShift Workloads
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    # Showroom
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: "{{ tag_showroom }}"
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+ocp4_workload_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.21_2026_04_13
+
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_authentication
+  - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+  - infra.aap_configuration.dispatch
+  # - agnosticd.showroom.ocp4_workload_ocp_console_embed
+  # - agnosticd.showroom.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+common_admin_username: admin
+common_admin_password: "{{ lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits') }}"
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_keycloak_use_catalog_source: true
+ocp4_workload_authentication_keycloak_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_authentication_keycloak_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
+ocp4_workload_authentication_keycloak_default_realm: sso
+
+ocp4_workload_authentication_admin_username: "{{ common_admin_username }}"
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_num_users: 0
+
+
+# -------------------------------------------------------------------
+# Workload:
+# agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_admin_password: "{{ common_admin_password }}"
+ocp4_workload_ansible_automation_platform_disable_controller: false
+ocp4_workload_ansible_automation_platform_disable_eda: false
+ocp4_workload_ansible_automation_platform_disable_hub: false
+ocp4_workload_ansible_automation_platform_disable_lightspeed: true
+ocp4_workload_ansible_automation_platform_disable_mcp: false
+ocp4_workload_ansible_automation_platform_inject_manifest: true
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+ocp4_workload_ansible_automation_platform_create_eda_rolebinding: true
+ocp4_workload_ansible_automation_platform_ocp_cluster_role: cluster-reader
+ocp4_workload_ansible_automation_platform_hub_file_storage_file_class: ocs-external-storagecluster-cephfs
+ocp4_workload_ansible_automation_platform_hub_file_storage_access_mode: ReadWriteMany
+ocp4_workload_ansible_automation_platform_automatic_install_plan_approval: true
+ocp4_workload_ansible_automation_platform_use_catalog_snapshot: false
+ocp4_workload_ansible_automation_platform_operator_channel: stable-2.7
+
+
+# --------------------------------------------------------------------
+# Workload: infra.aap_configuration.dispatch
+# --------------------------------------------------------------------
+aap_hostname: "{{ lookup('agnosticd.core.agnosticd_user_data', 'aap_controller_web_url') }}"
+aap_username: admin
+aap_password: "{{ ocp4_workload_ansible_automation_platform_admin_password }}"
+aap_validate_certs: false
+
+ansible_async_dir: /tmp/.ansible_async
+aap_configuration_async_timeout: 3600
+aap_configuration_async_retries: 120
+aap_configuration_async_delay: 30
+controller_dependency_check: false
+
+aap_configuration_dispatcher_roles:
+  - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
+
+gateway_settings:
+  SESSION_COOKIE_AGE: 9000
+
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 90869168-47b8-4b16-bb4a-acb7205df388
+  owners:
+    maintainer:
+      - name: Mitesh Sharma
+        email: mitsharm@redhat.com
+    sme:
+      - name: Matthew Fernandez
+        email: matferna@redhat.com
+    instructions:
+      - name: Matthew Fernandez
+        email: matferna@redhat.com
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1663: Ansible Island Adventure LeaderBoard"
+    category: Brand_Events
+    multiuser: false
+    keywords:
+      - rh1-2027
+      - lb1663
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Automation
+      Provider: RHDP
+      Brand_Event: Red_Hat_One_2027
+    reportingLabels:
+      primaryBU: Automation
+
+  components:
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools
+      parameter_values:
+        cluster_size: multinode
+        host_ocp4_installer_version: '4.21'
+      # Propagate agnosticd_user_info data set by this component to variables.
+      propagate_provision_data:
+        # Propagate Sandbox userdata
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+        # Propagate ocp userdata
+        - name: openshift_api_url
+          var: openshift_api_url
+        - name: openshift_cluster_admin_token
+          var: openshift_api_key
+        # Required by openshift_cnv_scale_cluster (host_ocp4_assisted_scale)
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        # Propagate bastion data for infra_add_bastion role
+        - name: bastion_public_hostname
+          var: bastion_ansible_host
+        - name: bastion_ssh_user_name
+          var: bastion_ansible_user
+        - name: bastion_ssh_password
+          var: bastion_ansible_ssh_pass
+        - name: bastion_ssh_port
+          var: bastion_ansible_port
+        - name: openshift_cluster_ingress_domain
+          var: openshift_cluster_ingress_domain
+        - name: bastion_ssh_public_key
+          var: bastion_ssh_public_key
