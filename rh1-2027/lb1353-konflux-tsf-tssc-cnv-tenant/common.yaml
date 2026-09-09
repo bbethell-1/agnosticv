@@ -71,6 +71,29 @@ ocp4_workload_konflux_tssc_tenant_namespace: "user-{{ guid }}-tenant"
 # Creates two namespaces: user-{guid}-tenant and user-{guid}-managed
 ocp4_workload_tenant_namespace_username: "user-{{ guid }}"
 
+# Cluster resource quota for tenant (ClusterResourceQuota)
+# Sized for 20 concurrent tenants on 6-worker cluster @ 16 CPU, 64GB RAM each
+# (6 workers × 15.5 allocatable CPU = ~93 cores - 10 for platform = 83 cores available)
+# 20 tenants × 4 CPU = 80 cores (fits with headroom)
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "4"
+  requests.cpu: "4"
+  limits.memory: 8Gi
+  requests.memory: 8Gi
+  requests.storage: 50Gi
+
+# LimitRange defaults applied to containers without explicit resource specs
+# Limit: 500m CPU max per container, supports ~8 containers within 4 CPU quota
+# Request: 300m CPU guaranteed for scheduling, ensures good baseline performance
+# 6 parallel tasks = 3 CPU (500m × 6) with 1 CPU headroom for overlap
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: 500m
+    memory: 1Gi
+  defaultRequest:
+    cpu: 300m
+    memory: 512Mi
+
 ocp4_workload_tenant_namespace_suffixes:
   - suffix: tenant
     metadata:
