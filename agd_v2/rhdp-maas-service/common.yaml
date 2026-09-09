@@ -1,0 +1,247 @@
+---
+#include /includes/catalog-icon-rh-ai-2025.yaml
+
+# -------------------------------------------------------------------
+# AgnosticV Includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/access-restriction-admins-only.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: maas
+config: namespace
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads: []
+
+# -------------------------------------------------------------------
+# User Data — surface MaaS credentials in info message
+# -------------------------------------------------------------------
+agnosticd_passthrough_user_data:
+  litellm_api_base_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+  litellm_virtual_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
+  litellm_available_models: "{{ maas_sandbox.credentials[0].available_models }}"
+  litellm_available_models_list: "{{ maas_sandbox.credentials[0].available_models | join(', ') }}"
+
+# -------------------------------------------------------------------
+# Babylon Metadata
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 0a85c706-5e90-424b-b36a-99a2d6eb8504
+  owners:
+    maintainer:
+      - name: Prakhar Srivastava
+        email: psrivast@redhat.com
+      - name: Ashok Jammula
+        email: ajammula@redhat.com
+
+  anarchy:
+    namespace: babylon-anarchy-ocp-wksp
+
+  sandboxes:
+    - kind: MaaSSandbox
+      cloud_selector:
+        purpose: production
+      models: "{{
+        ((job_vars.litellm_model_granite_3_2_8b_instruct | default(true) | bool | ternary(['granite-3-2-8b-instruct'], [])) +
+        (job_vars.litellm_model_granite_4_0_h_tiny | default(false) | bool | ternary(['granite-4-0-h-tiny'], [])) +
+        (job_vars.litellm_model_llama_scout_17b | default(false) | bool | ternary(['llama-scout-17b'], [])) +
+        (job_vars.litellm_model_deepseek_r1 | default(false) | bool | ternary(['deepseek-r1-distill-qwen-14b'], [])) +
+        (job_vars.litellm_model_microsoft_phi_4 | default(false) | bool | ternary(['microsoft-phi-4'], [])) +
+        (job_vars.litellm_model_qwen3_14b | default(false) | bool | ternary(['qwen3-14b'], [])) +
+        (job_vars.litellm_model_codellama_7b_instruct | default(false) | bool | ternary(['codellama-7b-instruct'], [])) +
+        (job_vars.litellm_model_llama_guard | default(false) | bool | ternary(['Llama-Guard-3-1B'], [])) +
+        (job_vars.litellm_model_nomic_embed | default(false) | bool | ternary(['nomic-embed-text-v1-5'], [])) +
+        (job_vars.litellm_model_minimax_m2 | default(false) | bool | ternary(['minimax-m2'], [])) +
+        (job_vars.litellm_model_qwen3_235b | default(false) | bool | ternary(['qwen3-235b'], [])) +
+        (job_vars.litellm_model_gpt_oss_120b_ext | default(false) | bool | ternary(['gpt-oss-120b'], [])) +
+        (job_vars.litellm_model_gpt_oss_20b | default(false) | bool | ternary(['gpt-oss-20b'], [])) +
+        (job_vars.litellm_model_gemini_25_pro | default(false) | bool | ternary(['gemini-2.5-pro'], [])) +
+        (job_vars.litellm_model_claude_sonnet_46 | default(false) | bool | ternary(['claude-sonnet-4-6'], [])) +
+        (job_vars.litellm_model_claude_opus_46 | default(false) | bool | ternary(['claude-opus-4-6'], [])) +
+        (job_vars.litellm_model_claude_sonnet_45 | default(false) | bool | ternary(['claude-sonnet-4-5'], [])) +
+        (job_vars.litellm_model_claude_haiku | default(false) | bool | ternary(['claude-3-5-haiku'], []))) | join(',')
+      }}"
+      var: maas_sandbox
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: RHDP MaaS Service
+    category: Demos
+    multiuser: false
+    keywords:
+      - litemaas
+      - ai
+      - models
+      - virtual-keys
+      - maas
+    labels:
+      Product: Red_Hat_AI
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+
+    parameters:
+      # Chat/Text Generation Models
+      - name: litellm_model_granite_3_2_8b_instruct
+        formLabel: Granite 3.2 8B Instruct
+        formGroup: Chat & Text Models
+        description: IBM Granite 3.2 8B - General purpose chat and text generation
+        openAPIV3Schema:
+          type: boolean
+          default: true
+
+      - name: litellm_model_granite_4_0_h_tiny
+        formLabel: Granite 4.0 H Tiny
+        formGroup: Chat & Text Models
+        description: IBM Granite 4.0 H Tiny - Compact chat model for efficient inference with tool calling support
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      - name: litellm_model_llama_scout_17b
+        formLabel: Llama 4 Scout 17B (W4A16)
+        formGroup: Chat & Text Models
+        description: Meta Llama 4 Scout 17B - W4A16 quantized by Red Hat AI with 400k context window, advanced function calling, and MCP support
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      - name: litellm_model_deepseek_r1
+        formLabel: DeepSeek R1 Distill Qwen 14B
+        formGroup: Chat & Text Models
+        description: DeepSeek R1 Distill based on Qwen 14B - reasoning model with chain-of-thought capabilities
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      - name: litellm_model_microsoft_phi_4
+        formLabel: Microsoft Phi-4
+        formGroup: Chat & Text Models
+        description: Microsoft Phi-4 - compact but high-quality model with strong reasoning and coding capabilities
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      - name: litellm_model_qwen3_14b
+        formLabel: Qwen 3 14B
+        formGroup: Chat & Text Models
+        description: Alibaba Qwen 3 14B - multilingual chat model with strong reasoning
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      # Code Models
+      - name: litellm_model_codellama_7b_instruct
+        formLabel: CodeLlama 7B Instruct
+        formGroup: Code Models
+        description: Meta CodeLlama 7B Instruct - Code chat with instructions
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      # Safety & Moderation Models
+      - name: litellm_model_llama_guard
+        formLabel: Llama Guard 3 1B
+        formGroup: Safety & Moderation
+        description: Meta Llama Guard 3 1B - Content safety classification
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      # Embedding Models
+      - name: litellm_model_nomic_embed
+        formLabel: Nomic Embed v1.5
+        formGroup: Embedding Models
+        description: Nomic Embed - Text embeddings
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      # External Models (Google Vertex AI)
+      - name: litellm_model_minimax_m2
+        formLabel: MiniMax M2 (Agentic)
+        formGroup: External Models (Vertex AI)
+        description: Fast agentic model, strong at multi-step tool use and coding. $0.30/$1.20 per 1M tokens.
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      - name: litellm_model_qwen3_235b
+        formLabel: Qwen3 235B (Reasoning)
+        formGroup: External Models (Vertex AI)
+        description: Large multilingual MoE reasoning model. $0.22/$0.88 per 1M tokens.
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      - name: litellm_model_gpt_oss_120b_ext
+        formLabel: GPT OSS 120B (Large)
+        formGroup: External Models (Vertex AI)
+        description: Large OSS model with function calling. $0.09/$0.36 per 1M tokens.
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      - name: litellm_model_gpt_oss_20b
+        formLabel: GPT OSS 20B (Cost-effective)
+        formGroup: External Models (Vertex AI)
+        description: Lighter cost-effective option. $0.07/$0.25 per 1M tokens.
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      - name: litellm_model_gemini_25_pro
+        formLabel: Gemini 2.5 Pro (Google)
+        formGroup: External Models (Vertex AI)
+        description: Google Gemini 2.5 Pro with 1M context window. Strong reasoning. $1.25/$10 per 1M tokens.
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      # Claude Models (Anthropic via Vertex AI)
+      - name: litellm_model_claude_sonnet_46
+        formLabel: Claude Sonnet 4.6 (Anthropic)
+        formGroup: External Models (Vertex AI)
+        description: Anthropic Claude Sonnet 4.6 - strong reasoning and coding. $3/$15 per 1M tokens.
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      - name: litellm_model_claude_opus_46
+        formLabel: Claude Opus 4.6 (Anthropic)
+        formGroup: External Models (Vertex AI)
+        description: Anthropic Claude Opus 4.6 - flagship model for complex tasks. $5/$25 per 1M tokens.
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      - name: litellm_model_claude_sonnet_45
+        formLabel: Claude Sonnet 4.5 (Anthropic)
+        formGroup: External Models (Vertex AI)
+        description: Anthropic Claude Sonnet 4.5 - previous generation Sonnet. $3/$15 per 1M tokens.
+        openAPIV3Schema:
+          type: boolean
+          default: false
+
+      - name: litellm_model_claude_haiku
+        formLabel: Claude 3.5 Haiku (Anthropic)
+        formGroup: External Models (Vertex AI)
+        description: Anthropic Claude 3.5 Haiku - fast and cost-effective. $1/$5 per 1M tokens.
+        openAPIV3Schema:
+          type: boolean
+          default: false
