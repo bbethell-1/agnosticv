@@ -1,0 +1,177 @@
+---
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-project-dance.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: Demystifying AAP on OpenShift — Cluster Provisioner
+# ---              RH1 2027
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+software_to_deploy: none
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# Cloud provider — toggle between AWS and CNV by commenting/uncommenting
+# -------------------------------------------------------------------
+# Workers: 4 per cluster → ~40 tenants per cluster (1 scenario namespace per tenant at a time).
+# Measured: ~3,675m CPU / ~7.9 Gi per tenant.
+# Scale out by adding more clusters for prod. Register each cluster with ~40 placements.
+
+# ── CNV ───────────────────────────────────────────────────────────
+openshift_cnv_scale_cluster: true
+worker_instance_count: 4
+ai_workers_cores: 48
+ai_workers_memory: 192Gi
+worker_only: true
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# Collection version pinning — override tag in dev/event/prod yaml
+# -------------------------------------------------------------------
+tag: main
+
+# -------------------------------------------------------------------
+# Custom collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: v1.7.2
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_openshift_data_foundation
+  - agnosticd.core_workloads.ocp4_workload_authentication
+  - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  - agnosticd.showroom.ocp4_workload_ocp_console_embed
+
+# ===================================================================
+# Workload: agnosticd.core_workloads.ocp4_workload_openshift_data_foundation
+# Provides CephFS RWX storage required by Automation Hub file storage.
+# Reference: agd_v2/etx-ai-superlab3/common.yaml (Wolfgang)
+# ===================================================================
+ocp4_workload_openshift_data_foundation_channel: stable-4.20
+ocp4_workload_openshift_data_foundation_catalogsource_setup: false
+ocp4_workload_openshift_data_foundation_ceph_storage_osd_size: 500Gi
+ocp4_workload_openshift_data_foundation_update_default_storage_class: true
+ocp4_workload_openshift_data_foundation_ceph_storage_system_deploy_timeout: 1500
+ocp4_workload_openshift_data_foundation_ceph_storage_cluster_deploy_timeout: 1500
+
+# ===================================================================
+# Workload: agnosticd.core_workloads.ocp4_workload_authentication
+# ===================================================================
+# Installs Keycloak/RHBK operator + realm — zero users at cluster provision time
+# Users are created per-order by the user provisioner
+
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_num_users: 0          # no users — created per order
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+
+# ===================================================================
+# Workload: agnosticd.core_workloads.ocp4_workload_openshift_gitops
+# ===================================================================
+ocp4_workload_openshift_gitops_channel: gitops-1.19
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, system:cluster-admins, role:admin
+  g, admin, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+# -------------------------------------------------------------------
+# Metadata
+# -------------------------------------------------------------------
+__meta__:
+  access_control:
+    allow_groups:
+      - rhpds-devs-ansiblebu
+      - rhpds-devs-rh1  # TODO: confirm correct group with Prakhar
+  asset_uuid: 2d346c44-38d3-45dd-a51b-f190b669dda9
+  sandbox_host:
+    annotations:
+      cloud: cnv-dedicated-shared
+      lab: lb1216-demystifying-aap
+    max_cpu_usage_percentage: 90
+    max_memory_usage_percentage: 85
+    max_placements: 15
+  components:
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools
+      parameter_values:
+        cluster_size: multinode
+        host_ocp4_installer_version: "4.20"
+        ocp4_fips_enable: false
+      propagate_provision_data:
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: openshift_api_url
+          var: openshift_api_url
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Demystifying AAP on OpenShift — Cluster Provisioner (RH1 2027)"
+    category: Brand_Events
+    reportingLabels:
+      primaryBU: Automation
+    keywords:
+      - rh1-2027
+      - ansible-automation-platform
+      - gitops
+      - troubleshooting
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Ansible
+      Brand_Event: Red_Hat_One_2027
+    # This item only provisions shared infrastructure.
+    # It would not be appropriate to order a workshop of this item.
+    workshopUiDisabled: false
+  owners:
+    maintainer:
+      - email: rgarciac@redhat.com
+        name: Ricardo Garcia
+    instructions:
+      - name: Ryan Laroy
+        email: laroy@redhat.com
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-20
+      pull: missing

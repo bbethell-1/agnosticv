@@ -1,0 +1,299 @@
+---
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-aap.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/parameters/litellm_metadata.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: LB1216 - Demystifying AAP on OCP (Tenant)
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: none
+config: namespace
+
+# -------------------------------------------------------------------
+# Collection version pinning — override tag in dev/event/prod yaml
+# -------------------------------------------------------------------
+tag: main
+
+# ===================================================================
+# Collections
+# ===================================================================
+requirements_content:
+  collections:
+  - name: https://github.com/rhpds/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: v1.7.2
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "1.0.0"
+
+# ===================================================================
+# Workloads
+# ===================================================================
+workloads: >-
+  {{
+    [
+      'agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user',
+      'agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace',
+      'rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys',
+      'agnosticd.core_workloads.ocp4_workload_gitops_bootstrap',
+      'agnosticd.showroom.ocp4_workload_showroom_user_data_seed',
+      'agnosticd.showroom.ocp4_workload_showroom'
+    ]
+  }}
+
+remove_workloads:
+- agnosticd.showroom.ocp4_workload_showroom
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+
+# ===================================================================
+# Common
+# ===================================================================
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+# ===================================================================
+# ocp4_workload_tenant_keycloak_user
+# ===================================================================
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_namespace: keycloak
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+
+# ===================================================================
+# ocp4_workload_tenant_namespace
+# 4 namespaces created per tenant order — one per scenario.
+# Namespace format: {username}-scenario-{n}
+# Showroom is deployed in scenario-1 namespace with tabs for all 4 AAP instances.
+# ===================================================================
+ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_namespace_use_cluster_quota: true
+
+ocp4_workload_tenant_namespace_suffixes:
+- suffix: "scenario-1"
+- suffix: "scenario-2"
+- suffix: "scenario-3"
+- suffix: "scenario-4"
+
+# ClusterResourceQuota math — measured on a live cluster with 4 simultaneous scenarios.
+# Each namespace-scoped AAP operator deploys 6 controllers with high CPU limits:
+#   aap-gateway-operator:            2500m CPU limit / 4128Mi memory limit
+#   ansible-lightspeed-operator:     1000m CPU limit / 1000Mi memory limit
+#   automation-controller-operator:  2500m CPU limit / 4128Mi memory limit
+#   automation-hub-operator:         2500m CPU limit / 4128Mi memory limit
+#   eda-server-operator:             2500m CPU limit / 4128Mi memory limit
+#   resource-operator:               2000m CPU limit / 4128Mi memory limit
+#   Subtotal operators per ns:      ~13000m CPU / ~24Gi memory
+#
+# Per-namespace AAP instance pods (after reconciliation):
+#   postgres statefulset:     2000m CPU limit / ~4Gi memory
+#   redis statefulset:        2000m CPU limit / ~4Gi memory
+#   gateway deployment:       4000m CPU limit / ~8Gi memory
+#   Plus controller/hub pods added as reconciliation progresses
+#
+# 4 namespaces x (13 operators + 6 postgres/redis + 4+ gateway + more) ~= 100-140 CPU limits
+# requests.cpu is low (~100m per operator, ~200m per workload pod) — 24 is safe for 4 ns
+# requests.storage: 4 x postgres 8Gi + Hub RWX PVC per scenario ~= 100Gi+ needed
+# limits.cpu=64 caused ALL 4 scenarios to deadlock simultaneously — increased to 200.
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "200"
+  requests.cpu: "24"
+  limits.memory: 384Gi
+  requests.memory: 160Gi
+  requests.storage: 200Gi
+
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: "2"
+    memory: 4Gi
+  defaultRequest:
+    cpu: 100m
+    memory: 256Mi
+
+# ===================================================================
+# ocp4_workload_litellm_virtual_keys
+# Creates a scoped virtual key for ALIA (Scenario 6).
+# Runs before ocp4_workload_gitops_bootstrap so the key is available
+# via agnosticd_user_data when Helm renders the bootstrap chart.
+# ===================================================================
+ocp4_workload_litellm_virtual_keys_alias: "rh1-2027-alia-{{ guid }}"
+ocp4_workload_litellm_virtual_keys_models:
+- "granite-3-2-8b-instruct"
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+
+# ===================================================================
+# ocp4_workload_gitops_bootstrap
+# ===================================================================
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/demystifying-aap-on-openshift-rh1-2027
+ocp4_workload_gitops_bootstrap_repo_revision: "{{ tag }}"
+ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ guid }}"
+
+# Do not wait for bootstrap health — 4 AAP instances take ~30 min each.
+# Showroom deploys immediately; AAP instances converge in the background.
+ocp4_workload_gitops_bootstrap_application_wait: false
+
+alia_token: "{{ lookup('agnosticd_user_data', 'litellm_virtual_key', default='') }}"
+
+# -------------------------------------------------------------------------
+# Helm values passed to the demystifying-aap-automation bootstrap chart.
+# These are consumed by the Helm templates in tenant/aap-instance/ to:
+#   - Name and namespace AAP resources per user
+#   - Configure the AAP admin password and manifest license
+#   - Register the OpenShift SA credential in AAP Controller so that
+#     break/fix job templates can make Kubernetes API calls against the
+#     user's own namespace (namespace-admin ServiceAccount, no cluster-admin)
+#   - Provide ALIA/LiteMaaS config for Scenario 6
+# -------------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_helm_values:
+  tenant:
+    username: "{{ ocp4_workload_tenant_keycloak_username }}"
+    password: "{{ common_password }}"
+    domain: "{{ openshift_cluster_ingress_domain }}"
+    apiUrl: "{{ sandbox_openshift_api_url }}"   # cluster API URL for the break SA credential
+  aap:
+    hub:
+      enabled: true
+    manifest:
+      url: "https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip"
+  alia:
+    token: "{{ alia_token }}"
+    model: granite-3-2-8b-instruct
+    url: https://litellm-prod.apps.maas.redhatworkshops.io/v1
+
+# ===================================================================
+# ocp4_workload_showroom
+# ===================================================================
+ocp4_workload_showroom_namespace: "showroom-{{ guid }}"
+ocp4_workload_showroom_openshift_api_url: "{{ sandbox_openshift_api_url }}"
+ocp4_workload_showroom_openshift_api_token: "{{ cluster_admin_agnosticd_sa_token | trim | regex_replace('^Bearer ', '') }}"
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/demystifying-aap-on-openshift-rh1-2027
+ocp4_workload_showroom_content_git_repo_ref: "{{ tag }}"
+ocp4_workload_showroom_runtime_automation_enable: true
+ocp4_workload_showroom_terminal_type: ""
+# ===================================================================
+# ocp4_workload_showroom_user_data_seed
+# ocp4_workload_showroom_content_vars was removed in showroom v1.6.6.
+# Custom vars must now be seeded via agnosticd_user_info before showroom deploys.
+# ===================================================================
+ocp4_workload_showroom_user_data_seed:
+  console_url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
+  aap_admin_user: admin
+  aap_admin_password: "{{ common_password }}"
+  alia_token: "{{ alia_token }}"
+  alia_model: granite-3-2-8b-instruct
+  alia_url: https://litellm-prod.apps.maas.redhatworkshops.io/v1
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 40
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+  - name: OpenShift Console
+    url: 'https://console-openshift-console.{{ openshift_cluster_ingress_domain }}'
+  - name: 'AAP - Scenario 1 (Hub)'
+    url: 'https://{{ ocp4_workload_tenant_keycloak_username }}-aap-{{ ocp4_workload_tenant_keycloak_username }}-scenario-1.{{ openshift_cluster_ingress_domain }}'
+  - name: 'AAP - Scenario 2 (Gateway)'
+    url: 'https://{{ ocp4_workload_tenant_keycloak_username }}-aap-{{ ocp4_workload_tenant_keycloak_username }}-scenario-2.{{ openshift_cluster_ingress_domain }}'
+  - name: 'AAP - Scenario 3 (Node Selector)'
+    url: 'https://{{ ocp4_workload_tenant_keycloak_username }}-aap-{{ ocp4_workload_tenant_keycloak_username }}-scenario-3.{{ openshift_cluster_ingress_domain }}'
+  - name: 'AAP - Scenario 4 (ALIA)'
+    url: 'https://{{ ocp4_workload_tenant_keycloak_username }}-aap-{{ ocp4_workload_tenant_keycloak_username }}-scenario-4.{{ openshift_cluster_ingress_domain }}'
+  antora:
+    name: modules
+    dir: www
+    modules:
+    - name: scenario-1
+      label: "Scenario 1: Hub PVC issue"
+      solveButton: true
+      scripts:
+      - solve
+      - validation
+    - name: scenario-2
+      label: "Scenario 2: Wrong admin password / Database service missing"
+      solveButton: true
+      scripts:
+      - solve
+      - validation
+    - name: scenario-3
+      label: "Scenario 3: Wrong node selector / High resource requests"
+      solveButton: true
+      scripts:
+      - solve
+      - validation
+    - name: scenario-4
+      label: "Scenario 4: ALIA troubleshooting wrong model"
+      solveButton: true
+      scripts:
+      - solve
+      - validation
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  access_control:
+    allow_groups:
+    - rhpds-devs-ansiblebu
+    - rhpds-devs-rh1  # TODO: confirm correct group with Prakhar
+  asset_uuid: d74299e9-aa16-4537-a69f-b84e0f6b8386
+  owners:
+    maintainer:
+    - name: Ricardo Garcia
+      email: rgarciac@redhat.com
+    instructions:
+    - name: Ryan Laroy
+      email: laroy@redhat.com
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      pull: missing
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Demystifying Ansible Automation Platform on OpenShift Container Platform"
+    category: Brand_Events
+    keywords:
+    - rh1-2027
+    - ansible-automation-platform
+    - troubleshooting
+    - aap-operator
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Ansible
+      Brand_Event: Red_Hat_One_2027
+    reportingLabels:
+      primaryBU: Automation
+    workshopLabUiRedirect: true
+    # Provision doesn't call `agnosticd_user_info` with `user` set and so does
+    # not report `users` in `provision_data`. All data and messages are
+    # assigned directly to the workshop seat.
+    workshop_user_mode: none
