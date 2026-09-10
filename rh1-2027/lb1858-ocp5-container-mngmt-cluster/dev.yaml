@@ -1,0 +1,42 @@
+---
+
+# Lightspeed:* Add a validated OpenShift 5 deployment, its external model credentials,
+# and learner access. The generic OCP5 cluster reference currently disables Lightspeed
+# pending compatibility work. No AI collection or token secret is included here.
+
+# Tenant teardown:* In `agnosticd-v2/ansible/configs/namespace/destroy_env.yml`,
+# the namespace deployer invokes removal roles with `ACTION: remove`.
+# The current `core_workloads/roles/ocp4_workload_gitops_bootstrap/tasks/main.yml` and
+# Showroom v1.7.2 entry point only dispatch removal for `ACTION == "destroy"`. This can
+# leave the bootstrap Application and Showroom namespace behind; the tenant namespace role
+# only deletes the learner namespace it manages. Resolve this in the shared automation and
+# verify cascading deletion before relying on repeated tenant create/destroy cycles. The default
+# reverse workload removal order does not fix that upstream mismatch.
+
+ocp4_workload_gitops_bootstrap_health_ignore: false
+ocp4_workload_gitops_bootstrap_health_retries: 2
+
+__meta__:
+  access_control:
+    allow_groups:
+    - rhpds-devs
+  deployer:
+    scm_ref: main
+  catalog:
+    parameters:
+    - name: gitops_repo_revision
+      description: GitOps Repository Revision
+      formLabel: GitOps Repository Revision
+      required: true
+      openAPIV3Schema:
+        type: string
+        default: main
+
+  sandbox_host:
+    annotations:
+      cloud: cnv-dedicated-shared
+      lab: lb1858-ocp5-container-mngmt
+      purpose: dev
+    max_cpu_usage_percentage: 90
+    max_memory_usage_percentage: 85
+    max_placements: 30
