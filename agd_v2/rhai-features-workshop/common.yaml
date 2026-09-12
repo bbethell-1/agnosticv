@@ -1,0 +1,243 @@
+---
+# This item is restricted to devs only!
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: Private LLM as a Service - A Practical Introduction with OpenShift AI - on AWS with LiteLLM
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift-data-science.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/aws-sandbox-meta.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/aws-regions-5-ocp-multi.yaml
+
+#include /includes/secrets/letsencrypt_with_zerossl_fallback.yaml
+#include /includes/secrets/ocp4_token.yaml
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+cloud_provider: aws
+cloud_provider_version: "{{ tag }}"
+config: openshift-cluster
+
+tag: main
+
+# ===================================================================
+# Additional collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: v1.7.2
+
+# -------------------------------------------------------------------
+# VM configuration
+# -------------------------------------------------------------------
+control_plane_instance_type: c6a.4xlarge
+control_plane_instance_count: 3
+
+worker_instance_type: m6a.4xlarge
+worker_instance_count:
+  "{{ [((num_users | int * 0.3) | round(0, 'ceil') | int) + 4, 5] | max\
+  \ }}"
+
+bastion_instance_type: t3a.small
+bastion_instance_image: RHEL96GOLD-latest
+
+# -------------------------------------------------------------------
+# Repos
+# -------------------------------------------------------------------
+repo_method: satellite
+update_packages: true
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+host_ocp4_installer_version: "4.22"
+
+# -------------------------------------------------------------------
+# Student User on Bastion
+# -------------------------------------------------------------------
+bastion_setup_student_user: true
+
+# -------------------------------------------------------------------
+# List of workloads to be deployed
+# -------------------------------------------------------------------
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_machinesets
+  - agnosticd.core_workloads.ocp4_workload_cert_manager
+  - agnosticd.core_workloads.ocp4_workload_authentication
+  - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.showroom.ocp4_workload_ocp_console_embed
+  - agnosticd.showroom.ocp4_workload_showroom
+# -------------------------------------------------------------------
+# Workload variables
+# -------------------------------------------------------------------
+ocp4_workload_user_base: user
+ocp4_workload_user_count: "{{ num_users | default('5') | int }}"
+common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_password: "{{ (guid[::-1][:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_username: admin
+
+# -------------------------------------------------------------------
+# ocp4_workload_machinesets
+# -------------------------------------------------------------------
+ocp4_workload_machinesets_wait_for_nodes: true
+gpu_instance_type: g6.2xlarge
+
+ocp4_workload_machinesets_machineset_groups:
+  - name: worker-gpu-machineset
+    role: worker-gpu
+    instance_type: "{{ gpu_instance_type }}"
+    autoscale: false # Workaround for core_workloads bug - min=max=replicas means no actual scaling
+    total_replicas: "0"
+    total_replicas_min: "0"
+    total_replicas_max: "1"
+    root_volume_size: "250"
+    taints:
+      - key: nvidia.com/gpu
+        value: l4-gpu
+        effect: NoSchedule
+
+# -------------------------------------------------------------------
+# ocp4_workload_cert_manager
+# -------------------------------------------------------------------
+ocp4_workload_cert_manager_channel: stable-v1
+ocp4_workload_cert_manager_use_catalog_snapshot: false
+
+ocp4_workload_cert_manager_aws_region: "{{ aws_region }}"
+ocp4_workload_cert_manager_aws_access_key_id: "{{ hostvars.localhost.route53user_access_key }}"
+ocp4_workload_cert_manager_aws_secret_access_key: "{{ hostvars.localhost.route53user_secret_access_key }}"
+
+ocp4_workload_cert_manager_install_ingress_certificates: true
+ocp4_workload_cert_manager_install_api_certificates: false
+ocp4_workload_cert_manager_wait_timeout: 900
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_admin_username: "{{ common_admin_username }}"
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_num_users: "{{ ocp4_workload_user_count }}"
+
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
+
+ocp4_workload_authentication_keycloak_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_keycloak_admin_username: "{{ common_admin_username }}"
+ocp4_workload_authentication_keycloak_user_username_base: "{{ ocp4_workload_user_base }}"
+ocp4_workload_authentication_keycloak_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_default_realm: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.6
+
+# -------------------------------------------------------------------
+# ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.21
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_update_resources: true
+
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 8Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 1000m
+ocp4_workload_openshift_gitops_repo_requests_memory: 1024Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "4"
+ocp4_workload_openshift_gitops_repo_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, {{ ocp4_workload_authentication_keycloak_admin_username }}, role:admin
+  g, user1, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: "[name,groups]"
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_infra_repo: git@github.com:rhpds/rhai-features-workshop.git
+ocp4_workload_gitops_bootstrap_infra_branch: main
+ocp4_workload_gitops_bootstrap_infra_path: automation/gitops/bootstrap-infra
+ocp4_workload_gitops_bootstrap_health_retries: 2
+
+# -------------------------------------------------------------------
+# Role: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/rhai-features-workshop.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-11
+ocp4_workload_showroom_terminal_type: wetty
+
+# -------------------------------------------------------------------
+# Babylon Meta Variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 9B185DC9-0689-4042-B384-66460579D869
+  owners:
+    maintainer:
+      - name: Cansu Kavili-Örnek
+        email: ckavili@redhat.com
+      - name: Roberto Carratalá
+        email: rcarrata@redhat.com
+      - name: Ritesh Shah
+        email: rshah@redhat.com
+    instructions:
+      - name: Cansu Kavili-Örnek
+        email: ckavili@redhat.com
+      - name: Roberto Carratalá
+        email: rcarrata@redhat.com
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-08-05
+  sandbox_api:
+    reservation: pgpu
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    reportingLabels:
+      primaryBU: Artificial_Intelligence
+    display_name: "Red Hat OpenShift AI Features Workshop (AWS)"
+    category: Brand_Events
+    keywords:
+      - AI
+      - RHOAI
+      - MaaS
+      - RAG
+      - MLflow
+      - Agentic
+      - Security
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_AI
+      Product_Family: Red_Hat_AI
+    multiuser: true
+    parameters:
+      - name: num_users
+        description: Number of users to provision within the cluster.
+        formLabel: OpenShift User Count
+        openAPIV3Schema:
+          type: integer
+          default: 2
+          minimum: 2
+          maximum: 30
+  tower:
+    timeout: 21600
