@@ -1,0 +1,276 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: Building AI Agents
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-rhde.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+# NOTE: Cluster-level secrets (satellite, DNS, TLS, assisted installer)
+# are now handled by the ocp-cluster-cnv-pools component.
+# Only include secrets needed directly by workloads in this CI.
+
+# -------------------------------------------------------------------
+# Mandatory variables
+# -------------------------------------------------------------------
+tag: main
+
+# Agnosticdv2 variables
+config: openshift-workloads
+cloud_provider: none
+software_to_deploy: none
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
+current_cluster_name: default
+
+# -------------------------------------------------------------------
+# Platform
+# -------------------------------------------------------------------
+platform: rhpds
+
+# -------------------------------------------------------------------
+# AWS Specific - Worker Autoscaling
+# -------------------------------------------------------------------
+openshift_aws_scale_cluster: false
+openshift_cnv_scale_cluster: false   # must be explicitly false (default is true)
+aws_region: us-west-2
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=8, chars=['ascii_letters', 'digits'])
+  }}
+
+# -------------------------------------------------------------------
+# Collections
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: main
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: v1.7.2
+
+# -------------------------------------------------------------------
+# OpenShift Version
+# -------------------------------------------------------------------
+host_ocp4_installer_version: "4.22"
+host_ocp4_installer_info_set_user_data_kubeadmin_password: true
+
+openshift_cluster_admin_service_account_enable: true
+openshift_cluster_show_access_user_info: true
+
+
+# -----------------------------------------------------------------
+# Single user — per-student topology
+# -----------------------------------------------------------------
+num_users: 1
+user_count: 1
+student_name: "lab-user"
+common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_password: "{{ (guid[::-1][:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
+common_admin_username: admin
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_machinesets
+  - agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+  - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  - agnosticd.core_workloads.ocp4_workload_showroom
+  - agnosticd.ai_workloads.ocp4_workload_openshift_ai
+  - agnosticd.showroom.ocp4_workload_ocp_console_embed
+
+# -----------------------------------------------------------------
+# Workload config
+# -----------------------------------------------------------------
+# -----------------------------------------------------------------
+# GPU Machineset — g6.2xlarge (NVIDIA L4 24 GB)
+# -----------------------------------------------------------------
+ocp4_workload_machinesets_wait_for_nodes: true
+gpu_instance_type: g6.2xlarge
+
+ocp4_workload_machinesets_machineset_groups:
+  - name: worker-gpu-machineset
+    role: worker-gpu
+    instance_type: "{{ gpu_instance_type }}"
+    autoscale: false # Workaround for core_workloads bug - min=max=replicas means no actual scaling
+    total_replicas: "1"
+    total_replicas_min: "1"
+    total_replicas_max: "1"
+    root_volume_size: "500"
+    taints:
+      - key: nvidia.com/gpu
+        value: l4-gpu
+        effect: NoSchedule
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+# -------------------------------------------------------------------
+ocp4_workload_authentication_keycloak_namespace: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.2
+ocp4_workload_authentication_keycloak_automatic_install_plan_approval: true
+ocp4_workload_authentication_keycloak_admin_create: true
+ocp4_workload_authentication_keycloak_use_catalog_source: false
+ocp4_workload_authentication_keycloak_num_users: "{{ num_users }}"
+ocp4_workload_authentication_keycloak_admin_username: "{{ common_admin_username }}"
+ocp4_workload_authentication_keycloak_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_keycloak_user_username_base: "{{ student_name }}"
+ocp4_workload_authentication_keycloak_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_keycloak_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.18
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_update_resources: true
+
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: "2"
+ocp4_workload_openshift_gitops_controller_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, admin, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+# ===================================================================
+# Workload: agnosticd.ai_workloads.ocp4_workload_openshift_ai
+# ===================================================================
+
+ocp4_workload_openshift_ai_channel: stable-3.5
+ocp4_workload_openshift_ai_use_catalog_snapshot: false
+ocp4_workload_openshift_ai_deploy_dsc: true
+ocp4_workload_openshift_ai_dashboard: Managed
+ocp4_workload_openshift_ai_datasciencepipelines: Managed
+ocp4_workload_openshift_ai_workbenches: Managed
+ocp4_workload_openshift_ai_modelmeshserving: Managed
+ocp4_workload_openshift_ai_kserve: Removed
+ocp4_workload_openshift_ai_ray: Removed
+ocp4_workload_openshift_ai_trustyai: Removed
+ocp4_workload_openshift_ai_trainingoperator: Removed
+ocp4_workload_openshift_ai_modelregistry: Removed
+ocp4_workload_openshift_ai_codeflare: Removed
+ocp4_workload_openshift_ai_feastoperator: Removed
+ocp4_workload_openshift_ai_llamastackoperator: Removed
+ocp4_workload_openshift_ai_kueue: Removed
+ocp4_workload_openshift_ai_aipipelines: Managed
+
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/agent-antipatterns-lab
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+ocp4_workload_showroom_passthrough_user_data: true
+ocp4_workload_showroom_runtime_automation_enable: true
+ocp4_workload_showroom_runtime_automation_cluster_admin: true
+ocp4_workload_showroom_openshift_api_url: "{{ openshift_api_url }}"
+ocp4_workload_showroom_openshift_api_token: "{{ openshift_cluster_admin_token }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 3d56ff81-5a57-447f-b61d-bf540630a202
+  components:
+    - name: openshift_aws
+      display_name: OpenShift Container Platform Cluster (AWS Pools)
+      item: agd-v2/ocp-cluster-aws-pools
+      parameter_values:
+        cluster_size: multinode
+        host_ocp4_installer_version: "4.22"
+        agnosticd_open_environment: false
+        aws_region: us-west-2
+      propagate_provision_data:
+        - name: openshift_api_ca_cert
+          var: openshift_api_ca_cert
+        - name: openshift_api_url
+          var: openshift_api_url
+        - name: openshift_cluster_admin_token
+          var: openshift_api_key
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        # Propagate bastion data for infra_add_bastion role
+        - name: bastion_public_hostname
+          var: bastion_ansible_host
+        - name: bastion_ssh_user_name
+          var: bastion_ansible_user
+        - name: bastion_ssh_password
+          var: bastion_ansible_ssh_pass
+        - name: bastion_ssh_port
+          var: bastion_ansible_port
+        # Needed for scaling cluster with workers
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+  owners:
+    sme:
+      - name: David Williams
+        email: davidwil@redhat.com
+    instructions:
+      - name: Hunter Gerlach
+        email: hgerlach@redhat.com
+    maintainer:
+      - name: Ishu Verma
+        email: iverma@redhat.com
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB8000: Four Ways Your Agent can Break"
+    category: Brand_Events
+    keywords:
+      - openshift ai
+      - openshift
+      - lb8000
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_AI
+      Product_Family: Red_Hat_AI
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+
+    # Provision doesn't call `agnosticd_user_info` with `user` set and so does
+    # not report `users` in `provision_data`. All data and messages are
+    # assigned directly to the workshop seat.
+    workshop_user_mode: none
