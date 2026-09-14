@@ -155,9 +155,70 @@ controller_dependency_check: false
 
 aap_configuration_dispatcher_roles:
   - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
-
+  - { role: controller_credential_types, var: controller_credential_types, tags: controller_credential_types }
+  - { role: controller_credentials, var: controller_credentials, tags: controller_credentials }
+  - { role: controller_inventories, var: controller_inventories, tags: controller_inventories }
+  - { role: controller_hosts, var: controller_hosts, tags: controller_hosts }
 gateway_settings:
   SESSION_COOKIE_AGE: 9000
+
+
+controller_credential_types:
+  - name: AO webhooks
+    description: AO webhooks
+    kind: cloud
+    inputs:
+      fields:
+        - id: client_id
+          type: string
+          label: Client ID
+        - id: client_secret
+          type: string
+          label: Client Secret
+          secret: true
+        - id: base_url
+          type: string
+          label: AO Base URL
+      required:
+        - client_id
+        - client_secret
+    injectors:
+      env:
+        AO_BASE_URL: '{  { base_url }}'
+        AO_CLIENT_ID: '{  { client_id }}'
+        AO_CLIENT_SECRET: '{  { client_secret }}'
+      extra_vars:
+        ao_base_url: '{  { base_url }}'
+        ao_client_id: '{  { client_id }}'
+        ao_client_secret: '{  { client_secret }}'
+
+controller_credentials:
+  - name: "Workshop Credential"
+    organization: Default
+    credential_type: "Machine"
+    inputs:
+      username: "{{ bastion_ansible_user }}"
+      password: "{{ bastion_ansible_ssh_pass }}"
+    state: present
+
+controller_inventories:
+  - name: "Demo Inventory"
+    organization: Default
+    state: present
+  - name: "Workshop Inventory"
+    organization: Default
+    state: present
+
+controller_hosts:
+  - name: "host1"
+    inventory: "Workshop Inventory"
+    enabled: true
+    state: present
+    variables:
+      ansible_host: "{{ bastion_ansible_host }}"
+      ansible_port: "{{ bastion_ansible_port }}"
+      ansible_user: "{{ bastion_ansible_user }}"
+      ansible_password: "{{ bastion_ansible_ssh_pass }}"
 
 # -------------------------------------------------------------------
 # Workload:
