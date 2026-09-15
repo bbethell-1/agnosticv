@@ -72,6 +72,7 @@ common_user_password: >-
 # -------------------------------------------------------------------
 networks:
 - name: cluster
+- name: untagged
 
 # -------------------------------------------------------------------
 # Bastion VM settings
@@ -155,6 +156,9 @@ ai_cluster_network_cidr: "10.232.0.0/14"
 
 ai_install_use_network: "cluster{{ guid }}"
 
+ai_attach_workers_networks:
+- untagged
+
 # -------------------------------------------------------------------
 # Cluster sizing
 # -------------------------------------------------------------------
@@ -187,9 +191,7 @@ ai_workers_sockets: 2
 ai_workers_memory: 128Gi
 ai_workers_root_disk_size: 512Gi
 
-# Don't deploy extra disks if LVMS is not enabled
-ai_workers_extra_disks: "{{ _ai_workers_extra_disks if deploy_lvms | bool else [] }}"
-_ai_workers_extra_disks:
+ai_workers_extra_disks:
 - metadata:
     name: sdb-INSTANCENAME
   spec:
@@ -202,18 +204,18 @@ _ai_workers_extra_disks:
       resources:
         requests:
           storage: 2048Gi
-- metadata:
-    name: sdc-INSTANCENAME
-  spec:
-    source:
-      blank: {}
-    pvc:
-      accessModes:
-      - ReadWriteMany
-      volumeMode: Block
-      resources:
-        requests:
-          storage: 2048Gi
+# - metadata:
+#     name: sdc-INSTANCENAME
+#   spec:
+#     source:
+#       blank: {}
+#     pvc:
+#       accessModes:
+#       - ReadWriteMany
+#       volumeMode: Block
+#       resources:
+#         requests:
+#           storage: 2048Gi
 
 # ===================================================================
 # Workloads
@@ -223,7 +225,8 @@ workloads: >-
     [
       'agnosticd.core_workloads.ocp4_workload_external_odf',
       'agnosticd.core_workloads.ocp4_workload_cert_manager',
-      'agnosticd.core_workloads.ocp4_workload_authentication'
+      'agnosticd.core_workloads.ocp4_workload_authentication',
+      'agnosticd.core_workloads.ocp4_workload_nmstate'
     ] +
     (
       [
@@ -263,21 +266,35 @@ ocp4_workload_cert_manager_channel: stable-v1
 ocp4_workload_cert_manager_use_catalog_snapshot: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_osac
+# Workload: ocp4_workload_nmstate
 # -------------------------------------------------------------------
-ocp4_workload_osac_cli_version: v0.0.90
+ocp4_workload_nmstate_channel: stable
+ocp4_workload_nmstate_configure_nncp: true
+ocp4_workload_nmstate_nncp_bridge_name: br-untagged
+ocp4_workload_nmstate_nncp_interface_name: enp3s0
+ocp4_workload_nmstate_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_osac
+# -------------------------------------------------------------------ocp4_workload_osac_cli_version: v0.0.90
+ocp4_workload_osac_helm_mirror: https://mirror.openshift.com/pub/openshift-v4/clients
+ocp4_workload_osac_helm_version: "3.21.2"
+
+ocp4_workload_osac_cli_url: https://github.com/osac-project/osac/releases/download/fulfillment-service%2Fv0.0.97/osac_Linux_x86_64
 
 ocp4_workload_osac_repo: https://github.com/osac-project/osac.git
-ocp4_workload_osac_repo_version: main
+ocp4_workload_osac_repo_version: "osac/v0.0.9-nightly.20260906.3a511a6.71.1"
 ocp4_workload_osac_installer_directory: osac/osac-installer
 
 # OSAC namespace
 ocp4_workload_osac_namespace: osac
 # Profile to use. Available profiles: dev, vmaas-ci, bmaas-ci, caas-ci, full-ci
-ocp4_workload_osac_installer_profile: vmaas-ci
+ocp4_workload_osac_installer_profile: full-ci
+# BMF (Bare Metal Fulfillment) operator - requires a real bare-metal backend (BCM or Metal3)
+ocp4_workload_osac_bmf_enabled: false
 
-# Image Tag for the OSAC UI
-ocp4_workload_osac_ui_image_tag: main
+# OSAC UI image tag (empty = use version from the repo)
+ocp4_workload_osac_ui_image_tag: ""
 
 # ocp4_workload_osac_cluster_versions:
 # - version: "4.20.0"
@@ -291,11 +308,10 @@ ocp4_workload_osac_admin_user: osac-admin
 ocp4_workload_osac_admin_password: "{{ common_admin_password }}"
 ocp4_workload_osac_user_password: "{{ common_user_password }}"
 
-ocp4_workload_osac_lvms_enabled: "{{ deploy_lvms | bool }}"
+ocp4_workload_osac_lvms_enabled: true
 # Disks to use for LVMS deviceSelector. Empty = use all available disks.
 ocp4_workload_osac_lvms_disks:
 - /dev/vdb
-- /dev/vdc
 
 # AAP license. Expires 2026-12-31
 # ================================================
@@ -438,13 +454,6 @@ __meta__:
       openAPIV3Schema:
         type: boolean
         default: true
-    - name: deploy_lvms
-      description: >-
-        Deploy the LVM Storage Operator and use it for Red Hat Cloud Extensions.
-      formLabel: Deploy LVM Storage Operator
-      openAPIV3Schema:
-        type: boolean
-        default: true
     - name: num_workers
       description: >-
         Number of worker nodes to provision within the environment.
@@ -459,7 +468,7 @@ __meta__:
     scm_url: https://github.com/rhpds/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2026-08-05
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-09-15
       pull: missing
 
   sandbox_api:
