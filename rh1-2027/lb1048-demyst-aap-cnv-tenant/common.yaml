@@ -116,9 +116,11 @@ ocp4_workload_tenant_namespace_suffixes:
 # 4 namespaces x (13 operators + 6 postgres/redis + 4+ gateway + more) ~= 100-140 CPU limits
 # requests.cpu is low (~100m per operator, ~200m per workload pod) — 24 is safe for 4 ns
 # requests.storage: 4 x postgres 8Gi + Hub RWX PVC per scenario ~= 100Gi+ needed
-# limits.cpu=64 caused ALL 4 scenarios to deadlock simultaneously — increased to 200.
+# limits.cpu=64 caused ALL 4 scenarios to deadlock simultaneously -- increased to 200.
+# AAP gateway proxy hardcodes limits.cpu=256 (operator bug, not overridable via CR spec);
+# 4 namespaces x 256 = 1024 exceeds 200. Raised to 1500 (declared limit, not actual usage).
 ocp4_workload_tenant_namespace_default_quota:
-  limits.cpu: "200"
+  limits.cpu: "1500"
   requests.cpu: "24"
   limits.memory: 384Gi
   requests.memory: 160Gi
@@ -202,6 +204,8 @@ ocp4_workload_showroom_terminal_type: ""
 # ===================================================================
 ocp4_workload_showroom_user_data_seed:
   console_url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
+  username: "{{ ocp4_workload_tenant_keycloak_username }}"
+  openshift_apps_domain: "{{ openshift_cluster_ingress_domain }}"
   aap_admin_user: admin
   aap_admin_password: "{{ common_password }}"
   alia_token: "{{ alia_token }}"
