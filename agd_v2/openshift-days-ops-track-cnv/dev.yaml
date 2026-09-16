@@ -1,6 +1,6 @@
 ---
 # -------------------------------------------------------------------
-# Development overrides for OCP 4.22 testing
+# Development overrides for OCP 5.0 testing
 # All workload config is in common.yaml. This file only overrides
 # branch references and version pins for dev testing.
 # -------------------------------------------------------------------
@@ -8,12 +8,17 @@
 # Use dev branch for development testing
 tag: dev
 
-# Showroom content repo - use dev for testing
-ocp4_workload_showroom_content_git_repo_ref: dev
+# Showroom content repo - now served from the deliver-openshift-ops-day
+# monorepo instead of the standalone openshift-days-ops-showroom repo
+# (matches rh1-2027/lb1543-ocp-ops-day-cnv pattern).
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/deliver-openshift-ops-day.git
+ocp4_workload_showroom_content_git_repo_ref: main
 ocp4_workload_showroom_antora_enable_dev_mode: "true"
 
-# Override requirements_content to drop #/ops_track fragment
-# The dev branch of the automation repo has galaxy.yml at root
+# Override requirements_content: automation roles now come from the
+# deliver-openshift-ops-day monorepo instead of the standalone
+# openshift-days-roadshow-automation repo. showroom collection (the
+# generic deploy mechanism, not this workshop's content) is unchanged.
 requirements_content:
   collections:
   - name: https://github.com/rhpds/assisted_installer.git
@@ -25,9 +30,9 @@ requirements_content:
   - name: https://github.com/rhpds/showroom.git
     type: git
     version: v1.6.12
-  - name: https://github.com/rhpds/openshift-days-roadshow-automation.git
+  - name: https://github.com/rhpds/deliver-openshift-ops-day.git#/automation/ansible
     type: git
-    version: dev
+    version: main
   # Pinned to ede8c9b6 - main branch removed ManagedClusterSet and policy tasks
   - name: https://github.com/rhpds/sovereign_cloud.git
     type: git
@@ -35,6 +40,65 @@ requirements_content:
   - name: https://github.com/rhpds/ai_workloads.git
     type: git
     version: main
+
+# -------------------------------------------------------------------
+# Workload lists - full copies of common.yaml's _*_workloads groups
+# with openshift_days.ops_track.* renamed to the monorepo's
+# deliver_openshift_ops_day.automation.* collection namespace.
+# AgnosticV does not deep-merge lists, so these must be fully redefined
+# here rather than patched in common.yaml (keeps prod.yaml unaffected).
+# -------------------------------------------------------------------
+_base_workloads:
+- deliver_openshift_ops_day.automation.ocp4_workload_cluster_cleanup_preflight
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+- agnosticd.showroom.ocp4_workload_showroom
+- deliver_openshift_ops_day.automation.ocp4_workload_days_ops_track
+- agnosticd.core_workloads.ocp4_workload_web_terminal
+- agnosticd.core_workloads.ocp4_workload_pipelines
+
+_virt_workloads:
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+
+_hcp_workloads:
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_rhacm
+- deliver_openshift_ops_day.automation.ocp4_workload_rhacm_cloud_credentials
+- agnosticd.core_workloads.ocp4_workload_metallb
+- deliver_openshift_ops_day.automation.ocp4_workload_hcp_kubevirt
+- rhpds.sovereign_cloud.ocp4_workload_prepare_hcp
+
+_acm_workloads:
+- deliver_openshift_ops_day.automation.ocp4_workload_acm_multicluster_observability
+- deliver_openshift_ops_day.automation.ocp4_days_workload_compliance_operator
+- deliver_openshift_ops_day.automation.ocp4_workload_create_hcp_cluster
+
+_gitops_workloads:
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+
+_devhub_workloads:
+- deliver_openshift_ops_day.automation.ocp4_days_workload_rhdh
+
+_ols_workloads:
+- agnosticd.ai_workloads.ocp4_workload_ols
+- deliver_openshift_ops_day.automation.ocp4_workload_ols_cleanup
+
+_security_workloads:
+- agnosticd.core_workloads.ocp4_workload_rhacs
+- deliver_openshift_ops_day.automation.ocp4_workload_rhacs_console_embed
+- deliver_openshift_ops_day.automation.ocp4_days_workload_compliance_operator
+- deliver_openshift_ops_day.automation.ocp4_days_workload_ztwim
+- deliver_openshift_ops_day.automation.ocp4_days_workload_vault
+
+_cleanup_workloads:
+- deliver_openshift_ops_day.automation.ocp4_workload_cluster_cleanup
+
+_cleanup_final_workloads:
+- deliver_openshift_ops_day.automation.ocp4_workload_cluster_cleanup_final
+
+_diag_workloads:
+- deliver_openshift_ops_day.automation.ocp4_workload_cluster_diagnostics
 
 # -------------------------------------------------------------------
 # Version overrides (from catalog snapshot v4.22_2026_08_31)
@@ -60,12 +124,11 @@ __meta__:
 
   components:
   - name: openshift-base
-    display_name: OpenShift Cluster (CNV)
-    item: agd-v2/ocp-cluster-cnv-pools
+    display_name: OpenShift 5 Cluster (CNV)
+    item: agd-v2/ocp5-cluster-cnv-pools
     parameter_values:
       cluster_size: multinode
-      host_ocp4_installer_version: "4.22"
-      ocp4_fips_enable: false
+      host_ocp4_installer_version: '5.0'
     propagate_provision_data:
     - name: openshift_api_ca_cert
       var: openshift_api_ca_cert
