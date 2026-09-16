@@ -1,0 +1,222 @@
+---
+# This item is restricted to devs only.
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-pe.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+#include /includes/secrets/litemaas-master_api.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: OpenShiftAdvanced App Platform Demo (CNV)
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticDv2 variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# Only admin user is required
+num_users: 0
+
+tag: main
+
+# -------------------------------------------------------------------
+# Collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  # Assisted Installer Collection
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: v0.0.9
+  # Core OpenShift Workloads
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+  # OpenShift Advanced Platform Collection
+  - name: https://github.com/rhpds/openshift-advanced-platform-demo#/automation/ansible
+    type: git
+    version: main
+  # LiteLLM Virtual Keys Collection
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: main
+  # Showroom Collection
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: "v1.7.2"
+
+# ===================================================================
+# Autoscaling cluster
+# ===================================================================
+openshift_cnv_scale_cluster: true
+worker_instance_count: 2
+
+ai_workers_cores: 16
+ai_workers_memory: '64Gi'
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits')
+  }}
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- ocp_advanced_platform.automation.ocp4_etx_app_platform
+- agnosticd.showroom.ocp4_workload_showroom
+
+remove_workloads:
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_htpasswd
+# -------------------------------------------------------------------
+# Generate admin password
+ocp4_workload_authentication_htpasswd_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+# Generate user password
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_password_randomized: true
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_etx_app_platform
+# -------------------------------------------------------------------
+ocp4_etx_app_platform_noobaa_install: false
+ocp4_etx_app_platform_gitops_repo_tag: main
+# Enable catalog source pinning for the app-of-apps operator installs to ensure
+# we don't automatically install new versions of operators without testing!
+ocp4_etx_app_platform_catalog_source_enabled: true
+
+# -------------------------------------------------------------------
+# Workload: rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_models:
+- nomic-embed-text-v1-5
+- qwen3-235b
+- qwen3-14b
+ocp4_workload_litellm_virtual_keys_duration: "21d"
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/openshift-advanced-platform-demo
+ocp4_workload_showroom_content_git_repo_ref: main
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 1ee92e6d-1455-47a2-97cb-45f7aacb991c
+  owners:
+    maintainer:
+    - name: James Falkner
+      email: jfalkner@redhat.com
+    - name: Evan Shortiss
+      email: eshortis@redhat.com
+    - name: Markus Nagel
+      email: mnagel@redhat.com
+    instructions:
+    - name: James Falkner
+      email: jfalkner@redhat.com
+    - name: Evan Shortiss
+      email: eshortis@redhat.com
+    - name: Markus Nagel
+      email: mnagel@redhat.com
+
+  catalog:
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1932: OpenShift Advanced App Platform Demo (CNV)"
+    category: Demos
+    multiuser: false
+    workshopUiDisabled: true
+    keywords:
+    - platform engineering
+    - rhdh
+    - developer hub
+    - openshift
+    - gitops
+    - rhads
+    labels:
+      Product: Red_Hat_Advanced_Developer_Suite
+      Provider: RHDP
+      Product_Family: Red_Hat_Cloud
+
+  components:
+  - name: openshift_base
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-cnv-pools
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: "4.20"
+      ocp4_fips_enable: false
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-05-04
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
