@@ -1,0 +1,203 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: LB1815 Lightwell (Cluster)
+# --- Sandbox API cluster for the Lightwell trusted software supply
+# --- chain demo. Deploys GitLab, Artifactory, Jenkins, SonarQube,
+# --- Quay, AAP, RHTAS, and RHTPA via GitOps bootstrap on OpenShift.
+# --- Designed to be registered with the OpenShift Sandbox API.
+# -------------------------------------------------------------------
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+#include /includes/parameters/purpose.yaml
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+num_users: 0
+
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
+
+# ===================================================================
+# Cluster Sizing
+# ===================================================================
+openshift_cnv_scale_cluster: true
+
+# Set this to the number of workers needed to support
+# X placements by sandbox API
+worker_instance_count: 3
+ai_workers_cores: 16
+ai_workers_memory: 64Gi
+
+worker_only: true
+
+# -------------------------------------------------------------------
+# Common Password - used by service admin accounts
+# -------------------------------------------------------------------
+
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=16, chars=['ascii_letters', 'digits'])
+  }}
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+requirements_content:
+  collections:
+    # Assisted Installer Collection
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: v0.0.9
+
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+    # Showroom
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: v1.6.11
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_authentication
+  - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.showroom.ocp4_workload_ocp_console_embed
+
+# ===================================================================
+# Workload: ocp4_workload_authentication
+# ===================================================================
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_enable_user_info_data: true
+
+# ===================================================================
+# Workload: ocp4_workload_openshift_gitops
+# ===================================================================
+ocp4_workload_openshift_gitops_channel: gitops-1.18
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+# ===================================================================
+# Workload: ocp4_workload_gitops_bootstrap
+# ===================================================================
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/lightwell-workshop.git
+ocp4_workload_gitops_bootstrap_repo_path: automation/gitops/bootstrap-infra
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_application_name: lb1815-lightwell
+ocp4_workload_gitops_bootstrap_helm_values:
+  deployer:
+    domain: "{{ openshift_cluster_ingress_domain }}"
+    storageClass: ocs-external-storagecluster-ceph-rbd-immediate
+  admin:
+    password: "{{ common_admin_password }}"
+  gitlab:
+    rootPassword: "{{ common_admin_password }}"
+  jenkins:
+    password: "{{ common_admin_password }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: 74769d09-1cdc-48a2-bb50-98968db3f437
+  owners:
+    maintainer:
+      - name: Tony Kay
+        email: ankay@redhat.com
+  catalog:
+    display_name: "LB1815 Lightwell (Tenant Cluster CNV)"
+    category: Demos
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+      - openshift
+      - lightwell
+      - tssc
+      - trusted-software-supply-chain
+    labels:
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters: []
+    # This item only provisions shared infrastructure.
+    # It would not be appropriate to order a workshop of this item.
+    workshopUiDisabled: true
+
+  components:
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools
+      parameter_values:
+        cluster_size: multinode
+        host_ocp4_installer_version: "4.22"
+      propagate_provision_data:
+        - name: openshift_api_ca_cert
+          var: openshift_api_ca_cert
+        - name: openshift_api_url
+          var: openshift_api_url
+        - name: openshift_cluster_admin_token
+          var: openshift_api_key
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: bastion_public_hostname
+          var: bastion_ansible_host
+        - name: bastion_ssh_user_name
+          var: bastion_ansible_user
+        - name: bastion_ssh_password
+          var: bastion_ansible_ssh_pass
+        - name: bastion_ssh_port
+          var: bastion_ansible_port
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+        - name: aap_controller_admin_password
+          var: aap_controller_admin_password
+        - name: aap_controller_admin_user
+          var: aap_controller_admin_user
+        - name: aap_controller_web_url
+          var: aap_controller_web_url
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-08-05
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: false
+      status:
+        disable: true
+      stop:
+        disable: false
+      update:
+        disable: true
+
+  sandbox_host:
+    annotations:
+      cloud: cnv-dedicated-shared
+      lab: lb1815-lightwell
+    max_cpu_usage_percentage: 90
+    max_memory_usage_percentage: 85
+    max_placements: 12

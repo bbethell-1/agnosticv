@@ -1,0 +1,222 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: LB1815 Lightwell (Tenant)
+# --- Per-tenant provisioning for the Lightwell Enterprise Demo.
+# --- Deploys onto the shared lb1815-lightwell-cluster via the
+# --- OpenShift Sandbox API.
+# ---
+# --- Each tenant gets a Keycloak user, an isolated namespace, and,
+# --- via a per-tenant ArgoCD Application (GitOps, not an Ansible
+# --- role), provisioned accounts in AAP2, GitLab, and Artifactory,
+# --- plus a Showroom lab guide. The shared cluster provides GitLab,
+# --- Jenkins, Artifactory, Quay, AAP2, RHTAS and RHTPA via GitOps.
+# -------------------------------------------------------------------
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+config: namespace
+cloud_provider: none
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/namespaced_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+    # Showroom
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: v1.6.11
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.showroom.ocp4_workload_showroom
+
+# ===================================================================
+# Common
+# ===================================================================
+ocp4_workload_username: "user-{{ guid }}"
+
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+# ===================================================================
+# Workload: ocp4_workload_tenant_keycloak_user
+# ===================================================================
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_namespace: keycloak
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+
+# ===================================================================
+# Workload: ocp4_workload_tenant_namespace
+# ===================================================================
+ocp4_workload_tenant_namespace_username: "user-{{ guid }}"
+ocp4_workload_tenant_namespace_use_cluster_quota: true
+ocp4_workload_tenant_namespace_suffixes:
+  - suffix: enterprise
+
+# Total resource pool shared across all of this tenant's namespaces via
+# a ClusterResourceQuota. Sized for a Jenkins/Maven build plus a running
+# sample app. requests are what the scheduler reserves; limits are the
+# burst ceiling.
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "8"
+  requests.cpu: "2"
+  limits.memory: 12Gi
+  requests.memory: 6Gi
+  requests.storage: 30Gi
+
+# LimitRange applied to every namespace.
+# Sets container defaults for pods that don't specify resource requests/limits.
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: "2"
+    memory: 2Gi
+  defaultRequest:
+    cpu: 25m
+    memory: 256Mi
+
+# ===================================================================
+# Workload: ocp4_workload_gitops_bootstrap
+# Creates a per-tenant ArgoCD Application that provisions the tenant's
+# account in AAP2, GitLab, and Artifactory (see bootstrap-tenant chart
+# in rhpds/lightwell-automation-gitops).
+# ===================================================================
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/lightwell-workshop.git
+ocp4_workload_gitops_bootstrap_repo_path: automation/gitops/bootstrap-tenant
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_application_name: "lightwell-tenant-{{ guid }}"
+ocp4_workload_gitops_bootstrap_helm_values:
+  guid: "{{ guid }}"
+  username: "user-{{ guid }}"
+  password: "{{ common_password }}"
+  aap:
+    org: "user-{{ guid }}"
+  gitlab:
+    domain: "{{ openshift_cluster_ingress_domain }}"
+  artifactory:
+    domain: "{{ openshift_cluster_ingress_domain }}"
+    virtualRepoKey: "pypi-virtual-user-{{ guid }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+#
+# openshift_cluster_ingress_domain is discovered by the tenant
+# keycloak_user role via cluster discovery.
+# -------------------------------------------------------------------
+# These are required since the Showroom role doesn't natively know about
+# them like the other namespace workloads.
+# The sandbox provides openshift_cluster_admin_token; namespaced_workloads
+# roles expect cluster_admin_agnosticd_sa_token.
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+cluster_admin_agnosticd_sa_token: "{{ openshift_cluster_admin_token }}"
+
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_passthrough_user_data: true
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/lightwell-workshop.git
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 40
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+  - name: Terminal
+    path: /terminal
+    port: 443
+  - name: OpenShift Console
+    url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
+  - name: Artifactory
+    url: "https://artifactory-lightwell-artifactory.{{ openshift_cluster_ingress_domain }}"
+  - name: GitLab
+    url: "https://gitlab-gitlab.{{ openshift_cluster_ingress_domain }}"
+  # - name: Red Hat Quay
+  #   url: "https://lightwell-quay-lightwell-quay.{{ openshift_cluster_ingress_domain }}"
+  # - name: AAP2
+  #   url: "https://aap-aap.{{ openshift_cluster_ingress_domain }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 9f87b80c-1ce6-4c3c-80d9-e7f147f91b9a
+  owners:
+    maintainer:
+      - name: Tony Kay
+        email: ankay@redhat.com
+  sandboxes:
+    - kind: OcpSandbox
+      cloud_selector:
+        cloud: cnv-dedicated-shared
+        lab: lb1815-lightwell
+        purpose: dev
+
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+
+  catalog:
+    display_name: "LB1815 Lightwell"
+    category: Demos
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+      - lightwell
+      - tssc
+      - trusted-software-supply-chain
+      - rhtas
+      - rhtpa
+      - gitlab
+    labels:
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters: []
+    # Provision doesn't call `agnosticd_user_info` with `user` set and so does
+    # not report `users` in `provision_data`. All data and messages are
+    # assigned directly to the workshop seat.
+    workshop_user_mode: none
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-08-05
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: false
+      status:
+        disable: true
+      stop:
+        disable: false
+      update:
+        disable: true
