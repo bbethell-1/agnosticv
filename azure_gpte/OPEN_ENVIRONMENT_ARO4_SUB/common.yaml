@@ -2,7 +2,6 @@
 #include /includes/catalog-icon-azure.yaml
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
-#include /includes/parameters/azure-region2.yaml
 #include /includes/parameters/azure-aro-version.yaml
 #include /includes/parameters/open-environment-annotation-hidden.yaml
 #include /includes/parameters/requester_username.yaml
@@ -13,6 +12,7 @@
 #include /includes/secrets/azure_redhat0_rhdp_manager.yaml
 #include /includes/runtime-unlimited.yaml
 #include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
+#include /includes/sandbox-api.yaml
 # -------------------------------------------------------------------
 # --- Catalog: Red Hat Open Environments
 # --- Catalog Item: Azure with ARO Open Environment
@@ -26,8 +26,23 @@ agnosticd_open_environment: true
 
 cloud_provider: azure
 
-# Azure pool to use
-az_pool_id: "01"
+# Region: do not pin here — AgnosticD pre_infra (branch fix/open-env-azure-sandbox-pre-infra until #9933 merges)
+# sets location/azure_region from the pre-created openenv-{guid} resource group.
+
+# User subscription and SP (allocated via AzureSandbox before AgnosticD runs)
+azure_subscription: "{{ azure_sandbox.credentials[0].subscription_id }}"
+azure_service_principal_id: "{{ azure_sandbox.credentials[0].app_id }}"
+azure_service_principal_password: "{{ azure_sandbox.credentials[0].password }}"
+azure_tenant: "{{ azure_sandbox.credentials[0].tenant }}"
+azure_user_data:
+  azure_service_principal_id: "{{ azure_sandbox.credentials[0].app_id }}"
+  azure_service_principal_password: "{{ azure_sandbox.credentials[0].password }}"
+  azure_tenant: "{{ azure_sandbox.credentials[0].tenant }}"
+  azure_subscription: "{{ azure_sandbox.credentials[0].subscription_id }}"
+  guid: "{{ guid }}"
+agnosticd_passthrough_user_data: |
+  {{ azure_user_data }}
+
 # Enable ARO installation functions
 install_aro: true
 
@@ -78,6 +93,11 @@ showroom_git_ref: showroom
 # -------------------------------------------------------------------
 __meta__:
   asset_uuid: 0F60F10C-F4FE-4DAD-85AA-4BFA62000090
+  sandboxes:
+    - kind: AzureSandbox
+      cloud_selector:
+        purpose: production
+      var: azure_sandbox
   owners:
     maintainer:
       - name: Patrick Rutledge
