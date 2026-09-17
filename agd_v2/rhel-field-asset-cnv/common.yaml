@@ -1,0 +1,460 @@
+---
+# Temporary access restriction for admins only.
+#include /includes/access-restriction-admins-only.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: RHEL Field Sourced Assets
+# --- JIRA: RHDPCD-1581
+# -------------------------------------------------------------------
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-rhel.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+
+# -------------------------------------------------------------------
+# AgnosticDv2 variables
+# -------------------------------------------------------------------
+config: cloud-vms-base
+cloud_provider: openshift_cnv
+cloud_provider_version: main
+
+# Pin collections to this feature branch until it merges.
+tag: RHDPCD-1581
+
+ansible_user: cloud-user
+remote_user: cloud-user
+
+openshift_cnv_legacy_routes: false
+openshift_cnv_route_remove_x_frame_options_header: true
+
+# -------------------------------------------------------------------
+# Passwords
+# -------------------------------------------------------------------
+common_password: >-
+  {{ lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits']) }}
+
+# -------------------------------------------------------------------
+# Hostnames
+# -------------------------------------------------------------------
+subdomain: "{{ sandbox_openshift_apps_domain }}"
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}-{{ guid }}.{{ subdomain }}"
+
+# -------------------------------------------------------------------
+# Collections
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/cloud_vm_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: v1.7.1
+
+# -------------------------------------------------------------------
+# RHEL image: majors only. Map to current CNV aliases.
+# -------------------------------------------------------------------
+rhel_version: rhel9
+default_instance_image: "{{ 'rhel-10.1' if rhel_version == 'rhel10' else 'rhel-9.7' }}"
+bastion_instance_image: "{{ default_instance_image }}"
+node_instance_image: "{{ default_instance_image }}"
+
+# -------------------------------------------------------------------
+# Node sizing: one t-shirt for every node
+# -------------------------------------------------------------------
+node_instance_count: 1
+node_size: medium
+node_cores: "{{ {'small': 2, 'medium': 4, 'large': 8}[node_size] }}"
+node_memory: "{{ {'small': '4G', 'medium': '8G', 'large': '16G'}[node_size] }}"
+node_disk: "{{ {'small': '50Gi', 'medium': '80Gi', 'large': '100Gi'}[node_size] }}"
+
+# -------------------------------------------------------------------
+# Instances
+# -------------------------------------------------------------------
+instances:
+  - name: bastion
+    count: 1
+    unique: true
+    public_dns: false
+    dns_loadbalancer: true
+    floating_ip: false
+    image: "{{ bastion_instance_image }}"
+    memory: 4G
+    cores: 2
+    image_size: 100Gi
+    tags:
+      - key: AnsibleGroup
+        value: bastions,showroom
+      - key: ostype
+        value: linux
+    networks:
+      - default
+    services:
+      - name: bastion
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: bastion-ssh
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: bastion-http
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: bastion-https
+          - port: 8080
+            protocol: TCP
+            targetPort: 8080
+            name: bastion-8080
+          - port: 8443
+            protocol: TCP
+            targetPort: 8443
+            name: bastion-8443
+    routes:
+      # Showroom tls none publishes host port 80 (container 80). Edge TLS
+      # still makes the public URL https://bastion-<guid>.<domain>.
+      - name: bastion-https
+        host: bastion
+        service: bastion
+        targetPort: 80
+        tls: true
+        tls_termination: edge
+      # Reserved for the author. 8080 is plain HTTP; 8443 is HTTPS (edge).
+      - name: bastion-8080
+        host: app
+        service: bastion
+        targetPort: 8080
+        tls: false
+      - name: bastion-8443
+        host: app-secure
+        service: bastion
+        targetPort: 8443
+        tls: true
+        tls_termination: edge
+
+  - name: node
+    count: "{{ node_instance_count | int }}"
+    public_dns: false
+    image: "{{ node_instance_image }}"
+    memory: "{{ node_memory }}"
+    cores: "{{ node_cores }}"
+    image_size: "{{ node_disk }}"
+    tags:
+      - key: AnsibleGroup
+        value: nodes
+      - key: ostype
+        value: linux
+    networks:
+      - default
+
+# -------------------------------------------------------------------
+# Packages
+# -------------------------------------------------------------------
+host_common_packages_extra:
+  - podman
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+pre_software_workloads:
+  all:
+    - host_satellite_repositories
+    - host_common_packages
+  bastions:
+    - bastion
+    - agnosticd.cloud_vm_workloads.control_user
+  nodes:
+    - agnosticd.cloud_vm_workloads.control_user
+
+post_software_workloads:
+  bastions:
+    - agnosticd.cloud_vm_workloads.vm_workload_field_content
+
+post_software_final_workloads:
+  localhost:
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+  bastions: >-
+    {{
+      ['agnosticd.showroom.vm_workload_showroom']
+      if (
+        enable_showroom | default(false) | bool
+        and vm_workload_field_content_existing_content | default(false) | bool
+      ) else []
+    }}
+
+agnosticv_importdata:
+  ssh_host: "{{ openshift_cnv_ssh_address }}"
+  ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+  user: "{{ student_name }}"
+  password: "{{ common_password }}"
+  ssh_command: >-
+    ssh {{ student_name }}@{{ openshift_cnv_ssh_address }}
+    -p {{ hostvars[groups['bastions'][0]].bastion_ssh_port }}
+  node_instance_count: "{{ node_instance_count }}"
+  field_content_inventory: /opt/field-content/inventory
+  workload_nodes: "{{ groups['nodes'] | default([]) | map('regex_replace', '\\..*$', '') | list | join(', ') }}"
+  bastion_app_url: "http://app-{{ guid }}.{{ subdomain }}"
+  bastion_app_secure_url: "https://app-secure-{{ guid }}.{{ subdomain }}"
+  showroom_url: "{{ ('https://' ~ bastion_public_hostname) if (enable_showroom | default(false) | bool) else omit }}"
+
+# -------------------------------------------------------------------
+# control_user / bastion login
+# -------------------------------------------------------------------
+env_authorized_key: "{{ guid }}key"
+student_name: lab-user
+student_password: "{{ common_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ common_password }}"
+control_user_private_group: "{{ omit }}"
+control_user_enable_user_data: false
+bastion_setup_student_user: true
+bastion_student_user_name: "{{ student_name }}"
+bastion_student_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Field content runner
+# -------------------------------------------------------------------
+vm_workload_field_content_existing_content: false
+vm_workload_field_content_git_repo_url: ""
+vm_workload_field_content_git_repo_revision: main
+vm_workload_field_content_playbook: playbooks/deploy.yml
+vm_workload_field_content_git_repo_key: ""
+vm_workload_field_content_enable_showroom: "{{ enable_showroom | default(false) | bool }}"
+vm_workload_field_content_showroom_path: "{{ showroom_path | default('') }}"
+vm_workload_field_content_enable_bastion_proxy: false
+
+# -------------------------------------------------------------------
+# Showroom (optional, same git repo as the collection)
+# -------------------------------------------------------------------
+enable_showroom: false
+showroom_path: ""
+showroom_git_repo: >-
+  {{
+    '/opt/field-content/showroom-content'
+    if (showroom_path | default('') | length > 0)
+    else vm_workload_field_content_git_repo_url
+  }}
+showroom_git_ref: >-
+  {{
+    'HEAD'
+    if (showroom_path | default('') | length > 0)
+    else vm_workload_field_content_git_repo_revision
+  }}
+showroom_user: showroom
+showroom_tls_provider: none
+# Keep version: ~ in antora.yml. Userdata inject dumps it as null and Antora
+# then publishes no pages. Stub guide does not need injected attributes.
+showroom_var_inject: false
+showroom_host: "{{ bastion_public_hostname }}"
+showroom_ssh_method: password
+showroom_ssh_host: "{{ openshift_cnv_ssh_address }}"
+showroom_ssh_port: "{{ hostvars[groups['bastions'][0]].bastion_ssh_port }}"
+showroom_ssh_username: "{{ student_name }}"
+showroom_ssh_password: "{{ common_password }}"
+showroom_lab_users:
+  - "{{ student_name }}"
+showroom_tab_services:
+  - single_terminal
+
+# -------------------------------------------------------------------
+# Babylon meta
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 5c4397d8-56dc-4573-bf06-75d16316b7e2
+  owners:
+    maintainer:
+      - name: Nate Stephany
+        email: nstephan@redhat.com
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-05-04
+      pull: missing
+    actions:
+      status:
+        disable: true
+      update:
+        disable: true
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Field Sourced Content - RHEL Base (CNV)"
+    category: Labs
+    keywords: []
+    labels:
+      Product: Red_Hat_Enterprise_Linux
+      Product_Family: Red_Hat_Linux
+      Provider: RHDP
+      Platform: RHEL
+      TDP: Server_Cloud_OS
+    multiuser: false
+    workshopUiDisabled: true
+    workshop_user_mode: none
+    reportingLabels:
+      primaryBU: RHEL
+    parameters:
+      - name: node_instance_count
+        description: Number of RHEL nodes to deploy
+        formLabel: Node count
+        required: true
+        openAPIV3Schema:
+          type: integer
+          default: 1
+          minimum: 1
+          maximum: 10
+        components:
+          - name: current
+
+      - name: node_size
+        description: Size applied to nodes
+        formLabel: Node size
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: small
+          enum:
+            - small
+            - medium
+            - large
+        components:
+          - name: current
+
+      - name: rhel_version
+        description: RHEL major version for bastion and nodes (latest image for that major)
+        formLabel: RHEL version
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: rhel9
+          enum:
+            - rhel9
+            - rhel10
+        components:
+          - name: current
+
+      - name: vm_workload_field_content_existing_content
+        description: Point this environment at an Ansible collection git repo
+        formLabel: Existing content repo?
+        formGroup: Field content
+        openAPIV3Schema:
+          type: boolean
+          default: false
+        components:
+          - name: current
+
+      - name: vm_workload_field_content_git_repo_url
+        description: Git URL of an Ansible collection
+        formLabel: Collection git repo
+        formGroup: Field content
+        formHideCondition: vm_workload_field_content_existing_content == false
+        formRequireCondition: vm_workload_field_content_existing_content == true
+        openAPIV3Schema:
+          type: string
+          default: ''
+        components:
+          - name: current
+
+      - name: vm_workload_field_content_git_repo_revision
+        description: Branch, tag, or commit
+        formLabel: Git revision
+        formGroup: Field content
+        formHideCondition: vm_workload_field_content_existing_content == false
+        formRequireCondition: vm_workload_field_content_existing_content == true
+        openAPIV3Schema:
+          type: string
+          default: main
+        components:
+          - name: current
+
+      - name: vm_workload_field_content_playbook
+        description: >-
+          Path to the playbook inside the collection (any filename you choose).
+          This is what is executed when the environment is deployed.
+        formLabel: Playbook entrypoint
+        formGroup: Field content
+        formHideCondition: vm_workload_field_content_existing_content == false
+        formRequireCondition: vm_workload_field_content_existing_content == true
+        openAPIV3Schema:
+          type: string
+          default: playbooks/deploy.yml
+        components:
+          - name: current
+
+      - name: private_content
+        description: Repo requires an access token
+        formLabel: Private git repo?
+        formGroup: Field content
+        formHideCondition: vm_workload_field_content_existing_content == false
+        openAPIV3Schema:
+          type: boolean
+          default: false
+        components:
+          - name: current
+
+      - name: vm_workload_field_content_git_repo_key
+        description: Access token for a private git repo
+        formLabel: Git access token
+        formGroup: Field content
+        formHideCondition: private_content == false
+        formRequireCondition: private_content == true
+        openAPIV3Schema:
+          type: string
+          default: ''
+        components:
+          - name: current
+
+      - name: vm_workload_field_content_enable_bastion_proxy
+        description: >-
+          Installs Nginx reverse proxy on the bastion, listening on 8080 and 8443.
+          Author playbooks can drop config into /etc/nginx/proxy.d/ to route
+          traffic to services on workload nodes.
+        formLabel: Install proxy on bastion?
+        formGroup: Field content
+        formHideCondition: vm_workload_field_content_existing_content == false
+        openAPIV3Schema:
+          type: boolean
+          default: false
+        components:
+          - name: current
+
+      - name: enable_showroom
+        description: Deploy Showroom from the same git repo
+        formLabel: Deploy Showroom?
+        formGroup: Showroom
+        formHideCondition: vm_workload_field_content_existing_content == false
+        openAPIV3Schema:
+          type: boolean
+          default: false
+        components:
+          - name: current
+
+      - name: showroom_path
+        description: >-
+          Directory in the collection repo that contains site.yml, ui-config.yml,
+          and content/. Leave empty if Showroom lives at the repository root.
+        formLabel: Alternative Showroom path
+        formGroup: Showroom
+        formHideCondition: enable_showroom == false
+        openAPIV3Schema:
+          type: string
+          default: ''
+        components:
+          - name: current
+
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+      quota:
+        requests.storage: 500Gi

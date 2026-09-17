@@ -1,0 +1,75 @@
+[WARNING]
+====
+Do not order this item unless you are a developer and are working on the CI.
+====
+
+Provides RHEL virtual machines on CNV. You choose how many nodes and one size for those nodes. Optionally point the order at a project repository containing your automation (as an Ansible collection) and, if needed, Showroom lab guide content — all in one repo. A bastion starts your playbook in a Podman execution environment and does **not** wait for it to succeed.
+
+[NOTE]
+====
+Automation started from your git repo is not monitored or verified by the RHDP platform.
+You have control (and responsibility) over what runs on the nodes.
+====
+
+== Instructions
+
+=== Infrastructure options
+
+* *Node count* — RHEL nodes in addition to the bastion (1–10)
+* *Node size* — small, medium, or large; applied to every node
+* *RHEL version* — RHEL 9 or RHEL 10 (latest image for that major)
+
+Leave *Existing content repo?* unchecked if you only need the VMs.
+
+=== Running automation from your repo
+
+Start here: https://github.com/rhpds/field-sourced-content-rhel — fork or copy this template, then read on for how the order form works.
+
+Check *Existing content repo?* and provide:
+
+* The git URL of your project repository. It must be structured as an Ansible collection (`galaxy.yml` at the root, with roles and playbooks inside).
+* The git revision (branch, tag, or commit).
+* The *Playbook entrypoint* — path to your playbook inside the collection. Name the file whatever you want; this field is how the runner finds it. The template uses `playbooks/deploy.yml`.
+
+For private GitHub repos, check *Private git repo?* and provide an access token.
+
+The platform writes an inventory on the bastion with groups `bastions` and `nodes`. Target those groups in your playbook. If your collection has a `requirements.yml` at the root or under `playbooks/`, the runner installs those dependencies before starting the playbook.
+
+=== Bastion proxy
+
+The bastion always exposes ports 8080 and 8443 through the catalog Routes at `app-<guid>` and `app2-<guid>`. You can listen on those ports however you like from your own playbook.
+
+Check *Install proxy on bastion?* for a quick-start option: it runs the template's `example_proxy` role, which installs Squid on those ports. This is just a convenience — you are free to set up your own listeners instead.
+
+=== Showroom lab guide
+
+Check *Deploy Showroom?* to build a lab guide from the **same** git repo. Leave *Showroom path* empty if `site.yml`, `ui-config.yml`, and `content/` are at the repository root. If they live in a subdirectory, set *Showroom path* to that directory.
+
+=== How the runner works
+
+The catalog starts `field-content.service` on the bastion. That unit runs your collection inside a Podman EE (`ansible-galaxy collection install` then `ansible-playbook`). The order succeeds once the container is running, not when the playbook finishes.
+
+Watch it with:
+
+....
+systemctl status field-content
+journalctl -u field-content -f
+podman logs -f field-content
+....
+
+== Product List
+
+* Red Hat Enterprise Linux 9 or 10
+* Optional automation from your project repository
+* Optional Showroom lab guide
+
+== Authors & Maintainers
+
+* Nate Stephany
+* RHDP Content Team
+
+== Support
+
+If you have a problem with the deployment of this catalog item, please open a ticket or join the link:https://redhat.enterprise.slack.com/archives/C04N203SNUW[Slack channel^].
+
+If you have a problem with the content running from your git repo, that is yours to debug on the bastion.
