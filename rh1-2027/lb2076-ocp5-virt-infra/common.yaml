@@ -1,238 +1,142 @@
 ---
+# ===================================================================
+# Catalog Item: LB2076 - OpenShift 5 Virtualization Lab
+#
+# Migrated from AgnosticD v1 (self-installing OCP via assisted-installer
+# with a flat `infra_workloads` list) to AgnosticD v2.
+#
+# The OpenShift cluster is now provided PRE-PROVISIONED from a CNV pool
+# (agd-v2/ocp-cluster-cnv-pools, see __meta__.components). That pool
+# already installs External ODF (Ceph + NooBaa) and cert-manager
+# (with dynamic-dns + acme certs), so this config:
+#   - sets cloud_provider: none and config: openshift-workloads
+#   - connects to the pool cluster via `clusters:`
+#   - scales workers with openshift_cnv_scale_cluster
+#   - only deploys the workloads that sit ON TOP of the base cluster
+#
+# Dropped vs v1 (now provided by the pool):
+#   - ocp4_workload_external_odf
+#   - ocp4_workload_cert_manager
+#   - the self-install bastion/networking, OcpSandbox/DNSSandbox/SSLSandbox
+#
+# Roles not (yet) available in AgnosticD v2 are carried in this project's
+# own collection `ocp5_virt_rh1.automation` (repo rhpds/ocp5-virt-rh1,
+# collection at automation/ansible):
+#   - ocp4_workload_oadp_gitops
+#   - ocp4_workload_virt_roadshow_vms
+#   - ocp4_workload_virt_roadshow_fvmw
+#   - ocp4_workload_virt_roadshow_multi_user
+#
+# NOTE:
+#   * Operator versions are kept on LIVE channels with pinned starting_csv
+#     (faithful port of the v1 CI). Switching to the shared catalog snapshot
+#     (ocp4_workload_catalogsource_image/tag) is deferred: a snapshot tag would
+#     first need to be verified to contain the pinned CSVs.
+# ===================================================================
+
 # -------------------------------------------------------------------
 # AgnosticV includes
 # -------------------------------------------------------------------
-
 #include /includes/catalog-icon-virtualization.yaml
 #include /includes/terms-of-service.yaml
 
 #include /includes/sandbox-api.yaml
+#include /includes/agd-v2-mapping.yaml
 
 #include /includes/parameters/purpose.yaml
-#include /includes/parameters/showroom-ocp-defaults.yaml
 
-#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
-#include /includes/secrets/dynamic-dns.yaml
-#include /includes/secrets/openshift_assisted_installer_icr.yaml
-#include /includes/secrets/acme-bifrost.yaml
+# Required by openshift_cnv_scale_cluster (host_ocp4_assisted_scale)
+#include /includes/secrets/ocp4_ai_offline_token.yaml
 
 # -------------------------------------------------------------------
-# Mandatory Variables
+# AgnosticD v2 variables
 # -------------------------------------------------------------------
-env_type: ocp4-cluster
-software_to_deploy: openshift4_assisted
-cloud_provider: openshift_cnv
+config: openshift-workloads
+cloud_provider: none
+
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
 
 # -------------------------------------------------------------------
-# Platform
+# Tags / Revisions
 # -------------------------------------------------------------------
-platform: RHPDS
+tag: main
+tag_assisted_installer: v0.0.9
+tag_showroom: v1.7.2
+tag_ocp5_virt_rh1: main
 
 # -------------------------------------------------------------------
-# OpenShift Version
+# CNV Worker Nodes
 # -------------------------------------------------------------------
-ocp4_installer_root_url: http://mirror.openshift.com/pub/openshift-v4/clients
-
-# -------------------------------------------------------------------
-# Repos
-# -------------------------------------------------------------------
-repo_method: satellite
-update_packages: true
-
-# -------------------------------------------------------------------
-# Default Networking Stack
-# -------------------------------------------------------------------
-ocp4_network_type: OVNKubernetes
-
-# -------------------------------------------------------------------
-# Student User on Bastion
-# -------------------------------------------------------------------
-install_student_user: true
-student_name: lab-user
-student_sudo: true
-
-# -------------------------------------------------------------------
-# CNV Specific
-# -------------------------------------------------------------------
-bastion_instance_image: rhel-9.6
-bastion_cores: 2
-bastion_memory: 6Gi
-
-ai_control_plane_cores: >-
-  {{ 16 if worker_instance_count|int <= 10
-  else 32 if worker_instance_count|int <= 20
-  else 64
-  }}
-ai_control_plane_memory: >-
-  {{ '32Gi' if worker_instance_count|int <= 10
-  else '64Gi' if worker_instance_count|int <= 20
-  else '128Gi'
-  }}
+openshift_cnv_scale_cluster: true
 worker_instance_count: "{{ [(num_users | int / 5) | round(0, 'ceil') | int, 3] | max }}"
 
 ai_workers_cores: 16
-# WK: Hardcoding memory - seems wrong to calculate both number of workers and then adjust the memory as well
 ai_workers_memory: '64Gi'
-# ai_workers_memory: >-
-#  {{ '32Gi' if num_users|int <= 10
-#  else '64Gi'
-#  }}
-
-ocp4_installer_version: "4.21.10"
 
 ai_attach_workers_networks:
-  - default/flatnetwork
+- default/flatnetwork
 
-networks:
-  - name: cluster
-
-ai_install_use_network: "cluster{{ guid }}"
-bastion_extra_networks:
-  - "cluster"
-
-bastion_userdata: |
-  #cloud-config
-  write_files:
-    - path: /etc/sysctl.d/99-ip-forwarding.conf
-      content: |
-        net.ipv4.ip_forward=1
-
-    - path: /etc/nftables/ruleset.nft
-      content: |
-        table inet nat {
-          chain postrouting {
-            type nat hook postrouting priority 100; policy accept;
-            oifname "eth0" masquerade
-          }
-        }
-
-        table inet filter {
-          chain forward {
-            type filter hook forward priority 0; policy drop;
-            iifname "eth1" oifname "eth0" accept
-            iifname "eth0" oifname "eth1" ct state related,established accept
-          }
-        }
-
-    - path: /etc/systemd/system/nftables-restore.service
-      content: |
-        [Unit]
-        Description=Restore nftables rules
-        After=network.target
-
-        [Service]
-        Type=oneshot
-        ExecStart=/bin/bash -c 'while [ ! -x /usr/sbin/nft ]; do sleep 2; done; /usr/sbin/nft -f /etc/nftables/ruleset.nft'
-        RemainAfterExit=yes
-
-        [Install]
-        WantedBy=multi-user.target
-
-  runcmd:
-    - sysctl --system
-    - systemctl daemon-reload
-    - systemctl enable --now nftables-restore.service
-
-bastion_networkdata: |
-  network:
-    version: 2
-    ethernets:
-      eth0:
-        dhcp4: yes
-      eth1:
-        dhcp4: no
-        addresses:
-          - 10.10.10.1/24
+# -------------------------------------------------------------------
+# Collections & roles installed for this config
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  # Required by openshift_cnv_scale_cluster (host_ocp4_assisted_scale)
+  - name: https://github.com/rhpds/assisted_installer.git
+    type: git
+    version: "{{ tag_assisted_installer }}"
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: "{{ tag_showroom }}"
+  # This project's roles carried over from v1 (ocp5_virt_rh1.automation.*)
+  # Collection lives in the automation/ansible subdirectory of the repo.
+  - name: https://github.com/rhpds/ocp5-virt-rh1.git#/automation/ansible
+    type: git
+    version: "{{ tag_ocp5_virt_rh1 }}"
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
-infra_workloads:
-  - ocp4_workload_external_odf
-  - ocp4_workload_authentication
-  - ocp4_workload_cert_manager
-  - ocp4_workload_openshift_gitops
-  - ocp4_workload_web_terminal
-  - ocp4_workload_kubevirt
-  - ocp4_workload_mtv
-  - ocp4_workload_oadp_gitops
-  - ocp4_workload_nmstate
-  - ocp4_workload_virt_roadshow_vms
-  - ocp4_workload_virt_roadshow_fvmw
-  - ocp4_workload_virt_roadshow_multi_user
-  - ocp4_workload_virt_network_config
-  - ocp4_workload_showroom
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_web_terminal
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+- agnosticd.core_workloads.ocp4_workload_mtv
+- ocp5_virt_rh1.automation.ocp4_workload_oadp_gitops
+- agnosticd.core_workloads.ocp4_workload_nmstate
+- ocp5_virt_rh1.automation.ocp4_workload_virt_roadshow_vms
+- ocp5_virt_rh1.automation.ocp4_workload_virt_roadshow_fvmw
+- ocp5_virt_rh1.automation.ocp4_workload_virt_roadshow_multi_user
+- agnosticd.core_workloads.ocp4_workload_virt_network_config
+- agnosticd.showroom.ocp4_workload_showroom
 
-# --- Workloads that have removal logic implemented that needs to be run (YAML List)
 remove_workloads:
-  - ocp4_workload_virt_roadshow_fvmw
+- ocp5_virt_rh1.automation.ocp4_workload_virt_roadshow_fvmw
 
-# -------------------------------------------------------------------
-# ocp4_workload_virt_roadshow_fvmw
-# -------------------------------------------------------------------
-fvmw_hostname: "vcenter.apps.{{ sandbox_openshift_cluster }}.rhdp.net"
-
-ocp4_workload_virt_roadshow_fvmw_datastore: workload_share
-ocp4_workload_virt_roadshow_fvmw_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
-# @owner: Alberto Gonzalez Rodriguez <josegonz@redhat.com>
-# @purpose: fvmw vcenter user password
-# @impact: HIGH - full access
-# @expiration: UNKNOWN
-# @rotation: Regenerate by contacting Alberto Gonzalez Rodriguez <josegonz@redhat.com>
-# @source: UNKNOWN
-# @exposure: To deploy workload on fvmw vcenter.
-ocp4_workload_virt_roadshow_fvmw_vcenter_user_password: !vault |
-          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
-          32366565636537643566623734366534363433306237613435323063363863383232343665623736
-          3439656538636364356363613130363930623637396662300a636333646430323062653235306363
-          36333037613136633263613531373535663563366435316366303131613961626533323162306332
-          3865336531643334340a653361356632386465393135643732346366656364653133336239386236
-          6638
-
-# -------------------------------------------------------------------
-# ocp4_workload_virt_network_config
-# -------------------------------------------------------------------
-ocp4_workload_virt_network_config_multi_user: true
-ocp4_workload_virt_network_config_networks: "{{ ai_attach_workers_networks | default([]) }}"
-ocp4_workload_virt_network_config_bridge_type: linux-bridge
-ocp4_workload_virt_network_config_bridge_name: br-flat
-
-# -------------------------------------------------------------------
+# ===================================================================
 # Workload variables
-# -------------------------------------------------------------------
+# ===================================================================
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_external_odf
+# agnosticd.core_workloads.ocp4_workload_authentication
 # -------------------------------------------------------------------
-odf_channel: stable-4.21
-ocp4_workload_external_odf_volume_binding_mode: Immediate
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_authentication
-# -------------------------------------------------------------------
-ocp4_workload_authentication_idm_type: htpasswd
-ocp4_workload_authentication_admin_user: admin
-ocp4_workload_authentication_htpasswd_admin_password: ""
-ocp4_workload_authentication_htpasswd_user_base: user
-ocp4_workload_authentication_htpasswd_user_password: ""
-ocp4_workload_authentication_htpasswd_user_count: "{{ num_users | default('1') | int }}"
+ocp4_workload_authentication_provider: htpasswd
+ocp4_workload_authentication_admin_username: admin
+ocp4_workload_authentication_admin_password: ""
+ocp4_workload_authentication_user_basename: user
+ocp4_workload_authentication_user_password: ""
+ocp4_workload_authentication_num_users: "{{ num_users | default(1) | int }}"
 ocp4_workload_authentication_remove_kubeadmin: true
-ocp4_workload_authentication_enable_user_info_data: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_cert_manager
-# -------------------------------------------------------------------
-# Values from /includes/secrets/acme-bifrost.yaml
-
-ocp4_workload_cert_manager_channel: stable-v1
-#ocp4_workload_cert_manager_channel: stable-v1.15
-ocp4_workload_cert_manager_use_catalog_snapshot: false
-
-ocp4_workload_cert_manager_install_ingress_certificates: true
-ocp4_workload_cert_manager_install_api_certificates: false
-
-# -------------------------------------------------------------------
-# ocp4_workload_openshift_gitops
+# agnosticd.core_workloads.ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
 ocp4_workload_openshift_gitops_channel: gitops-1.20
 ocp4_workload_openshift_gitops_use_catalog_snapshot: false
@@ -292,51 +196,55 @@ ocp4_workload_openshift_gitops_resource_customizations: |
       return health_status
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_web_terminal
+# agnosticd.core_workloads.ocp4_workload_web_terminal
 # -------------------------------------------------------------------
 ocp4_workload_web_terminal_channel: fast
-ocp4_workload_web_terminal_catalogsource_setup: false
 ocp4_workload_web_terminal_configure: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_kubevirt
+# agnosticd.core_workloads.ocp4_workload_openshift_virtualization
 # -------------------------------------------------------------------
-ocp4_workload_kubevirt_channel: stable
-# Use PVCs for KubeVirt boot images
-ocp4_workload_kubevirt_boot_sources_shapshot: false
-ocp4_workload_kubevirt_starting_csv: "kubevirt-hyperconverged-operator.v4.21.1"
+ocp4_workload_openshift_virtualization_channel: stable
+# Use PVCs for KubeVirt boot images (v1 var was misspelled "shapshot")
+ocp4_workload_openshift_virtualization_boot_sources_snapshot: false
+ocp4_workload_openshift_virtualization_automatic_install_plan_approval: false
+ocp4_workload_openshift_virtualization_starting_csv: "kubevirt-hyperconverged-operator.v4.21.1"
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_mtv
+# agnosticd.core_workloads.ocp4_workload_mtv
 # -------------------------------------------------------------------
 ocp4_workload_mtv_channel: release-v2.11
+ocp4_workload_mtv_automatic_install_plan_approval: false
 ocp4_workload_mtv_starting_csv: "mtv-operator.v2.11.4"
 ocp4_workload_mtv_max_vm_inflight: "{{ [(num_users | int * 3) | int, 40] | min }}"
 ocp4_workload_mtv_forklift_controller_container_limits_cpu: "{{ [(num_users | int * 100) | int, 1000] | max }}m"
 ocp4_workload_mtv_forklift_controller_container_limits_memory: "{{ [(num_users | int * 400) | int, 2000] | max }}Mi"
 
 # -------------------------------------------------------------------
-# ocp4_workload_oadp_gitops
+# ocp5_virt_rh1.automation.ocp4_workload_oadp_gitops
 # -------------------------------------------------------------------
 ocp4_workload_oadp_gitops_channel: stable
 ocp4_workload_oadp_gitops_use_catalog_snapshot: false
 
 # Multi User
 ocp4_workload_oadp_gitops_multi_user: true
-ocp4_workload_oadp_gitops_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
-ocp4_workload_oadp_gitops_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_oadp_gitops_num_users: "{{ ocp4_workload_authentication_num_users | int }}"
+ocp4_workload_oadp_gitops_user_base: "{{ ocp4_workload_authentication_user_basename }}"
 ocp4_workload_oadp_gitops_namespace_base: oadp
 ocp4_workload_oadp_gitops_configure_dpa: true
 ocp4_workload_oadp_gitops_storage: odf
+# External ODF (pool provides external Ceph): the StorageCluster is
+# ocs-external-storagecluster, so the RBD snapshot class carries the
+# "external" prefix (the role default ocs-storagecluster-... does not exist here).
+ocp4_workload_oadp_gitops_volumesnapshotclass: ocs-external-storagecluster-rbdplugin-snapclass
 
 # -------------------------------------------------------------------
-# ocp4_workload_virt_roadshow_vms
+# ocp5_virt_rh1.automation.ocp4_workload_virt_roadshow_vms
 # -------------------------------------------------------------------
-ocp4_workload_virt_roadshow_vms_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
+ocp4_workload_virt_roadshow_vms_num_users: "{{ ocp4_workload_authentication_num_users | int }}"
 ocp4_workload_virt_roadshow_vms_base_namespace: vmimported-
-ocp4_workload_virt_roadshow_vms_userbase: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
+ocp4_workload_virt_roadshow_vms_userbase: "{{ ocp4_workload_authentication_user_basename }}"
 ocp4_workload_virt_roadshow_vms_start_vms: false
-# Roadshow Setup
 # When set to true (default) then the application made up from the VMs will not
 # work until instructions are followed.
 # When false the application will work out of the box without changes
@@ -344,40 +252,53 @@ ocp4_workload_virt_roadshow_vms_roadshow_setup: true
 ocp4_workload_virt_roadshow_vms_imported_configure_svc_and_route: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_virt_roadshow_vmware
+# ocp5_virt_rh1.automation.ocp4_workload_virt_roadshow_fvmw
 # -------------------------------------------------------------------
-ocp4_workload_virt_roadshow_vmware_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count }}"
-ocp4_workload_virt_roadshow_vmware_enable_mtv: true
-ocp4_workload_virt_roadshow_vmware_enable_cert_validation: false
+fvmw_hostname: "vcenter.apps.{{ sandbox_openshift_cluster }}.rhdp.net"
 
-# For multiple users
-ocp4_workload_virt_roadshow_vmware_vcenter_folder_base: "ocpvirt-{{ guid }}-{{ ocp4_workload_authentication_htpasswd_user_base }}"
-ocp4_workload_virt_roadshow_vmware_vcenter_user_base: "ocpvirt-{{ guid }}-{{ ocp4_workload_authentication_htpasswd_user_base }}"
-
-# User base for OCP Authentication (to assign vCenter users to OCP users in agnosticd_user_info)
-ocp4_workload_virt_roadshow_auth_user_base: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
-
-# MTV Namespace base to use for multi user.
-# For single user the namespace is always `openshift-mtv`
-ocp4_workload_virt_roadshow_vmware_mtv_namespace_base: "mtv-{{ ocp4_workload_virt_roadshow_auth_user_base }}"
-ocp4_workload_virt_roadshow_vsphere_ignore_pip_check: false
+ocp4_workload_virt_roadshow_fvmw_datastore: workload_share
+ocp4_workload_virt_roadshow_fvmw_num_users: "{{ ocp4_workload_authentication_num_users }}"
+# @owner: Alberto Gonzalez Rodriguez <josegonz@redhat.com>
+# @purpose: fvmw vcenter user password
+# @impact: HIGH - full access
+# @expiration: UNKNOWN
+# @rotation: Regenerate by contacting Alberto Gonzalez Rodriguez <josegonz@redhat.com>
+# @source: UNKNOWN
+# @exposure: To deploy workload on fvmw vcenter.
+ocp4_workload_virt_roadshow_fvmw_vcenter_user_password: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          32366565636537643566623734366534363433306237613435323063363863383232343665623736
+          3439656538636364356363613130363930623637396662300a636333646430323062653235306363
+          36333037613136633263613531373535663563366435316366303131613961626533323162306332
+          3865336531643334340a653361356632386465393135643732346366656364653133336239386236
+          6638
 
 # -------------------------------------------------------------------
-# ocp4_workload_virt_roadshow_multi_user
+# ocp5_virt_rh1.automation.ocp4_workload_virt_roadshow_multi_user
 # -------------------------------------------------------------------
-# In the future once bug https://issues.redhat.com/browse/CNV-38284 is in the product
-# the namespace will need to change to openshift-cnv
+# CNV manages the virtualization console UI-settings ConfigMaps
+# in the openshift-cnv namespace.
+# The role still defaults to `default`, hence this override.
 ocp4_workload_virt_roadshow_multi_user_configmap_namespace: openshift-cnv
 
-# ------------------------------------------------------
-# Showroom
-# ------------------------------------------------------
-ocp4_workload_showroom_name: showroom
-ocp4_workload_showroom_namespace: showroom
-ocp4_workload_showroom_content_only: true
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_virt_network_config
+# -------------------------------------------------------------------
+ocp4_workload_virt_network_config_multi_user: true
+ocp4_workload_virt_network_config_networks: "{{ ai_attach_workers_networks | default([]) }}"
+ocp4_workload_virt_network_config_bridge_type: linux-bridge
+ocp4_workload_virt_network_config_bridge_name: br-flat
 
-ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ocp-virt-roadshow-2026-showroom.git
+# -------------------------------------------------------------------
+# agnosticd.showroom.ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_namespace: showroom
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ocp5-virt-rh1
 ocp4_workload_showroom_content_git_repo_ref: main
+
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
+ocp4_workload_showroom_terminal_type: ""
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -386,48 +307,20 @@ __meta__:
   asset_uuid: b74340a3-5197-45ca-b1ca-38fa0ece658e
   owners:
     maintainer:
-      - name: Juliano Mohr
-        email: juliano@redhat.com
+    - name: Juliano Mohr
+      email: juliano@redhat.com
     sme:
-      - name: Alberto Gonzalez Rodriguez
-        email: arodriguez@redhat.com
+    - name: Alberto Gonzalez Rodriguez
+      email: arodriguez@redhat.com
     instructions:
-      - name: Alan Cowles
-        email: acowles@redhat.com
+    - name: Alan Cowles
+      email: acowles@redhat.com
 
   deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:v0.1.2
-      pull: missing
-
-  sandbox_api:
-    actions:
-      destroy:
-        catch_all: false
-
-  sandboxes:
-    - kind: OcpSandbox
-      namespace_suffix: ocp4-cluster
-      cloud_selector:
-        cloud: cnv
-        purpose: prod
-        virt: "yes"
-      quota:
-        limits.cpu: "128"
-        requests.cpu: "128"
-        limits.memory: "800Gi"
-        requests.memory: "800Gi"
-    - kind: DNSSandbox
-      annotations:
-        prefix: cluster
-      cloud_selector:
-        provider: ddns
-        domain: "dyn.redhatworkshops.io"
-      var: dns_sandbox
-    - kind: SSLSandbox
-      cloud_selector:
-        purpose: production
-      var: ssl_sandbox
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
 
   catalog:
     display_name: "LB2076: OpenShift 5 Virtualization Lab"
@@ -438,27 +331,25 @@ __meta__:
     workshopUiMaxInstances: 4 #allows up to 80 users if not deployed via admins
     workshopUiEnabledByDefault: true
     parameters:
-      - name: num_users
-        description: >-
-          This specifies the number of individual users to provision within EACH OpenShift cluster you deploy.
-          Each cluster supports a maximum of 20 users.
+    - name: num_users
+      description: >-
+        This specifies the number of individual users to provision within EACH OpenShift cluster you deploy.
+        Each cluster supports a maximum of 20 users.
 
-          **Advisory**: If you have "Enable workshop use" toggled on, we strongly recommend
-          setting this to 20 for optimal resource utilization.
-        # The label now specifies that the recommendation is for workshops
-        formLabel: 'OpenShift User Count (Workshop Recommended: 20)'
-        openAPIV3Schema:
-          type: integer
-          # Default to the recommended value for the most common use case
-          default: 20
-          minimum: 2
-          maximum: 20
+        **Advisory**: If you have "Enable workshop use" toggled on, we strongly recommend
+        setting this to 20 for optimal resource utilization.
+      formLabel: 'OpenShift User Count (Workshop Recommended: 20)'
+      openAPIV3Schema:
+        type: integer
+        default: 20
+        minimum: 2
+        maximum: 20
     keywords:
-      - rh1-2027
-      - lb2076
-      - cnv
-      - cnvocp
-      - ocpcnv
+    - rh1-2027
+    - lb2076
+    - cnv
+    - cnvocp
+    - ocpcnv
     labels:
       Product: Red_Hat_OpenShift_Container_Platform
       Product_Family: Red_Hat_Cloud
@@ -466,6 +357,45 @@ __meta__:
     reportingLabels:
       assetGroup: Virtualization
       primaryBU: Hybrid_Platforms
+
+  components:
+  - name: openshift
+    display_name: OpenShift Cluster (CNV)
+    item: agd-v2/ocp-cluster-cnv-pools
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: "4.21"
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    # Required by openshift_cnv_scale_cluster (host_ocp4_assisted_scale)
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
+    # Host CNV cluster name + apps domain (exported by the pool because it
+    # sets openshift_cnv_set_sandbox_provision_data: true). Needed by
+    # fvmw_hostname (vcenter.apps.<cluster>.rhdp.net).
+    - name: sandbox_openshift_cluster
+      var: sandbox_openshift_cluster
+    - name: sandbox_openshift_apps_domain
+      var: sandbox_openshift_apps_domain
 
   tower:
     timeout: 21600
