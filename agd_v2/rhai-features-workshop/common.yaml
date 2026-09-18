@@ -250,26 +250,44 @@ ocp4_workload_litellm_virtual_keys_models:
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/rhai-features-workshop.git
 ocp4_workload_showroom_content_git_repo_ref: main
 ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-11
-ocp4_workload_showroom_terminal_type: wetty
+# ocp-terminal, not wetty. wetty SSHes to the bastion and, with
+# ocp4_workload_showroom_wetty_ssh_bastion_login left at its default of false, it
+# just sits on "Enter your username:" - which is what a dev order did. It also
+# ignores terminal_image above and runs quay.io/rhpds/wetty instead.
+# The lab only ever needs `oc` inside the cluster (oc login, oc get sandboxes,
+# curl against the MaaS endpoint), so the in-cluster ttyd terminal is both the
+# right tool and one less shared dependency for 30 users.
+ocp4_workload_showroom_terminal_type: ocp-terminal
 
-# Overrides the placeholder attributes in content/antora.yml. The role already
-# auto-populates openshift_cluster_ingress_domain, openshift_console_url and the
-# bastion_* values, so only these need to be passed explicitly.
-# TODO: the per-user attributes the content still defaults (user, user_project,
-# fed_aura_url, ogx_url, maas_url, mlflow_route) need per-user values. Wiring
-# those up for 2..N users needs to be validated against a real dev order, since
-# the app routes are operator-generated - doing that as a follow-up rather than
-# guessing the hostnames here.
-ocp4_workload_showroom_user_data:
-  openshift_api_url: "{{ openshift_api_url }}"
-  password: "{{ common_user_password }}"
+# Per-user attributes for the lab content.
+#
+# Do NOT use ocp4_workload_showroom_user_data: it is not a variable in showroom
+# v1.7.2 (pinned above) and is silently ignored. The role builds the Antora
+# attributes from agnosticd user data, and the Antora container merges that file
+# into content/antora.yml under .asciidoc.attributes.
+#
+# Most of what the content needs already arrives that way from the
+# authentication workload and the role's own auto-population: user, password
+# (randomised per user), openshift_api_url, openshift_console_url,
+# openshift_cluster_ingress_domain and the bastion_* values. Verified on a dev
+# order by reading the showroom-userdata ConfigMap in each showroom namespace.
+#
+# user_project is the one attribute nothing publishes, and content/antora.yml
+# defaults it to wksp-user1 - so every user was being pointed at user1's
+# namespace on the 7 pages that reference it. passthrough_user_data makes the
+# role publish this per user, looping user1..userN with `n` as the index.
+ocp4_workload_showroom_passthrough_user_data: true
+
+agnosticd_passthrough_user_data:
+  user_project: "wksp-{{ ocp4_workload_user_base }}{{ n }}"
 
 # NOTE: the Mortgage AI tab is pinned to user1. This item provisions 2..30 users,
 # so users 2..N get user1's route until the per-user attributes above are wired
 # up. The hostname follows routes.sharedHost in
 # automation/gitops/deployments/mortgage-ai, i.e. mortgage-ai-wksp-<user>, not
 # the mortgage-ai-ui-route-wksp-<user> pattern used by the agentops labs.
-# The terminal path is /wetty to match ocp4_workload_showroom_terminal_type above.
+# The terminal tab path must match the terminal type: /terminal for ocp-terminal,
+# /wetty for wetty.
 ocp4_workload_showroom_content_ui_config: |
   type: showroom
   default_width: 30
@@ -281,7 +299,7 @@ ocp4_workload_showroom_content_ui_config: |
   - name: OCP Console
     url: 'https://console-openshift-console.{{ openshift_cluster_ingress_domain }}'
   - name: Terminal
-    path: /wetty
+    path: /terminal
     port: 443
   - name: MLflow Console
     url: 'https://rh-ai.{{ openshift_cluster_ingress_domain }}/mlflow/'
