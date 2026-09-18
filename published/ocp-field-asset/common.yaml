@@ -13,6 +13,7 @@
 # All changes to the functional CI should be made to the component(s)
 #
 # agd_v2/ocp-field-asset-cnv
+# agd_v2/ocp-field-asset-aws
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
@@ -41,6 +42,17 @@ __meta__:
     reportingLabels:
       primaryBU: Hybrid_Platforms
     parameters:
+    - name: ocp_cloud_provider
+      formLabel: Cloud Provider
+      openAPIV3Schema:
+        type: string
+        default: cnv
+        enum:
+        - cnv
+        - aws
+      components:
+      - name: current
+
     - name: cluster_size
       description: Single Node or Full Cluster
       formLabel: cluster_size
@@ -68,7 +80,7 @@ __meta__:
       annotation: demo.redhat.com/ocp-version
       variable: host_ocp4_installer_version
       components:
-      - name: ocp-field-asset-cnv
+      - name: all
 
     - name: worker_instance_count_param
       description: OpenShift Worker count
@@ -81,13 +93,13 @@ __meta__:
         minimum: 2
         maximum: 10
       components:
-      - name: ocp-field-asset-cnv
+      - name: all
 
     - name: ai_workers_memory
       description: OpenShift Worker memory
       formLabel: OpenShift Worker memory
       formHideCondition: >-
-        cluster_size != 'multinode'
+        cluster_size != 'multinode' || ocp_cloud_provider != 'cnv'
       openAPIV3Schema:
         type: string
         default: 8Gi
@@ -106,7 +118,7 @@ __meta__:
       description: OpenShift Worker CPU
       formLabel: OpenShift Worker CPU
       formHideCondition: >-
-        cluster_size != 'multinode'
+        cluster_size != 'multinode' || ocp_cloud_provider != 'cnv'
       openAPIV3Schema:
         type: integer
         default: 4
@@ -119,11 +131,42 @@ __meta__:
       components:
       - name: ocp-field-asset-cnv
 
+    - name: worker_instance_type
+      description: OpenShift Worker instance type
+      formLabel: OpenShift Worker instance type
+      formHideCondition: >-
+        cluster_size != 'multinode' || ocp_cloud_provider != 'aws'
+      openAPIV3Schema:
+        type: string
+        default: 'm5a.2xlarge'
+        enum:
+        - 'm5a.2xlarge'
+        - 'm5a.4xlarge'
+        - 'm5a.8xlarge'
+      components:
+      - name: ocp-field-asset-aws
+
+    - name: open_environment
+      description: >-
+        Provides access to AWS account in which OpenShift is deployed. You can use this to deploy additional
+        resources in the account. YOUR COST CENTER WILL BE CHARGED FOR THESE RESOURCES.
+      formLabel: Enable OPEN Environment?
+      formHideCondition: ocp_cloud_provider != 'aws'
+      openAPIV3Schema:
+        default: false
+        type: boolean
+      annotation: demo.redhat.com/open-environment
+      variable: agnosticd_open_environment
+      components:
+      - name: ocp-field-asset-aws
+
     - name: enable_base_virt
       description: >-
         Install OpenShift Virtualization (operator and HyperConverged instance).
+        Available on CNV only; AWS instance types in this catalog do not support nested virt.
       formLabel: OpenShift Virtualization
       formGroup: Select Base Workloads
+      formHideCondition: ocp_cloud_provider != 'cnv'
       openAPIV3Schema:
         type: boolean
         default: false
@@ -133,14 +176,15 @@ __meta__:
     - name: enable_base_rhoai
       description: >-
         Install OpenShift AI 3 (operator and Data Science Cluster).
-        On CNV this is CPU-only; there is no GPU operator.
+        CPU-only by default. On AWS, provision GPU instances and install
+        the GPU operator yourself if you need GPUs.
       formLabel: OpenShift AI
       formGroup: Select Base Workloads
       openAPIV3Schema:
         type: boolean
         default: false
       components:
-      - name: ocp-field-asset-cnv
+      - name: all
 
     - name: enable_base_aap
       description: >-
@@ -152,7 +196,7 @@ __meta__:
         type: boolean
         default: false
       components:
-      - name: ocp-field-asset-cnv
+      - name: all
 
     - name: create_multi_user
       description: >-
@@ -177,7 +221,7 @@ __meta__:
         minimum: 1
         maximum: 30
       components:
-      - name: ocp-field-asset-cnv
+      - name: all
 
     - name: existing_gitops
       description: >-
@@ -254,6 +298,20 @@ __meta__:
       - name: all
 
     # ===================================================================
+    # OpenShift Lightspeed (OPTIONAL)
+    # ===================================================================
+    - name: enable_ols
+      description: >-
+        Install OpenShift Lightspeed.
+      formLabel: OpenShift Lightspeed
+      formGroup: OpenShift Lightspeed
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: all
+
+    # ===================================================================
     # LiteMaaS/MaaS Configuration (OPTIONAL - for AI/LLM demos)
     # ===================================================================
     - name: enable_litemaas_keys
@@ -267,7 +325,7 @@ __meta__:
         type: boolean
         default: false
       components:
-      - name: ocp-field-asset-cnv
+      - name: all
 
     - name: litemaas_model
       description: >-
@@ -295,7 +353,7 @@ __meta__:
         - 'qwen3-14b'
         - 'qwen3-235b'
       components:
-      - name: ocp-field-asset-cnv
+      - name: all
 
     - name: litemaas_duration
       description: >-
@@ -314,12 +372,18 @@ __meta__:
         - '10d'
         - '30d'
       components:
-      - name: ocp-field-asset-cnv
+      - name: all
 
   components:
   - name: ocp-field-asset-cnv
     display_name: Field Sourced Content - OpenShift (CNV)
     item: agd_v2/ocp-field-asset-cnv
+    when: ocp_cloud_provider | default('') == 'cnv'
+
+  - name: ocp-field-asset-aws
+    display_name: Field Sourced Content - OpenShift (AWS)
+    item: agd_v2/ocp-field-asset-aws
+    when: ocp_cloud_provider | default('') == 'aws'
 
   deployer:
     type: null

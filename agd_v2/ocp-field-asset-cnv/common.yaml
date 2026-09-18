@@ -68,15 +68,17 @@ ai_workers_memory: "{{ ai_workers_memory }}"
 # ===================================================================
 # Workload groups — assembled from catalog parameters
 # ===================================================================
-# Always deployed: authentication, Lightspeed, GitOps.
+# Always deployed: authentication and GitOps.
 # Optional bases (enable_base_virt / enable_base_rhoai / enable_base_aap) are additive.
 # LiteMaaS and field-content GitOps stay optional, as before.
 # Field content is last so GitOps charts can consume operators already installed.
 
 _base_workloads:
 - agnosticd.core_workloads.ocp4_workload_authentication
-- agnosticd.ai_workloads.ocp4_workload_ols
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+
+_ols_workloads:
+- agnosticd.ai_workloads.ocp4_workload_ols
 
 _virt_workloads:
 - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
@@ -94,6 +96,7 @@ workloads: >-
   {{
     (
       _base_workloads +
+      (_ols_workloads if enable_ols | default(false) | bool else []) +
       (_virt_workloads if enable_base_virt | default(false) | bool else []) +
       (_rhoai_workloads if enable_base_rhoai | default(false) | bool else []) +
       (_aap_workloads if enable_base_aap | default(false) | bool else []) +
@@ -113,9 +116,11 @@ workloads: >-
 # ===================================================================
 remove_workloads: >-
   {{
-    [
-      'agnosticd.ai_workloads.ocp4_workload_ols'
-    ] +
+    (
+      ['agnosticd.ai_workloads.ocp4_workload_ols']
+      if (enable_ols | default(false) | bool)
+      else []
+    ) +
     (
       ['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys']
       if (enable_litemaas_keys | default(false) | bool)
@@ -128,10 +133,11 @@ remove_workloads: >-
 # ===================================================================
 ocp4_workload_authentication_provider: keycloak
 ocp4_workload_authentication_multiuser: true
-ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_keycloak_channel: stable-v26.6
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_ols (OpenShift Lightspeed)
+# CONDITIONAL - Only runs if enable_ols is true
 # -------------------------------------------------------------------
 # Use Azure AI as the backend for OpenShift Lightspeed
 ocp4_workload_ai_platform: azure
@@ -527,6 +533,20 @@ __meta__:
       openAPIV3Schema:
         type: string
         default: ''
+      components:
+      - name: current
+
+    # ===================================================================
+    # OpenShift Lightspeed (OPTIONAL)
+    # ===================================================================
+    - name: enable_ols
+      description: >-
+        Install OpenShift Lightspeed.
+      formLabel: OpenShift Lightspeed
+      formGroup: OpenShift Lightspeed
+      openAPIV3Schema:
+        type: boolean
+        default: false
       components:
       - name: current
 

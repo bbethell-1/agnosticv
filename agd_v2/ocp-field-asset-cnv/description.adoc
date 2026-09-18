@@ -14,23 +14,47 @@ You have control (and responsibility) over exactly what is deployed to the clust
 
 == Instructions
 
-When you order, start with cluster size (SNO or multi-node) and OpenShift version. If you picked multi-node, you can also set worker count, CPU, and memory. The cluster always comes with an authentication provider (RHBK), OpenShift Lightspeed, and OpenShift GitOps.
+When you order, start by choosing a cloud provider:
+
+* *CNV* — runs on OpenShift Virtualization. Cheapest and fastest: typically ~5 minutes for `sno` and ~15 minutes for `multinode`.
+* *AWS* — more expensive, and slower: typically 60+ minutes. Use this when you need AWS integration. You can enable Open Environment to get account credentials and work in the AWS account, which you cannot do on CNV.
+
+[IMPORTANT]
+====
+Use CNV unless you have a specific reason to need AWS.
+
+CNV deploys in minutes and costs much less to run. Choose AWS only when you need AWS integration, Open Environment access to the account, or another capability CNV does not provide.
+====
+
+Next, choose cluster size (SNO or multi-node) and OpenShift version. If you picked multi-node:
+
+* On CNV you can set worker count, CPU, and memory.
+* On AWS you can set worker count and instance type.
+
+The cluster always comes with an authentication provider (RHBK) and OpenShift GitOps.
 
 Next, you can check one or more *base workloads* so those operators are installed before GitOps runs:
 
-* *OpenShift Virtualization* — operator and HyperConverged instance, ready to run VMs
-* *OpenShift AI 3* — operator and Data Science Cluster. On this CNV item there is no GPU; use LiteMaaS if you need model access.
+* *OpenShift Virtualization* — operator and HyperConverged instance, ready to run VMs. CNV only; this option is hidden when you choose AWS because those instance types do not support nested virt.
+* *OpenShift AI 3* — operator and Data Science Cluster. CPU-only by default; use LiteMaaS if you need hosted model access. On AWS, add GPU instances and the GPU operator yourself if you need GPUs on the cluster.
 * *Ansible Automation Platform* — licensed Automation Controller (Hub, EDA, and AAP Lightspeed are not included)
 
-Leave all three unchecked if you just want vanilla OpenShift and GitOps.
+[NOTE]
+====
+OpenShift Virtualization is only available when you choose CNV as the cloud provider. It is not offered on AWS.
+====
+
+Leave base workloads unchecked if you just want vanilla OpenShift and GitOps.
 
 After that, the rest of the form is optional:
 
+* *Enable OPEN Environment?* — AWS only. Provides cloud account credentials so you can do more in the account than you can on CNV, plus full control of auto-stop and auto-destroy.
 * *Create users on cluster?* — extra users besides the admin, with a user count when enabled.
 * *Existing GitOps Repo?* — check this to have GitOps deploy your chart. Fill in the GitOps URL, revision, and *GitOps Path*. The path is the entry point: the directory that contains the Helm chart GitOps will start from. For the link:https://github.com/rhpds/field-sourced-content-template.git[Field Sourced Assets^] template that is `examples/helm` or `examples/ansible`. If you are using your own repo, use the equivalent path to your chart.
 ** `examples/helm` — an App of Apps. Each component lives under `components/` and can be turned on or off.
 ** `examples/ansible` — an Ansible Runner job that runs the playbook and roles you define.
 ** Private GitHub repos work. Check that option and provide an access token.
+* *OpenShift Lightspeed* — optional. Installs OpenShift Lightspeed on the cluster.
 * *Enable LiteMaaS/MaaS API Keys* — for AI/LLM demos. Provisions a temporary key for a selected model (3, 7, 10, or 30 days) and injects `litemaas.*` into your Helm chart.
 
 === Values passed to your Helm chart
@@ -57,12 +81,14 @@ The catalog creates an Argo CD Application pointing at your chart. The role that
 * OpenShift Container Platform
 ** Version 4.20, 4.21, 4.22 available
 ** Single-node (SNO) or multi-node available
-* OpenShift Lightspeed
+** CNV or AWS
+** Open Environment credentials for AWS (optional)
+* OpenShift Lightspeed (optional)
 * OpenShift GitOps
 ** Your GitOps repo
 ** Access to private git repos (optional)
-* OpenShift Virtualization (optional)
-* OpenShift AI 3 (optional, CPU-only on CNV)
+* OpenShift Virtualization (optional, CNV only)
+* OpenShift AI 3 (optional, CPU-only by default)
 * Ansible Automation Platform (optional)
 * LiteMaaS/MaaS (optional)
 ** Temporary API keys for AI/LLM models

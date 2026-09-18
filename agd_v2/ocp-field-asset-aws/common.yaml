@@ -1,0 +1,611 @@
+---
+# This item is restricted to devs only!
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: OpenShift Field Sourced Assets (AWS)
+# --- Supports optional LiteMaaS/MaaS integration for AI/LLM demos
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/aws-regions-3.yaml
+
+#include /includes/secrets/ocp4_workload_ols_api_token.yaml
+# LiteMaaS secret (conditional - only used if enable_litemaas_keys is true)
+#include /includes/secrets/litemaas-master_api.yaml
+
+# -------------------------------------------------------------------
+# AgnosticDv2 variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+requirements_content:
+  collections:
+  # AWS Cloud Provider
+  # Only used with openshift_aws_scale_cluster
+  - name: https://github.com/rhpds/cloud_provider_aws.git
+    type: git
+    version: "{{ tag }}"
+  # Core OpenShift Workloads
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+  # Core OpenShift Workloads
+  - name: https://github.com/rhpds/ai_workloads.git
+    type: git
+    version: "{{ tag }}"
+  # LiteMaaS Virtual Keys (optional - for AI/LLM demos)
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "1.3.2"
+
+# ===================================================================
+# Autoscaling cluster
+# ===================================================================
+openshift_aws_scale_cluster: "{{ false if cluster_size == 'sno' else true }}"
+worker_instance_count: "{{ 0 if cluster_size == 'sno' else worker_instance_count_param }}"
+# worker_instance_type is set from the catalog parameter
+
+# ===================================================================
+# Workload groups — assembled from catalog parameters
+# ===================================================================
+# Always deployed: authentication and GitOps.
+# Optional bases (enable_base_rhoai / enable_base_aap) are additive.
+# OpenShift Virtualization is CNV-only; AWS instance types do not support nested virt.
+# LiteMaaS and field-content GitOps stay optional, as before.
+# Field content is last so GitOps charts can consume operators already installed.
+
+_base_workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+
+_ols_workloads:
+- agnosticd.ai_workloads.ocp4_workload_ols
+
+_rhoai_workloads:
+- agnosticd.ai_workloads.ocp4_workload_openshift_ai
+
+_aap_workloads:
+- agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads: >-
+  {{
+    (
+      _base_workloads +
+      (_ols_workloads if enable_ols | default(false) | bool else []) +
+      (_rhoai_workloads if enable_base_rhoai | default(false) | bool else []) +
+      (_aap_workloads if enable_base_aap | default(false) | bool else []) +
+      (
+        ['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys']
+        if enable_litemaas_keys | default(false) | bool else []
+      ) +
+      (
+        ['agnosticd.core_workloads.ocp4_workload_field_content']
+        if existing_gitops | default(false) | bool else []
+      )
+    ) | unique | list
+  }}
+
+# ===================================================================
+# Remove workloads on destroy (conditional)
+# ===================================================================
+remove_workloads: >-
+  {{
+    (
+      ['agnosticd.ai_workloads.ocp4_workload_ols']
+      if (enable_ols | default(false) | bool)
+      else []
+    ) +
+    (
+      ['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys']
+      if (enable_litemaas_keys | default(false) | bool)
+      else []
+    )
+  }}
+
+# ===================================================================
+# Workload: agnosticd.core_workloads.ocp4_workload_authentication
+# ===================================================================
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_multiuser: true
+ocp4_workload_authentication_keycloak_channel: stable-v26.6
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ols (OpenShift Lightspeed)
+# CONDITIONAL - Only runs if enable_ols is true
+# -------------------------------------------------------------------
+# Use Azure AI as the backend for OpenShift Lightspeed
+ocp4_workload_ai_platform: azure
+# Automatically create and manage Azure AI tokens
+ocp4_workload_ols_get_token: true
+# Setup when multiple users need clusterRoleBindings
+ocp4_workload_ols_auth_provider: keycloak
+ocp4_workload_ols_keycloak_namespace: keycloak
+ocp4_workload_ols_keycloak_realm: sso
+ocp4_workload_ols_admin_username: admin
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: latest
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, system:cluster-admins, role:admin
+  g, admin, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+ocp4_workload_openshift_gitops_resource_tracking_method: annotation
+
+# ArgoCD without ApplicationSet Controller does not make sense.
+# Especially when you want to use apps-of-apps pattern.
+ocp4_workload_openshift_gitops_applicationset_controller_update: true
+
+# -------------------------------------------------------------------
+# Workload: rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# CONDITIONAL - Only runs if enable_litemaas_keys checkbox is checked
+# -------------------------------------------------------------------
+# Provisions temporary API keys for AI/LLM models from LiteMaaS/MaaS
+# Credentials from secret include: litellm_url, litellm_master_key
+
+ocp4_workload_litellm_virtual_keys_alias: "field-content-{{ guid }}"
+ocp4_workload_litellm_virtual_keys_models:
+- "{{ litemaas_model | default('llama-scout-17b') }}"
+ocp4_workload_litellm_virtual_keys_duration: "{{ litemaas_duration | default('7d') }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_field_content
+# -------------------------------------------------------------------
+# Leave variables as a reminder, but they are set from parameters
+# ocp4_workload_field_content_gitops_repo_url: ""
+# ocp4_workload_field_content_gitops_repo_revision: main
+# ocp4_workload_field_content_gitops_repo_path: ""
+
+# Pass LiteMaaS credentials to field content workload (if available)
+# These are set by the litellm_virtual_keys workload and stored in agnosticd_user_data
+# Prefix with workload name so they're passed to the field content role
+ocp4_workload_field_content_litemaas_api_url: "{{ lookup('agnosticd_user_data', 'litellm_api_base_url', default='') }}"
+ocp4_workload_field_content_litemaas_api_key: "{{ lookup('agnosticd_user_data', 'litellm_virtual_key', default='') }}"
+ocp4_workload_field_content_litemaas_model: "{{ litemaas_model | default('llama-scout-17b') }}"
+
+# Helm values injected into the field-content ArgoCD Application.
+# Lookups run when field_content runs, after earlier workloads have written user_data.
+# bases.* are real booleans so Helm `if .Values.bases.virt` works.
+# Do not pass cluster-admin tokens, sandbox_*, bastion SSH, or CA certs.
+ocp4_workload_field_content_helm_values: >-
+  {{
+    {
+      'guid': guid,
+      'bases': {
+        'virt': false,
+        'rhoai': enable_base_rhoai | default(false) | bool,
+        'aap': enable_base_aap | default(false) | bool
+      },
+      'user': {
+        'count': num_users | default(1) | int
+      },
+      'openshift': {
+        'consoleUrl': lookup('agnosticd_user_data', 'openshift_cluster_console_url', default=''),
+        'adminUsername': lookup('agnosticd_user_data', 'openshift_cluster_admin_username', default=''),
+        'adminPassword': lookup('agnosticd_user_data', 'openshift_cluster_admin_password', default='')
+      },
+      'keycloak': {
+        'consoleUrl': lookup('agnosticd_user_data', 'keycloak_admin_console', default=''),
+        'adminUser': lookup('agnosticd_user_data', 'keycloak_admin_user', default=''),
+        'adminPassword': lookup('agnosticd_user_data', 'keycloak_admin_password', default='')
+      },
+      'aap': {
+        'url': lookup('agnosticd_user_data', 'aap_controller_web_url', default=''),
+        'adminUser': lookup('agnosticd_user_data', 'aap_controller_admin_user', default=''),
+        'adminPassword': lookup('agnosticd_user_data', 'aap_controller_admin_password', default='')
+      },
+      'rhoai': {
+        'dashboardUrl': lookup('agnosticd_user_data', 'rhoai_dashboard', default='')
+      }
+    }
+  }}
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_ai
+# CONDITIONAL - Only runs if enable_base_rhoai is true
+# Channel selects RHOAI 3; empty starting_csv = latest in stable-3.x.
+# Role detects v3 from the installed CSV (rhods-operator.3.*).
+# Operator + DataScienceCluster only. Default instance types have no GPUs;
+# add GPU instances and the GPU operator yourself if you need them.
+# -------------------------------------------------------------------
+ocp4_workload_openshift_ai_channel: stable-3.x
+ocp4_workload_openshift_ai_starting_csv: ""
+ocp4_workload_openshift_ai_deploy_dsc: true
+ocp4_workload_openshift_ai_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ansible_automation_platform
+# CONDITIONAL - Only runs if enable_base_aap is true
+# Manifest vars are always defined; the role only fetches the zip when invoked.
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_admin_password: >-
+  {{ lookup('password', output_dir ~ '/aap_admin_password', length=16, chars=['ascii_letters', 'digits']) }}
+ocp4_workload_ansible_automation_platform_save_admin_credentials: true
+ocp4_workload_ansible_automation_platform_disable_controller: false
+ocp4_workload_ansible_automation_platform_disable_eda: true
+ocp4_workload_ansible_automation_platform_disable_hub: true
+ocp4_workload_ansible_automation_platform_disable_lightspeed: true
+ocp4_workload_ansible_automation_platform_operator_channel: stable-2.7
+ocp4_workload_ansible_automation_platform_inject_manifest: true
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+ocp4_workload_ansible_automation_platform_manifest_inject_retries: 60
+ocp4_workload_ansible_automation_platform_manifest_inject_delay: 10
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 4cc4e1a8-162e-4fb2-9efd-c529b10f12c5
+  owners:
+    maintainer:
+    - name: Prakhar Srivastava
+      email: psrivast@redhat.com
+    - name: Nate Stephany
+      email: nstephan@redhat.com
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-05-04
+      pull: missing
+    actions:
+      # enable to allow these workloads to cleanup:
+      # ocp4_workload_litellm_virtual_keys
+      # ocp4_workload_ols
+      destroy:
+        disable: false
+      # these are all controlled by the base component and do not need
+      # to be enabled in the workload config
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
+
+  sandbox_api:
+    actions:
+      destroy:
+        # Allow remove_workloads to run before sandbox is destroyed
+        catch_all: false
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Field Sourced Content - OpenShift Base (AWS)"
+    category: Workshops
+    keywords: []
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    multiuser: true
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters:
+    - name: cluster_size
+      description: Single Node or Full Cluster
+      formLabel: cluster_size
+      required: true
+      openAPIV3Schema:
+        type: string
+        default: 'sno'
+        enum:
+        - 'sno'
+        - 'multinode'
+      components:
+      - name: all
+
+    - name: host_ocp4_installer_version
+      description: OpenShift version to install
+      formLabel: OpenShift Version
+      required: false
+      openAPIV3Schema:
+        type: string
+        default: '4.22'
+        enum:
+        - '4.20'
+        - '4.21'
+        - '4.22'
+      annotation: demo.redhat.com/ocp-version
+      variable: host_ocp4_installer_version
+      components:
+      - name: openshift_base
+
+    - name: worker_instance_count_param
+      description: OpenShift Worker count
+      formLabel: OpenShift Worker count
+      formHideCondition: >-
+        cluster_size != 'multinode'
+      openAPIV3Schema:
+        type: integer
+        default: 2
+        minimum: 2
+        maximum: 10
+      components:
+      - name: current
+
+    - name: worker_instance_type
+      description: OpenShift Worker instance type
+      formLabel: OpenShift Worker instance type
+      formHideCondition: >-
+        cluster_size != 'multinode'
+      openAPIV3Schema:
+        type: string
+        default: 'm5a.2xlarge'
+        enum:
+        - 'm5a.2xlarge'
+        - 'm5a.4xlarge'
+        - 'm5a.8xlarge'
+      components:
+      - name: current
+
+    - name: open_environment
+      description: >-
+        Provides access to AWS account in which OpenShift is deployed. You can use this to deploy additional
+        resources in the account. YOUR COST CENTER WILL BE CHARGED FOR THESE RESOURCES.
+      formLabel: Enable OPEN Environment?
+      openAPIV3Schema:
+        default: false
+        type: boolean
+      annotation: demo.redhat.com/open-environment
+      variable: agnosticd_open_environment
+      components:
+      - name: openshift_base
+
+    - name: enable_base_rhoai
+      description: >-
+        Install OpenShift AI 3 (operator and Data Science Cluster).
+        CPU-only by default. On AWS, provision GPU instances and install
+        the GPU operator yourself if you need GPUs.
+      formLabel: OpenShift AI
+      formGroup: Select Base Workloads
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: current
+
+    - name: enable_base_aap
+      description: >-
+        Install Ansible Automation Platform (licensed controller).
+        Hub, EDA, and AAP Lightspeed are not included.
+      formLabel: Ansible Automation Platform
+      formGroup: Select Base Workloads
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: current
+
+    - name: create_multi_user
+      description: >-
+        Create a configurable number of users on cluster.
+      formLabel: Create users on cluster?
+      formGroup: Users
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: current
+
+    - name: num_users
+      description: >-
+        Number of users to provision within the environment.
+      formLabel: User Count
+      formGroup: Users
+      formHideCondition: create_multi_user == false
+      openAPIV3Schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 50
+      components:
+      - name: current
+
+    - name: existing_gitops
+      description: >-
+        Do you want to provide an existing GitOps repo to deploy from?
+      formLabel: Existing Gitops Repo?
+      formGroup: GitOps
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: current
+
+    - name: ocp4_workload_field_content_gitops_repo_url
+      description: >-
+        The URL to the GitOps repo containing automation
+      formLabel: GitOps Repo
+      formGroup: GitOps
+      formHideCondition: existing_gitops == false
+      formRequireCondition: existing_gitops == true
+      openAPIV3Schema:
+        type: string
+        default: ''
+      components:
+      - name: current
+
+    - name: ocp4_workload_field_content_gitops_repo_revision
+      description: >-
+        The branch or tag of the repo that you want to use
+      formLabel: GitOps Revision
+      formGroup: GitOps
+      formHideCondition: existing_gitops == false
+      formRequireCondition: existing_gitops == true
+      openAPIV3Schema:
+        type: string
+        default: "main"
+      components:
+      - name: current
+
+    - name: ocp4_workload_field_content_gitops_repo_path
+      description: >-
+        The path in your GitOps repo that contains the initial application
+      formLabel: GitOps Path
+      formGroup: GitOps
+      formHideCondition: existing_gitops == false
+      formRequireCondition: existing_gitops == true
+      openAPIV3Schema:
+        type: string
+        default: ''
+      components:
+      - name: current
+
+    - name: private_gitops
+      description: >-
+        Is your GitOps repo private and requires an access token?
+      formLabel: Private GitOps repo?
+      formGroup: GitOps
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: current
+
+    - name: ocp4_workload_field_content_gitops_repo_key
+      description: >-
+        Provide an access token for a private Git repo
+      formLabel: GitOps access key
+      formGroup: GitOps
+      formHideCondition: private_gitops == false
+      formRequireCondition: private_gitops == true
+      openAPIV3Schema:
+        type: string
+        default: ''
+      components:
+      - name: current
+
+    # ===================================================================
+    # OpenShift Lightspeed (OPTIONAL)
+    # ===================================================================
+    - name: enable_ols
+      description: >-
+        Install OpenShift Lightspeed.
+      formLabel: OpenShift Lightspeed
+      formGroup: OpenShift Lightspeed
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: current
+
+    # ===================================================================
+    # LiteMaaS/MaaS Configuration (OPTIONAL - for AI/LLM demos)
+    # ===================================================================
+    - name: enable_litemaas_keys
+      description: >-
+        Enable automatic provisioning of LiteMaaS/MaaS API keys for AI/LLM demonstrations.
+        Only check this if your GitOps repository deploys AI models (RAG, chatbots, etc.).
+        This will create a temporary API key with configurable expiration.
+      formLabel: Enable LiteMaaS/MaaS API Keys (for AI/LLM demos)
+      formGroup: AI/LLM Configuration
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: current
+
+    - name: litemaas_model
+      description: >-
+        Select the AI/LLM model to provision API access for.
+        Your GitOps deployment can use this model via the auto-generated API key.
+      formLabel: LiteMaaS Model
+      formGroup: AI/LLM Configuration
+      formHideCondition: enable_litemaas_keys == false
+      required: false
+      openAPIV3Schema:
+        type: string
+        default: 'llama-scout-17b'
+        enum:
+        - 'codellama-7b-instruct'
+        - 'deepseek-r1-distill-qwen-14b'
+        - 'gpt-oss-120b'
+        - 'gpt-oss-20b'
+        - 'granite-3-2-8b-instruct'
+        - 'granite-4-0-h-tiny'
+        - 'Llama-Guard-3-1B'
+        - 'llama-scout-17b'
+        - 'microsoft-phi-4'
+        - 'minimax-m2'
+        - 'nomic-embed-text-v1-5'
+        - 'qwen3-14b'
+        - 'qwen3-235b'
+      components:
+      - name: current
+
+    - name: litemaas_duration
+      description: >-
+        How long the API key remains valid.
+        The key will automatically expire after this period.
+      formLabel: API Key Validity Period
+      formGroup: AI/LLM Configuration
+      formHideCondition: enable_litemaas_keys == false
+      required: false
+      openAPIV3Schema:
+        type: string
+        default: '7d'
+        enum:
+        - '3d'
+        - '7d'
+        - '10d'
+        - '30d'
+      components:
+      - name: current
+    workshop_user_mode: multi
+
+  components:
+  - name: openshift_base
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-aws-pools
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
