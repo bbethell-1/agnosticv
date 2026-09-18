@@ -18,6 +18,9 @@
 #include /includes/secrets/letsencrypt_with_zerossl_fallback.yaml
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+# Provides litellm_url + litellm_master_key, used to mint a per-deployment
+# virtual key for the MaaS endpoint the workshop consumes.
+#include /includes/secrets/litemaas-master_api.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -39,6 +42,10 @@ requirements_content:
     - name: https://github.com/rhpds/showroom.git
       type: git
       version: v1.7.2
+    # LiteLLM Virtual Keys - mints the MaaS API key injected into the GitOps chart
+    - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+      type: git
+      version: "{{ tag }}"
 
 # -------------------------------------------------------------------
 # VM configuration
@@ -78,9 +85,16 @@ workloads:
   - agnosticd.core_workloads.ocp4_workload_cert_manager
   - agnosticd.core_workloads.ocp4_workload_authentication
   - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  # Must run before gitops_bootstrap: it sets litellm_api_endpoint and
+  # litellm_virtual_key, which are injected as remotellm.* helm values below.
+  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
   - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
   - agnosticd.showroom.ocp4_workload_ocp_console_embed
   - agnosticd.showroom.ocp4_workload_showroom
+
+# Revoke the LiteLLM virtual key when the environment is destroyed.
+remove_workloads:
+  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 # -------------------------------------------------------------------
 # Workload variables
 # -------------------------------------------------------------------
@@ -173,10 +187,62 @@ ocp4_workload_openshift_gitops_rbac_scopes: "[name,groups]"
 # -------------------------------------------------------------------
 # ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
-ocp4_workload_gitops_bootstrap_infra_repo: git@github.com:rhpds/rhai-features-workshop.git
-ocp4_workload_gitops_bootstrap_infra_branch: main
-ocp4_workload_gitops_bootstrap_infra_path: automation/gitops/bootstrap-infra
-ocp4_workload_gitops_bootstrap_health_retries: 2
+# NOTE: the role reads *_repo_url / *_repo_revision / *_repo_path. The previous
+# *_infra_repo / *_infra_branch / *_infra_path names are not role variables, so
+# they were silently ignored and the bootstrap Application fell back to the role
+# default (http://gitea:3000/user/bootstrap). Also switched from the git@ SSH URL
+# to https, since ArgoCD has no deploy key for this repo.
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/rhai-features-workshop.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: automation/gitops/bootstrap-infra
+
+# The bootstrap is an app-of-apps: 8 admin Applications (sync waves -1..3) and
+# 7 per-user ApplicationSets (waves 5..9). It needs time to converge, so keep the
+# role default rather than the previous value of 2.
+ocp4_workload_gitops_bootstrap_health_retries: 60
+# Child Applications get ArgoCD tracking annotations after creation, which makes
+# the parent report OutOfSync while children are still syncing.
+ocp4_workload_gitops_bootstrap_application_ignore_tracking: true
+
+# Values consumed by automation/gitops/bootstrap-infra. Everything
+# environment-specific is injected here; nothing secret is committed to the
+# workshop repo. remotellm.* has no defaults in the chart at all.
+#
+# Setting this also changes how the role renders the bootstrap Application: with
+# helm values it uses spec.source.helm, and without them it falls back to
+# `plugin: kustomize-envvar`, which cannot render a Helm chart.
+#
+# `deployer` is deliberately absent: the role always injects
+# deployer.domain / .apiUrl / .guid itself and combines it over these values, so
+# anything set here under `deployer` would be silently discarded.
+ocp4_workload_gitops_bootstrap_helm_values:
+  bootstrap:
+    repoURL: https://github.com/rhpds/rhai-features-workshop
+    targetRevision: "{{ ocp4_workload_gitops_bootstrap_repo_revision }}"
+    pathPrefix: automation/gitops
+  user:
+    count: "{{ ocp4_workload_user_count }}"
+    prefix: "{{ ocp4_workload_user_base }}"
+    namespacePrefix: wksp
+  remotellm:
+    enabled: true
+    id: "{{ llm_model }}"
+    # OpenAI-compatible base URL, including /v1.
+    url: "{{ litellm_api_endpoint }}/v1"
+    # Hostname only - MaaS ExternalProvider rejects a scheme or path.
+    endpoint: "{{ litellm_api_endpoint | urlsplit('hostname') }}"
+    apiToken: "{{ litellm_virtual_key }}"
+  minio:
+    rootUser: minio
+    rootPassword: "{{ common_user_password }}"
+
+# -------------------------------------------------------------------
+# rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+llm_model: gpt-oss-120b
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_models:
+  - "{{ llm_model }}"
 
 # -------------------------------------------------------------------
 # Role: ocp4_workload_showroom
@@ -185,6 +251,46 @@ ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/rhai-features-
 ocp4_workload_showroom_content_git_repo_ref: main
 ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-11
 ocp4_workload_showroom_terminal_type: wetty
+
+# Overrides the placeholder attributes in content/antora.yml. The role already
+# auto-populates openshift_cluster_ingress_domain, openshift_console_url and the
+# bastion_* values, so only these need to be passed explicitly.
+# TODO: the per-user attributes the content still defaults (user, user_project,
+# fed_aura_url, ogx_url, maas_url, mlflow_route) need per-user values. Wiring
+# those up for 2..N users needs to be validated against a real dev order, since
+# the app routes are operator-generated - doing that as a follow-up rather than
+# guessing the hostnames here.
+ocp4_workload_showroom_user_data:
+  openshift_api_url: "{{ openshift_api_url }}"
+  password: "{{ common_user_password }}"
+
+# NOTE: the Mortgage AI tab is pinned to user1. This item provisions 2..30 users,
+# so users 2..N get user1's route until the per-user attributes above are wired
+# up. The hostname follows routes.sharedHost in
+# automation/gitops/deployments/mortgage-ai, i.e. mortgage-ai-wksp-<user>, not
+# the mortgage-ai-ui-route-wksp-<user> pattern used by the agentops labs.
+# The terminal path is /wetty to match ocp4_workload_showroom_terminal_type above.
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 30
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+  - name: OCP Console
+    url: 'https://console-openshift-console.{{ openshift_cluster_ingress_domain }}'
+  - name: Terminal
+    path: /wetty
+    port: 443
+  - name: MLflow Console
+    url: 'https://rh-ai.{{ openshift_cluster_ingress_domain }}/mlflow/'
+  - name: Mortgage AI App
+    url: 'https://mortgage-ai-wksp-{{ ocp4_workload_user_base }}1.{{ openshift_cluster_ingress_domain }}'
+  - name: RHOAI Console
+    url: 'https://rh-ai.{{ openshift_cluster_ingress_domain }}/'
+  - name: RHOAI Docs
+    url: 'https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/'
 
 # -------------------------------------------------------------------
 # Babylon Meta Variables
