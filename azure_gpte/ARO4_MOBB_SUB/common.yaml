@@ -10,7 +10,7 @@
 #include /includes/terms-of-service.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/ocp4_token.yaml
-#include /includes/secrets/azure_redhat0_rhdp_manager.yaml
+#include /includes/sandbox-api.yaml
 #include /includes/runtime-unlimited.yaml
 #include /includes/secrets/zerossl.yaml
 
@@ -27,14 +27,23 @@ agnosticd_open_environment: true
 
 cloud_provider: azure
 
-# Azure pool to use
-az_pool_id: "01"
 # Enable ARO installation functions
 azure_deploy_bastion: true
 install_aro: true
 aro_install_helm: true
 
 rhel_sku: "9_6"
+
+azure_service_principal_id: "{{ azure_sandbox.credentials[0].app_id }}"
+azure_service_principal_password: "{{ azure_sandbox.credentials[0].password }}"
+azure_tenant: "{{ azure_sandbox.credentials[0].tenant }}"
+azure_subscription: "{{ azure_sandbox.credentials[0].subscription_id }}"
+azure_user_data:
+  azure_service_principal_id: "{{ azure_sandbox.credentials[0].app_id }}"
+  azure_service_principal_password: "{{ azure_sandbox.credentials[0].password }}"
+  azure_tenant: "{{ azure_sandbox.credentials[0].tenant }}"
+  azure_subscription: "{{ azure_sandbox.credentials[0].subscription_id }}"
+  guid: "{{ guid }}"
 
 # Extra packages to install
 common_extra_packages:
@@ -74,7 +83,7 @@ showroom_tls_provider: letsencrypt
 include_arc_content: false
 
 agnosticd_passthrough_user_data: |
-  {{ {}
+  {{ azure_user_data
    | combine({
       "include_arc_content": include_arc_content
    } if include_arc_content else {})
@@ -134,3 +143,9 @@ __meta__:
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:v0.1.2
       pull: missing
+  sandboxes:
+    - kind: AzureSandbox
+      cloud_selector:
+        purpose: production
+        location: "{{ job_vars.azure_region }}"
+      var: azure_sandbox
