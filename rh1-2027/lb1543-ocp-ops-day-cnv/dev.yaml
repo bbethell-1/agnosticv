@@ -7,10 +7,12 @@ purpose: development
 # Override tag to use main branches for all collections
 tag: main
 
-# Override requirements_content: same collections as common.yaml, but
-# sovereign_cloud is pinned (main branch removed ManagedClusterSet and
-# policy tasks). AgnosticV does not deep-merge lists, so the whole
-# collections list must be redefined here rather than patched.
+# Override requirements_content: same collections as common.yaml, minus
+# sovereign_cloud. ocp4_workload_prepare_hcp was vendored into
+# deliver-openshift-ops-day (see _hcp_workloads override below) so it can
+# be edited directly instead of pinned to a sovereign_cloud git hash.
+# AgnosticV does not deep-merge lists, so the whole collections list must
+# be redefined here rather than patched.
 requirements_content:
   collections:
   - name: https://github.com/rhpds/assisted_installer.git
@@ -25,13 +27,30 @@ requirements_content:
   - name: https://github.com/rhpds/deliver-openshift-ops-day.git#/automation/ansible
     type: git
     version: "{{ tag }}"
-  # Pinned to ede8c9b6 - main branch removed ManagedClusterSet and policy tasks
-  - name: https://github.com/rhpds/sovereign_cloud.git
-    type: git
-    version: ede8c9b6
   - name: https://github.com/rhpds/ai_workloads.git
     type: git
     version: "{{ tag }}"
+
+# Override _hcp_workloads: same list as common.yaml, but using the
+# vendored ocp4_workload_prepare_hcp from deliver-openshift-ops-day
+# instead of rhpds.sovereign_cloud (which is no longer in the
+# collections list above). AgnosticV does not deep-merge lists, so the
+# whole list must be redefined here rather than patched.
+_hcp_workloads:
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- agnosticd.core_workloads.ocp4_workload_rhacm
+- deliver_openshift_ops_day.automation.ocp4_workload_rhacm_cloud_credentials
+- agnosticd.core_workloads.ocp4_workload_metallb
+- deliver_openshift_ops_day.automation.ocp4_workload_hcp_kubevirt
+- deliver_openshift_ops_day.automation.ocp4_workload_prepare_hcp
+
+# External OCS Ceph RBD (ai_local_storageclass above) cannot complete
+# VolumeSnapshot creation on CNV clusters — snapshots stay
+# READYTOUSE=false indefinitely, leaving DataSources NotReady and the
+# bootable volumes catalog empty. Switching to PVC format patches the
+# StorageProfile to use dataImportCronSourceFormat=pvc instead.
+ocp4_workload_openshift_virtualization_boot_sources_shapshot: false
 
 # -------------------------------------------------------------------
 # ocp5_workload_ols (dev only) - replaces ocp4_workload_ols from
