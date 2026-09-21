@@ -6,7 +6,7 @@
 # with a flat `infra_workloads` list) to AgnosticD v2.
 #
 # The OpenShift cluster is now provided PRE-PROVISIONED from a CNV pool
-# (agd-v2/ocp-cluster-cnv-pools, see __meta__.components). That pool
+# (agd-v2/ocp5-cluster-cnv-pools, see __meta__.components). That pool
 # already installs External ODF (Ceph + NooBaa) and cert-manager
 # (with dynamic-dns + acme certs), so this config:
 #   - sets cloud_provider: none and config: openshift-workloads
@@ -28,10 +28,11 @@
 #   - ocp4_workload_virt_roadshow_multi_user
 #
 # NOTE:
-#   * Operator versions are kept on LIVE channels with pinned starting_csv
-#     (faithful port of the v1 CI). Switching to the shared catalog snapshot
-#     (ocp4_workload_catalogsource_image/tag) is deferred: a snapshot tag would
-#     first need to be verified to contain the pinned CSVs.
+#   * OpenShift 5 preview stream: the live 5.0 catalogs are incomplete, so the
+#     OLM operators install from a pinned 4.22 redhat-operators catalog snapshot
+#     (ocp4_workload_catalogsource_image/tag = v4.22_2026_08_03, the tag used by
+#     the sibling OCP5 CIs lb1858 + security-roadshow-ocp5-cnv). OpenShift
+#     Virtualization is the exception: it runs on the LIVE 5.0 catalog.
 # ===================================================================
 
 # -------------------------------------------------------------------
@@ -66,6 +67,7 @@ tag: main
 tag_assisted_installer: v0.0.9
 tag_showroom: v1.7.2
 tag_ocp5_virt_rh1: main
+showroom_repo_revision: main
 
 # -------------------------------------------------------------------
 # CNV Worker Nodes
@@ -103,6 +105,9 @@ requirements_content:
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
+ocp4_workload_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.22_2026_08_03
+
 workloads:
 - agnosticd.core_workloads.ocp4_workload_authentication
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
@@ -138,8 +143,10 @@ ocp4_workload_authentication_remove_kubeadmin: true
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.20
-ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+ocp4_workload_openshift_gitops_channel: gitops-1.21
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 
@@ -200,22 +207,29 @@ ocp4_workload_openshift_gitops_resource_customizations: |
 # -------------------------------------------------------------------
 ocp4_workload_web_terminal_channel: fast
 ocp4_workload_web_terminal_configure: false
+ocp4_workload_web_terminal_use_catalog_snapshot: true
+ocp4_workload_web_terminal_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_web_terminal_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_openshift_virtualization
 # -------------------------------------------------------------------
 ocp4_workload_openshift_virtualization_channel: stable
+# CNV is available in the live 5.0 catalog
+ocp4_workload_openshift_virtualization_use_catalog_snapshot: false
+ocp4_workload_openshift_virtualization_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_virtualization_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
+
 # Use PVCs for KubeVirt boot images (v1 var was misspelled "shapshot")
 ocp4_workload_openshift_virtualization_boot_sources_snapshot: false
-ocp4_workload_openshift_virtualization_automatic_install_plan_approval: false
-ocp4_workload_openshift_virtualization_starting_csv: "kubevirt-hyperconverged-operator.v4.21.1"
 
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_mtv
 # -------------------------------------------------------------------
 ocp4_workload_mtv_channel: release-v2.11
-ocp4_workload_mtv_automatic_install_plan_approval: false
-ocp4_workload_mtv_starting_csv: "mtv-operator.v2.11.4"
+ocp4_workload_mtv_use_catalog_snapshot: true
+ocp4_workload_mtv_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_mtv_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_mtv_max_vm_inflight: "{{ [(num_users | int * 3) | int, 40] | min }}"
 ocp4_workload_mtv_forklift_controller_container_limits_cpu: "{{ [(num_users | int * 100) | int, 1000] | max }}m"
 ocp4_workload_mtv_forklift_controller_container_limits_memory: "{{ [(num_users | int * 400) | int, 2000] | max }}Mi"
@@ -224,7 +238,9 @@ ocp4_workload_mtv_forklift_controller_container_limits_memory: "{{ [(num_users |
 # ocp5_virt_rh1.automation.ocp4_workload_oadp_gitops
 # -------------------------------------------------------------------
 ocp4_workload_oadp_gitops_channel: stable
-ocp4_workload_oadp_gitops_use_catalog_snapshot: false
+ocp4_workload_oadp_gitops_use_catalog_snapshot: true
+ocp4_workload_oadp_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_oadp_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # Multi User
 ocp4_workload_oadp_gitops_multi_user: true
@@ -237,6 +253,13 @@ ocp4_workload_oadp_gitops_storage: odf
 # ocs-external-storagecluster, so the RBD snapshot class carries the
 # "external" prefix (the role default ocs-storagecluster-... does not exist here).
 ocp4_workload_oadp_gitops_volumesnapshotclass: ocs-external-storagecluster-rbdplugin-snapclass
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_nmstate
+# -------------------------------------------------------------------
+ocp4_workload_nmstate_use_catalog_snapshot: true
+ocp4_workload_nmstate_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_nmstate_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # -------------------------------------------------------------------
 # ocp5_virt_rh1.automation.ocp4_workload_virt_roadshow_vms
@@ -294,7 +317,7 @@ ocp4_workload_virt_network_config_bridge_name: br-flat
 # -------------------------------------------------------------------
 ocp4_workload_showroom_namespace: showroom
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ocp5-virt-rh1
-ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_git_repo_ref: "{{ showroom_repo_revision }}"
 
 ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
 ocp4_workload_showroom_deployer_chart_name: showroom-single-pod
@@ -320,7 +343,7 @@ __meta__:
     scm_url: https://github.com/rhpds/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-08-05
 
   catalog:
     display_name: "LB2076: OpenShift 5 Virtualization Lab"
@@ -360,11 +383,11 @@ __meta__:
 
   components:
   - name: openshift
-    display_name: OpenShift Cluster (CNV)
-    item: agd-v2/ocp-cluster-cnv-pools
+    display_name: OpenShift 5 Cluster (CNV)
+    item: agd-v2/ocp5-cluster-cnv-pools
     parameter_values:
       cluster_size: multinode
-      host_ocp4_installer_version: "4.21"
+      host_ocp4_installer_version: "5.0"
     propagate_provision_data:
     - name: openshift_api_ca_cert
       var: openshift_api_ca_cert
