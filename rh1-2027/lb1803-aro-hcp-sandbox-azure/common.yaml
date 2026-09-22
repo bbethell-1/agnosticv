@@ -8,7 +8,6 @@
 #include /includes/terms-of-service.yaml
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/ocp4_token.yaml
-#include /includes/secrets/azure_redhat0_rhdp_manager.yaml
 #include /includes/secrets/zerossl_with_letsencrypt_fallback.yaml
 #include /includes/sandbox-api.yaml
 
@@ -35,6 +34,7 @@ azure_user_data:
   azure_tenant: "{{ azure_sandbox.credentials[0].tenant }}"
   azure_subscription: "{{ azure_sandbox.credentials[0].subscription_id }}"
   guid: "{{ guid }}"
+  common_password: "{{ common_password }}"
 agnosticd_passthrough_user_data: |
   {{ azure_user_data }}
 
@@ -57,6 +57,50 @@ bastion_custom_motd: |-
   ---------------------------------------------------------------------------
           Welcome to the ARO HCP Sandbox Workshop!
   ---------------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Collections
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: "https://github.com/rhpds/aro-hcp-sandbox-workshop#/automation/ansible"
+      type: git
+    - name: "https://github.com/agnosticd/showroom.git"
+      type: git
+      version: v1.7.2
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+# -------------------------------------------------------------------
+# Workload roles
+# -------------------------------------------------------------------
+infra_workloads:
+  - aro_hcp_sandbox_workshop.automation.aro_hcp_cluster
+  - aro_hcp_sandbox_workshop.automation.aro_hcp_keycloak_auth
+  - ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload: aro_hcp_cluster
+# -------------------------------------------------------------------
+aro_hcp_cluster_np_vm_size: Standard_D4s_v6
+aro_hcp_cluster_np_replicas: 2
+
+# -------------------------------------------------------------------
+# Workload: aro_hcp_keycloak_auth
+# -------------------------------------------------------------------
+aro_hcp_keycloak_admin_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/aro-hcp-sandbox-workshop.git
+ocp4_workload_showroom_content_git_ref: main
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -103,3 +147,4 @@ __meta__:
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:v0.1.2
       pull: missing
+    scm_ref: main
