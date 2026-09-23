@@ -88,7 +88,16 @@ common_password: >-
   {{
     lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
   }}
-
+# -------------------------------------------------------------------
+# Hermes API server key -- per-participant static bearer token
+# 48 hex chars == `openssl rand -hex 24`, the format tenant-platform's
+# values.yaml documents. The output_dir file keeps it stable across
+# every reference within a provision.
+# -------------------------------------------------------------------
+hermes_api_server_key: >-
+  {{
+    lookup('password', output_dir ~ '/hermes_api_server_key', length=48, chars=['digits', 'abcdef'])
+  }}
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_tenant_keycloak_user
 # -------------------------------------------------------------------
@@ -141,6 +150,15 @@ ocp4_workload_showroom_content_ui_config: |
     url: "https://rhods-dashboard-redhat-ods-applications.{{ openshift_cluster_ingress_domain }}"
 
 # -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom_user_data_seed
+# litellm_* keys are already seeded by the LiteLLM workload's
+# enable_user_info_data. These add the Hermes side.
+# -------------------------------------------------------------------
+ocp4_workload_showroom_user_data_seed:
+  agentops_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-agentops"
+  hermes_api_server_key: "{{ hermes_api_server_key }}"
+
+# -------------------------------------------------------------------
 # ocp4_workload_gitops_bootstrap
 # -------------------------------------------------------------------
 ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/agentops-in-action-workshop.git
@@ -162,7 +180,9 @@ ocp4_workload_gitops_bootstrap_helm_values:
     subdomain: "{{ openshift_cluster_ingress_domain }}"
   registry:
     host: "quay.{{ openshift_cluster_ingress_domain }}"
-
+  secrets:
+    modelApiKey: "{{ litellm_virtual_key }}"
+    apiServerKey: "{{ hermes_api_server_key }}"
 ocp4_workload_gitops_bootstrap_health_retries: 10
 
 # ===================================================================
