@@ -66,7 +66,8 @@ requirements_content:
       version: "{{ tag }}"
     - name: https://github.com/rhpds/cloud_vm_workloads.git
       type: git
-      version: "{{ tag }}"
+      # version: "{{ tag }}"
+      version: "cnv_instances"
     # AI Workloads
     - name: https://github.com/rhpds/ai_workloads.git
       type: git
@@ -89,20 +90,221 @@ requirements_content:
 # -------------------------------------------------------------------
 common_admin_password: >-
   {{ lookup('password', output_dir ~ '/common_admin_password', length=12, chars=['ascii_letters', 'digits']) }}
+common_host_password: "{{ bastion_ansible_ssh_pass }}"
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 workloads:
   - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+  - agnosticd.cloud_vm_workloads.cnv_instances
+  - intro_ao_workshop.automation.ocp4_workload_cnv_node_info
   - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
   - infra.aap_configuration.dispatch
   - intro_ao_workshop.automation.ocp4_workload_automation_orchestrator
-  # - agnosticd.showroom.ocp4_workload_showroom
+  - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+  - agnosticd.showroom.ocp4_workload_ocp_console_embed
+  - agnosticd.showroom.ocp4_workload_showroom
 
 # ===================================================================
 # Variables for specific workloads
 # ===================================================================
+
+# -------------------------------------------------------------------
+# Workshop:
+# rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+# ------------------------------------------------------
+# Instances
+# ------------------------------------------------------
+node_instance_image: rhel-9.6
+node_rootfs_size: 20Gi
+node_extra_disk_size: 10Gi
+
+# cnv_instances role requires sandbox_openshift_apps_domain for Route host construction;
+# in openshift-workloads config this is not set by the cloud provider phase, so alias it.
+sandbox_openshift_apps_domain: "{{ openshift_cluster_ingress_domain }}"
+
+# Give LoadBalancer services up to 5 minutes to get an IP (30 × 10s)
+openshift_cnv_retries: 30
+openshift_cnv_delay: 10
+
+cnv_instances:
+  - name: "node1"
+    count: 1
+    unique: true
+    image: "{{ node_instance_image }}"
+    cores: 2
+    memory: 4G
+    image_size: "{{ node_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel9_nodes"
+      - key: "ostype"
+        value: "linux"
+    disks:
+      - metadata:
+          name: "INSTANCENAME-data1-{{ guid }}"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ node_extra_disk_size }}"
+      - metadata:
+          name: "INSTANCENAME-data2-{{ guid }}"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ node_extra_disk_size }}"
+    userdata: |
+      users:
+        - default
+        - name: "{{ bastion_ansible_user }}"
+          plain_text_passwd: "{{ common_host_password }}"
+          lock_passwd: false
+          sudo: ALL=(ALL) NOPASSWD:ALL
+          shell: /bin/bash
+      password: "{{ common_host_password }}"
+      chpasswd:
+        expire: false
+      ssh_pwauth: true
+    services:
+      - name: node1-fip
+        type: LoadBalancer
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: bastion-22
+
+  - name: "node2"
+    count: 1
+    unique: true
+    image: "{{ node_instance_image }}"
+    cores: 2
+    memory: 4G
+    image_size: "{{ node_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel9_nodes"
+      - key: "ostype"
+        value: "linux"
+    disks:
+      - metadata:
+          name: "INSTANCENAME-data1-{{ guid }}"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ node_extra_disk_size }}"
+      - metadata:
+          name: "INSTANCENAME-data2-{{ guid }}"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ node_extra_disk_size }}"
+    userdata: |
+      users:
+        - default
+        - name: "{{ bastion_ansible_user }}"
+          plain_text_passwd: "{{ common_host_password }}"
+          lock_passwd: false
+          sudo: ALL=(ALL) NOPASSWD:ALL
+          shell: /bin/bash
+      password: "{{ common_host_password }}"
+      chpasswd:
+        expire: false
+      ssh_pwauth: true
+    services:
+      - name: node2-fip
+        type: LoadBalancer
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: bastion-22
+
+  - name: "node3"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ node_instance_image }}"
+    cores: 2
+    memory: 4G
+    image_size: "{{ node_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel9_nodes"
+      - key: "ostype"
+        value: "linux"
+    disks:
+      - metadata:
+          name: "INSTANCENAME-data1-{{ guid }}"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ node_extra_disk_size }}"
+      - metadata:
+          name: "INSTANCENAME-data2-{{ guid }}"
+        spec:
+          source:
+            blank: {}
+          pvc:
+            accessModes:
+              - ReadWriteMany
+            volumeMode: Block
+            resources:
+              requests:
+                storage: "{{ node_extra_disk_size }}"
+    userdata: |
+      users:
+        - default
+        - name: "{{ bastion_ansible_user }}"
+          plain_text_passwd: "{{ common_host_password }}"
+          lock_passwd: false
+          sudo: ALL=(ALL) NOPASSWD:ALL
+          shell: /bin/bash
+      password: "{{ common_host_password }}"
+      chpasswd:
+        expire: false
+      ssh_pwauth: true
+    services:
+      - name: node3-fip
+        type: LoadBalancer
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: bastion-22
 
 # -------------------------------------------------------------------
 # Workshop:
@@ -154,7 +356,7 @@ aap_configuration_async_delay: 30
 controller_dependency_check: false
 
 aap_configuration_dispatcher_roles:
-  - {role: gateway_settings, var: gateway_settings, tags: gateway_settings}
+  - { role: gateway_settings, var: gateway_settings, tags: gateway_settings}
   - { role: controller_credential_types, var: controller_credential_types, tags: controller_credential_types }
   - { role: controller_credentials, var: controller_credentials, tags: controller_credentials }
   - { role: controller_inventories, var: controller_inventories, tags: controller_inventories }
@@ -210,13 +412,37 @@ controller_inventories:
     state: present
 
 controller_hosts:
-  - name: "host1"
+  - name: "bastion"
     inventory: "Workshop Inventory"
     enabled: true
     state: present
     variables:
       ansible_host: "{{ bastion_ansible_host }}"
       ansible_port: "{{ bastion_ansible_port }}"
+      ansible_user: "{{ bastion_ansible_user }}"
+      ansible_password: "{{ bastion_ansible_ssh_pass }}"
+  - name: "node1"
+    inventory: "Workshop Inventory"
+    enabled: true
+    state: present
+    variables:
+      ansible_host: "{{ lookup('agnosticd.core.agnosticd_user_data', 'node1_external_ip') }}"
+      ansible_user: "{{ bastion_ansible_user }}"
+      ansible_password: "{{ bastion_ansible_ssh_pass }}"
+  - name: "node2"
+    inventory: "Workshop Inventory"
+    enabled: true
+    state: present
+    variables:
+      ansible_host: "{{ lookup('agnosticd.core.agnosticd_user_data', 'node2_external_ip') }}"
+      ansible_user: "{{ bastion_ansible_user }}"
+      ansible_password: "{{ bastion_ansible_ssh_pass }}"
+  - name: "node3"
+    inventory: "Workshop Inventory"
+    enabled: true
+    state: present
+    variables:
+      ansible_host: "{{ lookup('agnosticd.core.agnosticd_user_data', 'node3_external_ip') }}"
       ansible_user: "{{ bastion_ansible_user }}"
       ansible_password: "{{ bastion_ansible_ssh_pass }}"
 
@@ -232,14 +458,13 @@ ocp4_workload_automation_orchestrator_additional_allowed_hosts:
 # -------------------------------------------------------------------
 # Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
 # -------------------------------------------------------------------
-# agnosticv_importdata:
-#   ssh_username: "{{ bastion_ansible_user }}"
-#   ssh_password: "{{ bastion_ansible_ssh_pass }}"
-#   ssh_address: "{{ bastion_ansible_host }}"
-#   ssh_port: "{{ bastion_ansible_port }}"
-#   ssh_command: >-
-#     ssh {{ bastion_ansible_user }}@{{ bastion_ansible_host }} -p {{ bastion_ansible_port }}
-#   ssh_provision_pubkey: "{{ bastion_ssh_public_key }}"
+agnosticv_importdata:
+  ssh_username: "{{ bastion_ansible_user }}"
+  ssh_password: "{{ bastion_ansible_ssh_pass }}"
+  ssh_address: "{{ bastion_ansible_host }}"
+  ssh_port: "{{ bastion_ansible_port }}"
+  ssh_command: >-
+    ssh {{ bastion_ansible_user }}@{{ bastion_ansible_host }} -p {{ bastion_ansible_port }}
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
