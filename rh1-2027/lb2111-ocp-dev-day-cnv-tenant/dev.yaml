@@ -19,12 +19,49 @@ __meta__:
       purpose: dev
     tenant_cluster:
       item: rh1-2027/lb2111-ocp-dev-day-cnv-cluster
+  catalog:
+    parameters:
+    - name: automation_repo_url
+      description: "Ansible automation collection repository URL (include #/subdirectory for monorepos)"
+      formLabel: "Automation Repo URL"
+      openAPIV3Schema:
+        type: string
+        default: https://github.com/rhpds/dev-day-roadshow.git#/automation/ansible
+    - name: automation_tag
+      description: "Ansible automation collection tag/branch"
+      formLabel: "Automation Collection Ref"
+      openAPIV3Schema:
+        type: string
+        default: dev
+    - name: ocp4_workload_gitops_bootstrap_repo_url
+      description: "GitOps bootstrap repository URL (tenant charts)"
+      formLabel: "Bootstrap Repo URL"
+      openAPIV3Schema:
+        type: string
+        default: https://github.com/rhpds/dev-day-roadshow.git
+    - name: ocp4_workload_gitops_bootstrap_repo_revision
+      description: "GitOps tenant charts tag/branch"
+      formLabel: "Tenant Charts Ref"
+      openAPIV3Schema:
+        type: string
+        default: dev
+    - name: ocp4_workload_showroom_content_git_repo
+      description: "Showroom content repository URL"
+      formLabel: "Showroom Repo URL"
+      openAPIV3Schema:
+        type: string
+        default: https://github.com/rhpds/dev-day-roadshow.git
+    - name: ocp4_workload_showroom_content_git_repo_ref
+      description: "Showroom content tag/branch"
+      formLabel: "Showroom Content Ref"
+      openAPIV3Schema:
+        type: string
+        default: dev
 
 # -------------------------------------------------------------------
 # Override requirements_content for dev
-# - dev-day-roadshow pinned to dev branch; uses #/automation/ansible
-#   fragment because galaxy.yml lives in that subdirectory, not root
-#   (same pattern as lb2076/ocp5-virt-rh1)
+# - dev-day-roadshow uses automation_repo_url + automation_tag params
+#   so devs can point at their own forks/branches at order time
 # - Other collections stay on main via {{ tag }}
 # -------------------------------------------------------------------
 requirements_content:
@@ -41,9 +78,9 @@ requirements_content:
     type: git
     version: v1.7.2
 
-  - name: https://github.com/rhpds/dev-day-roadshow.git#/automation/ansible
+  - name: "{{ automation_repo_url }}"
     type: git
-    version: dev
+    version: "{{ automation_tag }}"
 
 # -------------------------------------------------------------------
 # Map cluster_admin_agnosticd_sa_token from OcpSandbox-injected var
@@ -52,10 +89,5 @@ requirements_content:
 cluster_admin_agnosticd_sa_token: "{{ sandbox_openshift_api_key }}"
 
 # The GitOps repo to use for the DEV tenant
-ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/dev-day-roadshow.git
-ocp4_workload_gitops_bootstrap_repo_revision: dev
 ocp4_workload_gitops_bootstrap_repo_path: automation/gitops/tenant/bootstrap
 ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ ocp4_workload_tenant_keycloak_username }}"
-
-# Showroom content from dev branch
-ocp4_workload_showroom_content_git_repo_ref: dev
