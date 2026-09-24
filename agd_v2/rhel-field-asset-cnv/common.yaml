@@ -1,6 +1,5 @@
 ---
-# Temporary access restriction for admins only.
-#include /includes/access-restriction-admins-only.yaml
+#include /includes/access-restriction-devs-only.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: RHEL Field Sourced Assets
@@ -20,7 +19,7 @@
 # -------------------------------------------------------------------
 config: cloud-vms-base
 cloud_provider: openshift_cnv
-cloud_provider_version: main
+cloud_provider_version: "{{ tag }}"
 
 tag: main
 
@@ -66,10 +65,10 @@ node_instance_image: "{{ default_instance_image }}"
 # Node sizing: one t-shirt for every node
 # -------------------------------------------------------------------
 node_instance_count: 1
-node_size: medium
+node_size: small
 node_cores: "{{ {'small': 2, 'medium': 4, 'large': 8}[node_size] }}"
 node_memory: "{{ {'small': '4G', 'medium': '8G', 'large': '16G'}[node_size] }}"
-node_disk: "{{ {'small': '50Gi', 'medium': '80Gi', 'large': '100Gi'}[node_size] }}"
+node_disk: "{{ {'small': '30Gi', 'medium': '50Gi', 'large': '70Gi'}[node_size] }}"
 
 # -------------------------------------------------------------------
 # Instances
@@ -84,7 +83,7 @@ instances:
     image: "{{ bastion_instance_image }}"
     memory: 4G
     cores: 2
-    image_size: 100Gi
+    image_size: 50Gi
     tags:
       - key: AnsibleGroup
         value: bastions,showroom
@@ -182,7 +181,7 @@ post_software_final_workloads:
     {{
       ['agnosticd.showroom.vm_workload_showroom']
       if (
-        enable_showroom | default(false) | bool
+        vm_workload_field_content_deploy_showroom | default(false) | bool
         and vm_workload_field_content_existing_content | default(false) | bool
       ) else []
     }}
@@ -200,7 +199,7 @@ agnosticv_importdata:
   workload_nodes: "{{ groups['nodes'] | default([]) | map('regex_replace', '\\..*$', '') | list | join(', ') }}"
   bastion_app_url: "http://app-{{ guid }}.{{ subdomain }}"
   bastion_app_secure_url: "https://app-secure-{{ guid }}.{{ subdomain }}"
-  showroom_url: "{{ ('https://' ~ bastion_public_hostname) if (enable_showroom | default(false) | bool) else omit }}"
+  showroom_url: "{{ ('https://' ~ bastion_public_hostname) if (vm_workload_field_content_deploy_showroom | default(false) | bool) else omit }}"
 
 # -------------------------------------------------------------------
 # control_user / bastion login
@@ -221,28 +220,29 @@ bastion_student_user_password: "{{ common_password }}"
 # -------------------------------------------------------------------
 vm_workload_field_content_existing_content: false
 vm_workload_field_content_git_repo_url: ""
-vm_workload_field_content_git_repo_revision: main
-vm_workload_field_content_playbook: playbooks/deploy.yml
+# Provided by the user when ordering; default to main.
+# vm_workload_field_content_git_repo_revision: main
+# Provided by the user when ordering; default to playbooks/deploy.yml.
+# vm_workload_field_content_playbook: playbooks/deploy.yml
 vm_workload_field_content_git_repo_key: ""
-vm_workload_field_content_enable_showroom: "{{ enable_showroom | default(false) | bool }}"
-vm_workload_field_content_showroom_path: "{{ showroom_path | default('') }}"
+vm_workload_field_content_deploy_showroom: false
+vm_workload_field_content_enable_showroom: "{{ vm_workload_field_content_deploy_showroom | default(false) | bool }}"
+vm_workload_field_content_showroom_path: ""
 vm_workload_field_content_enable_bastion_proxy: false
 
 # -------------------------------------------------------------------
 # Showroom (optional, same git repo as the collection)
 # -------------------------------------------------------------------
-enable_showroom: false
-showroom_path: ""
 showroom_git_repo: >-
   {{
     '/opt/field-content/showroom-content'
-    if (showroom_path | default('') | length > 0)
+    if (vm_workload_field_content_showroom_path | default('') | length > 0)
     else vm_workload_field_content_git_repo_url
   }}
 showroom_git_ref: >-
   {{
     'HEAD'
-    if (showroom_path | default('') | length > 0)
+    if (vm_workload_field_content_showroom_path | default('') | length > 0)
     else vm_workload_field_content_git_repo_revision
   }}
 showroom_user: showroom
@@ -307,7 +307,7 @@ __meta__:
           type: integer
           default: 1
           minimum: 1
-          maximum: 10
+          maximum: 8
         components:
           - name: current
 
@@ -423,7 +423,7 @@ __meta__:
         components:
           - name: current
 
-      - name: enable_showroom
+      - name: vm_workload_field_content_deploy_showroom
         description: Deploy Showroom from the same git repo
         formLabel: Deploy Showroom?
         formGroup: Showroom
@@ -434,13 +434,13 @@ __meta__:
         components:
           - name: current
 
-      - name: showroom_path
+      - name: vm_workload_field_content_showroom_path
         description: >-
           Directory in the collection repo that contains site.yml, ui-config.yml,
           and content/. Leave empty if Showroom lives at the repository root.
         formLabel: Alternative Showroom path
         formGroup: Showroom
-        formHideCondition: enable_showroom == false
+        formHideCondition: vm_workload_field_content_deploy_showroom == false
         openAPIV3Schema:
           type: string
           default: ''
@@ -449,10 +449,10 @@ __meta__:
 
   sandboxes:
     - kind: OcpSandbox
-      namespace_suffix: ocp4-cluster
+      namespace_suffix: rhel-fsc
       cloud_selector:
         cloud: cnv
         purpose: prod
         virt: "yes"
       quota:
-        requests.storage: 500Gi
+        requests.storage: 700Gi
