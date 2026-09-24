@@ -1,0 +1,204 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: AutoShift Lab (AWS) - AgdV2
+# -------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+# AgnosticV includes
+# --------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/agnosticd_open_environment.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+
+#include /includes/secrets/ocp4_token.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+tag: main
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  # AWS Cloud Provider (required by openshift_aws_scale_cluster)
+  - name: https://github.com/rhpds/cloud_provider_aws.git
+    type: git
+    version: "{{ tag }}"
+  # Core OpenShift Workloads
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+  # Showroom
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: v1.7.2
+
+# -------------------------------------------------------------------
+# Autoscaling — add 2x m5a.8xlarge workers to the pool cluster
+# -------------------------------------------------------------------
+openshift_aws_scale_cluster: true
+worker_instance_count: 2
+worker_instance_type: m5a.8xlarge
+worker_scale_retries: 240
+worker_scale_delay: 10
+
+# -------------------------------------------------------------------
+# Common admin credentials
+# -------------------------------------------------------------------
+common_admin_username: admin
+common_admin_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=16, chars=['ascii_letters', 'digits'])
+  }}
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+- agnosticd.showroom.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_admin_username: "{{ common_admin_username }}"
+ocp4_workload_authentication_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_admin_create: true
+ocp4_workload_authentication_num_users: 0
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_enable_user_info_data: true
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_default_realm: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.6
+ocp4_workload_authentication_keycloak_use_catalog_source: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ocp_console_embed
+# -------------------------------------------------------------------
+# Embeds the OpenShift console as a tab in Showroom
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ph-openshift-autoshift.git
+ocp4_workload_showroom_content_git_repo_ref: "{{ tag }}"
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 6a35922f-a2af-43e6-87a6-322a5b71eabf
+  owners:
+    maintainer:
+    - name: Prakhar Srivastava
+      email: psrivast@redhat.com
+    - name: Ben Carr
+      email: bcarr@redhat.com
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-05-04
+      pull: missing
+
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+      start:
+        enable: true
+      stop:
+        enable: true
+
+  # -----------------------------------------------------------------
+  # Components / Cluster Pool
+  # -----------------------------------------------------------------
+  components:
+  - name: openshift_base
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp-cluster-aws-pools
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: '4.22'
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "AutoShift Lab (AWS)"
+    category: Workshops
+    keywords:
+    - platform-engineering
+    - policy-governance
+    - hub-and-spoke
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    multiuser: false
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters:
+    - name: open_environment
+      description: >-
+        Charge back cloud costs to your cost center, allow full control of auto-stop and auto-destroy,
+        and provider cloud infrastructure credentials.
+      formLabel: Enable OPEN Environment?
+      openAPIV3Schema:
+        default: false
+        type: boolean
+      annotation: demo.redhat.com/open-environment
+      variable: agnosticd_open_environment
+      components:
+      - name: openshift_base
+
+    - name: host_ocp4_installer_fips_enable
+      description: >-
+        Federal Information Processing Standards - Allow only FIPS-validated cryptographic algorithms
+      formLabel: Enable FIPS?
+      openAPIV3Schema:
+        default: false
+        type: boolean
+      components:
+      - name: openshift_base
+
+    workshopUiDisabled: true
