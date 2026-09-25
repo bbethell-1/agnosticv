@@ -42,17 +42,21 @@ requirements_content:
   - name: https://github.com/rhpds/core_workloads.git
     type: git
     version: "{{ tag }}"
+  # Manage Host (bastion tools)
+  - name: https://github.com/rhpds/rhpds.manage_host.git
+    type: git
+    version: "{{ tag }}"
   # Showroom
   - name: https://github.com/rhpds/showroom.git
     type: git
     version: v1.7.2
 
 # -------------------------------------------------------------------
-# Autoscaling — add 2x m5a.8xlarge workers to the pool cluster
+# Autoscaling — add workers to the pool cluster
 # -------------------------------------------------------------------
 openshift_aws_scale_cluster: true
 worker_instance_count: 2
-worker_instance_type: m5a.8xlarge
+worker_instance_type: m5a.4xlarge
 worker_scale_retries: 240
 worker_scale_delay: 10
 
@@ -69,9 +73,31 @@ common_admin_password: >-
 # Workloads
 # -------------------------------------------------------------------
 workloads:
+- rhpds.manage_host.ocp4_workload_bastion_tools
 - agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.showroom.ocp4_workload_showroom_user_data_seed
 - agnosticd.showroom.ocp4_workload_ocp_console_embed
 - agnosticd.showroom.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_bastion_tools
+# -------------------------------------------------------------------
+ocp4_workload_bastion_tools_rpms:
+- golang
+- jq
+- make
+- curl
+- bash-completion
+
+ocp4_workload_bastion_tools_binaries:
+- description: Install helm
+  url: https://rhdp-public.s3.us-east-1.amazonaws.com/binaries/helm/helm-v4.2.4-linux-amd64
+  dest: /usr/local/bin/helm
+  mode: "0755"
+- description: Install yq
+  url: https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
+  dest: /usr/local/bin/yq
+  mode: "0755"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication
@@ -86,6 +112,15 @@ ocp4_workload_authentication_provider: keycloak
 ocp4_workload_authentication_keycloak_default_realm: keycloak
 ocp4_workload_authentication_keycloak_channel: stable-v26.6
 ocp4_workload_authentication_keycloak_use_catalog_source: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom_user_data_seed
+# -------------------------------------------------------------------
+ocp4_workload_showroom_user_data_seed:
+  aws_access_key_id: "{{ aws_access_key_id | default('') }}"
+  aws_secret_access_key: "{{ aws_secret_access_key | default('') }}"
+  aws_region: "{{ aws_region | default('') }}"
+  aws_base_domain: "{{ aws_route53_domain | default('') }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_ocp_console_embed
@@ -161,6 +196,14 @@ __meta__:
       var: sandbox_openshift_api_key
     - name: sandbox_openshift_namespace
       var: sandbox_openshift_namespace
+    - name: aws_access_key_id
+      var: aws_access_key_id
+    - name: aws_secret_access_key
+      var: aws_secret_access_key
+    - name: aws_region
+      var: aws_region
+    - name: aws_route53_domain
+      var: aws_route53_domain
 
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
@@ -200,5 +243,28 @@ __meta__:
         type: boolean
       components:
       - name: openshift_base
+
+    - name: worker_instance_type
+      description: >-
+        EC2 instance type for additional worker nodes
+      formLabel: Worker Instance Type
+      openAPIV3Schema:
+        default: m5a.4xlarge
+        type: string
+        enum:
+        - m5a.4xlarge
+        - m5a.8xlarge
+
+    - name: worker_instance_count
+      description: >-
+        Number of additional worker nodes to add to the cluster
+      formLabel: Number of Workers
+      openAPIV3Schema:
+        default: 2
+        type: integer
+        enum:
+        - 1
+        - 2
+        - 3
 
     workshopUiDisabled: true
