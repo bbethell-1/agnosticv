@@ -1,0 +1,193 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: OpenShift 5 First Look (CNV)
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+#include /includes/secrets/ocp5_workload_ols.yaml
+
+# -------------------------------------------------------------------
+# AgnosticDv2 variables
+# -------------------------------------------------------------------
+tag: main
+
+config: openshift-workloads
+cloud_provider: none
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+num_users: 1
+
+# Do not scale the cluster — 3 control-plane nodes only
+openshift_cnv_scale_cluster: false
+
+# ===================================================================
+# Collections
+# ===================================================================
+requirements_content:
+  collections:
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/rhpds/ai_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+# ===================================================================
+# Workloads
+# ===================================================================
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.ai_workloads.ocp5_workload_ols
+
+# ===================================================================
+# Workload: agnosticd.core_workloads.ocp4_workload_authentication
+# ===================================================================
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_multiuser: false
+ocp4_workload_authentication_keycloak_channel: stable-v26.6
+
+# Temporarily pin 4.22 Snapshots until everything is in the 5.0 catalogs
+ocp4_workload_authentication_keycloak_use_catalog_source: true
+ocp4_workload_authentication_keycloak_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp4_workload_authentication_keycloak_catalogsource_tag: v4.22_2026_08_03
+
+# ===================================================================
+# Workload: agnosticd.ai_workloads.ocp5_workload_ols
+# ===================================================================
+ocp5_workload_ols_provider: azure_sp
+ocp5_workload_ols_auth_provider: keycloak
+ocp5_workload_ols_keycloak_namespace: keycloak
+ocp5_workload_ols_keycloak_realm: sso
+ocp5_workload_ols_admin_username: admin
+
+# Temporarily pin 4.22 snapshots — lightspeed is not in redhat-operator-index:v5.0
+ocp5_workload_ols_use_catalog_snapshot: true
+ocp5_workload_ols_catalog_snapshot_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp5_workload_ols_catalog_snapshot_image_tag: v4.22_2026_08_31
+ocp5_workload_ols_catalogsource_name: redhat-operators-snapshot-lightspeed
+
+# ===================================================================
+# Workloads to remove on destroy
+# ===================================================================
+remove_workloads:
+- agnosticd.ai_workloads.ocp5_workload_ols
+
+# -------------------------------------------------------------------
+# Babylon meta
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 78996db0-5f20-4677-96d3-129029b1e344
+  owners:
+    maintainer:
+    - name: Nate Stephany
+      email: nstephan@redhat.com
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-09-15
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: true
+      status:
+        disable: true
+      stop:
+        disable: true
+      update:
+        disable: true
+
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OpenShift 5 First Look (CNV)
+    category: Labs
+    keywords:
+    - ocp5
+    - lightspeed
+    - ols
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    workshopUiDisabled: true
+    multiuser: false
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters:
+    - name: ocp5_workload_ols_enable_agentic
+      formLabel: Enable Agentic OpenShift Lightspeed
+      formGroup: Agentic OLS
+      description: >-
+        Deploy the Agentic OpenShift Lightspeed component on top of classic OLS.
+        When enabled, you must provide an OpenAI API key below.
+      required: false
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: current
+
+    - name: ocp5_workload_ols_agentic_api_key
+      formLabel: OpenAI API Key
+      formGroup: Agentic OLS
+      description: >-
+        Your OpenAI API key (sk-...) for the Agentic OLS component.
+        Required when Enable Agentic OpenShift Lightspeed is checked.
+      required: false
+      formHideCondition: ocp5_workload_ols_enable_agentic == false
+      formRequireCondition: ocp5_workload_ols_enable_agentic == true
+      openAPIV3Schema:
+        type: string
+        default: ""
+      components:
+      - name: current
+
+  components:
+  - name: openshift_base
+    display_name: OpenShift Container Platform 5 Cluster (CNV Pools)
+    item: agd-v2/ocp5-cluster-cnv-pools
+    parameter_values:
+      cluster_size: multinode
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
+
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
