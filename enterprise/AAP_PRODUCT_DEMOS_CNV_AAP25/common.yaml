@@ -2,17 +2,24 @@
 # Updated to OCP 4.20 / ODF stable-4.20
 #include /includes/catalog-icon-aap.yaml
 #include /includes/sandbox-api.yaml
+
+# Include Only in Enterpirse
 #include /enterprise/includes/aws-sandbox-meta.yaml
 #include /enterprise/includes/lifetime-standard.yaml
 #include /enterprise/includes/parameters/purpose.yaml
+
+# Include AgnosticV Parameters
 #include /includes/parameters/enable-cert-manager.yaml
+#include /includes/parameters/litellm_metadata.yaml
+
+# Include AgnosticV secrets
 #include /includes/secrets/demosat-rhel-9.3-ansible-2.4.yaml
 #include /includes/secrets/ansible-tower-advanced-2.yaml
 #include /includes/secrets/ocp4_token.yaml
 #include /includes/secrets/ocp4_ai_offline_token.yaml
-
 #include /includes/secrets/dynamic-dns.yaml
 #include /includes/secrets/acme-bifrost.yaml
+#include /includes/secrets/litemaas-master_api.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: "Ansible Product Demos"
@@ -60,6 +67,10 @@ requirements_content:
     - name: https://github.com/rhpds/core_workloads.git
       type: git
       version: "{{ tag }}"
+    # MaaS
+    - name: "https://github.com/rhpds/rhpds.litellm_virtual_keys.git"
+      type: git
+      version: "1.3.2"
     # AI Workloads
     - name: https://github.com/rhpds/ai_workloads.git
       type: git
@@ -96,10 +107,25 @@ requirements_content:
 # List of workloads to be deployed
 # -------------------------------------------------------------------
 workloads:
+  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
   - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
   - rhpds.manage_host.ocp4_workload_bastion_ssh_keygen
   - infra.aap_configuration.dispatch
   - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+
+# -------------------------------------------------------------------
+# Workshop:
+# rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+# Build model list based on checkbox selections
+ocp4_workload_litellm_virtual_keys_models:
+  - "{{ list_of_litellm_virtual_keys_models }}"
+# Duration selected by user
+ocp4_workload_litellm_virtual_keys_duration: "{{ litellm_duration | default('3d') }}"
+
+# Enable user.info messages and data
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
 
 # -------------------------------------------------------------------
 # Workload: >-
@@ -343,6 +369,27 @@ __meta__:
       Product_Family: Red_Hat_Automation
       SLA: Featured
     parameters:
+      - name: list_of_litellm_virtual_keys_models
+        formLabel: Select Model
+        formGroup: MaaS
+        openAPIV3Schema:
+          default: "qwen3-235b"
+          type: string
+          enum:
+            - "qwen3-14b"
+            - "qwen3-235b"
+      - name: litellm_duration
+        formLabel: Select Key Duration
+        formGroup: MaaS
+        openAPIV3Schema:
+          default: "3d"
+          type: string
+          enum:
+            - "1d"
+            - "2d"
+            - "3d"
+            - "4d"
+            - "5d"
       - name: ocp4_workload_ansible_automation_platform_operator_channel
         formLabel: AAP Version
         openAPIV3Schema:
@@ -430,6 +477,11 @@ __meta__:
       pull: missing
 
   sandboxes:
+    - kind: MaaSSandbox
+      cloud_selector:
+        purpose: production
+      models: "qwen3-235b"
+      var: maas_sandbox
     - kind: OcpSandbox
       namespace_suffix: apd
       cloud_selector:
