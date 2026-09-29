@@ -166,20 +166,27 @@ ocp4_workload_gitops_bootstrap_repo_revision: main
 ocp4_workload_gitops_bootstrap_repo_path: automation/gitops/bootstrap-tenant
 ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ ocp4_workload_tenant_keycloak_username }}"
 
+# bootstrap-tenant owns the single workload namespace and its participant RBAC.
+# OpenShell runs beside the applications; Showroom stays in its own namespace.
+# Do not restore openshellNamespaceSuffix or broad edit/admin grants here.
 ocp4_workload_gitops_bootstrap_helm_values:
   gitops:
     repoURL: "{{ ocp4_workload_gitops_bootstrap_repo_url }}"
+    # Forward the revision so all three child Applications use the same branch.
     targetRevision: "{{ ocp4_workload_gitops_bootstrap_repo_revision }}"
+    argocdNamespace: openshift-gitops
+    argocdProject: agentops-in-action
   tenant:
     username: "{{ ocp4_workload_tenant_keycloak_username }}"
-    password: "{{ common_password }}"
+  namespaceSuffix: agentops
+  # The chart derives Keycloak and the RHOAI/MLflow URL from deployer.domain.
+  deployer:
     domain: "{{ openshift_cluster_ingress_domain }}"
-  gitlab:
-    host: "gitlab-gitlab.{{ openshift_cluster_ingress_domain }}"
-  cluster:
-    subdomain: "{{ openshift_cluster_ingress_domain }}"
-  registry:
-    host: "quay.{{ openshift_cluster_ingress_domain }}"
+  platform:
+    agentHarness: hermes
+    hermesRuntime: openshell
+    mcpGateway: true
+    mlflowTracing: true
   secrets:
     modelApiKey: "{{ litellm_virtual_key }}"
     apiServerKey: "{{ hermes_api_server_key }}"
