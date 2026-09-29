@@ -98,8 +98,10 @@ workloads:
   - agnosticd.core_workloads.ocp4_workload_gitea_operator
   - intro_ao_workshop.automation.ocp4_workload_mattermost
   - intro_ao_workshop.automation.ocp4_workload_splunk
-  - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+  - intro_ao_workshop.automation.ocp4_workload_openflake_mcp
+  - intro_ao_workshop.automation.ocp4_workload_lightspeed_mcp_server
   - agnosticd.cloud_vm_workloads.cnv_instances
+  - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
   - intro_ao_workshop.automation.ocp4_workload_cnv_node_info
   - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
   - infra.aap_configuration.dispatch
@@ -150,6 +152,22 @@ ocp4_workload_mattermost_admin_password: "{{ common_host_password }}"
 # Workload: intro_ao_workshop.automation.ocp4_workload_splunk
 # -------------------------------------------------------------------
 ocp4_workload_splunk_password: "{{ common_host_password }}"
+
+# -------------------------------------------------------------------
+# Workload: intro_ao_workshop.automation.ocp4_workload_openflake_mcp
+# -------------------------------------------------------------------
+# Required: supply via secrets include or AAP survey — never hardcode here.
+ocp4_workload_openflake_mcp_instance_url: https://your.openflake.example.com/
+ocp4_workload_openflake_mcp_username: "{{ bastion_ansible_user }}"
+ocp4_workload_openflake_mcp_password: "{{ common_host_password }}"
+
+# -------------------------------------------------------------------
+# Workload: intro_ao_workshop.automation.ocp4_workload_lightspeed_mcp_server
+# -------------------------------------------------------------------
+# Service account credentials from console.redhat.com → Settings → Service Accounts.
+# Supply via secrets include — never hardcode here.
+ocp4_workload_lightspeed_mcp_server_client_id: "test-client-id"
+ocp4_workload_lightspeed_mcp_server_client_secret: "test-client-secret"
 
 # -------------------------------------------------------------------
 # Workshop: agnosticd.cloud_vm_workloads.cnv_instances
@@ -213,8 +231,14 @@ cnv_instances:
         expire: false
       ssh_pwauth: true
       runcmd:
-        - parted -s /dev/vda resizepart 3 20GiB
-        - partprobe /dev/vda
+        # Fix backup GPT header (still points to original image end, not 50G disk end)
+        - sgdisk -e /dev/vda
+        # Resize vda4 (root /) to end at 21GiB from disk start.
+        # vda4 start = sector 2510848; 21GiB = 44040192 sectors; size = 41529344 sectors.
+        # --no-reread writes to disk without asking kernel to reread (safe on mounted root).
+        - echo "2510848 41529344" | sfdisk --no-reread -N 4 /dev/vda
+        # partx -u uses BLKPG_RESIZE_PARTITION ioctl — works on in-use/mounted partitions.
+        - partx -u /dev/vda4
         - xfs_growfs /
     services:
       - name: node1-fip
@@ -267,8 +291,14 @@ cnv_instances:
         expire: false
       ssh_pwauth: true
       runcmd:
-        - parted -s /dev/vda resizepart 3 20GiB
-        - partprobe /dev/vda
+        # Fix backup GPT header (still points to original image end, not 50G disk end)
+        - sgdisk -e /dev/vda
+        # Resize vda4 (root /) to end at 21GiB from disk start.
+        # vda4 start = sector 2510848; 21GiB = 44040192 sectors; size = 41529344 sectors.
+        # --no-reread writes to disk without asking kernel to reread (safe on mounted root).
+        - echo "2510848 41529344" | sfdisk --no-reread -N 4 /dev/vda
+        # partx -u uses BLKPG_RESIZE_PARTITION ioctl — works on in-use/mounted partitions.
+        - partx -u /dev/vda4
         - xfs_growfs /
     services:
       - name: node2-fip
@@ -322,8 +352,14 @@ cnv_instances:
         expire: false
       ssh_pwauth: true
       runcmd:
-        - parted -s /dev/vda resizepart 3 20GiB
-        - partprobe /dev/vda
+        # Fix backup GPT header (still points to original image end, not 50G disk end)
+        - sgdisk -e /dev/vda
+        # Resize vda4 (root /) to end at 21GiB from disk start.
+        # vda4 start = sector 2510848; 21GiB = 44040192 sectors; size = 41529344 sectors.
+        # --no-reread writes to disk without asking kernel to reread (safe on mounted root).
+        - echo "2510848 41529344" | sfdisk --no-reread -N 4 /dev/vda
+        # partx -u uses BLKPG_RESIZE_PARTITION ioctl — works on in-use/mounted partitions.
+        - partx -u /dev/vda4
         - xfs_growfs /
     services:
       - name: node3-fip
@@ -482,6 +518,8 @@ ocp4_workload_automation_orchestrator_aap_hostname: >-
   {{ lookup('agnosticd.core.agnosticd_user_data', 'aap_controller_web_url') }}
 ocp4_workload_automation_orchestrator_additional_allowed_hosts:
   - "aap-mcp-aap.{{ openshift_cluster_ingress_domain }}"
+  - "openflake-mcp-openflake-mcp.{{ openshift_cluster_ingress_domain }}"
+  - "lightspeed-mcp-lightspeed-mcp.{{ openshift_cluster_ingress_domain }}"
 
 # -------------------------------------------------------------------
 # Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
