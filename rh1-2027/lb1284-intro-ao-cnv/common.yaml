@@ -88,14 +88,16 @@ requirements_content:
 # -------------------------------------------------------------------
 # Common Password
 # -------------------------------------------------------------------
-common_admin_password: >-
-  {{ lookup('password', output_dir ~ '/common_admin_password', length=12, chars=['ascii_letters', 'digits']) }}
+common_admin_password: "{{ bastion_ansible_ssh_pass }}"
 common_host_password: "{{ bastion_ansible_ssh_pass }}"
 
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 workloads:
+  - agnosticd.core_workloads.ocp4_workload_gitea_operator
+  - intro_ao_workshop.automation.ocp4_workload_mattermost
+  - intro_ao_workshop.automation.ocp4_workload_splunk
   - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
   - agnosticd.cloud_vm_workloads.cnv_instances
   - intro_ao_workshop.automation.ocp4_workload_cnv_node_info
@@ -111,15 +113,53 @@ workloads:
 # ===================================================================
 
 # -------------------------------------------------------------------
-# Workshop:
-# rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# Workload: agnosticd.core_workloads.ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.3.2
+
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.26.4"
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel10/postgresql-16
+ocp4_workload_gitea_operator_postgresql_image_tag: latest
+
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_create_users: true
+ocp4_workload_gitea_operator_user_number: 1
+ocp4_workload_gitea_operator_generate_user_format: "{{ bastion_ansible_user }}"
+ocp4_workload_gitea_operator_user_password: "{{ common_host_password }}"
+ocp4_workload_gitea_operator_admin_user: "admin"
+ocp4_workload_gitea_operator_admin_password: "{{ common_host_password }}"
+
+ocp4_workload_gitea_operator_migrate_repositories: true
+ocp4_workload_gitea_operator_repositories_list:
+  - repo: https://github.com/rhpds/ocp-virt-gitops-apps.git
+    name: ocp-virt-gitops-apps
+    private: false
+
+# -------------------------------------------------------------------
+# Workload: intro_ao_workshop.automation.ocp4_workload_mattermost
+# -------------------------------------------------------------------
+ocp4_workload_mattermost_postgres_password: "{{ common_host_password }}"
+ocp4_workload_mattermost_admin_password: "{{ common_host_password }}"
+
+# -------------------------------------------------------------------
+# Workload: intro_ao_workshop.automation.ocp4_workload_splunk
+# -------------------------------------------------------------------
+ocp4_workload_splunk_password: "{{ common_host_password }}"
+
+# -------------------------------------------------------------------
+# Workshop: agnosticd.cloud_vm_workloads.cnv_instances
 # -------------------------------------------------------------------
 # ------------------------------------------------------
 # Instances
 # ------------------------------------------------------
 node_instance_image: rhel-9.6
-node_rootfs_size: 20Gi
-node_extra_disk_size: 10Gi
+node_rootfs_size: 50Gi
+node_extra_disk_size: 40Gi
 
 # cnv_instances role requires sandbox_openshift_apps_domain for Route host construction;
 # in openshift-workloads config this is not set by the cloud provider phase, so alias it.
@@ -155,19 +195,12 @@ cnv_instances:
             resources:
               requests:
                 storage: "{{ node_extra_disk_size }}"
-      - metadata:
-          name: "INSTANCENAME-data2-{{ guid }}"
-        spec:
-          source:
-            blank: {}
-          pvc:
-            accessModes:
-              - ReadWriteMany
-            volumeMode: Block
-            resources:
-              requests:
-                storage: "{{ node_extra_disk_size }}"
     userdata: |
+      # Prevent cloud-init from expanding root to fill the disk.
+      # runcmd below resizes root to ~20GB, leaving ~30GB unpartitioned.
+      growpart:
+        mode: off
+      resize_rootfs: false
       users:
         - default
         - name: "{{ bastion_ansible_user }}"
@@ -179,6 +212,10 @@ cnv_instances:
       chpasswd:
         expire: false
       ssh_pwauth: true
+      runcmd:
+        - parted -s /dev/vda resizepart 3 20GiB
+        - partprobe /dev/vda
+        - xfs_growfs /
     services:
       - name: node1-fip
         type: LoadBalancer
@@ -213,19 +250,11 @@ cnv_instances:
             resources:
               requests:
                 storage: "{{ node_extra_disk_size }}"
-      - metadata:
-          name: "INSTANCENAME-data2-{{ guid }}"
-        spec:
-          source:
-            blank: {}
-          pvc:
-            accessModes:
-              - ReadWriteMany
-            volumeMode: Block
-            resources:
-              requests:
-                storage: "{{ node_extra_disk_size }}"
+
     userdata: |
+      growpart:
+        mode: off
+      resize_rootfs: false
       users:
         - default
         - name: "{{ bastion_ansible_user }}"
@@ -237,6 +266,10 @@ cnv_instances:
       chpasswd:
         expire: false
       ssh_pwauth: true
+      runcmd:
+        - parted -s /dev/vda resizepart 3 20GiB
+        - partprobe /dev/vda
+        - xfs_growfs /
     services:
       - name: node2-fip
         type: LoadBalancer
@@ -273,19 +306,10 @@ cnv_instances:
             resources:
               requests:
                 storage: "{{ node_extra_disk_size }}"
-      - metadata:
-          name: "INSTANCENAME-data2-{{ guid }}"
-        spec:
-          source:
-            blank: {}
-          pvc:
-            accessModes:
-              - ReadWriteMany
-            volumeMode: Block
-            resources:
-              requests:
-                storage: "{{ node_extra_disk_size }}"
     userdata: |
+      growpart:
+        mode: off
+      resize_rootfs: false
       users:
         - default
         - name: "{{ bastion_ansible_user }}"
@@ -297,6 +321,10 @@ cnv_instances:
       chpasswd:
         expire: false
       ssh_pwauth: true
+      runcmd:
+        - parted -s /dev/vda resizepart 3 20GiB
+        - partprobe /dev/vda
+        - xfs_growfs /
     services:
       - name: node3-fip
         type: LoadBalancer
