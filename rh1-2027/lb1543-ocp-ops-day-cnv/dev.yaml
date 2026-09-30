@@ -63,8 +63,26 @@ ocp4_workload_showroom_runtime_automation_cluster_admin: true
 # instead of rhpds.sovereign_cloud (which is no longer in the
 # collections list above). AgnosticV does not deep-merge lists, so the
 # whole list must be redefined here rather than patched.
+#
+# Also inserts ocp4_workload_virtualization_boot_image_trim right after
+# the virtualization role. It only patches the HyperConverged CR that
+# role already created (does not modify core_workloads at all) to
+# disable the default golden-image DataImportCrons this workshop
+# doesn't use - see ocp4_workload_virtualization_boot_image_trim_disabled_images
+# below for why.
+#
+# _virt_workloads is overridden too: module_enable_virt and
+# module_enable_acm are independent student-facing toggles (both default
+# true, see common.yaml), so the trim role needs to run in either path or
+# it's skipped whenever a student disables the ACM/HCP module but keeps
+# Virtualization enabled.
+_virt_workloads:
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+- deliver_openshift_ops_day.automation.ocp4_workload_virtualization_boot_image_trim
+
 _hcp_workloads:
 - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+- deliver_openshift_ops_day.automation.ocp4_workload_virtualization_boot_image_trim
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
 - agnosticd.core_workloads.ocp4_workload_rhacm
 - deliver_openshift_ops_day.automation.ocp4_workload_rhacm_cloud_credentials
@@ -81,6 +99,18 @@ _hcp_workloads:
 # used to have), so it must match the current spelling or this silently
 # no-ops and the role falls back to its snapshot-based default.
 ocp4_workload_openshift_virtualization_boot_sources_snapshot: false
+
+# The Virtualization workshop module (11-virtualization.adoc) only ever
+# boots a rhel9 VM. The other 5 HCO default golden images are each a full
+# 30Gi PVC (forced by the pvc-format override above) that this cluster
+# claim never uses - see external-ceph-capacity-investigation-2026-09-30
+# for the capacity math. Leaves rhel9-image-cron untouched.
+ocp4_workload_virtualization_boot_image_trim_disabled_images:
+- centos-stream9-image-cron
+- centos-stream10-image-cron
+- fedora-image-cron
+- rhel8-image-cron
+- rhel10-image-cron
 
 # -------------------------------------------------------------------
 # ocp5_workload_ols (dev only) - replaces ocp4_workload_ols from
