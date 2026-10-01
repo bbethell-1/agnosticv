@@ -1,0 +1,261 @@
+---
+# -------------------------------------------------------------------
+# --- OpenShift Getting Started Module 1 Tenant CI
+# --- Students deploy DataSphere manually (no pre-deployment)
+# -------------------------------------------------------------------
+#include /includes/access-restriction-admins-only.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+config: namespace
+cloud_provider: none
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+cluster_admin_agnosticd_sa_token: "{{ openshift_cluster_admin_token }}"
+
+# When this is set, it implies that this is a tenant-specific deployment
+# Showroom namespace will be labeled with this tenant_uuid and the security
+# validation will be set to tenant.
+tenant_uuid: "{{ guid }}"
+
+tag: main
+
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits')
+  }}
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+  - name: https://github.com/rhpds/namespaced_workloads.git
+    type: git
+    version: tenant-namespace-security-defaults
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: namespace-extra-labels
+  - name: https://github.com/rhpds/security.git
+    type: git
+    version: "{{ tag }}"
+
+# ===================================================================
+# List of workloads to be deployed
+#
+# Module 1 = Basic tenant provisioning ONLY (no pre-deployed apps)
+# Students deploy DataSphere themselves
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_gitea_user
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.showroom.ocp4_workload_showroom
+- rhpds.security.ocp_workload_security_validation
+
+remove_workloads:
+- agnosticd.showroom.ocp4_workload_showroom
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_gitea_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_gitea_user
+# Creates the student's Gitea account. Repo seeding is handled by
+# the gitea-user-repos GitOps Job (via ocp4_workload_gitops_bootstrap).
+# -------------------------------------------------------------------
+ocp4_workload_tenant_gitea_user_namespace: gitea
+ocp4_workload_tenant_gitea_user_name: gitea
+ocp4_workload_tenant_gitea_user_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_gitea_user_password: "{{ common_password }}"
+ocp4_workload_tenant_gitea_user_repositories: []
+
+# ===================================================================
+# Workload: ocp4_workload_tenant_namespace
+#
+# Module 1 namespaces:
+# - lab: workspace for container image & S2I deployments
+# - lab-helm: workspace for Helm deployment
+# ===================================================================
+ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_namespace_use_cluster_quota: true
+ocp4_workload_tenant_namespace_admin_network_policy: true
+
+ocp4_workload_tenant_namespace_suffixes:
+- suffix: datasphere             # Pre-deployed DataSphere for Section 1
+- suffix: lab                    # Workspace for CLI/console exercises
+- suffix: lab-helm               # Workspace for Helm exercise
+
+# Overlay on the role's builtin quota. These keys replace the builtin.
+# Omitted keys, such as secrets and services, stay at the builtin value.
+# Total resource pool shared across all tenant namespaces via CRQ
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "10"
+  requests.cpu: "5"
+  limits.memory: 10Gi
+  requests.memory: 5Gi
+  requests.storage: 100Gi
+  pods: "50"
+
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: 500m
+    memory: 512Mi
+  defaultRequest:
+    cpu: 100m
+    memory: 128Mi
+
+# ===================================================================
+# Workload: ocp4_workload_gitops_bootstrap
+#
+# Deploys GitOps automation to seed Gitea repos for Module 1.
+# Module 1 only needs user repos seeded - no applications pre-deployed.
+# ===================================================================
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ocp4-getting-started-automation.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: tenant/bootstrap
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ guid }}"
+ocp4_workload_gitops_bootstrap_application_ignore_tracking: true
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  tenant:
+    name: "{{ guid }}"
+    user:
+      name: "{{ ocp4_workload_tenant_keycloak_username }}"
+
+  gitea:
+    userRepos:
+      enabled: true
+
+  labs:
+    datasphere:
+      enabled: true
+      namespace: "{{ ocp4_workload_tenant_keycloak_username }}-datasphere"
+    studentArgoCD:
+      enabled: false
+
+# ===================================================================
+# Workload: ocp4_workload_showroom
+# ===================================================================
+# Pass module to showroom for conditional content
+agnosticd_passthrough_user_data:
+  module: "1"
+
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_namespace_extra_labels: >-
+  {{ {'demo.redhat.com/tenant-uuid': tenant_uuid}
+     if tenant_uuid is defined
+     else {} }}
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/zt-ocp4-getting-started
+ocp4_workload_showroom_content_git_repo_ref: main
+
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-11
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 40
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+  - name: Terminal
+    path: /terminal
+    port: 443
+  - name: OpenShift Console
+    url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
+  - name: Gitea
+    url: "https://gitea.{{ openshift_cluster_ingress_domain }}"
+
+ocp4_workload_showroom_passthrough_user_data: true
+
+# ===================================================================
+# Workload: ocp_workload_security_validation
+#
+# Last. Reads the cluster security Application and the tenant objects.
+# Does not create anything. A failed check does not release the seat.
+# ===================================================================
+ocp_workload_security_validation_mode: >-
+  {{ 'tenant' if tenant_uuid is defined else 'cluster' }}
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 285d3da2-1c5b-40dd-9a46-ccaac278e375
+  owners:
+    maintainer:
+    - name: Tony Kay
+      email: ankay@redhat.com
+    - name: Nate Stephany
+      email: nstephan@redhat.com
+
+  sandboxes:
+  - kind: OcpSandbox
+    no_namespace: true
+    cloud_selector:
+      cloud: cnv-dedicated-shared
+      lab: zt-ocp4-get-started
+    tenant_cluster:
+      item: agd_v2/zt-ocp4-get-started-cluster
+
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+
+  catalog:
+    # LB3011 - Lightning Lab: Getting Started - 3 ways to deploy the app
+    display_name: "Getting Started with OpenShift 4 - Module 1 (ZT-Tenant)"
+    category: Labs
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    workshopUiDisabled: false
+    workshopLabUiRedirect: false
+    multiuser: false
+    keywords:
+    - containers
+    - developer
+    - basics
+    labels:
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters: []
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-09-15
+      pull: missing
+    actions:
+      start:
+        disable: true
+      stop:
+        disable: true
+      status:
+        disable: true
+      update:
+        disable: true

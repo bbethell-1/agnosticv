@@ -1,0 +1,296 @@
+---
+# -------------------------------------------------------------------
+# --- OpenShift Getting Started ZT-Cluster
+# -------------------------------------------------------------------
+#include /includes/access-restriction-admins-only.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+#include /includes/parameters/purpose.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+num_users: 0
+
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+# One ref for core_workloads, rhpds/security, and the content automation repo.
+# That ref has to exist on each repository.
+tag: main
+
+requirements_content:
+  collections:
+    # Assisted Installer Collection
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: v0.0.9
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: v1.7.2
+    - name: https://github.com/rhpds/security.git
+      type: git
+      version: "{{ tag }}"
+
+# ===================================================================
+# Cluster Sizing
+# ===================================================================
+openshift_cnv_scale_cluster: true
+
+# Set this to the number of workers needed to support
+# X placements by sandbox API.
+# This will not autoscale after it is deployed, so size it appropriately
+# and leave a comment in the AgV config showing your math
+worker_instance_count: 2
+ai_workers_cores: 8
+ai_workers_memory: 16Gi
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_authentication
+  - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+  - rhpds.security.ocp_workload_cluster_security_policy
+  - agnosticd.core_workloads.ocp4_workload_pipelines
+  - agnosticd.core_workloads.ocp4_workload_gitea_operator
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.showroom.ocp4_workload_ocp_console_embed
+  - rhpds.security.ocp_workload_security_validation
+
+# ===================================================================
+# Workload: ocp4_workload_authentication_keycloak
+# ===================================================================
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.6
+
+# ---------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_pipelines
+# ---------------------------------------------------------
+ocp4_workload_pipelines_channel: pipelines-1.21
+ocp4_workload_pipelines_use_catalog_snapshot: false
+
+# -------------------------------------------------------------------
+# agnosticd.core_workloads.ocp4_workload_gitea_operator
+# -------------------------------------------------------------------
+ocp4_workload_gitea_operator_project: gitea
+ocp4_workload_gitea_operator_catalog_image: quay.io/rhpds/gitea-catalog
+ocp4_workload_gitea_operator_catalog_image_tag: v2.3.2
+
+ocp4_workload_gitea_operator_deploy_gitea_instance: true
+ocp4_workload_gitea_operator_gitea_image: quay.io/rhpds/gitea
+ocp4_workload_gitea_operator_gitea_image_tag: "1.26.0"
+ocp4_workload_gitea_operator_name: gitea
+ocp4_workload_gitea_operator_gitea_hostname: gitea
+ocp4_workload_gitea_operator_gitea_volume_size: 5Gi
+ocp4_workload_gitea_operator_postgresql_image: registry.redhat.io/rhel10/postgresql-16
+ocp4_workload_gitea_operator_postgresql_image_tag: "10.1"
+ocp4_workload_gitea_operator_postgresql_volume_size: 5Gi
+ocp4_workload_gitea_operator_ssl_route: true
+
+ocp4_workload_gitea_operator_create_admin: true
+ocp4_workload_gitea_operator_admin_user: gitea-admin
+ocp4_workload_gitea_operator_admin_email: gitea-admin@redhat.com
+ocp4_workload_gitea_operator_admin_password: ""  # auto-generated; readable from Gitea CR status.adminPassword
+
+ocp4_workload_gitea_operator_create_users: false
+
+
+# ===================================================================
+# Workload: ocp4_workload_openshift_gitops
+# ===================================================================
+ocp4_workload_openshift_gitops_channel: latest
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_update_route_tls: true
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, system:cluster-admins, role:admin
+  g, admin, role:admin
+ocp4_workload_openshift_gitops_rbac_scopes: "[name,groups]"
+
+# ===================================================================
+# Workload: ocp_workload_cluster_security_policy
+#
+# Application cluster-security-policy tracks cluster-security-policy in
+# rhpds/security. This is not the content Application named bootstrap-infra.
+# GitOps self-heal keeps it. Users cannot oc new-project.
+# ocp_workload_security_validation reads the objects after Showroom.
+# This workload only waits until Argo CD is Healthy and Synced.
+# ===================================================================
+ocp_workload_cluster_security_policy_repo_url: https://github.com/rhpds/security.git
+ocp_workload_cluster_security_policy_repo_revision: "{{ tag }}"
+ocp_workload_cluster_security_policy_repo_path: cluster-security-policy
+
+# Overrides cluster-security-policy/values.yaml. Same pattern as
+# ocp4_workload_gitops_bootstrap_helm_values. Omitted keys stay on the chart.
+# Showroom's console embed pulls UBI from registry.access.redhat.com.
+ocp_workload_cluster_security_policy_helm_values:
+  selfProvisioner:
+    enabled: false
+  allowedRegistries:
+    - quay.io
+    - registry.redhat.io
+    - registry.access.redhat.com
+    - image-registry.openshift-image-registry.svc:5000
+    - docker.io
+    - registry-1.docker.io
+
+# ===================================================================
+# Workload: ocp4_workload_gitops_bootstrap
+#
+# Creates "bootstrap-infra" ArgoCD Application pointing at
+# cluster/infra/bootstrap/ in ocp4-getting-started-automation.
+# The infra bootstrap chart then spawns:
+#   - AppProjects (infra, platform, tenants)
+#   - bootstrap-platform Application
+#   - defaultStorageclass Application
+# ===================================================================
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/ocp4-getting-started-automation.git
+ocp4_workload_gitops_bootstrap_repo_revision: "{{ tag }}"
+ocp4_workload_gitops_bootstrap_repo_path: cluster/infra/bootstrap
+ocp4_workload_gitops_bootstrap_application_name: bootstrap-infra
+
+# deployer.domain, deployer.apiUrl, deployer.guid are injected
+# automatically by the ocp4_workload_gitops_bootstrap role.
+#
+# IMPORTANT: repoURL and targetRevision must be set explicitly on each
+# child app below. If you change the repo or branch, update ALL entries.
+ocp4_workload_gitops_bootstrap_helm_values:
+  turn_off_kustomize: true
+
+  # --- Infra layer (bootstrap-infra → infra/bootstrap) ---
+  defaultStorageclass:
+    enabled: true
+    git:
+      repoURL: https://github.com/rhpds/ocp4-getting-started-automation.git
+      targetRevision: "{{ tag }}"
+
+  # --- Platform layer (bootstrap-platform → platform/bootstrap) ---
+  platform:
+    enabled: true
+    git:
+      repoURL: https://github.com/rhpds/ocp4-getting-started-automation.git
+      targetRevision: "{{ tag }}"
+
+  # --- Platform workloads (forwarded to platform/bootstrap via platformValues) ---
+  platformValues:
+    developerPerspective:
+      enabled: true
+      git:
+        repoURL: https://github.com/rhpds/ocp4-getting-started-automation.git
+        targetRevision: "{{ tag }}"
+    giteaContentInit:
+      enabled: true
+      git:
+        repoURL: https://github.com/rhpds/ocp4-getting-started-automation.git
+        targetRevision: "{{ tag }}"
+    datasphereHelmCatalog:
+      enabled: true
+      git:
+        repoURL: https://github.com/rhpds/ocp4-getting-started-automation.git
+        targetRevision: "{{ tag }}"
+
+# ===================================================================
+# Workload: ocp_workload_security_validation
+#
+# Last. Reads the cluster security Application and the live objects.
+# Does not create anything. A failed check does not release the cluster.
+# ===================================================================
+ocp_workload_security_validation_mode: cluster
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+
+__meta__:
+  asset_uuid: 7be4925f-4eba-45a9-95f1-32c69ae6f18c
+  owners:
+    maintainer:
+      - name: Tony Kay
+        email: ankay@redhat.com
+      - name: Nate Stephany
+        email: nstephan@redhat.com
+
+  catalog:
+    display_name: "Getting Started with OpenShift 4 (ZT-Cluster)"
+    category: Labs
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords: []
+    labels:
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    parameters: []
+
+  components:
+    - name: openshift
+      display_name: OpenShift Cluster
+      item: agd-v2/ocp-cluster-cnv-pools
+      parameter_values:
+        cluster_size: multinode
+        host_ocp4_installer_version: "4.22"
+      propagate_provision_data:
+        - name: openshift_api_ca_cert
+          var: openshift_api_ca_cert
+        - name: openshift_api_url
+          var: openshift_api_url
+        - name: openshift_cluster_admin_token
+          var: openshift_api_key
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: bastion_public_hostname
+          var: bastion_ansible_host
+        - name: bastion_ssh_user_name
+          var: bastion_ansible_user
+        - name: bastion_ssh_password
+          var: bastion_ansible_ssh_pass
+        - name: bastion_ssh_port
+          var: bastion_ansible_port
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-09-15
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: false
+      status:
+        disable: true
+      stop:
+        disable: false
+      update:
+        disable: true
+
+  sandbox_host:
+    annotations:
+      cloud: cnv-dedicated-shared
+      lab: zt-ocp4-get-started
+    max_cpu_usage_percentage: 90
+    max_memory_usage_percentage: 85
+    max_placements: 15
