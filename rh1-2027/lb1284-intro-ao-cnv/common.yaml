@@ -98,14 +98,15 @@ workloads:
   - agnosticd.core_workloads.ocp4_workload_gitea_operator
   - intro_ao_workshop.automation.ocp4_workload_mattermost
   - intro_ao_workshop.automation.ocp4_workload_splunk
+  - intro_ao_workshop.automation.ocp4_workload_openflake
   - intro_ao_workshop.automation.ocp4_workload_openflake_mcp
   - intro_ao_workshop.automation.ocp4_workload_lightspeed_mcp_server
   - agnosticd.cloud_vm_workloads.cnv_instances
   - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
   - intro_ao_workshop.automation.ocp4_workload_cnv_node_info
   - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
-  - infra.aap_configuration.dispatch
   - intro_ao_workshop.automation.ocp4_workload_automation_orchestrator
+  - infra.aap_configuration.dispatch
   - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
   - agnosticd.showroom.ocp4_workload_ocp_console_embed
   - agnosticd.showroom.ocp4_workload_showroom
@@ -154,12 +155,20 @@ ocp4_workload_mattermost_admin_password: "{{ common_host_password }}"
 ocp4_workload_splunk_password: "{{ common_host_password }}"
 
 # -------------------------------------------------------------------
+# Workload: intro_ao_workshop.automation.ocp4_workload_openflake
+# -------------------------------------------------------------------
+ocp4_workload_openflake_route_host: "openflake.{{ openshift_cluster_ingress_domain }}"
+ocp4_workload_openflake_admin_username: admin
+ocp4_workload_openflake_admin_password: "{{ bastion_ansible_ssh_pass }}"
+ocp4_workload_openflake_verify_public_url: true
+
+# -------------------------------------------------------------------
 # Workload: intro_ao_workshop.automation.ocp4_workload_openflake_mcp
 # -------------------------------------------------------------------
-# Required: supply via secrets include or AAP survey — never hardcode here.
-ocp4_workload_openflake_mcp_instance_url: https://your.openflake.example.com/
-ocp4_workload_openflake_mcp_username: "{{ bastion_ansible_user }}"
-ocp4_workload_openflake_mcp_password: "{{ common_host_password }}"
+ocp4_workload_openflake_mcp_image: quay.io/mitsharm/openflake-mcp:1.0.0
+ocp4_workload_openflake_mcp_instance_url: "https://{{ ocp4_workload_openflake_route_host }}/"
+ocp4_workload_openflake_mcp_username: "{{ ocp4_workload_openflake_admin_username }}"
+ocp4_workload_openflake_mcp_password: "{{ ocp4_workload_openflake_admin_password }}"
 
 # -------------------------------------------------------------------
 # Workload: intro_ao_workshop.automation.ocp4_workload_lightspeed_mcp_server
@@ -425,6 +434,8 @@ aap_configuration_dispatcher_roles:
   - { role: controller_credentials, var: controller_credentials, tags: controller_credentials }
   - { role: controller_inventories, var: controller_inventories, tags: controller_inventories }
   - { role: controller_hosts, var: controller_hosts, tags: controller_hosts }
+  - { role: controller_projects, var: controller_projects, tags: controller_projects }
+  - { role: controller_job_templates, var: controller_templates, tags: controller_job_templates }
 gateway_settings:
   SESSION_COOKIE_AGE: 9000
 
@@ -458,6 +469,38 @@ controller_credential_types:
         ao_client_id: '{  { client_id }}'
         ao_client_secret: '{  { client_secret }}'
 
+  - name: OpenFlake
+    description: OpenFlake instance and admin login
+    kind: cloud
+    inputs:
+      fields:
+        - id: openflake_instance_url
+          type: string
+          label: OpenFlake Instance URL
+          help_text: >-
+            Base URL of the OpenFlake instance (e.g.
+            https://openflake.apps.cluster-xyz.dyn.redhatworkshops.io)
+        - id: openflake_username
+          type: string
+          label: Username
+          default: admin
+        - id: openflake_password
+          type: string
+          label: Password
+          secret: true
+      required:
+        - openflake_instance_url
+        - openflake_password
+    injectors:
+      env:
+        OPENFLAKE_INSTANCE_URL: '{  { openflake_instance_url }}'
+        OPENFLAKE_USERNAME: '{  { openflake_username }}'
+        OPENFLAKE_PASSWORD: '{  { openflake_password }}'
+      extra_vars:
+        openflake_instance_url: '{  { openflake_instance_url }}'
+        openflake_username: '{  { openflake_username }}'
+        openflake_password: '{  { openflake_password }}'
+
 controller_credentials:
   - name: "Workshop Credential"
     organization: Default
@@ -465,6 +508,36 @@ controller_credentials:
     inputs:
       username: "{{ bastion_ansible_user }}"
       password: "{{ bastion_ansible_ssh_pass }}"
+    state: present
+
+  - name: "OpenFlake"
+    description: "OpenFlake instance deployed by ocp4_workload_openflake"
+    organization: Default
+    credential_type: "OpenFlake"
+    inputs:
+      openflake_instance_url: "https://{{ ocp4_workload_openflake_route_host }}/"
+      openflake_username: "{{ ocp4_workload_openflake_admin_username }}"
+      openflake_password: "{{ ocp4_workload_openflake_admin_password }}"
+    state: present
+
+  - name: "OpenShift"
+    description: "OpenShift API Bearer Token"
+    organization: Default
+    credential_type: "OpenShift or Kubernetes API Bearer Token"
+    inputs:
+      host: "{{ openshift_api_url }}"
+      bearer_token: "{{ openshift_api_key }}"
+      verify_ssl: false
+    state: present
+
+  - name: "Automation Orchestrator"
+    description: "AO service account -- client_id/client_secret set manually"
+    organization: Default
+    credential_type: "AO webhooks"
+    inputs:
+      base_url: "{{ lookup('agnosticd.core.agnosticd_user_data', 'ao_url') }}"
+      client_id: REPLACE_ME
+      client_secret: REPLACE_ME
     state: present
 
 controller_inventories:
@@ -510,6 +583,82 @@ controller_hosts:
       ansible_user: "{{ bastion_ansible_user }}"
       ansible_password: "{{ bastion_ansible_ssh_pass }}"
 
+controller_projects:
+  - name: "Lab Setup"
+    description: "Lab content for the ticket enrichment flow"
+    organization: Default
+    scm_type: git
+    scm_url: https://github.com/rhpds/intro-ao-workshop.git
+    scm_branch: main
+    scm_clean: false
+    scm_delete_on_update: false
+    scm_update_on_launch: false
+    wait: true
+    state: present
+
+controller_templates:
+  - name: "Incidents | Capacity - Disk Cleanup"
+    organization: Default
+    job_type: run
+    inventory: "Workshop Inventory"
+    project: "Lab Setup"
+    playbook: "automation/ansible/playbooks/lab-setup/ticket-enrichment/remediate_disk_cleanup.yml"
+    limit: node1
+    credentials:
+      - "Workshop Credential"
+    state: present
+
+  - name: "Incidents | CPU - Runaway Process Cleanup"
+    organization: Default
+    job_type: run
+    inventory: "Workshop Inventory"
+    project: "Lab Setup"
+    playbook: "automation/ansible/playbooks/lab-setup/ticket-enrichment/openflake-incident-process-cleanup.yml"
+    limit: node1
+    credentials:
+      - "Workshop Credential"
+    state: present
+
+  - name: "Incidents | Update Ticket"
+    organization: Default
+    job_type: run
+    inventory: "Demo Inventory"
+    project: "Lab Setup"
+    playbook: "automation/ansible/playbooks/lab-setup/ticket-enrichment/notify_openflake.yml"
+    ask_variables_on_launch: true
+    credentials:
+      - "OpenFlake"
+    state: present
+
+  - name: "Ticket Enrichment Simulate Alert"
+    organization: Default
+    job_type: run
+    inventory: "Workshop Inventory"
+    project: "Lab Setup"
+    playbook: "automation/ansible/playbooks/lab-setup/ticket-enrichment/openflake-incident-simulate.yml"
+    limit: "node1,localhost"
+    credentials:
+      - "Automation Orchestrator"
+      - "OpenFlake"
+      - "OpenShift"
+      - "Workshop Credential"
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: ""
+      spec:
+        - question_name: "What scenario to run?"
+          question_description: ""
+          variable: scenario_list
+          type: multiselect
+          required: true
+          default: ""
+          choices:
+            - auto_remediate
+            - needs_approval
+            - inform_only
+    state: present
+
 # -------------------------------------------------------------------
 # Workload:
 # intro_ao_workshop.automation.ocp4_workload_automation_orchestrator
@@ -520,6 +669,7 @@ ocp4_workload_automation_orchestrator_additional_allowed_hosts:
   - "aap-mcp-aap.{{ openshift_cluster_ingress_domain }}"
   - "openflake-mcp-openflake-mcp.{{ openshift_cluster_ingress_domain }}"
   - "lightspeed-mcp-lightspeed-mcp.{{ openshift_cluster_ingress_domain }}"
+  - "{{ ocp4_workload_openflake_route_host }}"
 
 # -------------------------------------------------------------------
 # Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
