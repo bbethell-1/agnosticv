@@ -435,6 +435,7 @@ aap_configuration_dispatcher_roles:
   - { role: controller_inventories, var: controller_inventories, tags: controller_inventories }
   - { role: controller_hosts, var: controller_hosts, tags: controller_hosts }
   - { role: controller_projects, var: controller_projects, tags: controller_projects }
+  - { role: controller_execution_environments, var: controller_execution_environments, tags: controller_execution_environments }
   - { role: controller_job_templates, var: controller_templates, tags: controller_job_templates }
 gateway_settings:
   SESSION_COOKIE_AGE: 9000
@@ -501,6 +502,21 @@ controller_credential_types:
         openflake_username: '{  { openflake_username }}'
         openflake_password: '{  { openflake_password }}'
 
+  - name: Mattermost
+    description: Mattermost API chat token
+    kind: cloud
+    inputs:
+      fields:
+        - id: api_chat_token
+          type: string
+          label: API Chat Token
+          secret: true
+      required:
+        - api_chat_token
+    injectors:
+      extra_vars:
+        api_chat_token: '{  { api_chat_token }}'
+
 controller_credentials:
   - name: "Workshop Credential"
     organization: Default
@@ -538,6 +554,14 @@ controller_credentials:
       base_url: "{{ lookup('agnosticd.core.agnosticd_user_data', 'ao_url') }}"
       client_id: REPLACE_ME
       client_secret: REPLACE_ME
+    state: present
+
+  - name: "Mattermost"
+    description: "Mattermost incoming webhook token"
+    organization: Default
+    credential_type: "Mattermost"
+    inputs:
+      api_chat_token: "{{ lookup('agnosticd.core.agnosticd_user_data', 'mattermost_webhook_token') }}"
     state: present
 
 controller_inventories:
@@ -594,6 +618,13 @@ controller_projects:
     scm_delete_on_update: false
     scm_update_on_launch: false
     wait: true
+    state: present
+
+controller_execution_environments:
+  - name: "RHEL 9.0 EE"
+    image: quay.io/acme_corp/rhel_90_ee
+    organization: Default
+    pull: missing
     state: present
 
 controller_templates:
@@ -657,6 +688,80 @@ controller_templates:
             - auto_remediate
             - needs_approval
             - inform_only
+    state: present
+
+  - name: "Disk Utilization Check"
+    organization: Default
+    job_type: run
+    inventory: "Workshop Inventory"
+    project: "Lab Setup"
+    playbook: "automation/ansible/playbooks/lab-setup/disk-utilization/check_disk.yml"
+    limit: node2
+    ask_variables_on_launch: true
+    credentials:
+      - "Workshop Credential"
+    state: present
+
+  - name: "Linux - Remediate - Continue"
+    organization: Default
+    job_type: run
+    inventory: "Workshop Inventory"
+    project: "Lab Setup"
+    playbook: "automation/ansible/playbooks/lab-setup/disk-utilization/remediate_disk_continue.yml"
+    limit: node2
+    ask_variables_on_launch: true
+    credentials:
+      - "Workshop Credential"
+    state: present
+
+  - name: "Linux - Remediate - Disk Cleanup"
+    organization: Default
+    job_type: run
+    inventory: "Workshop Inventory"
+    project: "Lab Setup"
+    playbook: "automation/ansible/playbooks/lab-setup/disk-utilization/remediate_disk_cleanup.yml"
+    limit: node2
+    ask_variables_on_launch: true
+    credentials:
+      - "Workshop Credential"
+    state: present
+
+  - name: "Linux - Remediate - Disk Expand"
+    organization: Default
+    job_type: run
+    inventory: "Workshop Inventory"
+    project: "Lab Setup"
+    playbook: "automation/ansible/playbooks/lab-setup/disk-utilization/remediate_disk_expand.yml"
+    limit: node2
+    ask_variables_on_launch: true
+    credentials:
+      - "Workshop Credential"
+    state: present
+
+  - name: "Disk Utilization - Fallback"
+    organization: Default
+    job_type: run
+    inventory: "Workshop Inventory"
+    project: "Lab Setup"
+    playbook: "automation/ansible/playbooks/lab-setup/disk-utilization/remediate_disk_fallback.yml"
+    limit: node2
+    ask_variables_on_launch: true
+    credentials:
+      - "Workshop Credential"
+    state: present
+
+  - name: "Notify Chatroom"
+    organization: Default
+    job_type: run
+    inventory: "Demo Inventory"
+    project: "Lab Setup"
+    playbook: "automation/ansible/playbooks/lab-setup/disk-utilization/notify_chatroom.yml"
+    execution_environment: "RHEL 9.0 EE"
+    ask_variables_on_launch: true
+    credentials:
+      - "Mattermost"
+    extra_vars:
+      mattermost_url: "{{ lookup('agnosticd.core.agnosticd_user_data', 'mattermost_url') }}"
     state: present
 
 # -------------------------------------------------------------------
