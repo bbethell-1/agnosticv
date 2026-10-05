@@ -22,6 +22,7 @@
 #include /includes/secrets/litemaas-master_api.yaml
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 # Satellite credentials to subscribe the RHEL VM in the lab.
+#include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 
 
 # ===================================================================
@@ -95,21 +96,31 @@ common_host_password: "{{ bastion_ansible_ssh_pass }}"
 # Workloads
 # -------------------------------------------------------------------
 workloads:
+  - agnosticd.cloud_vm_workloads.cnv_instances
+  - intro_ao_workshop.automation.ocp4_workload_cnv_node_info
+  - intro_ao_workshop.automation.ocp4_workload_cnv_satellite_repos
+  - intro_ao_workshop.automation.ocp4_workload_cnv_fix_rhel_repos
   - agnosticd.core_workloads.ocp4_workload_gitea_operator
+  - intro_ao_workshop.automation.ocp4_workload_gitea_lab_token
   - intro_ao_workshop.automation.ocp4_workload_mattermost
   - intro_ao_workshop.automation.ocp4_workload_splunk
   - intro_ao_workshop.automation.ocp4_workload_openflake
   - intro_ao_workshop.automation.ocp4_workload_openflake_mcp
   - intro_ao_workshop.automation.ocp4_workload_lightspeed_mcp_server
-  - agnosticd.cloud_vm_workloads.cnv_instances
   - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
-  - intro_ao_workshop.automation.ocp4_workload_cnv_node_info
   - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
   - intro_ao_workshop.automation.ocp4_workload_automation_orchestrator
   - infra.aap_configuration.dispatch
   - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
   - agnosticd.showroom.ocp4_workload_ocp_console_embed
   - agnosticd.showroom.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Pre-destroy workloads (cleanup before environment is destroyed)
+# -------------------------------------------------------------------
+pre_destroy_workloads:
+  localhost:
+    - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 
 # ===================================================================
 # Variables for specific workloads
@@ -146,6 +157,8 @@ ocp4_workload_gitea_operator_repositories_list:
 # -------------------------------------------------------------------
 # Workload: intro_ao_workshop.automation.ocp4_workload_mattermost
 # -------------------------------------------------------------------
+ocp4_workload_mattermost_wait_retries: 60
+ocp4_workload_mattermost_wait_delay: 5
 ocp4_workload_mattermost_postgres_password: "{{ common_host_password }}"
 ocp4_workload_mattermost_admin_password: "{{ common_host_password }}"
 
@@ -173,10 +186,51 @@ ocp4_workload_openflake_mcp_password: "{{ ocp4_workload_openflake_admin_password
 # -------------------------------------------------------------------
 # Workload: intro_ao_workshop.automation.ocp4_workload_lightspeed_mcp_server
 # -------------------------------------------------------------------
+# -----------------------------------
+# Vaulted Lightspeed credentials
+# -----------------------------------
+# @owner: Mitesh Sharma <mitsharm@redhat.com>
+# @purpose: Red Hat account username for RHEL Lightspeed registration
+# @impact: LOW - used only for lab registration, limited scope
+# @expiration: UNKNOWN
+# @rotation: Update vault with new Red Hat account credentials
+# @source: Red Hat account — access.redhat.com
+# @exposure: AgnosticD execution only, used to register lab nodes
+
+# @owner: Mitesh Sharma <mitsharm@redhat.com>
+# @purpose: OAuth client ID for Ansible Lightspeed MCP server integration
+# @impact: MEDIUM - grants access to Lightspeed MCP service in lab
+# @expiration: UNKNOWN
+# @rotation: Regenerate OAuth client in Red Hat SSO / Hybrid Cloud Console
+# @source: Red Hat Hybrid Cloud Console — Lightspeed MCP configuration
+# @exposure: AgnosticD execution only, injected into lab bastion
+lightspeed_mcp_client_id: !vault |
+    $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+    33633163303262303133393464393965643130656161333963313161343834346630633233666238
+    6533346432313832343461333330386665383139653032620a633061643538303634333965626138
+    34366436623139316233656561313366653238636634333734373963343761613335616665376131
+    3034393832383831630a656263313261353738666439646162313131646436323432373532646131
+    38653033666262633335636435396262643936343532343733353730373030383336333132646539
+    6165326636333866343631396439383737666662333739383566
+# @owner: Mitesh Sharma <mitsharm@redhat.com>
+# @purpose: OAuth client secret for Ansible Lightspeed MCP server integration
+# @impact: MEDIUM - grants access to Lightspeed MCP service in lab
+# @expiration: UNKNOWN
+# @rotation: Regenerate OAuth client secret in Red Hat SSO / Hybrid Cloud Console
+# @source: Red Hat Hybrid Cloud Console — Lightspeed MCP configuration
+# @exposure: AgnosticD execution only, injected into lab bastion
+lightspeed_mcp_client_secret: !vault |
+    $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+    65656566323232306162353236306536333334336135343135393230663764646332333938396636
+    6637366564613131623736646538363134313736326537390a323130353234346638623238393439
+    62313463336635626338326430626633306539313764636532366531653361656566363766396436
+    3836313661393862660a643264643665363339393632383261353265343864396462626331333134
+    35656263616634346234386335393837666335646535313436363165376661666663333863363863
+    3861633338636465613861636265366331666338643732613834
 # Service account credentials from console.redhat.com → Settings → Service Accounts.
 # Supply via secrets include — never hardcode here.
-ocp4_workload_lightspeed_mcp_server_client_id: "test-client-id"
-ocp4_workload_lightspeed_mcp_server_client_secret: "test-client-secret"
+ocp4_workload_lightspeed_mcp_server_client_id: "{{ lightspeed_mcp_client_id }}"
+ocp4_workload_lightspeed_mcp_server_client_secret: "{{ lightspeed_mcp_client_secret }}"
 
 # -------------------------------------------------------------------
 # Workshop: agnosticd.cloud_vm_workloads.cnv_instances
@@ -503,19 +557,49 @@ controller_credential_types:
         openflake_password: '{  { openflake_password }}'
 
   - name: Mattermost
-    description: Mattermost API chat token
+    description: Mattermost URL and API chat token
     kind: cloud
     inputs:
       fields:
+        - id: mattermost_url
+          type: string
+          label: Mattermost URL
         - id: api_chat_token
           type: string
           label: API Chat Token
           secret: true
       required:
+        - mattermost_url
         - api_chat_token
     injectors:
       extra_vars:
+        mattermost_url: '{  { mattermost_url }}'
         api_chat_token: '{  { api_chat_token }}'
+
+  - name: Gitea API
+    description: Gitea API URL and personal access token
+    kind: cloud
+    inputs:
+      fields:
+        - id: gitea_url
+          type: string
+          label: Gitea URL
+        - id: gitea_token
+          type: string
+          label: API Token
+          secret: true
+        - id: gitea_repo
+          type: string
+          label: Playbook Repository
+      required:
+        - gitea_url
+        - gitea_token
+        - gitea_repo
+    injectors:
+      env:
+        GITEA_URL: '{  { gitea_url }}'
+        GITEA_TOKEN: '{  { gitea_token }}'
+        GITEA_REPO: '{  { gitea_repo }}'
 
 controller_credentials:
   - name: "Workshop Credential"
@@ -561,7 +645,38 @@ controller_credentials:
     organization: Default
     credential_type: "Mattermost"
     inputs:
+      mattermost_url: "{{ lookup('agnosticd.core.agnosticd_user_data', 'mattermost_url') }}"
       api_chat_token: "{{ lookup('agnosticd.core.agnosticd_user_data', 'mattermost_webhook_token') }}"
+    state: present
+
+  - name: "Gitea API"
+    description: "Gitea API token for committing generated remediation playbooks"
+    organization: Default
+    credential_type: "Gitea API"
+    inputs:
+      gitea_url: "{{ lookup('agnosticd.core.agnosticd_user_data', 'gitea_api_url') }}"
+      gitea_token: "{{ lookup('agnosticd.core.agnosticd_user_data', 'gitea_api_token') }}"
+      gitea_repo: "{{ lookup('agnosticd.core.agnosticd_user_data', 'gitea_playbook_repo') }}"
+    state: present
+
+  - name: "Gitea"
+    description: "Source control access to the Gitea playbook repository"
+    organization: Default
+    credential_type: "Source Control"
+    inputs:
+      username: "{{ lookup('agnosticd.core.agnosticd_user_data', 'gitea_user') }}"
+      password: "{{ lookup('agnosticd.core.agnosticd_user_data', 'gitea_password') }}"
+    state: present
+
+  - name: "AAP Controller"
+    description: "Controller API access for job templates that call ansible.controller modules"
+    organization: Default
+    credential_type: "Red Hat Ansible Automation Platform"
+    inputs:
+      host: "{{ aap_hostname }}"
+      username: "{{ aap_username }}"
+      password: "{{ aap_password }}"
+      verify_ssl: false
     state: present
 
 controller_inventories:
@@ -590,6 +705,7 @@ controller_hosts:
       ansible_host: "{{ lookup('agnosticd.core.agnosticd_user_data', 'node1_external_ip') }}"
       ansible_user: "{{ bastion_ansible_user }}"
       ansible_password: "{{ bastion_ansible_ssh_pass }}"
+      env: dev
   - name: "node2"
     inventory: "Workshop Inventory"
     enabled: true
@@ -598,6 +714,7 @@ controller_hosts:
       ansible_host: "{{ lookup('agnosticd.core.agnosticd_user_data', 'node2_external_ip') }}"
       ansible_user: "{{ bastion_ansible_user }}"
       ansible_password: "{{ bastion_ansible_ssh_pass }}"
+      env: production
   - name: "node3"
     inventory: "Workshop Inventory"
     enabled: true
@@ -606,6 +723,7 @@ controller_hosts:
       ansible_host: "{{ lookup('agnosticd.core.agnosticd_user_data', 'node3_external_ip') }}"
       ansible_user: "{{ bastion_ansible_user }}"
       ansible_password: "{{ bastion_ansible_ssh_pass }}"
+      env: production
 
 controller_projects:
   - name: "Lab Setup"
@@ -618,6 +736,19 @@ controller_projects:
     scm_delete_on_update: false
     scm_update_on_launch: false
     wait: true
+    state: present
+
+  - name: "Lightspeed-Playbooks"
+    description: "Remediation playbooks generated by Lightspeed and committed to Gitea"
+    organization: Default
+    scm_type: git
+    scm_url: "{{ lookup('agnosticd.core.agnosticd_user_data', 'gitea_playbook_repo_url') }}"
+    scm_branch: main
+    scm_clean: true
+    scm_delete_on_update: false
+    scm_update_on_launch: false
+    credential: "Gitea"
+    wait: false
     state: present
 
 controller_execution_environments:
@@ -760,8 +891,43 @@ controller_templates:
     ask_variables_on_launch: true
     credentials:
       - "Mattermost"
+    state: present
+
+  - name: "CVE - Fetch and Commit"
+    organization: Default
+    job_type: run
+    inventory: "Demo Inventory"
+    project: "Lab Setup"
+    playbook: "automation/ansible/playbooks/lab-setup/cve-remediation/cve_fetch_and_commit.yml"
+    ask_variables_on_launch: true
+    credentials:
+      - "Gitea API"
     extra_vars:
-      mattermost_url: "{{ lookup('agnosticd.core.agnosticd_user_data', 'mattermost_url') }}"
+      mcp_server_host: "lightspeed-mcp.lightspeed-mcp.svc.cluster.local"
+      mcp_server_port: "8000"
+      lab_tag: "{{ guid }}"
+    state: present
+
+  - name: "CVE - Sync and Deploy Remediation"
+    organization: Default
+    job_type: run
+    inventory: "Demo Inventory"
+    project: "Lab Setup"
+    playbook: "automation/ansible/playbooks/lab-setup/cve-remediation/cve_sync_and_deploy.yml"
+    ask_variables_on_launch: true
+    credentials:
+      - "AAP Controller"
+    state: present
+
+  - name: "CVE - Notify Mattermost Investigation"
+    organization: Default
+    job_type: run
+    inventory: "Demo Inventory"
+    project: "Lab Setup"
+    playbook: "automation/ansible/playbooks/lab-setup/cve-remediation/notify_mattermost_cve.yml"
+    ask_variables_on_launch: true
+    credentials:
+      - "Mattermost"
     state: present
 
 # -------------------------------------------------------------------
@@ -786,6 +952,18 @@ agnosticv_importdata:
   ssh_port: "{{ bastion_ansible_port }}"
   ssh_command: >-
     ssh {{ bastion_ansible_user }}@{{ bastion_ansible_host }} -p {{ bastion_ansible_port }}
+
+# -------------------------------------------------------------------
+# Workload: intro_ao_workshop.automation.ocp4_workload_cnv_satellite_repos
+# -------------------------------------------------------------------
+# Supply Satellite credentials via secrets include — never hardcode here.
+# satellite_url / satellite_org / satellite_activationkey come from
+# #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
+host_satellite_repositories_hostname: "{{ satellite_url }}"
+host_satellite_repositories_org: "{{ satellite_org }}"
+host_satellite_repositories_activationkey: "{{ satellite_activationkey }}"
+host_satellite_repositories_use_content_view: true
+host_satellite_repositories_ha: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
