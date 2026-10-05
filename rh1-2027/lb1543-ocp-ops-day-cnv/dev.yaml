@@ -23,13 +23,15 @@ requirements_content:
     version: "{{ tag }}"
   - name: https://github.com/rhpds/showroom.git
     type: git
-    # PR #84 (Firefox connection-limit docs fix for ocp4_workload_ocp_console_embed)
-    # merged to main on 2026-10-02. Track main until the next release tag
-    # includes it, then pin back to a released tag.
     version: main
   - name: https://github.com/rhpds/deliver-openshift-ops-day.git#/automation/ansible
     type: git
-    version: "{{ tag }}"
+    # Local test pin for open PR #42. The remote commit carries the KubeVirt
+    # i18n stand-in but not the new RHACS image-override role referenced by
+    # common.yaml. Do not provision from this remote pin until the role is
+    # included in the collection revision. Once included, it stays a no-op
+    # until a patched image is built and configured.
+    version: 4874758389f155e414b21ad771dc639ab2c23cdf
   - name: https://github.com/rhpds/ai_workloads.git
     type: git
     version: "{{ tag }}"
@@ -61,6 +63,11 @@ ocp4_workload_showroom_runtime_automation_image: "quay.io/rhpds/zerotouch-automa
 # the openshift-gitops Application, or any module-specific check) fail with
 # permission errors instead of reporting real module health.
 ocp4_workload_showroom_runtime_automation_cluster_admin: true
+
+# The current cluster has a working ACME ClusterIssuer. The optional Console
+# HTTP/2 route can request its own hostname-specific certificate through it;
+# leave the feature disabled until Console terminal/WebSocket validation.
+workshop_console_http2_cert_issuer_name: acme-bifrost-production-ddns
 
 # Override _hcp_workloads: same list as common.yaml, but using the
 # vendored ocp4_workload_prepare_hcp from deliver-openshift-ops-day
@@ -103,6 +110,33 @@ _hcp_workloads:
 # used to have), so it must match the current spelling or this silently
 # no-ops and the role falls back to its snapshot-based default.
 ocp4_workload_openshift_virtualization_boot_sources_snapshot: false
+
+# dev-only override: common.yaml pins CNV/metallb/web-terminal to the
+# v4.20_2026_03_16 snapshot (kubevirt-hyperconverged 4.20.7, metallb
+# 4.20.0, web-terminal 1.15.0). On OCP 5.0.0-rc clusters, that build's
+# kubevirt-plugin Catalog extension throws "Q is not a function" (shared
+# React/dynamic-plugin-sdk version mismatch with Console's newer
+# module-federation exports), breaking "Create VM from Catalog". The
+# ugly redhat-operators-snapshot-* source names also show up as separate
+# OperatorHub tiles next to "Red Hat Operators", which is confusing for
+# students.
+#
+# kubevirt-hyperconverged and web-terminal are both present in the live
+# redhat-operators catalog on this OCP 5.0-rc cluster (channels stable
+# and fast, same as common.yaml already uses), at 4.22.9 and 1.17.1
+# respectively - newer than the snapshot. Falling back to
+# install_operator's default source (redhat-operators /
+# openshift-marketplace) for just these two fixes both the crash and the
+# duplicate-tile confusion; confirmed working on cluster-fghp5.
+#
+# metallb-operator is NOT present in the live catalog on this cluster at
+# all (OCP 5.0-rc index gap, same as gitops/rhdh/ztwim above), so it has
+# to stay pinned to its snapshot source. Bumping its tag to
+# v4.22_2026_09_14 (already in use here for lightspeed/gitops/rhdh/ztwim)
+# gets it to 4.22.0, the newest available in any pinned snapshot.
+ocp4_workload_openshift_virtualization_use_catalog_snapshot: false
+ocp4_workload_web_terminal_use_catalog_snapshot: false
+ocp4_workload_metallb_catalog_snapshot_image_tag: v4.22_2026_09_14
 
 # The Virtualization workshop module (11-virtualization.adoc) only ever
 # boots a rhel9 VM. The other 5 HCO default golden images are each a full
