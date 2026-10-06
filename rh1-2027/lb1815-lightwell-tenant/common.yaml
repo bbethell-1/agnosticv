@@ -18,6 +18,13 @@
 #include /includes/sandbox-api.yaml
 
 #include /includes/parameters/purpose.yaml
+# Supplies requester_email + catalog_item_name, which the LiteLLM virtual-keys
+# workload uses to attribute the issued key.
+#include /includes/parameters/litellm_metadata.yaml
+
+# Supplies litellm_url + litellm_master_key. The virtual-keys role asserts on
+# both and cannot mint a key without them.
+#include /includes/secrets/litemaas-master_api.yaml
 
 # -------------------------------------------------------------------
 # Mandatory Variables
@@ -39,6 +46,11 @@ requirements_content:
       type: git
       version: "{{ tag }}"
 
+    # LiteLLM Virtual Keys Collection
+    - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+      type: git
+      version: "{{ tag }}"
+
     # Showroom
     - name: https://github.com/rhpds/showroom.git
       type: git
@@ -50,8 +62,18 @@ requirements_content:
 workloads:
   - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
   - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  # Must precede ocp4_workload_gitops_bootstrap: it sets litellm_api_endpoint
+  # and litellm_virtual_key, which are templated into the tenant chart's
+  # sdlc.llm values below. Position matches lb2142-ai-quickstarts-tenant.
+  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
   - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
   - agnosticd.showroom.ocp4_workload_showroom
+
+# Revoke the virtual key when the tenant is destroyed. The key lives 14d but
+# the catalog item auto-destroys after 3, so without this every tenant leaves
+# a usable key behind for roughly eleven days.
+remove_workloads:
+  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 
 # ===================================================================
 # Common
@@ -62,6 +84,18 @@ common_password: >-
   {{
     lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
   }}
+
+# ===================================================================
+# Workload: ocp4_workload_litellm_virtual_keys
+#
+# Issues a per-tenant LiteLLM virtual key so the OpenCode SDLC agent has a
+# model endpoint without anyone hand-managing an OPENAI_API_KEY. The role
+# exports litellm_api_endpoint and litellm_virtual_key, consumed by the
+# bootstrap-tenant chart's sdlc.llm values further down.
+# ===================================================================
+ocp4_workload_litellm_virtual_keys_duration: "14d"
+ocp4_workload_litellm_virtual_keys_models:
+  - qwen3-235b
 
 # ===================================================================
 # Workload: ocp4_workload_tenant_keycloak_user
@@ -118,9 +152,18 @@ ocp4_workload_gitops_bootstrap_helm_values:
     org: "user-{{ guid }}"
   gitlab:
     domain: "{{ openshift_cluster_ingress_domain }}"
-  artifactory:
-    domain: "{{ openshift_cluster_ingress_domain }}"
-    virtualRepoKey: "pypi-virtual-user-{{ guid }}"
+  # LiteLLM virtual key issued above. The chart creates Secret opencode-llm
+  # from apiKey and wires OPENAI_API_KEY onto the OpenCode Deployment.
+  # `model` is what switches LLM wiring on in the chart, and once set the
+  # chart requires a key — so model and apiKey must travel together.
+  # baseUrl overrides the chart's default MaaS gateway and needs the /v1 suffix.
+  sdlc:
+    llm:
+      baseUrl: "{{ litellm_api_endpoint }}/v1"
+      # Must match ocp4_workload_litellm_virtual_keys_models above — the key is
+      # issued per model, and OpenCode keys its provider config on this exact id.
+      model: qwen3-235b
+      apiKey: "{{ litellm_virtual_key }}"
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
