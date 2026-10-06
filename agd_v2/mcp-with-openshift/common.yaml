@@ -20,10 +20,8 @@
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/salesforce-id.yaml
 # Auto-pass user email and catalog item name to LiteLLM for better tracking
-#include /includes/parameters/litellm_metadata.yaml
 
 #include /includes/secrets/ocp4_ai_offline_token.yaml
-#include /includes/secrets/litemaas-master_api.yaml
 
 # ===================================================================
 # Mandatory Variables
@@ -61,7 +59,6 @@ requirements_content:
     type: git
     version: v0.0.9
 
-  # LiteLLM Virtual Keys Collection
   - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
     type: git
     version: "1.0.0"
@@ -90,7 +87,6 @@ requirements_content:
 # List of workloads to be deployed
 # ===================================================================
 workloads:
-- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
 - agnosticd.core_workloads.ocp4_workload_gitea_operator
 - agnosticd.core_workloads.ocp4_workload_pipelines
@@ -100,9 +96,6 @@ workloads:
 - agnosticd.showroom.ocp4_workload_showroom_ocp_integration
 - agnosticd.showroom.ocp4_workload_showroom
 - rhpds.mcp_workloads.ocp4_workload_mcp_with_openshift_validation
-
-remove_workloads:
-- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 
 # ===================================================================
 # Variables for specific workloads
@@ -114,13 +107,6 @@ remove_workloads:
 common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:10] }}"
 common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:16] }}"
 
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_litellm_virtual_keys
-# -------------------------------------------------------------------
-ocp4_workload_litellm_virtual_keys_duration: "7d"
-ocp4_workload_litellm_virtual_keys_models:
-- qwen3-14b
-- llama-scout-17b
 # - deepseek-r1-distill-qwen-14b
 
 # -------------------------------------------------------------------
@@ -248,9 +234,9 @@ ocp4_workload_mcp_user_gitea_external_url: "https://gitea.{{ openshift_cluster_i
 ocp4_workload_mcp_user_gitea_user_password: "{{ common_user_password }}"
 
 ocp4_workload_mcp_user_librechat_password: "{{ common_user_password }}"
-ocp4_workload_mcp_user_litemaas_url: "{{ lookup('agnosticd_user_data', 'litellm_api_base_url') }}"
-ocp4_workload_mcp_user_litemaas_keys: "{{ lookup('agnosticd_user_data', 'litellm_virtual_keys') }}"
-ocp4_workload_mcp_user_litemaas_models: "{{ lookup('agnosticd_user_data', 'litellm_available_models') }}"
+ocp4_workload_mcp_user_litemaas_url: "{{ litellm_api_base_url }}"
+ocp4_workload_mcp_user_litemaas_keys: "{{ litellm_virtual_keys }}"
+ocp4_workload_mcp_user_litemaas_models: "{{ litellm_available_models }}"
 ocp4_workload_mcp_user_librechat_repo_tag: v0.8.2
 
 # Model to configure for the agent
@@ -274,10 +260,53 @@ ocp4_workload_mcp_with_openshift_validation_enabled: true
 ocp4_workload_mcp_with_openshift_validation_num_users: "{{ ocp4_workload_authentication_htpasswd_user_count | int }}"
 ocp4_workload_mcp_with_openshift_validation_user_prefix: "{{ ocp4_workload_authentication_htpasswd_user_base }}"
 
+litellm_api_base_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+litellm_virtual_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
+litellm_available_models: "{{  maas_sandbox.credentials[0].available_models }}"
+litellm_available_models_list: "{{ maas_sandbox.credentials[0].available_models | join(', ') }}"
+litellm_key_duration: ""
+litellm_virtual_keys: "{{ maas_sandbox.credentials | map(attribute='virtual_key') | list }}"
+userdata: >-
+  {
+  {% for i in range(0,num_users) %}
+  "user{{i+1}}": {
+     litellm_api_endpoint: "{{ maas_sandbox.credentials[i].api_endpoint  }}",
+     litellm_api_base_url: "{{ maas_sandbox.credentials[i].api_endpoint  }}/v1",
+     litellm_virtual_key: "{{ maas_sandbox.credentials[i].virtual_key }}",
+     litellm_key_alias: "{{ maas_sandbox.credentials[i].key_alias }}",
+     litellm_key_id: "{{  maas_sandbox.credentials[i].key_id }}",
+     litellm_user_email: "user{{ i }}@example.com",
+     litellm_available_models: "{{  maas_sandbox.credentials[i].available_models }}",
+     litellm_available_models_list: "{{ maas_sandbox.credentials[i].available_models | join(', ') }}",
+     litellm_key_duration: ""
+    },
+  {% endfor %}
+  }
+litellm_passthrough_user_data:
+  litellm_api_base_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+  litellm_virtual_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
+  litellm_available_models: "{{  maas_sandbox.credentials[0].available_models }}"
+  litellm_available_models_list: "{{ maas_sandbox.credentials[0].available_models | join(', ') }}"
+  litellm_virtual_keys: "{{ maas_sandbox.credentials | map(attribute='virtual_key') | list }}"
+  litellm_key_duration: ""
+
+agnosticd_passthrough_user_data: |
+  {{ litellm_passthrough_user_data
+   | combine( {
+     "users": userdata | from_yaml })
+  }}
+
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
+  sandboxes:
+  - kind: MaaSSandbox
+    cloud_selector:
+      purpose: production
+    virtual_key_count: "{{ job_vars.num_users }}"
+    models: "qwen3-14b,llama-scout-17b"
+    var: maas_sandbox
   asset_uuid: 6bad7495-f02e-4a71-9bed-5b232a12d5b5
   owners:
     maintainer:
