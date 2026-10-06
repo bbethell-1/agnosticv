@@ -21,7 +21,7 @@ info-message-template.adoc ← User-facing access info template
 
 ## How This Connects to the Cluster
 
-1. `__meta__.sandboxes[].cloud_selector` (`cloud: cnv-dedicated-shared`, `lab: lb1815-lightwell`, `purpose: dev`) matches the cluster CI's registered `sandbox_host.annotations` to land on the shared cluster — see the cluster's AGENTS.md for the registration side.
+1. `__meta__.sandboxes[].tenant_cluster.item` (`rh1-2027/lb1815-lightwell-cluster`) binds this tenant directly to its cluster CI's registered `sandbox_host`, so each seat lands on the shared cluster — see the cluster's AGENTS.md for the registration side. `no_namespace: true` because the tenant workloads create their own namespaces (the sandbox doesn't carve one). This replaced the older `cloud_selector` annotation-matching syntax (`cloud`/`lab`/`purpose`), which is no longer used — see rhpds/agnosticv#28410 for the equivalent LB2111 change.
 2. The matched sandbox exposes `sandbox_openshift_api_url` and `openshift_cluster_admin_token` directly. This CI remaps them: `openshift_api_url: "{{ sandbox_openshift_api_url }}"` and `cluster_admin_agnosticd_sa_token: "{{ openshift_cluster_admin_token }}"`, because the `namespaced_workloads` roles and the Showroom role expect those specific variable names.
 3. `ocp4_workload_gitops_bootstrap` creates a per-tenant ArgoCD Application (`lightwell-tenant-{{ guid }}`, `bootstrap-tenant` path in `rhpds/lightwell-automation-gitops`) that provisions the tenant's AAP2/GitLab/Artifactory accounts — this is GitOps, not an Ansible role.
 
@@ -44,13 +44,14 @@ info-message-template.adoc ← User-facing access info template
 
 ### Stage Overrides
 - `dev.yaml` — Antora dev mode for Showroom, cost-tag `purpose: development`
-- `common.yaml` — the `cloud_selector` (`lab`, `purpose: dev`) is set here and applies to every stage; there's no dev/event split for this tenant
+- `common.yaml` — the `tenant_cluster.item` binding is set here and applies to every stage; there's no dev/event split for this tenant
 
 ### __meta__ Block
 - `asset_uuid` — must be unique per catalog item (generate a new one, don't reuse another CI's)
-- `sandboxes[].cloud_selector` — must match the cluster's `sandbox_host.annotations` (see cluster AGENTS.md)
+- `sandboxes[].tenant_cluster.item` — points at the cluster CI (`rh1-2027/lb1815-lightwell-cluster`) this tenant provisions onto; paired with `no_namespace: true` (see "How This Connects to the Cluster")
 - `catalog.display_name` — what appears in the RHDP catalog
 - `catalog.workshop_user_mode: none` — provision doesn't call `agnosticd_user_info` with `user` set, so `provision_data` won't report `users`; all data/messages go to the workshop seat directly
+- `catalog.multiuser: true` + `catalog.workshopLabUiRedirect: true` — surface this item as a Workshop UI item (per-user seats on the shared cluster) that redirects each seat to its Showroom lab guide; required for it to deploy/order cleanly through the Workshop UI
 - `deployer.execution_environment.image` — use a current `ee-multicloud:chained-*` tag, kept in sync with the cluster CI's
 
 ### Resource Sizing
