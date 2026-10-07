@@ -1,0 +1,436 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: What's New in AAP 2.7: Automation Portal, MCP & EE Builder
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-aap.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/litellm_metadata.yaml
+
+#include /includes/secrets/demosat-rhel-9-10-latest.yaml
+#include /includes/secrets/litemaas-master_api.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+tag: main
+
+cloud_provider: none
+config: openshift-workloads
+clusters:
+  - default:
+      api_url: "{{ openshift_api_url }}"
+      api_token: "{{ openshift_cluster_admin_token }}"
+num_users: 1
+
+# ===================================================================
+# End Mandatory Variables
+# ===================================================================
+
+# -------------------------------------------------------------------
+# OpenShift SNO cluster settings
+# -------------------------------------------------------------------
+openshift_cnv_scale_cluster: false
+worker_instance_count: 0
+
+ocp4_workload_catalogsource_image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.20_2025_12_15
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/assisted_installer.git
+      type: git
+      version: v0.0.9
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/cloud_vm_workloads.git
+      type: git
+      version: cnv_instances
+    - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+      type: git
+      version: "1.3.2"
+    - name: https://github.com/jeffcpullen/agnosticp
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/rhpds.manage_host.git
+      type: git
+      version: "{{ tag }}"
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+common_admin_password: >-
+  {{ lookup('password', output_dir ~ '/common_admin_password', length=12, chars=['ascii_letters', 'digits']) }}
+common_user_password: >-
+  {{ lookup('password', output_dir ~ '/common_user_password', length=12, chars=['ascii_letters', 'digits']) }}
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+  - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+  - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
+  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+  - jeffcpullen.agnosticp.agp_devspaces
+  - jeffcpullen.agnosticp.agp_devspaces_samples
+  - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_htpasswd
+# -------------------------------------------------------------------
+ocp4_workload_authentication_htpasswd_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_admin_password }}"
+ocp4_workload_authentication_htpasswd_num_users: "{{ num_users }}"
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_user_password }}"
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_ansible_automation_platform
+# Pre-installs the AAP operator and Controller + Hub instances
+# -------------------------------------------------------------------
+ocp4_workload_ansible_automation_platform_admin_password: "{{ common_admin_password }}"
+ocp4_workload_ansible_automation_platform_operator_channel: stable-2.7
+ocp4_workload_ansible_automation_platform_use_catalog_snapshot: false
+ocp4_workload_ansible_automation_platform_deploy_wait_timeout: 2600
+ocp4_workload_ansible_automation_platform_automatic_install_plan_approval: true
+ocp4_workload_ansible_automation_platform_inject_manifest: true
+ocp4_workload_ansible_automation_platform_manifest:
+  url: https://d3s3zqyaz8cp2d.cloudfront.net/aap/manifest.zip
+# Enable Hub (PAH), disable EDA and Lightspeed
+ocp4_workload_ansible_automation_platform_disable_hub: false
+ocp4_workload_ansible_automation_platform_disable_eda: true
+ocp4_workload_ansible_automation_platform_disable_lightspeed: true
+# Manifest inject: controller API may not be listening immediately after CR reports Successful
+# Default 3x5s=15s is too short — bump to 60x10s=10min
+ocp4_workload_ansible_automation_platform_manifest_inject_retries: 60
+ocp4_workload_ansible_automation_platform_manifest_inject_delay: 10
+
+# -------------------------------------------------------------------
+# Workload: rhpds.litellm_virtual_keys
+# LiteLLM Virtual Keys for AI/ChatGPT Integration
+# -------------------------------------------------------------------
+# Convert model selection to actual model list
+ocp4_workload_litellm_virtual_keys_models:
+  - qwen3-235b
+  - qwen3-14b
+
+# Duration selected by user
+ocp4_workload_litellm_virtual_keys_duration: "{{ litellm_duration | default('7d') }}"
+
+# Enable user.info messages and data
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# Workload: agnosticv_userdata_import
+# -------------------------------------------------------------------
+agnosticv_importdata:
+  bastion_public_hostname: "{{ bastion_public_hostname }}"
+  bastion_ssh_user_name: "{{ bastion_ssh_user_name }}"
+  bastion_ssh_password: "{{ bastion_ssh_password }}"
+  bastion_ssh_port: "{{ bastion_ssh_port | default(22) }}"
+  bastion_ssh_command: "ssh {{ bastion_ssh_user_name }}@{{ bastion_public_hostname }} -p {{ bastion_ssh_port | default(22) }}"
+  openshift_api_url: "{{ openshift_api_url }}"
+  openshift_api_server_url: "{{ openshift_api_url }}"
+  openshift_cluster_console_url: "{{ openshift_console_url | default('') }}"
+  openshift_cluster_admin_password: "{{ common_admin_password }}"
+  controller_url: "{{ ocp4_workload_ansible_automation_platform_url | default('') }}"
+  controller_username: "admin"
+  controller_password: "{{ common_admin_password }}"
+
+# -------------------------------------------------------------------
+# Workload: jeffcpullen.agnosticp.agp_devspaces
+# -------------------------------------------------------------------
+agp_devspaces_namespace: 'devspaces'
+# Backwards compatibility with older versions of the devspaces operator (temporary 3.30.1 is released)
+agp_devspaces_operator_catalog_name: 'olm-snapshot-redhat-catalog-20260831'
+agp_devspaces_operator_catalog_image: 'quay.io/rhpds/olm_snapshot_redhat_catalog'
+agp_devspaces_operator_catalog_image_tag: 'v4.21_2026_08_31'
+agp_devspaces_operator_devspaces_starting_csv: 'devspacesoperator.v3.29.1'
+agp_devspaces_operator_devworkspace_starting_csv: 'devworkspace-operator.v0.43.0'
+
+## CheCluster Spec
+agp_devspaces_che_cluster_spec:
+  components:
+    cheServer:
+      debug: false
+      logLevel: INFO
+    dashboard:
+      logLevel: ERROR
+    devWorkspace: {}
+    devfileRegistry:
+      disableInternalRegistry: true
+    imagePuller:
+      enable: false
+      spec: {}
+    metrics:
+      enable: true
+    pluginRegistry:
+      openVSXURL: "https://open-vsx.org"
+  containerRegistry: {}
+  devEnvironments:
+    startTimeoutSeconds: 1000
+    security: {}
+    secondsOfRunBeforeIdling: -1
+    maxNumberOfWorkspacesPerUser: -1
+    containerBuildConfiguration:
+      openShiftSecurityContextConstraint: container-build
+    containerRunConfiguration:
+      containerSecurityContext:
+        procMount: Unmasked
+        capabilities:
+          add:
+            - SETGID
+            - SETUID
+        allowPrivilegeEscalation: true
+      openShiftSecurityContextConstraint: container-run
+    disableContainerBuildCapabilities: false
+    disableContainerRunCapabilities: false
+    ignoredUnrecoverableEvents:
+      - FailedScheduling
+    maxNumberOfRunningWorkspacesPerUser: 5
+    defaultNamespace:
+      autoProvision: true
+      template: <username>-devspaces
+    secondsOfInactivityBeforeIdling: 3600
+    storage:
+      pvcStrategy: per-workspace
+  gitServices: {}
+  networking:
+    auth:
+      gateway:
+        kubeRbacProxy:
+          logLevel: 0
+        oAuthProxy:
+          cookieExpireSeconds: 86400
+        traefik:
+          logLevel: INFO
+
+# Custom nested podman SCC configuration
+agp_devspaces_custom_nested_podman_scc:
+  apiVersion: security.openshift.io/v1
+  kind: SecurityContextConstraints
+  metadata:
+    name: nested-podman-scc
+  priority: null
+  allowPrivilegeEscalation: true
+  allowedCapabilities:
+    - SETUID
+    - SETGID
+  fsGroup:
+    type: MustRunAs
+    ranges:
+      - min: 1000
+        max: 65534
+  runAsUser:
+    type: MustRunAs
+    uid: 1000
+  seLinuxContext:
+    type: MustRunAs
+    seLinuxOptions:
+      type: container_engine_t
+  supplementalGroups:
+    type: MustRunAs
+    ranges:
+      - min: 1000
+        max: 65534
+  userNamespaceLevel: RequirePodLevel
+# Configure global workspace settings
+agp_devspaces_default_workspace_config: false
+
+# -------------------------------------------------------------------
+# Workload: rhpds.manage_host.asset_injector
+# Fix DNF database permissions for package installation
+# -------------------------------------------------------------------
+asset_injector_modules:
+  - description: Remove DNF lock file if exists
+    module: file
+    state: absent
+    path: /var/lib/dnf/lock
+
+  - description: Fix DNF history database permissions
+    module: file
+    path: /var/lib/dnf
+    state: directory
+    recurse: yes
+    mode: "0755"
+
+  - description: Rebuild DNF cache to fix SQLite database
+    module: shell
+    cmd: dnf makecache --refresh
+    ignore_errors: yes
+
+# -------------------------------------------------------------------
+# Workload: rhpds.manage_host.vscode_server
+# -------------------------------------------------------------------
+install_vscode_server: true
+vscode_server_install_nginx: false
+vscode_use_automationcontroller_nginx: false
+vscode_server_bind_addr_ip: 0.0.0.0
+vscode_server_bind_addr_port: 8080
+
+vscode_server_version: "4.112.0"
+vscode_server_rpm_url: >-
+  https://github.com/coder/code-server/releases/download/v{{ vscode_server_version }}/code-server-{{ vscode_server_version }}-amd64.rpm
+
+vscode_server_ansible_become: true
+vscode_user_workspace_path: "/home/{{ ocp4_workload_authentication_htpasswd_admin_user }}"
+vscode_auth_type: password
+vscode_user_name: "{{ ocp4_workload_authentication_htpasswd_admin_user }}"
+vscode_user_password: "{{ common_admin_password }}"
+vscode_server_hostname: "vscode-{{ subdomain }}"
+vscode_ansible_python_interpreter: /home/{{ ocp4_workload_authentication_htpasswd_admin_user }}/.venv/bin/python3
+
+vscode_server_default_extensions: []
+vscode_server_extension_urls: []
+
+vscode_server_additional_settings: |
+  "ansible.python.interpreterPath": "/home/{{ ocp4_workload_authentication_htpasswd_admin_user }}/.venv/bin/python3",
+  "ansible.ansible.path": "/home/{{ ocp4_workload_authentication_htpasswd_admin_user }}/.venv/bin/ansible",
+  "ansible.validation.enabled": true,
+  "ansible.validation.lint.enabled": true,
+  "ansible.lightspeed.enabled": true,
+  "ansible.lightspeed.suggestions.enabled": true,
+  "security.workspace.trust.enabled": false,
+  "ansible.lightspeed.URL": "",
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "[yaml]": {
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true,
+    "editor.detectIndentation": false
+  },
+  "claudeCode.disableLoginPrompt": true,
+  "extensions.ignoreRecommendations": true,
+  "python-envs.terminal.autoActivationType": "off",
+  "files.exclude": {
+    "**/.git": true,
+    "**/.kube": true,
+    "**/.bash*": true,
+    "**/.vim*": true,
+    "**/.ssh": true,
+    "**/.vscode": true,
+    "**/.local": true,
+    "**/.config": true,
+    "**/.ansible": true,
+    "**/.cache": true,
+    "**/.claude": true,
+    "**/.mcp-auth": true,
+    "**/.npm": true,
+    "**/.nvm": true,
+    "**/.venv": true
+  }
+
+# -------------------------------------------------------------------
+# Workload: jeffcpullen.agnosticp.agp_devspaces_samples
+# -------------------------------------------------------------------
+agp_devspaces_samples_namespace: devspaces
+agp_devspaces_samples_state: present
+agp_devspaces_samples_content:
+  - displayName: Ansible Dev Space
+    description: Environment pre-configured for Ansible development
+    tags:
+      - ansible
+      - python
+    url: 'https://github.com/sabre1041/ansible-devspaces/tree/ansible-superlab'
+    icon:
+      base64data: >-
+        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
+      mediatype: image/png
+  - displayName: Lab Documentation Editor
+    description: Environment for contributing to the lab documentation
+    tags:
+      - ansible
+      - python
+      - asciidoc
+      - antora
+    url: 'https://github.com/rhpds/ansible-super-lab-showroom'
+    icon:
+      base64data: >-
+        iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAAAXNSR0IArs4c6QAAAIRlWElmTU0AKgAAAAgABQESAAMAAAABAAEAAAEaAAUAAAABAAAASgEbAAUAAAABAAAAUgEoAAMAAAABAAIAAIdpAAQAAAABAAAAWgAAAAAAAABIAAAAAQAAAEgAAAABAAOgAQADAAAAAQABAACgAgAEAAAAAQAAADKgAwAEAAAAAQAAADIAAAAAhvHCqAAAAAlwSFlzAAALEwAACxMBAJqcGAAAAVlpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IlhNUCBDb3JlIDYuMC4wIj4KICAgPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4KICAgICAgPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIKICAgICAgICAgICAgeG1sbnM6dGlmZj0iaHR0cDovL25zLmFkb2JlLmNvbS90aWZmLzEuMC8iPgogICAgICAgICA8dGlmZjpPcmllbnRhdGlvbj4xPC90aWZmOk9yaWVudGF0aW9uPgogICAgICA8L3JkZjpEZXNjcmlwdGlvbj4KICAgPC9yZGY6UkRGPgo8L3g6eG1wbWV0YT4KGV7hBwAACxVJREFUaAXNWnlsFNcd/mZmz/EBvjCg4gB2gSAIdwMtVzgChZQjjWlp0qZKUlWCUimNVDVKaKskraL2rygp/aNCClFE2hAiKDSEIw4FczThCFbASWRwsLmN8b337vT7vfWYxXjttb0E3mp2Z2fe8X3vd7zfOzR0ShZKDQ1bovL4Q8zIHQbPCi+MRTFgkgvaMB2ap1ORO/I3BisQglWrAydDiO4+g7btj+KTemksEaPduGbfxDPMdWjYHykB3B9g3no3jDU5cObIO1bKK8aPlVjkjt2zw+CCzisOsQHhhiCiG15HzcuvoypoIY7VBtBBxH5xHDOn5MHz7iB4RjYjjAisSHtmnRT0jgJ2DXfoV7qLbVER1AUHNEc2v68hVF2PSOkUfHzcxiwQFC77wXHMWlQAz4eZLOBDNMT3TjuPZL7LSbiFTRiuVnZvHQKLp+Dgbhu7ZuubSKIA3mNuijMcl4LjLgNP1nzECd1BNSMZ/9QpKKdkSg2qypao2EQuPFtEEvc4CSHnCCMWEaz5NIHvE7twoFMAxLAL4R7Rrk73qiQEqp0cgrUA7pGvEbs81MTF3o/MKqpUDg273cbs/P38FQuUGgfT1Fz800i/0Uz7tZ/3r3qLDkALItZQidYSh4wT4mKbERHvlF5pSL8MNGBduciqG3gVQcvKAFrEGfU7aeJRBbtw0GWw63eVySoY5kassQKZb76AwvOH4Vg2HlZLkyKXrEhfngsHXUZsGeyYlL30paIuy3hYXa0fRtGDyFqxGM6iochct5otHQHyXV0W6cNDXbALB93JsENGbFJJL5EhLtb6X3hfLIUxIJMYLXinTYAxuhSoagG8/W9OMAt24aAbjJ2EhhoZ+9AlSYuEoqxzNDIWzIxnYavGgCx4n1vJpg/QAfRfKoJZsAuH/ndLV0yGOGFdPAf3c4/DNWIYos2t8JUfVznNed8lwVEM3lRc2lXpPj27M0RMeipUwly5UIEKnv4KjatfpY+Jwl18H9zP/oREq+NuuU+wby+UfiLZJHH2BhwLnoF30jjVom9vOSIXtyJQUan+mysWkugZINO4HVEfn6SfSAHVCuUwn14G3fQgdP4ign/YqtSpbWeZgumdPA6OWU/CqmokmfRASE8tdi9ySoa6IN3fHJizv6Oe+vYfVcatjxlLQu8ifOEK9EwT3l8sI+EDwKD+G700lF4iQ52INZ+G50+r4BxaiFhLG/wbtlEac8Awm4QOwXfwf4qgOWc6nz/IUT6cFhTpJcL5JTiTMZfMVWB9xyoQ+eRtaCUDadwBAp8J38YdiPkCcHGA9KxfhVjdlwDHnP6m9BHJc8CqvgzXE0/BO250nMh7uwn+AQaKDONaY9CKcxH5aCP8Jz9X781H5vH3HJCGUSB9RHLEyI/BXL2EoaeBYGUVQhveglZUBFyj+kjyxQdJ3/aP1F/vhLFw/mANvVxdv+Ov3hGR3Nn8GkC3STerfuU+n0FztQ/Gt1bCnD5ZgWzbV05iAYbvCS72ShjakGIE//oOQudqoLldMH+2lPkYf+X1T716F7Zn6bCa2giUYVpC0mBy4rkXWc+/BSN3ACLX6uH/9Saq1XDGVXSxOSajeI7kNHh4qII4hbaPj8A1sgjemdPQgvnAJT8lSRuLSKbep9SJsA2r6QaMufdzcsliag7W3qCT0U7VYzAXzVYP/CfEBpwwVjLvtRZED30BzcyjahHk1RBd5Vz439iG7NKlcA7mcserj8H3u5egD5vKiDnYexYsoV3Awz13QRHnFTWfYuC/30YWDTQWCnFulqiVrELToDll0YUcw7QJEhWuOp81bt6Glp/+Evp904HzBFriRaxqO3Kofpnzvwf/qUpcnzgb+ogZVNG+EUlEo0B0+aVyBRljuuOANUpA5xJax8X/JGaFuHTBS+41iauFLJc3VDm0xqe40gC9mHgz39Y9qjnvuFH0dj9XXg/0fn1JqUlE5ttis/4gjOXjuFTGeIrdzae3JhJTSaQRaxc0Fz4juypYhnMSmUzbqcgFq+YMCir3wD2mGC3/KUPjI/OhlyynXdFeepl6pi8kaJ6WX4xcQ0S5znaQ6s3NFuPENObmmAEvX9DI5T5jANB2s4wqQVW0cB1tew8qIl56u5Y8hi1VlJzYIBdFe5O6l4iQoD2APklf9G2l9zA6aWOCFJRRSPs0fut8A2IVtdCG0sgvSR2dElejEOS4MsCLQWc3wZGXgxtvbELbunW0pblxW+pUpLu/ySUiq7wcM6zrPuSfehOe8aNvN3IRAVVI1EwZO3tZpCf3ViSG+j++huBfOCgOHg5wDLklSY+XZCBKo/cfPYmspfPUbNKHQarOW/Km8KdT9yaUUJike2m4tpGLAXcYuBSlIXNQ0/led3FASzBy8Vaah3bAtcukS98NdAyYCt87u+KTLtqKa83j3EyoYVQc94AJiLq97V61GANZAT8bM+F4dBSsKAdCEtSoXlZjGxyTRyHvz79Rxl//yt8Q2nMC+qAs1WDsahOi5Rw/sgZ2v441gq69+jDyPzsACVlayw6jgS65t0afXLUEToCG6uG+TiCM8PsMI4SF+qZKoAzm2l2KRPCravjWP8u30/lcVEhGfu5s9ERCKlOezA3fLq64kIh36gNonrQasZOXOYiybd+tUYQU6SolVy07d4Dq5aZK5eTxyoVWQOPNcsJRuBwZsznAMYnnoUFBH50PbWBOPG82JZPKiuJljvQZ4xF4/j2EL9fByM6E+avlVMn9QGHq8VfPRASpGKbESnJxYSHWchieF1bAyBuISH0jAi+9T0uaCOtrH9d32/M18zeVJLHVYA9lWAb/oU9VCfMhWWmZyHGL4oorQY81pUYksRp6KQ2FyHh4lnrqP3oC0Wvb6YE44PXS93dUW8+QBzPg27RT7RzKEpL7tz/mmvHZlFdaekekkHOO2mq41j4B9+hi5Wl8mz8giGmUVif32oEyhRtKUSsuQHjn3xl3cXWFKWP5AqrXl0oDUqgBepR9QAcr3r/nxOUbC6dh/jC+XhX4/AuENv8D2ojBQH1i/NFzVbfloGMBiuFrX2nx0PAdC5/hpIsbuTLn6SIJZsGuODDMq5XdU6pi9+7BpPDONsOY8CNkzGC4zdS2o4zfdK/hlLpBlUn6JUZfOAqBVzYjXHuZDsAL80mZdB3ipKvrMUUwC3bhIAHGyfYt4O6JhAjWyQHu1GX4K87Az4WFwO//CT2Lc45L/VArm5m0LsEobqD5XzsQucT928/OsIM5529NKm0SUd7gpHYaDz01DN6NKW30OFmIcw0LX0urrKKIUTHFHk2DRBQh1pPDGWTDdf7jPB4FjMXo7pvEAyrAKlfCV4Rb1o5a+J9WW29juPXmSXXrTRbhhsg4yt+rlEQ61MpGJlilTwpYv2w7tJBAg7hgvri9r27ZetMX48iNAE8UyGY8U886Ir1/gdkuMKJNJwlp3QZbR/A1rF/GLekw+7nkuZnC2ZxO+4ldOEgfoAQl7n0YfoYvRnK3VBSy+9DlZmV36y7CgwMOnsw4Nxz7xhJEkMcySo0qnu2oR2CVnChgzCokklrX3UKe0K46MCBYBbOQ6DgwIMcg5ASBHIvgdi9jXUPIyGyoa6Em1PoN3gqWkGCLn3qQIxxy6kEO17QfGJATQXEyB3fLsYgmiiwXLpfsY7OwSEcuexbO2zuf2ntQnLJqX7AIJmKrjh/duHkORdAoG7Fhxdl1HHN60QVjbe49dsxpCcperlLqlOSY000yyQ+eye4pA/pv5OCZhB1qxOaATc+0uxaBbeKdBKd9EMjGLL//BxofCnUE/ECEAAAAAElFTkSuQmCC
+      mediatype: image/png
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 8a8c9fe9-fe00-4f18-8709-77e4539a79e1
+
+  owners:
+    maintainer:
+      - name: Amrinder Singh
+        email: amrsingh@redhat.com
+    instructions:
+      - name: Amrinder Singh
+        email: amrsingh@redhat.com
+
+  deployer:
+    scm_url: https://github.com/agnosticd/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+
+  catalog:
+    reportingLabels:
+      primaryBU: Automation
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "What's New in AAP 2.7: Automation Portal, MCP & EE Builder"
+    category: Labs
+    keywords:
+      - aap27
+      - automation-portal
+      - execution-environment
+    labels:
+      Product: Red_Hat_Ansible_Automation_Platform
+      Product_Family: Red_Hat_Automation
+      Provider: Product_Technical_Learning
+    multiuser: false
+    workshop_user_mode: single
+
+  components:
+    - name: openshift-base
+      display_name: OpenShift SNO Cluster
+      item: agd_v2/ocp-cluster-cnv-pools
+      parameter_values:
+        cluster_size: sno
+        host_ocp4_installer_version: "4.20"
+        ocp4_fips_enable: false
+      propagate_provision_data:
+        - name: openshift_api_url
+          var: openshift_api_url
+        - name: openshift_cluster_admin_token
+          var: openshift_cluster_admin_token
+        - name: sandbox_openshift_api_key
+          var: sandbox_openshift_api_key
+        - name: sandbox_openshift_api_url
+          var: sandbox_openshift_api_url
+        - name: sandbox_openshift_namespace
+          var: sandbox_openshift_namespace
+        - name: bastion_public_hostname
+          var: bastion_public_hostname
+        - name: bastion_ssh_user_name
+          var: bastion_ssh_user_name
+        - name: bastion_ssh_password
+          var: bastion_ssh_password
+        - name: bastion_ssh_port
+          var: bastion_ssh_port
