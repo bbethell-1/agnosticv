@@ -1,0 +1,660 @@
+---
+# -------------------------------------------------------------------
+# ZT AgnosticD v2 Migration - Phase 4 Base Component
+# -------------------------------------------------------------------
+# Shared base component for ZT AgnosticD v2 test/demo catalog items.
+# Mirrors the production `zt-rhelbu/zt-rhel-bu-lab-developer-cnv` base
+# component (zt-rhelbu-agnosticv repo): owns config/cloud_provider,
+# collections, workload wiring, and Showroom deployment. Per-lab leaf
+# items (e.g. tests/zt-rhelbu-agd-v2-demo) pull this in via a plain
+# `#include /tests/zt-rhelbu-base-component/common.yaml` text-merge -
+# NOT via `__meta__.components[].item:` (see GPTEINFRA-16059 below).
+#
+# GPTEINFRA-16059 (v1 production fix, ported here): sharing "one lab's
+# own base config across its own scenarios" via
+# `__meta__.components[].item:` makes the *referenced* base component the
+# resource that actually carries job vars and executes the deploy -
+# RHDP's reporting then attributes the run to that component's own
+# (generic, shared-across-every-lab) display_name, never the ordering
+# leaf's. Real production Ansible BU hit exactly this and fixed it by
+# switching `zt-ans-bu-lab-developer-cnv(-poc)` from a
+# `components[].item:` reference to a plain `#include`
+# (rhpds/zt-ansiblebu-agnosticv PR #316/#317/#318, "This uses #include
+# instead of components"). This base component and its three leaf demos
+# (RHEL BU/HP BU/Ansible BU) originally used the same buggy
+# `components[].item:` shape and have been converted to match the real
+# fix.
+#
+# Renamed from tests/zt-base-component for naming consistency with
+# tests/zt-ansiblebu-base-component and tests/zt-hpbu-base-component.
+#
+# This file's own __meta__ block below (catalog/deployer/sandboxes) is
+# vestigial now that nothing references it via `components[].item:` -
+# kept only because this repo's own validation
+# (.tests/babylon_checks.py's check_component_catalog) requires any
+# directory with stage files to carry complete catalog metadata, and
+# because the repo-wide common.yaml defaults every item's
+# __meta__.deployer.type to `agnosticd` unless overridden to null.
+# Matches production zt-ans-bu-base-component, which keeps the same
+# vestigial __meta__ for the same reason. It is inherited, then
+# overridden field-by-field, by whichever leaf's own __meta__ appears
+# after the #include line - nobody orders this component's own
+# CatalogItem directly.
+#
+# See the migration proposal for full context:
+# /home/andrew/src/proposals/zt-to-agd-v2/PROPOSAL-zerotouch-agd-v2-migration.md
+#
+# Satellite registration (GPTEINFRA-17763, guid `wqm56`, zt-webconsole-perf
+# demo_scenario): this base component never registered its VM with
+# Satellite, so it has no package repos. zt-webconsole-perf's own
+# setup-rhel.sh does `dnf install -y --releasever=10 ... redhat-release`
+# and `dnf install -y ... httpd` - with no repos available, that failed
+# with rc=1 (empty stdout/stderr, since the script redirects its own
+# output to a log file on the VM - Ansible's shell task only ever sees the
+# non-zero rc), crash-looping the showroom pod's `setup` init container
+# forever (Init:CrashLoopBackOff). Confirmed NOT a v1-vs-v2 pipeline gap:
+# v1's real production base (zt-rhelbu-agnosticv/zt-rhelbu/
+# zt-rhel-bu-lab-developer-cnv/common.yaml) includes a Satellite secret for
+# the same reason (that repo's own zero-touch-library.yaml - not present
+# in THIS repo's includes/secrets/, hence the different secret below).
+# tests/zt-ansiblebu-base-component hit and documented the identical
+# failure mode independently (its finding #12) and already fixed it;
+# an earlier standalone RHEL BU diagnostic item (since folded into this
+# base component and removed) already proved out this same wiring for
+# RHEL BU specifically. Fixed here the same proven way: a secrets include
+# (below) plus `host_satellite_repositories` in pre_software_workloads
+# (below) - no agnosticd-v2 core changes needed, since
+# includes/agd-v2-mapping.yaml (already included below) already bridges
+# satellite_url/_org/_activationkey/set_repositories_satellite_ha to the
+# host_satellite_repositories_* names agnosticd-v2's own role expects.
+#
+# demosat-rhel-7-8-9-10.yaml chosen over the narrower/point-release-pinned
+# demosat-*.yaml files (e.g. the now-known-stale demosat-rhel-9-10.0-latest.yaml,
+# whose content view is frozen to the RHEL 10.0 snapshot - found while
+# diagnosing root SSH in a since-removed standalone diagnostic item)
+# since this base component is generic across
+# multiple RHEL BU demo_scenario content repos, not one pinned scenario -
+# it's also the newest demosat-*.yaml in this repo (Dec 2025) and already
+# used by a real production catalog item (openshift_cnv/
+# automating-ripu-with-ansible), not a one-off.
+#
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/secrets/demosat-rhel-7-8-9-10.yaml
+#include /includes/secrets/litemaas-master_api.yaml
+
+# registry_pull_token - v1's real production base
+# (zt-rhelbu-agnosticv/zt-rhel-bu-lab-developer-cnv/common.yaml) also
+# includes this via #include /includes/secrets/rhel_pull_token.yaml - that
+# file doesn't exist in THIS repo's includes/secrets/ (it's
+# zt-rhelbu-agnosticv-only), so inlined the same vaulted blob directly
+# here instead of via #include, for local testing. Same gpte_vault_0 vault
+# ID as every other secret in this file, so it decrypts the same way
+# regardless of which repo the ciphertext originated in (matches
+# tests/zt-ansiblebu-base-component's identical approach for
+# ansiblebu_password.yaml, finding #5 in that file's own comment - that
+# one was copied into its own includes/secrets/ file and #included;
+# inlined directly here instead per request, for quicker iteration during
+# testing).
+#
+# @owner: UNKNOWN - original zt-rhelbu-agnosticv/includes/secrets/rhel_pull_token.yaml
+#   was authored by Alberto Gonzalez <josegonz@redhat.com> (2025-06-30), but that's the
+#   file's committer, not a confirmed current credential owner - please correct if known.
+# @purpose: Registry pull token for Zero Touch RHEL BU lab automation - confirmed live
+#   (guid wqm56) as the REGISTRY_PULL_TOKEN env var on the zerotouch showroom pod's
+#   runner/setup init containers.
+# @impact: UNKNOWN
+#   Which registry/scope this token grants access to is not confirmed.
+# @expiration: UNKNOWN
+# @rotation: UNKNOWN - see zt-rhelbu-agnosticv/includes/secrets/rhel_pull_token.yaml
+#   (source of this copy) or its owner.
+# @source: Copied verbatim from zt-rhelbu-agnosticv/includes/secrets/rhel_pull_token.yaml
+#   (same gpte_vault_0 vault ID, so it decrypts identically here).
+# @exposure: Injected as the REGISTRY_PULL_TOKEN env var into the zerotouch showroom
+#   pod's runner/setup init containers at deploy time (confirmed live, guid wqm56).
+registry_pull_token: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          39643534646362333631353263626266643637633238316563386166313239663232633332373166
+          6565633666386566396338313634643133643765613530360a363561623039393338656461383164
+          31316665323332613463333034636263396537383338613965366466303032613961636364326361
+          6531373639626532620a383665376432353734363962326632393161363230656165643539313335
+          30373666386462653938333733313665376330323261343364353432653239353663303263633265
+          65613461303339396630643235303832323239343838343063633665363538376331633437336133
+          66653565643336306437353838643565633034663030613336623964313364383235396530333130
+          36373562386131313263653137373133313138323131386162616437626163626362313663616561
+          37383837336466633034373962333433383138313838343862336330326435616133393235376261
+          31303239366663353334313436373764373365623165396261626135653537623035653562343831
+          32376462663637313031653765656364353835333665623737643262306266666565326538343065
+          64383564333731366232383030643163313463623033326231646334366666356432346636613464
+          63386562643934643763333336303637643032346239323132333838666235303166353962313962
+          62666338396531363961653739653331373834393136333832366135653231343539333961356162
+          61303334333437356361396166356131613330346635366165613331313136383634653631393866
+          39383832323365316436373034383132373565623763353361383137346137376236663332326438
+          36613632336231393230323064343639636365326666613837313636373930343337383430613765
+          34643333626165393035356339373434623965336466636234393261326431613136366338633165
+          64613265323664366436623636373661653038633030653530666565613534313537393036383662
+          35613830643663653632383239376464303637343461333735383736353364303362643234633566
+          64613163383863303166633764653762663363323835343366626231376463633735626631383533
+          61336263303636323339653831363735633437366635373637313937303065623037653865653564
+          66376136653566666532633263626661313838663533306631343161343735663538663464636163
+          39343735383131343930393633616663333335336632343462663835393130393430356262353564
+          38393465323132616630333233363635613530306332333062363539323232366531666562356132
+          64646664326463376266333536326165636235633264646630353030373365623962353834323635
+          64373561323239356537323762313864326464303732326234356434363063663933313033653734
+          36663131643861613232366333393139363163363561303133663662316236393631643131613464
+          37386236313731313639376430313836353738333465393731623835303365336666626662356636
+          36336135626561646165366266323530316334653834373831356566316135663463396136313435
+          66633134666565336137616666313639393865636331323964396536363864643931636433313966
+          62646436366631626366353033613337363366363435656462373963633862663132363836333164
+          35366662306365353437393466623134373030346339633338663063343361643464303237303032
+          37613966373666313562386263323235323065366534643130373639373065373132646435336338
+          33316664373838336465613232616533336361653537613133633665326461396236336662333963
+          32633238343064613030376338656431323534313730366331613533306136343436633839383631
+          62303932343230366131366561626538373731653833613961373631363263373964616239643138
+          65646534613839386239386531386535383434326534663131616462333738613463663534353535
+          34366361383330393665396137383561323962323535396630666164376366613833616138303766
+          33666561613466663330323138646661313134356434643038663261663239613735663134616332
+          63643031383262386561393433363835383830333630666436393264306334333862316364303337
+          31396464623866373232313131343066363563366364616631386365613832303038326338316463
+          34373830373033663365313963323661393033656630633835663939326435326430373534373532
+          62346337643764656265666438353830303063663639656134303233373638313030343064623561
+          37326137326563666436316163633936333639353362616362353935626232376431346634316434
+          30303234366662366664663932306430396132643362633762666564306432386165343665313864
+          61613230623162373031313938316635353731326639363561326436313033396638616538656265
+          61353839323866643265666437356462346538343430316130396335356230356234353633346435
+          35666330616536383539616630633432323333633437303532623265383237626561336630633639
+          34623736613534313633313633336462326364363934363563343636306463613734326232376265
+          30633436373338353732336261653233626331313962383439393937396234386230643339323763
+          37313831323137626136386536333234613166633066663661363337386263343136366434626433
+          30643664313162386661323036326330653833633936376631393165386330623137653739653134
+          61336433646239373961353962393562306631376630653064343833333732306464363161663139
+          64353764613537303362626661306436313337633438353131353264363131383963383039303237
+          66613061316165396436376136363863393466333036623133626662623861663766336434313235
+          3936
+
+# -------------------------------------------------------------------
+# Platform - AgnosticD v2
+# -------------------------------------------------------------------
+platform: RHPDS
+cloud_provider: openshift_cnv
+config: cloud-vms-base
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+ansible_user: cloud-user
+remote_user: cloud-user
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + 'RM' }}"
+
+openshift_cnv_legacy_routes: false
+openshift_cnv_route_remove_x_frame_options_header: true
+
+# REMOVED (GPTEINFRA-17763): `ansible_ssh_common_args: "-o ControlMaster=no
+# -o ControlPersist=no"` was added here after guid `xpvsj` hung on the very
+# next bastion task following the second asset_injector re-run, initially
+# diagnosed as Ansible reusing a stale ControlPersist SSH socket after an
+# in-run sshd restart. Root-causing the *next* hang (guid `cf7fx`, still
+# present despite this setting) found the real cause instead: phase
+# ordering — the second asset_injector run was still in
+# post_software_final_workloads.bastions at the time, which
+# cloud-vms-base/workloads.yml always runs *after* that same phase's
+# localhost play, so zt_security_lockdown's NetworkPolicy had already
+# locked the namespace down (see the post_software_workloads comment
+# below for the full writeup). That phase-relocation fix alone accounts
+# for both hangs, so the ControlMaster/ControlPersist setting was almost
+# certainly never the actual fix — removed pending live re-confirmation.
+
+# -------------------------------------------------------------------
+# Dynamic Lab Configuration (from content git repo)
+# -------------------------------------------------------------------
+# Loaded by rhpds.zerotouch.zt_base_config (first pre_infra_workloads
+# entry below) from config/{firewall,instances,networks}.yaml in the
+# lab's content repo (supplied by the leaf item via
+# ocp4_workload_showroom_content_git_repo / _content_git_repo_ref). Do
+# NOT set instances/networks/containers or the zero_touch_*_lockdown_rules
+# keys here unless you intend to override the git files — extra-vars
+# always beat the role's set_fact, so an empty list (instances: [])
+# would provision zero VMs.
+#
+# zt_base_config defaults zt_base_config_content_git_repo/_ref from
+# the ocp4_workload_showroom_content_git_repo/_ref variables below.
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo_ref: main
+
+# -------------------------------------------------------------------
+# LiteMaaS Virtual Keys (optional, default: disabled) - matches
+# tests/zt-ansiblebu-base-component's own enable_litemaas_keys switch
+# (which mirrors the real component's own switch). Needed for content
+# repos whose own config/instances.yaml declares a top-level `litemaas:`
+# key (e.g. zt-satellite-basics, models: [minimax-m2], duration: 1d) -
+# zt_base_config's own instances.yaml fetch doesn't expose that key as a
+# fact (only virtualmachines/containers), so it's re-fetched directly
+# below, porting v1's zt-rhelbu/zt-rhel-bu-lab-developer-cnv
+# git_config_directory + direct instances.yaml URL-fetch pattern for the
+# litemaas: block specifically.
+# -------------------------------------------------------------------
+enable_litemaas_keys: false
+
+git_config_directory: |-
+  {{ ocp4_workload_showroom_content_git_repo |
+    replace('.git','/' + ocp4_workload_showroom_content_git_repo_ref + '/config/') |
+    replace('github.com','raw.githubusercontent.com') }}
+
+# Only fetched when enabled - Jinja's ternary short-circuits the lookup
+# entirely for every scenario that doesn't need it, matching
+# ocp4_workload_showroom_ironrdp_enable's identical gating pattern in
+# tests/zt-ansiblebu-base-component.
+_litemaas_config: >-
+  {{ ((lookup('ansible.builtin.url', git_config_directory + 'instances.yaml', split_lines=False, errors='warn') | default('{}') | from_yaml).litemaas | default({}))
+     if (enable_litemaas_keys | default(false) | bool) else {} }}
+
+ocp4_workload_litellm_virtual_keys_models: "{{ _litemaas_config.models | default(['granite-3-2-8b-instruct']) }}"
+ocp4_workload_litellm_virtual_keys_duration: "{{ _litemaas_config.duration | default('1d') }}"
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: "{{ _litemaas_config.enable_user_info_messages | default(true) }}"
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: "{{ _litemaas_config.enable_user_info_data | default(true) }}"
+
+# -------------------------------------------------------------------
+# Collections
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/zerotouch-collection.git
+      type: git
+      version: main
+    - name: https://github.com/rhpds/cloud_vm_workloads.git
+      type: git
+      version: main
+    # PR rhpds/showroom#78 (zerotouch_showroom role) merged to main.
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: main
+    # LiteMaaS - built directly under the rhpds namespace (not agnosticd) -
+    # matches tests/zt-ansiblebu-base-component's own pin.
+    - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+      type: git
+      version: main
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# zt_base_config must run first so its cacheable facts (instances,
+# networks, containers, lockdown rules) exist before zt_containers and
+# before cloud-vms-base creates VMs.
+pre_infra_workloads:
+  localhost:
+    - rhpds.zerotouch.zt_base_config
+    - rhpds.zerotouch.zt_containers
+
+pre_software_workloads:
+  # FOUND LIVE (guid kgq9f, zt-satellite-basics scenario - 4 VMs, only
+  # "satellite" tagged AnsibleGroup: bastions; rhel1/rhel2/rhel-ai are
+  # plain nodes): control_user/asset_injector used to be scoped to the
+  # `bastions:` workloads.yml key (hosts: bastions), so only the tagged
+  # bastion ever got a working `rhel` user/password/PermitRootLogin -
+  # rhel1/rhel2/rhel-ai's sshd kept the image's stock `PasswordAuthentication
+  # no`, and the content's own setup-automation/main.yml (which connects to
+  # ALL 4 VMs with ansible_ssh_pass) timed out with "Permission denied
+  # (publickey,gssapi-keyex,gssapi-with-mic)" on all three - password was
+  # never even offered as an auth method. Moved both roles onto the `all:`
+  # key instead, which agnosticd-v2's own cloud-vms-base/workloads.yml
+  # hardcodes to `hosts: all:!windows:!network:!isolated` (the exact same
+  # scoping PR #206's own instances[].packages install step uses, commit
+  # d163d1d) - this also automatically excludes `isolated` hosts, which is
+  # exactly what the old bastions-only scoping's own comment (below) was
+  # trying to guard against manually.
+  all:
+    - host_satellite_repositories
+    - agnosticd.cloud_vm_workloads.control_user
+    - agnosticd.cloud_vm_workloads.asset_injector
+
+# -------------------------------------------------------------------
+# Workload: host_satellite_repositories (agnosticd-v2 core role, bare
+# role name - not collection-qualified, matching this repo's other v2-core
+# role usages). Bridges the demosat/zero-touch-library secret's
+# set_repositories_satellite_* names (v1's set-repositories role
+# convention) onto what agnosticd-v2's own role expects. Runs under
+# pre_software_workloads.all (above), first in that list, so it applies
+# before control_user/asset_injector on the same hosts (list order within
+# one workloads.yml play is preserved) - confirmed against agnosticd-v2's
+# own host_satellite_repositories/defaults/main.yaml and
+# tasks/satellite_register.yml, matching tests/zt-rhelbu-satellite-
+# update-test's identical wiring.
+# -------------------------------------------------------------------
+host_satellite_repositories_hostname: "{{ set_repositories_satellite_hostname }}"
+host_satellite_repositories_org: "{{ set_repositories_satellite_org }}"
+host_satellite_repositories_ha: "{{ set_repositories_satellite_ha }}"
+host_satellite_repositories_activationkey: "{{ set_repositories_satellite_activationkey }}"
+
+# asset_injector re-run here (post_software_workloads, not
+# post_software_final_workloads), not just once in pre_software_workloads
+# above - see the "second sshd restart" comment on
+# bastion_asset_injector_assets' last entry for why. Specifically has to
+# be BEFORE post_software_final_workloads: FOUND LIVE (GPTEINFRA-17763,
+# guids `cf7fx`/`xpvsj`) putting it in post_software_final_workloads.bastions
+# hung indefinitely (not just failed) on the very next bastion task after
+# zt_security_lockdown's NetworkPolicy had just been applied in
+# post_software_final_workloads.localhost - per agnosticd-v2's own
+# cloud-vms-base/workloads.yml, the localhost play in a phase always runs
+# before the bastions play in the *same* phase, so that NetworkPolicy was
+# already locking the namespace down by the time this second
+# asset_injector tried to re-connect to the bastion, and the connection
+# attempt just hung (SYN silently dropped) rather than failing fast.
+# post_software_workloads runs an entire phase earlier, before
+# zt_security_lockdown exists at all.
+# `all:` not `bastions:` here too (see the pre_software_workloads.all
+# comment above, guid kgq9f) - every host that got asset_injector's
+# password-auth/root-password fixes applied the first time needs the same
+# second-restart re-run, not just the tagged bastion.
+# localhost entry: LiteMaaS virtual key creation, gated on
+# enable_litemaas_keys - matches tests/zt-ansiblebu-base-component's
+# identical placement (alongside the second asset_injector run, before
+# zt_security_lockdown's NetworkPolicy exists).
+post_software_workloads:
+  localhost: "{{ ['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys'] if (enable_litemaas_keys | default(false) | bool) else [] }}"
+  all:
+    - agnosticd.cloud_vm_workloads.asset_injector
+  # Moved from post_software_final_workloads.bastions - the EXACT same
+  # NetworkPolicy-lockout race as the second asset_injector run above, just
+  # never ported to this task. CONFIRMED LIVE (real zt-satellite-basics
+  # orders on ocpvdev01, three back-to-back runs with byte-for-byte
+  # identical zt-lockdown-<guid> NetworkPolicies and near-identical VM-ready
+  # timing: guid j49q4 failed here, guids nzgxm/vr6t2 succeeded) - and, more
+  # importantly, the NetworkPolicy itself was read directly: its only
+  # port-22 ingress rule is `from: podSelector app.kubernetes.io/name:
+  # showroom` - there is NO rule permitting external SSH (the path this
+  # task's `agnosticd.cloud_vm_workloads` connection plugin uses, via the
+  # ssh.ocpvdev01.rhdp.net NodePort proxy) once the policy is actually
+  # enforced by the CNI. So this isn't a "hangs but eventually works" race
+  # like the asset_injector one originally looked like - once the
+  # NetworkPolicy really lands, it's a hard, permanent block, not a delay.
+  # The only reason any order succeeds at all is if this task's connection
+  # attempt reaches the CNI before zt_security_lockdown's NetworkPolicy
+  # object is actually enforced (not just "changed: true" in Ansible, which
+  # only reflects API acceptance, not CNI programming) - a race with no
+  # reliable winner, exactly matching the mixed pass/fail results above.
+  # Fixed the same way as asset_injector: run an entire phase earlier, well
+  # before zt_security_lockdown exists at all.
+  bastions: "{{ ['rhpds.litellm_virtual_keys.ocp4_workload_litellm_bastion_profile'] if (enable_litemaas_keys | default(false) | bool) else [] }}"
+
+post_software_final_workloads:
+  localhost:
+    - agnosticd.showroom.zerotouch_showroom
+    - rhpds.zerotouch.zt_security_lockdown
+
+# Runs during destroy to delete the virtual key from LiteLLM - matches the
+# real component's own remove_workloads. Same nested-list gotcha as above -
+# the bare ternary IS the value, not a one-item list wrapping it.
+remove_workloads: "{{ ['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys'] if (enable_litemaas_keys | default(false) | bool) else [] }}"
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.control_user / asset_injector
+# -------------------------------------------------------------------
+# Applied to every host in the `all:!windows:!network:!isolated` play
+# (see pre_software_workloads/post_software_workloads.all above, guid
+# kgq9f) - isolated hosts are already excluded at that play-level `hosts:`
+# pattern, so there's no need to also guard the "rename default user"
+# userdata pattern here with a per-host conditional.
+env_authorized_key: "{{ guid }}key"
+# rhel, not lab-user - flagged in Phase 4's live validation (GPTEINFRA-17762,
+# guid `nw5tj`): every pre-existing ZT lab content repo (RHEL BU and HP BU
+# alike) hardcodes assumptions about an OS user literally named `rhel` in its
+# setup/solve scripts (v1's role is literally named zero_touch_rhel_user).
+# tests/zt-rhelbu-agd-v2-demo's zt-lab-andrew scenario (content repo
+# andrew-jones/zt-lab-andrew) has no hardcoded username so lab-user never
+# surfaced this live here - but real RHEL BU content will hit the same
+# failure zt-hpbu hit until this matches the `rhel` convention.
+student_name: rhel
+student_password: "{{ common_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ common_password }}"
+control_user_private_group: "{{ omit }}"
+
+# FOUND LIVE (GPTEINFRA-17763 root-login investigation, guid `j7f5z` vs a
+# fresh v1 comparison order, guid `dh77t`): this whole asset list was wired
+# up with the WRONG schema for the deployed agnosticd.cloud_vm_workloads
+# asset_injector role - `module:` should be `type:`, and the variable fed to
+# the role must be named exactly `asset_injector_assets`, not
+# `asset_injector_modules` (confirmed against the role's live README/tasks:
+# https://github.com/rhpds/cloud_vm_workloads/blob/main/roles/asset_injector/README.adoc,
+# https://github.com/rhpds/cloud_vm_workloads/blob/main/roles/asset_injector/tasks/main.yml -
+# every task dispatches on `_asset.type`, loops over `asset_injector_assets`,
+# which defaults to `[]`). Under the old (wrong) names, asset_injector was
+# silently receiving an empty list and doing nothing at all - confirmed live
+# on `j7f5z`: `/etc/ssh/sshd_config.d/50-cloud-init.conf` still exists
+# (asset_injector's own "remove" step, even under the old `module: file,
+# state: remove` spelling, would never have worked either - `remove` isn't a
+# valid ansible.builtin.file state; the role's real `type: remove` task
+# hardcodes `state: absent` internally) - it's just emptied to 0 bytes,
+# apparently by cloud-init's own boot-time reconciliation, not Ansible.
+# `PasswordAuthentication yes` did still end up set (as a bare line, no
+# markers - consistent with something other than our blockinfile writing it),
+# and cloud-init's own /etc/cloud/cloud.cfg says `ssh_pwauth: false`, so even
+# that likely didn't come from asset_injector either - most likely
+# control_user's own SSH setup already covers PasswordAuthentication
+# independently, which is probably why this schema bug went unnoticed.
+#
+# Separately, and the actual trigger for this investigation: comparing a
+# fresh v1 order for the same content (zt-security-usbguard, guid `dh77t`)
+# against v2 (guid `j7f5z`) found v1's root SSH access genuinely works while
+# v2's doesn't - `passwd -S root` was `L` (locked, no password) and
+# `sshd -T` reported `permitrootlogin without-password` on `j7f5z`, vs `P`
+# (has a real password, confirmed to literally equal control_user_password)
+# and `permitrootlogin yes` on `dh77t`. Root-caused to
+# redhat-cop/agnosticd's `zero_touch_rhel_user` role
+# (ansible/roles/zero_touch_rhel_user/tasks/main.yml), which v1 runs
+# unconditionally and which does two things v2's control_user/asset_injector
+# replacement never did: sets root's password to the same hash as the
+# designated user's, and explicitly forces `PermitRootLogin yes`. Added
+# below as two more asset_injector entries, matching v1's exact mechanism
+# (same password, same bare lineinfile, no markers) - now on the corrected
+# `type:`/`asset_injector_assets` schema so they (and every pre-existing
+# entry here) actually run.
+#
+# Name kept as `bastion_asset_injector_assets` for historical/diff-minimal
+# reasons even though it's no longer bastion-only (guid kgq9f, see
+# pre_software_workloads.all above) - every host the asset_injector role
+# now runs on gets this exact same list.
+bastion_asset_injector_assets:
+  - description: Remove cloud-init SSH config
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Enable password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} ZT SSH settings"
+    block: |
+      PasswordAuthentication yes
+      UsePAM yes
+
+  # Matches redhat-cop/agnosticd's zero_touch_rhel_user role exactly (v1) -
+  # root gets the same password as the designated bastion user.
+  - description: Set root password (matches v1's zero_touch_rhel_user role)
+    type: user
+    name: root
+    state: present
+    password: "{{ control_user_password | password_hash('sha512') }}"
+
+  # Matches v1's zero_touch_rhel_user role exactly - bare line, no markers,
+  # same regexp, explicitly overriding the image's own default (confirmed
+  # live: RHEL 10's shipped default is `PermitRootLogin without-password`,
+  # i.e. key-only - this is why root login silently failed in v2 even before
+  # the missing-password gap above was found).
+  - description: Enable root password authentication (matches v1's zero_touch_rhel_user role)
+    type: lineinfile
+    path: /etc/ssh/sshd_config
+    line: "PermitRootLogin yes"
+    regexp: '^ *PermitRootLogin'
+
+  # FOUND LIVE (GPTEINFRA-17763, guids `qtzmb`/`bh5m6`/`sth7r`): this
+  # restart, run early in provisioning (pre_software_workloads), does not
+  # reliably make root's new password/PermitRootLogin state take effect -
+  # root SSH still failed with pam_unix(sshd:auth) authentication failure /
+  # unix_chkpwd password check failed for user (root), even though every
+  # system-level check (package versions, PAM stack files, login.defs,
+  # SELinux status/contexts, unix_chkpwd binary checksum) was byte-identical
+  # to a working v1 comparison order. A second, LATER plain `systemctl
+  # restart sshd` (tested manually on `qtzmb`, well after the VM had fully
+  # settled - i.e. minutes, not seconds, later) fixed it immediately and
+  # reproducibly. A 30s in-place sleep-then-restart (first attempted fix)
+  # was NOT enough - confirmed via `journalctl -u sshd` on guids
+  # `bh5m6`/`sth7r` that both restarts still landed within ~10s of each
+  # other despite the sleep, and root SSH still failed on both. Whatever
+  # this races against needs more like the elapsed time a full workload
+  # pipeline takes, not a fixed short sleep - re-running the whole
+  # asset_injector role from post_software_final_workloads (below) instead,
+  # after software_workloads/post_software_workloads have already
+  # completed, matching how the manual fix was actually verified.
+  - description: Restart sshd
+    type: service
+    name: sshd
+    state: restarted
+
+# No longer gated on 'bastions' in group_names (guid kgq9f) - the role
+# itself now only ever runs on all:!windows:!network:!isolated hosts (see
+# pre_software_workloads/post_software_workloads.all above), so every host
+# it executes on should get this same list unconditionally.
+asset_injector_assets: "{{ bastion_asset_injector_assets }}"
+
+# -------------------------------------------------------------------
+# Showroom Settings - reuse ZT's existing "zerotouch" chart via the
+# zerotouch_showroom role (agnosticd.showroom collection, not the generic
+# ocp4_workload_showroom role - see the migration proposal's "Showroom
+# Integration" section for why the zerotouch chart needs its own role),
+# in the same namespace as the CNV VMs.
+# -------------------------------------------------------------------
+# ocp4_workload_showroom_openshift_api_url/_token are commented out by
+# default in the role itself (roles/zerotouch_showroom/defaults/main.yaml)
+# and are NOT auto-populated by cloud-vms-base - every other production
+# catalog item using the sibling ocp4_workload_showroom role maps them
+# explicitly from the openshift_cnv cloud provider's sandbox facts, and
+# zerotouch_showroom follows the same convention. Without this,
+# setup-namespace.yaml's kubernetes.core.k8s task falls back to a local
+# kubeconfig file that doesn't exist in the runner container ("Could not
+# create API client: Invalid kube-config file. No configuration found." -
+# job 150504).
+ocp4_workload_showroom_openshift_api_url: "{{ sandbox_openshift_api_url }}"
+ocp4_workload_showroom_openshift_api_token: "{{ sandbox_openshift_api_key }}"
+# zerotouch_showroom defaults to looking up the cluster's Ingress config for
+# the apps domain (matching the generic role's behavior); CNV sandboxes
+# already expose sandbox_openshift_apps_domain directly, so skip that lookup.
+ocp4_workload_showroom_use_sandbox_domain: true
+ocp4_workload_showroom_namespace: "{{ sandbox_openshift_namespace }}"
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: zerotouch
+ocp4_workload_showroom_deployer_chart_version: "1.10.2"
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+ocp4_workload_showroom_content_antora_playbook: site.yml
+
+# bastion_public_hostname must be a top-level var, not just nested inside
+# _showroom_user_data below - agnosticd.cloud_vm_workloads.control_user's
+# report-user-data.yml reads it directly (as a fallback for
+# public_dns_name). This exact top-level pattern is used across dozens of
+# real cloud-vms-base/openshift_cnv catalog items (e.g. ai-driven-automation,
+# ctf-participant, leapp-o-matic-cnv).
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}"
+
+# guid/domain live under environment_variables, not as flat top-level keys.
+# rhpds/showroom-images:content/entrypoint.sh merges the whole
+# _showroom_user_data dict into antora.yml's asciidoc.attributes, but only
+# exports the nested .environment_variables sub-key into the shell
+# environment before running envsubst against the content repo's own
+# ui-config.yml (which uses ${guid}/${domain} placeholders for any tab
+# URLs it defines). Flat guid/domain here would leave environment_variables
+# empty, so envsubst's default behavior (blank unset vars) would silently
+# empty out any such placeholder - found live and fixed the same way in
+# tests/zt-ansiblebu-base-component (finding #13) and
+# tests/zt-hpbu-base-component; ported here for consistency (not yet
+# exercised live against a RHEL BU content repo that actually uses
+# ${guid}/${domain} in its own ui-config.yml, but the same mechanism
+# applies regardless).
+_showroom_user_data:
+  bastion_ssh_command: "ssh {{ control_user_name }}@{{ groups['bastions'][0] }}"
+  bastion_ssh_user_name: "{{ control_user_name }}"
+  bastion_ssh_password: "{{ control_user_password }}"
+  bastion_public_hostname: "{{ bastion_public_hostname }}"
+  environment_variables:
+    guid: "{{ guid }}"
+    domain: "{{ sandbox_openshift_apps_domain }}"
+  litellm_api_url: "{{ lookup('agnosticd_user_data', 'litellm_api_base_url') | default('') }}"
+  litellm_api_key: "{{ lookup('agnosticd_user_data', 'litellm_virtual_key') | default('') }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 07b90b11-81ed-4883-b3c3-b9d8a66030f1
+  # anarchy.namespace intentionally NOT set here - controlled at the AgV
+  # repo top level (see github.com/rhpds/agnosticv/common.yaml).
+  #
+  # __meta__.catalog is required even though this item is never ordered
+  # directly: the repo-wide common.yaml defaults __meta__.deployer.type to
+  # `agnosticd` for every item (nothing here overrides it to null), so this
+  # base component is treated as a fully deployable AgnosticD item by
+  # Babylon's validation (.tests/babylon_checks.py's check_component_catalog
+  # requires __meta__.catalog.parameters to exist).
+  #
+  # Do NOT set catalog.disable: true here - it disables ResourceProvider
+  # generation too (not just the orderable CatalogItem/Template). Matches
+  # real precedent: neither tests/TEST_EMPTY_CONFIG nor the real production
+  # zt-rhelbu/zt-rhel-bu-lab-developer-cnv base component set disable,
+  # despite also never being ordered directly.
+  #
+  # catalog.parameters below (ocp4_workload_showroom_content_git_repo,
+  # _content_git_repo_ref, enable_litemaas_keys) is now purely vestigial -
+  # a holdover from when this file was referenced via
+  # __meta__.components[].item:, which required the *referenced* item to
+  # declare every var passed via parameter_values (undeclared params were
+  # silently dropped). Now that leaf items #include this file directly,
+  # these vars are just plain top-level YAML keys and flow through
+  # regardless of whether they're declared here - kept anyway (harmless)
+  # since check_component_catalog only checks that catalog.parameters
+  # exists, not its contents, and each leaf's own catalog.parameters
+  # (strategic-merge on /__meta__/catalog per .schemas/babylon.yaml)
+  # replaces this list entirely for the leaf's own order form.
+  catalog:
+    display_name: "ZT AgnosticD v2 Base Component (RHEL BU)"
+    category: Workshops
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    labels:
+      Provider: RHDP
+    # Empty, not the 3 content-repo/LiteMaaS parameters this used to
+    # declare. FOUND LIVE (order form for tests/zt-rhelbu-agd-v2-demo
+    # showed 4 fields - demo_scenario plus all 3 of these - instead of
+    # just demo_scenario): /__meta__/catalog uses strategic-merge
+    # (.schemas/babylon.yaml), whose list merge-key is `name`
+    # (https://github.com/redhat-cop/agnosticv#merging-strategies) - a
+    # leaf's own catalog.parameters does NOT replace this list, it UNIONS
+    # with it by name. Since none of these 3 names matched the leaf's
+    # `demo_scenario` entry, all 4 ended up on the merged order form.
+    # Emptying this list is the fix - check_component_catalog only
+    # requires the `parameters` key to exist (any value, including []),
+    # not that it be non-empty.
+    parameters: []
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+      # 750Gi (not the original 100Gi) - quota is fixed per base component,
+      # not overridable per delegator/leaf (__meta__.sandboxes is `overwrite`
+      # merge strategy across stage files only, not across component
+      # references - confirmed no delegator in this repo declares its own
+      # sandboxes block). Every tests/zt-rhelbu-agd-v2-demo demo_scenario
+      # shares this one quota, so it must cover the largest scenario:
+      # zt-satellite-basics' real content (4 VMs, ~660Gi disk) plus headroom
+      # for zerotouch_showroom's own internal PVCs - matches the same
+      # 660Gi + margin calculation the now-folded standalone diagnostic item
+      # used.
+      quota:
+        requests.storage: "750Gi"

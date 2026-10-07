@@ -1,26 +1,44 @@
 ---
 # -------------------------------------------------------------------
-# ZT AgnosticD v2 Migration - Phase 4 Base Component
+# ZT AgnosticD v2 - Consolidated Base Component
 # -------------------------------------------------------------------
-# Shared base component for ZT AgnosticD v2 test/demo catalog items.
-# Mirrors the production `zt-rhelbu/zt-rhel-bu-lab-developer-cnv` base
-# component (zt-rhelbu-agnosticv repo): owns config/cloud_provider,
-# collections, workload wiring, and Showroom deployment. Per-lab leaf
-# items (e.g. tests/zt-agd-v2-demo) reference this via
-# `__meta__.components[].item: tests/zt-base-component` and only supply
-# `ocp4_workload_showroom_content_git_repo`/`_content_git_repo_ref` plus
-# their own catalog-facing metadata.
+# Consolidates the three per-BU base components
+# (tests/zt-ansiblebu-base-component, tests/zt-hpbu-base-component,
+# tests/zt-rhelbu-base-component) into one superset component. All three
+# share the same core wiring (rhpds.zerotouch.zt_base_config + zt_containers
+# pre-infra -> control_user/asset_injector bastion setup ->
+# agnosticd.showroom.zerotouch_showroom + zt_security_lockdown final) - this
+# file keeps every BU-specific extra behind an optional catalog parameter
+# instead of picking one BU's behavior:
+#   - Satellite registration (RHEL BU)          -> enable_satellite_registration
+#   - LiteMaaS virtual keys (RHEL BU/Ansible BU) -> enable_litemaas_keys
+#   - Multi-cloud sandboxes (Ansible BU)         -> auth_cloud_provider
+#   - Windows IronRDP tab (Ansible BU)           -> ocp4_workload_showroom_ironrdp_enable
+#   - Bastion-group fixup (Ansible BU)           -> zt_base_config_ensure_bastion_group
+#   - OS username (RHEL BU/HP BU: rhel, Ansible BU: lab-user) -> student_name
 #
-# This is never ordered directly - no `__meta__.catalog` block here
-# (matches the migration proposal's base-component draft; the v1 base's
-# own copy of catalog metadata is vestigial since it's only ever
-# referenced as a component).
+# Unlike the three source files, this component is meant to be ordered
+# directly (no leaf/delegator item in front of it) - every setting is its
+# own catalog parameter.
 #
-# See the migration proposal for full context:
-# /home/andrew/src/proposals/zt-to-agd-v2/PROPOSAL-zerotouch-agd-v2-migration.md
+# New in this file: two catalog parameters to override the git branch of
+# the zerotouch-collection and showroom Ansible collections, so a PR on
+# either repo can be tested end-to-end without editing this file:
+#   - zerotouch_collection_git_ref (default: main)
+#   - showroom_collection_git_ref (default: main)
+#
+# Dropped from the superset (deliberate simplification - this component
+# isn't meant to carry secrets beyond what already exists in this repo):
+# RHEL BU's inlined `registry_pull_token` vaulted blob. It's specific to
+# certain RHEL BU demo content and isn't tied to any toggle above; add it
+# back directly if a future scenario needs it.
 #
 #include /includes/agd-v2-mapping.yaml
 #include /includes/sandbox-api.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/secrets/demosat-rhel-7-8-9-10.yaml
+#include /includes/secrets/ansiblebu_password.yaml
 
 # -------------------------------------------------------------------
 # Platform - AgnosticD v2
@@ -38,37 +56,124 @@ common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + '
 
 openshift_cnv_legacy_routes: false
 openshift_cnv_route_remove_x_frame_options_header: true
+# Also strips X-Frame-Options from rhpds.zerotouch.zt_containers' own
+# Routes (a separate, brand-new v2-only role - the VM-route flag above only
+# ever covered agnosticd.cloud_provider_openshift_cnv.resources' Routes).
+# Needed whenever a containers: entry's Route is embedded in the showroom
+# iframe (e.g. a Gitea/nginx sidecar tab) - see zerotouch-collection PR #11.
+zt_containers_remove_x_frame_options_header: true
 
 # -------------------------------------------------------------------
 # Dynamic Lab Configuration (from content git repo)
 # -------------------------------------------------------------------
 # Loaded by rhpds.zerotouch.zt_base_config (first pre_infra_workloads
 # entry below) from config/{firewall,instances,networks}.yaml in the
-# lab's content repo (supplied by the leaf item via
-# ocp4_workload_showroom_content_git_repo / _content_git_repo_ref). Do
-# NOT set instances/networks/containers or the zero_touch_*_lockdown_rules
-# keys here unless you intend to override the git files — extra-vars
-# always beat the role's set_fact, so an empty list (instances: [])
-# would provision zero VMs.
-#
-# zt_base_config defaults zt_base_config_content_git_repo/_ref from
-# the ocp4_workload_showroom_content_git_repo/_ref variables below.
+# lab's content repo. Do NOT set instances/networks/containers or the
+# zero_touch_*_lockdown_rules keys here - extra-vars always beat the
+# role's set_fact, so an empty placeholder here would silently zero out
+# the lab config.
 # -------------------------------------------------------------------
 ocp4_workload_showroom_content_git_repo_ref: main
 
 # -------------------------------------------------------------------
+# OS username created on non-isolated VMs. RHEL BU/HP BU's real content
+# hardcodes `rhel` in its setup/solve scripts (v1's role is literally named
+# zero_touch_rhel_user); Ansible BU's own base component instead used
+# `lab-user`. Parameterized so either convention (or a custom one) can be
+# selected per order instead of picking one BU's default for everyone.
+# -------------------------------------------------------------------
+student_name: rhel
+
+# -------------------------------------------------------------------
+# Satellite registration (optional, default: disabled) - ported from
+# tests/zt-rhelbu-base-component, where it was added because some RHEL BU
+# content's setup script hard-requires `subscription-manager register`
+# before it can `dnf install` anything. HP BU/Ansible BU content never
+# needed this, so it's gated behind a toggle here instead of running
+# unconditionally.
+# -------------------------------------------------------------------
+enable_satellite_registration: false
+
+# host_satellite_repositories (agnosticd-v2 core role, bare role name) -
+# bridges the demosat secret's set_repositories_satellite_* names (v1's
+# set-repositories role convention) onto what agnosticd-v2's own role
+# expects. Only invoked (see pre_software_workloads.all below) when
+# enable_satellite_registration is true; harmless to define unconditionally
+# since the role itself never runs otherwise.
+host_satellite_repositories_hostname: "{{ set_repositories_satellite_hostname }}"
+host_satellite_repositories_org: "{{ set_repositories_satellite_org }}"
+host_satellite_repositories_ha: "{{ set_repositories_satellite_ha }}"
+host_satellite_repositories_activationkey: "{{ set_repositories_satellite_activationkey }}"
+
+# -------------------------------------------------------------------
+# LiteMaaS Virtual Keys (optional, default: disabled). Needed for content
+# repos whose own config/instances.yaml declares a top-level `litemaas:`
+# key (e.g. zt-satellite-basics, models: [...], duration: 1d) -
+# zt_base_config's own instances.yaml fetch doesn't expose that key as a
+# fact (only virtualmachines/containers), so it's re-fetched directly here,
+# porting v1's git_config_directory + direct instances.yaml URL-fetch
+# pattern for the litemaas: block specifically.
+# -------------------------------------------------------------------
+enable_litemaas_keys: false
+
+git_config_directory: |-
+  {{ ocp4_workload_showroom_content_git_repo |
+    replace('.git','/' + ocp4_workload_showroom_content_git_repo_ref + '/config/') |
+    replace('github.com','raw.githubusercontent.com') }}
+
+# Only fetched when enabled - Jinja's ternary short-circuits the lookup
+# entirely for every scenario that doesn't need it.
+_litemaas_config: >-
+  {{ ((lookup('ansible.builtin.url', git_config_directory + 'instances.yaml', split_lines=False, errors='warn') | default('{}') | from_yaml).litemaas | default({}))
+     if (enable_litemaas_keys | default(false) | bool) else {} }}
+
+ocp4_workload_litellm_virtual_keys_models: "{{ _litemaas_config.models | default(['granite-3-2-8b-instruct']) }}"
+ocp4_workload_litellm_virtual_keys_duration: "{{ _litemaas_config.duration | default('1d') }}"
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: "{{ _litemaas_config.enable_user_info_messages | default(true) }}"
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: "{{ _litemaas_config.enable_user_info_data | default(true) }}"
+
+# -------------------------------------------------------------------
+# Windows IronRDP tab (optional, default: disabled).
+# -------------------------------------------------------------------
+ocp4_workload_showroom_ironrdp_enable: false
+
+# -------------------------------------------------------------------
+# Multi-cloud sandbox selector - see __meta__.components below for the
+# aws/azure sandbox sub-orders this drives.
+# -------------------------------------------------------------------
+auth_cloud_provider: none
+
+# -------------------------------------------------------------------
+# Bastion-group fixup toggle. rhpds.zerotouch.zt_base_config can promote
+# the first isolated-only VM to a real `bastions` group when no VM is
+# already tagged one - defaults to false (the upstream role's own
+# default), since this actively breaks content where every VM is
+# deliberately isolated-only by design. Set true only for a content repo
+# that genuinely needs a real Ansible-managed bastion but hasn't tagged
+# one itself.
+# -------------------------------------------------------------------
+zt_base_config_ensure_bastion_group: false
+
+# -------------------------------------------------------------------
 # Collections
+# -------------------------------------------------------------------
+# zerotouch_collection_git_ref / showroom_collection_git_ref let a PR on
+# either repo be tested end-to-end by overriding the branch fetched here -
+# both default to main for normal use.
 # -------------------------------------------------------------------
 requirements_content:
   collections:
     - name: https://github.com/rhpds/zerotouch-collection.git
       type: git
-      version: main
+      version: "{{ zerotouch_collection_git_ref }}"
     - name: https://github.com/rhpds/cloud_vm_workloads.git
       type: git
       version: main
-    # PR rhpds/showroom#78 (zerotouch_showroom role) merged to main.
     - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: "{{ showroom_collection_git_ref }}"
+    # LiteMaaS - built directly under the rhpds namespace (not agnosticd).
+    - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
       type: git
       version: main
 
@@ -83,40 +188,80 @@ pre_infra_workloads:
     - rhpds.zerotouch.zt_base_config
     - rhpds.zerotouch.zt_containers
 
+# `all:` (agnosticd-v2's own `hosts: all:!windows:!network:!isolated`), not
+# `bastions:` - running control_user/asset_injector only on a tagged
+# bastion leaves every other VM's sshd on the image's stock
+# `PasswordAuthentication no`, which breaks content whose own
+# setup-automation connects to ALL non-isolated VMs with a password
+# (confirmed live against tests/zt-rhelbu-base-component's zt-satellite-basics
+# scenario). This scoping also automatically excludes isolated hosts, so
+# asset_injector_assets below doesn't need its own per-host conditional.
+# host_satellite_repositories is prepended only when
+# enable_satellite_registration is true - the whole value below must stay
+# a single Jinja expression (not a list wrapping one), matching the
+# post_software_workloads gotcha further down.
 pre_software_workloads:
-  bastions:
-    - agnosticd.cloud_vm_workloads.control_user
+  all: >-
+    {{ (['host_satellite_repositories'] if (enable_satellite_registration | default(false) | bool) else [])
+       + ['agnosticd.cloud_vm_workloads.control_user', 'agnosticd.cloud_vm_workloads.asset_injector'] }}
+
+# asset_injector re-run here (post_software_workloads, not
+# post_software_final_workloads): an early sshd restart doesn't reliably
+# make root's new password/PermitRootLogin state take effect, and this
+# phase must run BEFORE post_software_final_workloads - putting it there
+# instead hangs indefinitely, since that phase's bastions/all play always
+# runs after zt_security_lockdown's NetworkPolicy has already locked the
+# namespace down in that same phase's localhost play.
+#
+# NOTE: the `localhost` entry below MUST be the bare Jinja ternary, not a
+# one-item YAML list containing the ternary (i.e. NOT
+# `- "{{ [...] if ... else [] }}"`) - live-confirmed: agnosticd-v2's
+# workloads.yml templates the whole `_workloads_.localhost` structure at
+# once for its `loop:`, so a one-item list whose sole item is itself a
+# Jinja expression evaluating to a list produces a *nested* list, not a
+# flat one, and `include_role: name: "{{ __localhost }}"` fails with
+# "Invalid role definition".
+post_software_workloads:
+  localhost: "{{ ['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys'] if (enable_litemaas_keys | default(false) | bool) else [] }}"
+  all:
     - agnosticd.cloud_vm_workloads.asset_injector
 
 post_software_final_workloads:
+  # Same bare-ternary requirement as post_software_workloads.localhost above.
+  bastions: "{{ ['rhpds.litellm_virtual_keys.ocp4_workload_litellm_bastion_profile'] if (enable_litemaas_keys | default(false) | bool) else [] }}"
   localhost:
     - agnosticd.showroom.zerotouch_showroom
     - rhpds.zerotouch.zt_security_lockdown
 
+# Runs during destroy to delete the virtual key from LiteLLM. Same
+# bare-ternary requirement as above - the ternary IS the value, not a
+# one-item list wrapping it.
+remove_workloads: "{{ ['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys'] if (enable_litemaas_keys | default(false) | bool) else [] }}"
+
 # -------------------------------------------------------------------
 # Workload: agnosticd.cloud_vm_workloads.control_user / asset_injector
 # -------------------------------------------------------------------
-# Only applied to the `bastions` group, matching how the standard
-# AgnosticD v2 workloads.yml plays already exclude `isolated` hosts from
-# the generic pre_software_workloads. If isolated hosts are ever
-# introduced by a lab, do NOT give them the same "rename default user"
-# userdata pattern unless they're also excluded from any generic
-# Ansible/SSH-based host management.
 env_authorized_key: "{{ guid }}key"
-student_name: lab-user
 student_password: "{{ common_password }}"
 control_user_name: "{{ student_name }}"
 control_user_password: "{{ common_password }}"
 control_user_private_group: "{{ omit }}"
 
+# `type:` (not `module:`) and `asset_injector_assets` (not
+# `asset_injector_modules`) are the role's real schema - under the old
+# names this whole block is silently a no-op (asset_injector_assets
+# defaults to `[]`). Also sets root's password to match
+# control_user_password and forces `PermitRootLogin yes`, both ported
+# verbatim from redhat-cop/agnosticd's zero_touch_rhel_user role, which v1
+# runs unconditionally and v2's control_user/asset_injector replacement
+# never reproduced.
 bastion_asset_injector_assets:
   - description: Remove cloud-init SSH config
-    module: file
-    state: remove
+    type: remove
     path: /etc/ssh/sshd_config.d/50-cloud-init.conf
 
   - description: Enable password auth
-    module: blockinfile
+    type: blockinfile
     path: /etc/ssh/sshd_config
     state: present
     marker: "# {mark} ZT SSH settings"
@@ -124,93 +269,116 @@ bastion_asset_injector_assets:
       PasswordAuthentication yes
       UsePAM yes
 
+  - description: Set root password (matches v1's zero_touch_rhel_user role)
+    type: user
+    name: root
+    state: present
+    password: "{{ control_user_password | password_hash('sha512') }}"
+
+  - description: Enable root password authentication (matches v1's zero_touch_rhel_user role)
+    type: lineinfile
+    path: /etc/ssh/sshd_config
+    line: "PermitRootLogin yes"
+    regexp: '^ *PermitRootLogin'
+
+  # A 30s in-place sleep-then-restart is not enough to make the password/
+  # PermitRootLogin changes above take effect reliably - this restart
+  # (run early, in pre_software_workloads) is backstopped by the second
+  # asset_injector run in post_software_workloads above, much later in
+  # the pipeline.
   - description: Restart sshd
-    module: service
+    type: service
     name: sshd
     state: restarted
 
-asset_injector_modules: "{{ bastion_asset_injector_assets if 'bastions' in group_names else [] }}"
+# No per-host conditional needed - the `all:!windows:!network:!isolated`
+# play scoping above already excludes isolated hosts.
+asset_injector_assets: "{{ bastion_asset_injector_assets }}"
 
 # -------------------------------------------------------------------
-# Showroom Settings - reuse ZT's existing "zerotouch" chart via the
-# zerotouch_showroom role (agnosticd.showroom collection, not the generic
-# ocp4_workload_showroom role - see the migration proposal's "Showroom
-# Integration" section for why the zerotouch chart needs its own role),
-# in the same namespace as the CNV VMs.
+# Showroom Settings - reuse the official "zerotouch" chart + a current
+# Nookbag pin (the zerotouch_showroom role's own baked-in Nookbag default
+# is stale relative to current releases).
 # -------------------------------------------------------------------
-# ocp4_workload_showroom_openshift_api_url/_token are commented out by
-# default in the role itself (roles/zerotouch_showroom/defaults/main.yaml)
-# and are NOT auto-populated by cloud-vms-base - every other production
-# catalog item using the sibling ocp4_workload_showroom role maps them
-# explicitly from the openshift_cnv cloud provider's sandbox facts, and
-# zerotouch_showroom follows the same convention. Without this,
-# setup-namespace.yaml's kubernetes.core.k8s task falls back to a local
-# kubeconfig file that doesn't exist in the runner container ("Could not
-# create API client: Invalid kube-config file. No configuration found." -
-# job 150504).
 ocp4_workload_showroom_openshift_api_url: "{{ sandbox_openshift_api_url }}"
 ocp4_workload_showroom_openshift_api_token: "{{ sandbox_openshift_api_key }}"
-# zerotouch_showroom defaults to looking up the cluster's Ingress config for
-# the apps domain (matching the generic role's behavior); CNV sandboxes
-# already expose sandbox_openshift_apps_domain directly, so skip that lookup.
 ocp4_workload_showroom_use_sandbox_domain: true
 ocp4_workload_showroom_namespace: "{{ sandbox_openshift_namespace }}"
 ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
 ocp4_workload_showroom_deployer_chart_name: zerotouch
 ocp4_workload_showroom_deployer_chart_version: "1.10.2"
+ocp4_workload_showroom_zero_touch_bundle: "https://github.com/rhpds/nookbag/releases/download/nookbag-v0.4.0/nookbag-v0.4.0.zip"
 ocp4_workload_showroom_terminal_type: wetty
 ocp4_workload_showroom_wetty_ssh_bastion_login: true
 ocp4_workload_showroom_content_antora_playbook: site.yml
+# ocp4_workload_showroom_ironrdp_enable is already set as a plain
+# top-level var above (default false) - the zerotouch_showroom role picks
+# it up directly, no need to re-assign it here.
 
 # bastion_public_hostname must be a top-level var, not just nested inside
 # _showroom_user_data below - agnosticd.cloud_vm_workloads.control_user's
-# report-user-data.yml reads it directly (as a fallback for
-# public_dns_name). This exact top-level pattern is used across dozens of
-# real cloud-vms-base/openshift_cnv catalog items (e.g. ai-driven-automation,
-# ctf-participant, leapp-o-matic-cnv).
-bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}"
+# report-user-data.yml reads it directly. Prefers groups['bastions'][0],
+# falling back to groups['isolated'][0] when no VM is tagged bastions (e.g.
+# zt_base_config_ensure_bastion_group left false against all-isolated
+# content) - otherwise groups['bastions'] would be empty and this would
+# raise a Jinja "list index out of range" error.
+_zt_bastion_host: >-
+  {{ groups['bastions'][0] if (groups['bastions'] | default([]) | length > 0)
+    else groups['isolated'][0] }}
+bastion_public_hostname: "{{ _zt_bastion_host | regex_replace('\\..*$') }}"
 
+# When no VM was ever promoted to `bastions` (zt_base_config_ensure_bastion_group
+# false, all-isolated content), agnosticd.cloud_vm_workloads.control_user
+# never runs anywhere, so control_user_name/control_user_password isn't a
+# real account on any VM. Fall back to the first VM's own userdata-baked
+# credentials in that case instead - matches every real all-isolated ZT
+# content repo, which bakes a fixed user/password into its own cloud-init
+# userdata precisely because no Ansible-managed account is ever created.
+_zt_first_vm_userdata: >-
+  {{ (instances[0].userdata | default('') | from_yaml)
+    if (instances | default([]) | length > 0) else {} }}
+_zt_bastion_user: >-
+  {{ control_user_name if (groups['bastions'] | default([]) | length > 0)
+    else (_zt_first_vm_userdata.user | default(control_user_name)) }}
+_zt_bastion_password: >-
+  {{ control_user_password if (groups['bastions'] | default([]) | length > 0)
+    else (_zt_first_vm_userdata.password | default(control_user_password)) }}
+
+# guid/domain MUST live under _showroom_user_data.environment_variables,
+# NOT as flat top-level keys of _showroom_user_data -
+# rhpds/showroom-images:content/entrypoint.sh merges the ENTIRE
+# _showroom_user_data dict into antora.yml's asciidoc.attributes, then
+# exports ONLY the nested .environment_variables sub-key into the shell
+# environment before running envsubst against a content repo's own
+# ui-config.yml - flat guid/domain here would silently blank any
+# ${guid}/${domain} placeholder there.
 _showroom_user_data:
-  bastion_ssh_command: "ssh {{ control_user_name }}@{{ groups['bastions'][0] }}"
-  bastion_ssh_user_name: "{{ control_user_name }}"
-  bastion_ssh_password: "{{ control_user_password }}"
+  bastion_ssh_command: "ssh {{ _zt_bastion_user }}@{{ _zt_bastion_host }}"
+  bastion_ssh_user_name: "{{ _zt_bastion_user }}"
+  bastion_ssh_password: "{{ _zt_bastion_password }}"
   bastion_public_hostname: "{{ bastion_public_hostname }}"
-  guid: "{{ guid }}"
-  domain: "{{ sandbox_openshift_apps_domain }}"
+  environment_variables:
+    guid: "{{ guid }}"
+    domain: "{{ sandbox_openshift_apps_domain }}"
+  # Vaulted secrets, only ever decrypted when ocp4_workload_showroom_ironrdp_enable
+  # is true - zerotouch_showroom's own `_showroom_user_data | combine(...)`
+  # step force-resolves every key here as a whole, and decrypting these two
+  # outside the one scenario that needs them (Windows AD/IronRDP) has been
+  # unreliable in practice. Jinja's ternary short-circuiting keeps them
+  # completely unevaluated for every other scenario.
+  windows_password: "{{ ansiblebu_windows_password if (ocp4_workload_showroom_ironrdp_enable | default(false) | bool) else common_password }}"
+  vault_password: "{{ ansiblebu_vault_password if (ocp4_workload_showroom_ironrdp_enable | default(false) | bool) else common_password }}"
+  dns_domain: "{{ sandbox_openshift_namespace | default('') }}.svc.cluster.local"
+  litellm_api_url: "{{ lookup('agnosticd_user_data', 'litellm_api_base_url') | default('') }}"
+  litellm_api_key: "{{ lookup('agnosticd_user_data', 'litellm_virtual_key') | default('') }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
 __meta__:
-  asset_uuid: 07b90b11-81ed-4883-b3c3-b9d8a66030f1
+  asset_uuid: eaa5395d-65d6-4ed9-bfb8-b1ee7132933e
   # anarchy.namespace intentionally NOT set here - controlled at the AgV
-  # repo top level (see github.com/rhpds/agnosticv/common.yaml).
-  #
-  # __meta__.catalog is required even though this item is never ordered
-  # directly: the repo-wide common.yaml defaults __meta__.deployer.type to
-  # `agnosticd` for every item (nothing here overrides it to null, unlike
-  # the leaf item), so this base component is treated as a fully deployable
-  # AgnosticD item by Babylon's validation (.tests/babylon_checks.py's
-  # check_component_catalog requires __meta__.catalog.parameters to exist).
-  #
-  # Do NOT set catalog.disable: true here - it disables ResourceProvider
-  # generation too (not just the orderable CatalogItem/Template), which
-  # breaks the leaf item's __meta__.components[].item reference ("...
-  # resourceproviders.poolboy.gpte.redhat.com \"tests.zt-base-component.dev\"
-  # not found"). Matches real precedent: neither tests/TEST_EMPTY_CONFIG nor
-  # the real production zt-rhelbu/zt-rhel-bu-lab-developer-cnv base component
-  # set disable, despite also never being ordered directly.
-  #
-  # catalog.parameters must declare every var the leaf item passes via
-  # __meta__.components[].parameter_values (ocp4_workload_showroom_content_git_repo
-  # and _content_git_repo_ref below) - values for undeclared parameters are
-  # silently dropped rather than merged into extravars, which is why
-  # zt_base_config failed with "requires zt_base_config_content_git_repo
-  # (or ocp4_workload_showroom_content_git_repo) ... to be set" even though
-  # the leaf item (tests/zt-agd-v2-demo) sets it. Matches the real
-  # production zt-rhelbu/zt-rhel-bu-lab-developer-cnv base component, which
-  # declares these same two parameters despite also never being ordered
-  # directly.
+  # repo top level (see agnosticv/common.yaml).
   catalog:
     display_name: "ZT AgnosticD v2 Base Component"
     category: Workshops
@@ -224,6 +392,7 @@ __meta__:
         required: true
         openAPIV3Schema:
           type: string
+          default: https://github.com/andrew-jones/zt-lab-andrew.git
       - name: ocp4_workload_showroom_content_git_repo_ref
         description: Git branch/ref for the lab content repo
         formLabel: Git branch
@@ -231,6 +400,90 @@ __meta__:
         openAPIV3Schema:
           type: string
           default: main
+      - name: zerotouch_collection_git_ref
+        description: >-
+          Git branch/ref for https://github.com/rhpds/zerotouch-collection -
+          override to test a PR against this collection.
+        formLabel: Zerotouch Collection Branch
+        openAPIV3Schema:
+          type: string
+          default: main
+      - name: showroom_collection_git_ref
+        description: >-
+          Git branch/ref for https://github.com/rhpds/showroom - override
+          to test a PR against this collection.
+        formLabel: Showroom Collection Branch
+        openAPIV3Schema:
+          type: string
+          default: main
+      - name: student_name
+        description: >-
+          OS username created on non-isolated VMs. Must match what the lab
+          content's own setup/solve scripts expect (real ZT content
+          typically hardcodes either `rhel` or `lab-user`).
+        formLabel: OS username
+        openAPIV3Schema:
+          type: string
+          default: rhel
+      - name: auth_cloud_provider
+        formLabel: Cloud Provider
+        openAPIV3Schema:
+          type: string
+          default: none
+          enum:
+            - none
+            - aws
+            - azure
+            - aws_and_azure
+      - name: ocp4_workload_showroom_ironrdp_enable
+        formLabel: Windows IronRDP tab
+        openAPIV3Schema:
+          type: boolean
+          default: false
+      - name: enable_litemaas_keys
+        description: Provision a LiteMaaS virtual key and wire the bastion profile onto it
+        formLabel: Enable LiteMaaS
+        openAPIV3Schema:
+          type: boolean
+          default: false
+      - name: enable_satellite_registration
+        description: Register non-isolated VMs against Satellite (requires this component's own Satellite secret)
+        formLabel: Enable Satellite registration
+        openAPIV3Schema:
+          type: boolean
+          default: false
+      - name: zt_base_config_ensure_bastion_group
+        description: >-
+          Promote the first isolated-only VM to a real bastions group. Set
+          true only for a content repo that genuinely needs a real
+          Ansible-managed bastion but hasn't tagged one itself.
+        formLabel: Ensure bastion group
+        openAPIV3Schema:
+          type: boolean
+          default: false
+  # Nested components: when auth_cloud_provider selects aws/azure/
+  # aws_and_azure, additionally order these sandbox sub-components.
+  components:
+    - name: aws
+      display_name: AWS
+      item: sandboxes-gpte/SANDBOX_OPEN
+      propagate_provision_data:
+        - var: aws_sandbox_provision_data
+      parameter_values:
+        sandbox_aws_admin_user_policy_type: zerotouch
+      when: auth_cloud_provider | default('') in ['aws', 'aws_and_azure']
+
+    - name: azure
+      display_name: Azure
+      item: azure_gpte/OPEN_ENVIRONMENT_AZURE_SUBSCRIPTION
+      propagate_provision_data:
+        - var: azure_sandbox_provision_data
+      parameter_values:
+        # Without this, redhat-cop/agnosticd's open-environment-azure-subscription
+        # env_type falls back to its own internal default (true) and deploys
+        # a second, unrelated generic showroom on a shared cluster.
+        showroom_deploy_shared_cluster_enable: false
+      when: auth_cloud_provider | default('') in ['azure', 'aws_and_azure']
   deployer:
     scm_url: https://github.com/rhpds/agnosticd-v2
     scm_ref: main
@@ -244,5 +497,9 @@ __meta__:
         cloud: cnv
         purpose: prod
         virt: "yes"
+      # 750Gi - the largest quota any of the three source components used
+      # (tests/zt-rhelbu-base-component, sized for its zt-satellite-basics
+      # scenario), so this one component safely covers every previously
+      # supported scenario across all three.
       quota:
-        requests.storage: "100Gi"
+        requests.storage: "750Gi"

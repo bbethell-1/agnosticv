@@ -1,0 +1,368 @@
+---
+# -------------------------------------------------------------------
+# ZT AgnosticD v2 Migration - Phase 4 Base Component (HP BU bridge)
+# -------------------------------------------------------------------
+# Mirrors the production `zt-hpbu/zt-hpbu-lab-developer-cnv` base
+# component (zt-hpbu-agnosticv repo), the same way tests/zt-rhelbu-base-component
+# mirrors RHEL BU's `zt-rhel-bu-lab-developer-cnv`. Structurally this file
+# is a near-copy of tests/zt-rhelbu-base-component/common.yaml: per the proposal,
+# HP BU has no real architectural divergence from RHEL BU (same
+# `repo_method: satellite` semantics, same `groups['bastions'][0]`
+# convention, no LiteMaaS/Windows/multi-cloud). The only genuine
+# differences are the two items below.
+#
+# See the migration proposal for full context (Phase 4 + "HP BU and
+# Ansible BU Migration Design"):
+# /home/andrew/src/proposals/zt-to-agd-v2/PROPOSAL-zerotouch-agd-v2-migration.md
+# Jira: https://redhat.atlassian.net/browse/GPTEINFRA-17762
+#
+# GPTEINFRA-16059: like tests/zt-rhelbu-base-component and
+# tests/zt-ansiblebu-base-component, the leaf item
+# (tests/zt-hpbu-agd-v2-demo) now pulls this in via a plain
+# `#include /tests/zt-hpbu-base-component/common.yaml` text-merge, NOT
+# via `__meta__.components[].item:`. Sharing "one lab's own base config"
+# via `components[].item:` makes the *referenced* base component the
+# resource that carries job vars and executes the deploy - RHDP's
+# reporting then attributes the run to that component's own (generic)
+# display_name, never the ordering leaf's. Real production Ansible BU hit
+# exactly this and fixed it the same way (rhpds/zt-ansiblebu-agnosticv PR
+# #316/#317/#318, "This uses #include instead of components"). This
+# fixture originally used the buggy components[].item: shape and has been
+# converted to match.
+#
+# 1) Nookbag pin standardization. Re-verified directly against
+#    zt-hpbu-agnosticv/zt-hpbu/zt-hpbu-lab-developer-cnv/{common,dev,prod,test}.yaml:
+#    the personal showroom-chart fork
+#    (https://agonzalezrh.github.io/showroom-deployer, showroom-single-pod
+#    1.9.6, nookbag-v0.0.5) only lives in the dev-default common.yaml;
+#    prod.yaml/test.yaml already override to the official
+#    https://rhpds.github.io/showroom-deployer "zerotouch" chart (1.9.16)
+#    and nookbag-v0.1.0. This component standardizes on one current pin
+#    (zerotouch 1.10.2 - already the zerotouch_showroom role's own
+#    default, see agnosticd/showroom's roles/zerotouch_showroom/defaults/
+#    main.yaml - and nookbag-v0.4.0, confirmed still the latest release
+#    via `gh release list --repo rhpds/nookbag --limit 5` at the time this
+#    file was written). Note nookbag-v0.4.0 is explicitly pinned below
+#    because the zerotouch_showroom role's own baked-in default is still
+#    nookbag-v0.3.6 (stale relative to "current") - tests/zt-rhelbu-base-component
+#    (RHEL BU) doesn't override this var at all, so it is currently running
+#    on that stale role default, not v0.4.0. Worth revisiting there too.
+#
+# 2) git_config_directory / INSTANCEGUID quirks - re-verified against the
+#    real v1 file, then checked whether they matter for v2:
+#    - zt-hpbu-lab-developer-cnv/common.yaml:13-16 *does* insert
+#      '/refs/heads/' before the branch name:
+#        replace('.git','/refs/heads/' + ocp4_workload_showroom_content_git_repo_ref + '/config/')
+#      ...and its instances.yaml lookup (line 21) has no
+#      `| replace('INSTANCEGUID', guid)` filter. Both confirmed present.
+#    - By contrast RHEL BU's v1 file
+#      (zt-rhelbu-agnosticv/zt-rhelbu/zt-rhel-bu-lab-developer-cnv/common.yaml:17-26)
+#      has neither `/refs/heads/` NOR is it missing the filter - it has the
+#      INSTANCEGUID replace (line 25) and no `/refs/heads/` (line 18-19).
+#    - BUT: none of this lives in shared v2 code, and the v2 role has
+#      already standardized on ONE form, not RHEL BU's specifically -
+#      confirmed by reading rhpds/zerotouch-collection's
+#      roles/zt_base_config/tasks/main.yml directly:
+#        - line ~22-27 builds the URL as
+#          `replace('.git', '/' + ref + '/config/')` - i.e. matches RHEL
+#          BU's v1 form (no '/refs/heads/'), unconditionally, for every BU.
+#        - line ~69 *always* applies
+#          `| replace('INSTANCEGUID', guid)` on instances.yaml content,
+#          unconditionally, for every BU.
+#      There is no `zt_base_config_*` variable that re-introduces either
+#      HP BU quirk - the role's README is explicit that "the v1 inline
+#      lookup('ansible.builtin.url', ...) copies in each BU's common.yaml
+#      are the thing this role replaces, not a supported alternate path."
+#    Conclusion: both HP BU quirks are pure v1 artifacts, fully eliminated
+#    by this migration itself. There is nothing to reproduce or bridge at
+#    the base-component level - this file relies on zt_base_config exactly
+#    like tests/zt-rhelbu-base-component does, with no bespoke
+#    git_config_directory Jinja of its own. Do NOT invent a
+#    zt_base_config_git_config_directory_style variable or similar - it
+#    doesn't exist in the real role and would be pure fiction.
+#
+# 3) Live-validation finding (job against sandbox guid nw5tj on
+#    ocpvdev01): student_name/control_user_name MUST be `rhel`, not
+#    `lab-user`. zt-quarkus-intro's real setup-automation/setup-terminal.sh
+#    hardcodes the OS username `rhel` throughout (`usermod -aG wheel rhel`,
+#    `chown rhel.rhel /home/rhel/...`, `mkdir -p /home/rhel/projects/...`)
+#    and failed with "usermod: user 'rhel' does not exist" when this file
+#    copied tests/zt-rhelbu-base-component's `lab-user` convention verbatim
+#    (as it stood at the time). Both RHEL BU's and HP BU's real v1 base
+#    components set `student_name: rhel` (v1's role is literally named
+#    `zero_touch_rhel_user`), so this is what every pre-existing lab
+#    content repo across both BUs assumes - it's not an HP-BU-specific
+#    quirk, it just wasn't caught in Phase 1-3 because that phase's leaf
+#    item (tests/zt-rhelbu-agd-v2-demo's zt-lab-andrew scenario) points at
+#    a custom test-only content repo (andrew-jones/zt-lab-andrew) with no
+#    hardcoded username. `agnosticd.cloud_vm_workloads.control_user`'s
+#    `control_user_name` is fully parameterized (confirmed via the role
+#    source, rhpds/cloud_vm_workloads roles/control_user/{defaults,tasks}/
+#    main.yml - default is actually `devops`, nothing enforces `lab-user`),
+#    so setting it to `rhel` here is a pure catalog-config fix, no
+#    collection code change needed. tests/zt-rhelbu-base-component has
+#    since also switched to `student_name: rhel`.
+#
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/parameters/purpose.yaml
+
+# -------------------------------------------------------------------
+# Platform - AgnosticD v2
+# -------------------------------------------------------------------
+platform: RHPDS
+cloud_provider: openshift_cnv
+config: cloud-vms-base
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+ansible_user: cloud-user
+remote_user: cloud-user
+common_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] + 'RM' }}"
+
+openshift_cnv_legacy_routes: false
+openshift_cnv_route_remove_x_frame_options_header: true
+
+# REMOVED (GPTEINFRA-17763): `ansible_ssh_common_args: "-o ControlMaster=no
+# -o ControlPersist=no"` was added here after guid `xpvsj` (RHEL BU
+# fixture), initially diagnosed as a stale ControlPersist SSH socket after
+# an in-run sshd restart. Root-causing the next hang (guid `cf7fx`, still
+# present despite this setting) found the real cause instead: phase
+# ordering — see tests/zt-rhelbu-base-component's post_software_workloads
+# comment for the full writeup. That phase-relocation fix alone accounts for both
+# hangs, so this setting was almost certainly never the actual fix —
+# removed pending live re-confirmation.
+
+# -------------------------------------------------------------------
+# Dynamic Lab Configuration (from content git repo)
+# -------------------------------------------------------------------
+# Loaded by rhpds.zerotouch.zt_base_config (first pre_infra_workloads
+# entry below) from config/{firewall,instances,networks}.yaml in the
+# lab's content repo (supplied by the leaf item via
+# ocp4_workload_showroom_content_git_repo / _content_git_repo_ref). Do
+# NOT set instances/networks/containers or the zero_touch_*_lockdown_rules
+# keys here unless you intend to override the git files - extra-vars
+# always beat the role's set_fact, so an empty list (instances: [])
+# would provision zero VMs.
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo_ref: main
+
+# -------------------------------------------------------------------
+# Collections
+# -------------------------------------------------------------------
+# repo_method: satellite has no repo_method-aware branching in
+# host_satellite_repositories (confirmed for RHEL BU in Phase 1-3). HP BU
+# uses the same repo_method: satellite as RHEL BU, so there is nothing to
+# bridge here either way - host_satellite_repositories is simply not
+# invoked at the base-component level below, matching (the older
+# revision of) tests/zt-rhelbu-base-component. repo_method itself is a
+# pure v1 env_type-internal switch with no v2 equivalent.
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/zerotouch-collection.git
+      type: git
+      version: main
+    - name: https://github.com/rhpds/cloud_vm_workloads.git
+      type: git
+      version: main
+    # PR rhpds/showroom#78 (zerotouch_showroom role) merged to main.
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: main
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+# zt_base_config must run first so its cacheable facts (instances,
+# networks, containers, lockdown rules) exist before zt_containers and
+# before cloud-vms-base creates VMs.
+pre_infra_workloads:
+  localhost:
+    - rhpds.zerotouch.zt_base_config
+    - rhpds.zerotouch.zt_containers
+
+pre_software_workloads:
+  bastions:
+    - agnosticd.cloud_vm_workloads.control_user
+    - agnosticd.cloud_vm_workloads.asset_injector
+
+# asset_injector re-run here (post_software_workloads, not
+# post_software_final_workloads) - see tests/zt-rhelbu-base-component's
+# identical comment for why it must be here specifically (found live, guids
+# cf7fx/xpvsj: putting it in post_software_final_workloads.bastions hung
+# indefinitely, since that phase's bastions play runs after
+# zt_security_lockdown's NetworkPolicy has already locked the namespace
+# down).
+post_software_workloads:
+  bastions:
+    - agnosticd.cloud_vm_workloads.asset_injector
+
+post_software_final_workloads:
+  localhost:
+    - agnosticd.showroom.zerotouch_showroom
+    - rhpds.zerotouch.zt_security_lockdown
+
+# -------------------------------------------------------------------
+# Workload: agnosticd.cloud_vm_workloads.control_user / asset_injector
+# -------------------------------------------------------------------
+env_authorized_key: "{{ guid }}key"
+# Must be `rhel`, not `lab-user` - see finding #3 in the top comment.
+# zt-quarkus-intro's real setup-terminal.sh hardcodes this username.
+student_name: rhel
+student_password: "{{ common_password }}"
+control_user_name: "{{ student_name }}"
+control_user_password: "{{ common_password }}"
+control_user_private_group: "{{ omit }}"
+
+# Schema fix + root-login gap ported from tests/zt-rhelbu-base-component
+# (RHEL BU) - see that file's top comment on this block for the full evidence trail
+# (GPTEINFRA-17763, guids `j7f5z`/v2 vs `dh77t`/v1). Short version: `module:`
+# must be `type:`, and the role's variable is `asset_injector_assets`, not
+# `asset_injector_modules` - under the old names this entire block was
+# silently a no-op (asset_injector_assets defaults to `[]`). Also adds the
+# same two entries RHEL BU's fixture got: root's password matching
+# control_user_password, and `PermitRootLogin yes` - both ported verbatim
+# from redhat-cop/agnosticd's zero_touch_rhel_user role, which v1 runs
+# unconditionally and v2's control_user/asset_injector replacement never
+# reproduced.
+bastion_asset_injector_assets:
+  - description: Remove cloud-init SSH config
+    type: remove
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+  - description: Enable password auth
+    type: blockinfile
+    path: /etc/ssh/sshd_config
+    state: present
+    marker: "# {mark} ZT SSH settings"
+    block: |
+      PasswordAuthentication yes
+      UsePAM yes
+
+  - description: Set root password (matches v1's zero_touch_rhel_user role)
+    type: user
+    name: root
+    state: present
+    password: "{{ control_user_password | password_hash('sha512') }}"
+
+  - description: Enable root password authentication (matches v1's zero_touch_rhel_user role)
+    type: lineinfile
+    path: /etc/ssh/sshd_config
+    line: "PermitRootLogin yes"
+    regexp: '^ *PermitRootLogin'
+
+  # FOUND LIVE (GPTEINFRA-17763, guids `qtzmb`/`bh5m6`/`sth7r`, RHEL BU
+  # fixture - see tests/zt-rhelbu-base-component's identical comment for
+  # the full evidence trail) - this restart, run early in provisioning, does not
+  # reliably make root's new password/PermitRootLogin state take effect. A
+  # 30s in-place sleep-then-restart was NOT enough either (confirmed live);
+  # fixed by re-running the whole asset_injector role from
+  # post_software_final_workloads (below) instead, much later in the
+  # pipeline.
+  - description: Restart sshd
+    type: service
+    name: sshd
+    state: restarted
+
+asset_injector_assets: "{{ bastion_asset_injector_assets if 'bastions' in group_names else [] }}"
+
+# -------------------------------------------------------------------
+# Showroom Settings - standardize on the official "zerotouch" chart +
+# a current nookbag pin (see the top comment for why both are explicit
+# here rather than relying on role defaults).
+# -------------------------------------------------------------------
+ocp4_workload_showroom_openshift_api_url: "{{ sandbox_openshift_api_url }}"
+ocp4_workload_showroom_openshift_api_token: "{{ sandbox_openshift_api_key }}"
+ocp4_workload_showroom_use_sandbox_domain: true
+ocp4_workload_showroom_namespace: "{{ sandbox_openshift_namespace }}"
+ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
+ocp4_workload_showroom_deployer_chart_name: zerotouch
+ocp4_workload_showroom_deployer_chart_version: "1.10.2"
+ocp4_workload_showroom_zero_touch_bundle: "https://github.com/rhpds/nookbag/releases/download/nookbag-v0.4.0/nookbag-v0.4.0.zip"
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+ocp4_workload_showroom_content_antora_playbook: site.yml
+
+# bastion_public_hostname must be a top-level var, not just nested inside
+# _showroom_user_data below - agnosticd.cloud_vm_workloads.control_user's
+# report-user-data.yml reads it directly (as a fallback for
+# public_dns_name). HP BU uses the same groups['bastions'][0] convention
+# as RHEL BU (confirmed: zt-hpbu-lab-developer-cnv/common.yaml:40 uses
+# groups['bastions'][0], not groups['isolated'][0] - that quirk is
+# Ansible BU only, see tests/zt-ansiblebu-base-component).
+bastion_public_hostname: "{{ groups['bastions'][0] | regex_replace('\\..*$') }}"
+
+# guid/domain live under environment_variables, not as flat top-level keys -
+# see tests/zt-ansiblebu-base-component's finding #13 for the full mechanism
+# (rhpds/showroom-images:content/entrypoint.sh merges _showroom_user_data
+# into antora.yml's asciidoc.attributes, then only exports the nested
+# .environment_variables sub-key for envsubst - flat guid/domain here would
+# silently blank any ${guid}/${domain} placeholder in a content repo's own
+# ui-config.yml). Ported the same fix here for consistency with v1's own
+# zt-hpbu-lab-developer-cnv convention, even though this wasn't hit live
+# during HP BU's Phase 4 sign-off (its tabs may not use these placeholders).
+_showroom_user_data:
+  bastion_ssh_command: "ssh {{ control_user_name }}@{{ groups['bastions'][0] }}"
+  bastion_ssh_user_name: "{{ control_user_name }}"
+  bastion_ssh_password: "{{ control_user_password }}"
+  bastion_public_hostname: "{{ bastion_public_hostname }}"
+  environment_variables:
+    guid: "{{ guid }}"
+    domain: "{{ sandbox_openshift_apps_domain }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 3e1127b7-0e9b-4156-9f54-877a361f9a8c
+  # anarchy.namespace intentionally NOT set here - controlled at the AgV
+  # repo top level (see github.com/rhpds/agnosticv/common.yaml), same as
+  # tests/zt-rhelbu-base-component.
+  #
+  # catalog.parameters is required (not just good practice): this
+  # component is never ordered directly but IS treated as a deployable
+  # AgnosticD item by Babylon's validation (__meta__.deployer.type
+  # defaults to `agnosticd` from the repo-wide common.yaml, and
+  # .tests/babylon_checks.py's check_component_catalog requires
+  # __meta__.catalog.parameters to exist for any component with a truthy
+  # deployer.type). The two entries below are now purely vestigial - a
+  # holdover from when this file was referenced via
+  # __meta__.components[].item:, which required declaring every var
+  # passed via parameter_values. Now that the leaf item #includes this
+  # file directly, ocp4_workload_showroom_content_git_repo/_ref are just
+  # plain top-level YAML keys and flow through regardless of whether
+  # they're declared here (matches tests/zt-rhelbu-base-component's own
+  # updated comment on this same point).
+  catalog:
+    display_name: "ZT AgnosticD v2 Base Component (HP BU)"
+    category: Workshops
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    labels:
+      Provider: RHDP
+    # Empty, not the 2 content-repo parameters this used to declare - see
+    # tests/zt-rhelbu-base-component's identical comment on this point.
+    # /__meta__/catalog's strategic-merge unions catalog.parameters by
+    # `name` rather than letting the leaf's list replace this one, so a
+    # non-empty list here would leak through onto
+    # tests/zt-hpbu-agd-v2-demo's order form alongside its own single
+    # `ocp4_workload_showroom_content_git_repo_ref` parameter (which
+    # SHOULD stay user-facing there - it's the one leaf-level override
+    # HP BU's demo intentionally exposes, unlike RHEL BU/Ansible BU's
+    # `demo_scenario` picker).
+    parameters: []
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+  sandboxes:
+    - kind: OcpSandbox
+      namespace_suffix: ocp4-cluster
+      cloud_selector:
+        cloud: cnv
+        purpose: prod
+        virt: "yes"
+      quota:
+        requests.storage: "100Gi"

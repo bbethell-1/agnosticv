@@ -1,0 +1,71 @@
+---
+# -------------------------------------------------------------------
+# ZT AgnosticD v2 Migration - Phase 4 Test Catalog Item (HP BU bridge)
+# -------------------------------------------------------------------
+# Delegates all provisioning to tests/zt-hpbu-base-component via a plain
+# #include text-merge - NOT __meta__.components[].item: (see
+# GPTEINFRA-16059 in the base component's own header comment for why).
+# This item deploys directly - it IS the resource that carries job vars,
+# so RHDP's reporting attributes the run to THIS item's own display_name,
+# not a shared/generic one. Mirrors the production
+# zt-hpbu/zt-quarkus-intro -> zt-hpbu/zt-hpbu-lab-developer-cnv pattern
+# from zt-hpbu-agnosticv, the same way tests/zt-rhelbu-agd-v2-demo mirrors
+# RHEL BU's zt-rhel-troubleshooting-1 -> zt-rhel-bu-lab-developer-cnv).
+# Points at the same content repo the one real HP BU lab
+# (zt-hpbu/zt-quarkus-intro/common.yaml) already uses in production:
+# https://github.com/YoNoSoyVictor/zt-quarkus-intro.git, main branch -
+# fetched directly to confirm config/instances.yaml is real and tags its
+# VM `bastions` (matching the groups['bastions'][0] convention this base
+# component expects).
+#
+# See the migration proposal for full context:
+# /home/andrew/src/proposals/zt-to-agd-v2/PROPOSAL-zerotouch-agd-v2-migration.md
+# Jira: https://redhat.atlassian.net/browse/GPTEINFRA-17762
+#
+# NOT a production catalog item - lives under tests/ deliberately, same
+# as tests/zt-rhelbu-agd-v2-demo and tests/zt-rhel-grading.
+#
+#include /tests/zt-hpbu-base-component/common.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/catalog-icon-aap.yaml
+# NOTE: do NOT also #include /includes/parameters/purpose.yaml here -
+# tests/zt-hpbu-base-component/common.yaml already includes it, and the
+# real agnosticv CLI hard-errors ("is included more than once" / "include
+# loop") on any file included twice across the whole resolved tree, not
+# just true circular includes. FOUND IN CI after this leaf switched from
+# a components[].item: delegator (no shared #include tree with the base
+# at all) to #include-ing the base directly (GPTEINFRA-16059 fix).
+
+# zt-quarkus-intro's config/instances.yaml (confirmed fetched from
+# raw.githubusercontent.com/YoNoSoyVictor/zt-quarkus-intro/main/config/instances.yaml)
+# tags its single `terminal` VM `AnsibleGroup: bastions` - matching
+# this base component's groups['bastions'][0] convention, so this
+# is not a dead reference.
+ocp4_workload_showroom_content_git_repo: https://github.com/YoNoSoyVictor/zt-quarkus-intro.git
+ocp4_workload_showroom_content_git_repo_ref: main
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 895cd18b-8474-489b-95d1-334aa15c7c33
+  catalog:
+    display_name: "ZT AgnosticD v2 Migration Demo (HP BU)"
+    category: Workshops
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+      - zerotouch
+      - agnosticd-v2
+      - migration
+      - test
+      - hpbu
+    labels:
+      Provider: RHDP
+    parameters:
+      - name: ocp4_workload_showroom_content_git_repo_ref
+        description: Git branch/ref for the zt-quarkus-intro content repo
+        formLabel: Content git ref
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: main

@@ -1,0 +1,146 @@
+---
+# -------------------------------------------------------------------
+# ZT AgnosticD v2 Migration - Real RHEL BU Content Test Catalog Item
+# -------------------------------------------------------------------
+# Delegates all provisioning to tests/zt-rhelbu-base-component via a
+# plain `#include` text-merge - NOT `__meta__.components[].item:`. See
+# the base component's own header comment (GPTEINFRA-16059) for why:
+# this item deploys directly, so it IS the resource that carries job
+# vars, and RHDP's reporting attributes the run to THIS item's own
+# display_name, not a shared/generic one. tests/zt-agd-v2-demo, the
+# original single-scenario zt-lab-andrew fixture, has been removed - its
+# content is just the first scenario below now, so there's exactly one
+# RHEL BU test entry point. Order-time scenario picker: the
+# `demo_scenario` parameter selects one of several real, currently-live
+# zt-rhelbu-agnosticv leaf items' content repos, plus the
+# andrew-jones/zt-lab-andrew personal test fixture - same pattern as
+# tests/zt-ansiblebu-agd-v2-demo.
+#
+# _zt_rhelbu_demo_scenarios below is a plain top-level var, resolved by
+# Ansible's own Jinja environment at deploy time with full var scope.
+# Under the old components[].item: delegator shape, Poolboy itself
+# rendered parameter_values using its own bare jinja2.Environment with a
+# narrow scope (only this item's own parameter_values/demo_scenario, never
+# other top-level YAML keys - confirmed against rhpds/poolboy's
+# operator/resourceprovider.py and operator/poolboy_templating.py), which
+# forced each scenario's dict literal to be inlined directly inside every
+# parameter_values expression instead of living in one shared var. That
+# constraint no longer applies now that this item deploys directly.
+#
+# Scenario status:
+#   zt-lab-andrew         - live-validated extensively (Phases 1-3, and the
+#                            student_name: rhel investigation this session).
+#   zt-security-usbguard  - live-validated this session (guid j7f5z):
+#                            student_name: rhel fix confirmed, cockpit tab's
+#                            ${guid}/${domain} placeholders resolved
+#                            correctly.
+#   zt-tuned              - NOT yet live-tested. Confirmed structurally
+#                            identical via raw.githubusercontent.com fetch:
+#                            single VM named "rhel", tagged
+#                            AnsibleGroup: bastions, cockpit route, 40G disk.
+#   zt-selinux-containers - NOT yet live-tested. Same VM/bastions shape,
+#                            register_satellite: false, no cockpit route.
+#   zt-webconsole-perf    - NOT yet live-tested. Same VM/bastions shape,
+#                            cockpit route, adds pcp/python3-pcp packages.
+#   zt-satellite-basics   - live-validated real content (Satellite Basics
+#                            6.17). Folded in from a former standalone
+#                            diagnostic item (tests/zt-rhelbu-satellite-
+#                            basics-test, since removed) that duplicated
+#                            the base component's own deployer instead of
+#                            delegating to it. 4 VMs, ~660Gi disk, and
+#                            needs enable_litemaas_keys: true (its own
+#                            config/instances.yaml declares a top-level
+#                            litemaas: block) - both now supported
+#                            directly by tests/zt-rhelbu-base-component,
+#                            which sizes its shared quota (750Gi) to cover
+#                            this scenario.
+# zt-satellite-image-mode was considered and deliberately excluded - 3 VMs,
+# one with a 540Gi disk, needs its own quota bump and doesn't fit this
+# quick-pick scenario set.
+#
+# See the migration proposal for full context:
+# /home/andrew/src/proposals/zt-to-agd-v2/PROPOSAL-zerotouch-agd-v2-migration.md
+#
+# NOT a production catalog item - lives under tests/ deliberately, same
+# as tests/zt-hpbu-agd-v2-demo and tests/zt-ansiblebu-agd-v2-demo.
+#
+#include /tests/zt-rhelbu-base-component/common.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/catalog-icon-aap.yaml
+
+# -------------------------------------------------------------------
+# Demo scenario picker
+# -------------------------------------------------------------------
+_zt_rhelbu_demo_scenarios:
+  zt-lab-andrew:
+    git_repo: https://github.com/andrew-jones/zt-lab-andrew.git
+    git_repo_ref: single-vm
+  zt-security-usbguard:
+    git_repo: https://github.com/rhpds/zt-security-usbguard.git
+    git_repo_ref: main
+  zt-tuned:
+    git_repo: https://github.com/rhpds/zt-tuned.git
+    git_repo_ref: main
+  zt-selinux-containers:
+    git_repo: https://github.com/rhpds/zt-selinux-containers.git
+    git_repo_ref: main
+  zt-webconsole-perf:
+    git_repo: https://github.com/rhpds/zt-webconsole-perf.git
+    git_repo_ref: main
+  zt-satellite-basics:
+    git_repo: https://github.com/rhpds/zt-satellite-basics.git
+    git_repo_ref: main
+
+ocp4_workload_showroom_content_git_repo: "{{ _zt_rhelbu_demo_scenarios[demo_scenario].git_repo }}"
+ocp4_workload_showroom_content_git_repo_ref: "{{ _zt_rhelbu_demo_scenarios[demo_scenario].git_repo_ref }}"
+# Only zt-satellite-basics' own config/instances.yaml declares a
+# top-level litemaas: block - every other scenario gets false.
+enable_litemaas_keys: "{{ (demo_scenario == 'zt-satellite-basics') | bool }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: e7847e98-4d5c-413b-bee7-6afd1daa8e9b
+  catalog:
+    display_name: "ZT AgnosticD v2 Migration Demo (RHEL BU)"
+    category: Workshops
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+      - zerotouch
+      - agnosticd-v2
+      - migration
+      - test
+      - rhelbu
+      - satellite
+      - litemaas
+    labels:
+      Provider: RHDP
+    parameters:
+      - name: demo_scenario
+        description: >-
+          Which RHEL BU content repo to test. zt-lab-andrew,
+          zt-security-usbguard, and zt-satellite-basics are live-validated;
+          zt-tuned, zt-selinux-containers, and zt-webconsole-perf are
+          structurally confirmed (same rhel/bastions VM shape) but not yet
+          live-tested.
+        formLabel: Test scenario
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: zt-security-usbguard
+          enum:
+            - zt-lab-andrew
+            - zt-security-usbguard
+            - zt-tuned
+            - zt-selinux-containers
+            - zt-webconsole-perf
+            - zt-satellite-basics
+          enumNames:
+            - "zt-lab-andrew (plain test fixture)"
+            - "zt-security-usbguard (live-validated)"
+            - "zt-tuned (unconfirmed)"
+            - "zt-selinux-containers (unconfirmed)"
+            - "zt-webconsole-perf (unconfirmed)"
+            - "zt-satellite-basics (live-validated, LiteMaaS)"

@@ -1,0 +1,193 @@
+---
+# -------------------------------------------------------------------
+# ZT AgnosticD v2 Migration - Phase 5 Test Catalog Item (Ansible BU bridge)
+# -------------------------------------------------------------------
+# Delegates all provisioning to tests/zt-ansiblebu-base-component via a
+# plain #include text-merge - NOT __meta__.components[].item: (see
+# GPTEINFRA-16059 in the base component's own header comment for why).
+# This item deploys directly - it IS the resource that carries job vars,
+# so RHDP's reporting attributes the run to THIS item's own display_name,
+# not a shared/generic one. Order-time scenario picker: the
+# `demo_scenario` parameter selects one of several already-validated
+# Ansible BU content/config combinations (real production content repos
+# plus the andrew-jones/zt-lab-andrew personal test fixture used for the
+# multi-cloud/LiteMaaS scenarios).
+#
+# _zt_ansiblebu_demo_scenarios below is a plain top-level var, resolved
+# by Ansible's own Jinja environment at deploy time with full var scope.
+# Under the old components[].item: delegator shape, Poolboy itself
+# rendered parameter_values using its own bare jinja2.Environment with a
+# narrow scope - only this item's own parameter_values/demo_scenario,
+# never other top-level YAML keys (confirmed against rhpds/poolboy's
+# operator/resourceprovider.py and operator/poolboy_templating.py), which
+# forced each scenario's dict literal to be inlined directly inside every
+# parameter_values expression instead of living in one shared var. That
+# constraint no longer applies now that this item deploys directly.
+#
+# Every scenario below was individually live-validated against a real CNV
+# sandbox during the GPTEINFRA-17763 investigation - see the migration
+# proposal's Seventh/Eighth revision notes for the full narrative and guids:
+#   dev-tools    - guids g49zp/hcshc/qkxsd. Real Ansible BU leaf item
+#                  (zt-ansiblebu/zt-ans-bu-dev-tools/common.yaml)'s exact
+#                  repo/ref. Single VM tagged AnsibleGroup: isolated only.
+#                  ensure_bastion_group is false (see below) - matching v1
+#                  exactly, confirmed live (guid qkxsd): 100% Ready, VS Code
+#                  tab's embedded terminal connects as rhel with zero
+#                  cloud-init on the image.
+#   eda-netbox   - guid m9smz (11/11 Ready). All-isolated by design (5 VMs,
+#                  no bastion tag) - zt_containers' commands: exec path
+#                  (Gitea sidecar) and the Satellite-registration
+#                  content-script requirement were both found and fixed
+#                  against this repo.
+#   roadshow01   - guid zfcps (11/11 Ready). The real
+#                  zt-ans-bu-lab-developer-cnv component's own default
+#                  content repo. All-isolated, 5 VMs summing to exactly the
+#                  storage quota ceiling (see the base component's
+#                  quota.requests.storage: 300Gi).
+#   windows-ad   - guid d9v4h. Windows guest + IronRDP tab, all-isolated,
+#                  same rhel/ansible123! convention as eda-netbox. Showroom
+#                  10/10 Ready, WinRM/RDP/IIS reachable, real interactive
+#                  RDP session confirmed through the IronRDP browser tab.
+#   multi-cloud  - guid dlzlt (aws_and_azure together; aws/azure individually
+#                  confirmed too via guids h88q9/6qszl). andrew-jones/
+#                  zt-lab-andrew (single-vm branch) - minimal personal test
+#                  fixture, node01 tagged AnsibleGroup: bastions directly.
+#                  Real AWS/Azure credentials rendered in
+#                  zerotouch_showroom's auto-generated /cloud tab.
+#   litemaas     - guid jnkch. Same zt-lab-andrew fixture, LiteMaaS bastion
+#                  profile only. Real, non-empty
+#                  LITELLM_API_URL/_KEY/_MODELS exported on the bastion, and
+#                  the live virtual key was used directly to curl the real
+#                  MaaS endpoint's /models route.
+#   zt-lab-andrew - same fixture, plain/bare - no multi-cloud, no LiteMaaS.
+#                  Lightweight default/smoke-test option distinct from the
+#                  two variants above.
+# This picker doesn't add any new untested combination; it just makes the
+# already-proven ones selectable from one catalog item instead of requiring
+# a code edit per scenario.
+#
+# See the migration proposal for full context:
+# /home/andrew/src/proposals/zt-to-agd-v2/PROPOSAL-zerotouch-agd-v2-migration.md
+# Jira: https://redhat.atlassian.net/browse/GPTEINFRA-17763
+#
+# NOT a production catalog item - lives under tests/ deliberately, same
+# as tests/zt-rhelbu-agd-v2-demo and tests/zt-hpbu-agd-v2-demo.
+#
+#include /tests/zt-ansiblebu-base-component/common.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/catalog-icon-aap.yaml
+# NOTE: do NOT also #include /includes/parameters/purpose.yaml here -
+# tests/zt-ansiblebu-base-component/common.yaml already includes it, and
+# the real agnosticv CLI hard-errors ("is included more than once" /
+# "include loop") on any file included twice across the whole resolved
+# tree, not just true circular includes. FOUND IN CI after this leaf
+# switched from a components[].item: delegator (no shared #include tree
+# with the base at all) to #include-ing the base directly
+# (GPTEINFRA-16059 fix).
+
+# -------------------------------------------------------------------
+# Demo scenario picker
+# -------------------------------------------------------------------
+_zt_ansiblebu_demo_scenarios:
+  dev-tools:
+    git_repo: https://github.com/rhpds/zt-ans-bu-dev-tools.git
+    git_repo_ref: main
+    auth_cloud_provider: none
+  eda-netbox:
+    git_repo: https://github.com/rhpds/zt-ans-bu-eda-netbox.git
+    git_repo_ref: main
+    auth_cloud_provider: none
+  roadshow01:
+    git_repo: https://github.com/rhpds/zt-ans-bu-roadshow01.git
+    git_repo_ref: main
+    auth_cloud_provider: none
+  windows-ad:
+    git_repo: https://github.com/rhpds/zt-ans-bu-windows-ad.git
+    git_repo_ref: main
+    auth_cloud_provider: none
+  multi-cloud:
+    git_repo: https://github.com/andrew-jones/zt-lab-andrew.git
+    git_repo_ref: single-vm
+    auth_cloud_provider: aws_and_azure
+  litemaas:
+    git_repo: https://github.com/andrew-jones/zt-lab-andrew.git
+    git_repo_ref: single-vm
+    auth_cloud_provider: none
+  zt-lab-andrew:
+    git_repo: https://github.com/andrew-jones/zt-lab-andrew.git
+    git_repo_ref: single-vm
+    auth_cloud_provider: none
+
+ocp4_workload_showroom_content_git_repo: "{{ _zt_ansiblebu_demo_scenarios[demo_scenario].git_repo }}"
+ocp4_workload_showroom_content_git_repo_ref: "{{ _zt_ansiblebu_demo_scenarios[demo_scenario].git_repo_ref }}"
+auth_cloud_provider: "{{ _zt_ansiblebu_demo_scenarios[demo_scenario].auth_cloud_provider }}"
+# Only one scenario each needs these true - direct equality checks
+# instead of a 7-way dict lookup.
+ocp4_workload_showroom_ironrdp_enable: "{{ (demo_scenario == 'windows-ad') | bool }}"
+enable_litemaas_keys: "{{ (demo_scenario == 'litemaas') | bool }}"
+# CONFIRMED LIVE (GPTEINFRA-17763, guid qkxsd): forced false for
+# dev-tools too - showroom reached 100% Ready and the VS Code tab's
+# embedded terminal connected as `rhel` (`whoami` -> rhel), matching
+# v1's exact behaviour (guid 6kfcj) with zero cloud-init on the VM.
+# v1's zero-touch-base-rhel NEVER runs any Ansible-managed SSH
+# against this VM (its "isolated" tag is excluded from every
+# host-scoped play there - see zero-touch-base-rhel/
+# pre_software.yml's `hosts: all:!centos:!isolated` and
+# `hosts: bastions:nodes`), so v1 never needs cloud-init on
+# devtools-ansible-20260530 at all - it's pure wetty + the image's
+# own baked-in rhel/ansible123! creds. v2 core independently reserves
+# "isolated" as an exclusion tier (`all:!windows:!network:!isolated`),
+# a naming collision with Ansible BU's own use of "isolated" as its
+# bastion-equivalent group - promoting to bastions to route around
+# that collision has the side effect of pulling this VM into v2's
+# generic wait_for_connection/control_user/asset_injector flow, which
+# v1 never triggers and this image can't support (no cloud-init).
+# zt-ansiblebu-base-component's own _zt_ansiblebu_bastion_host
+# already falls back to groups['isolated'][0] when groups['bastions']
+# is empty, so the SSH-display Jinja this fixup was originally added
+# for doesn't need it after all. Staying false permanently now that
+# dev-tools has been retested end-to-end (guid qkxsd) and provisions
+# cleanly with the VM staying isolated.
+zt_base_config_ensure_bastion_group: false
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: 7ef96271-a5a9-4c06-b7a0-e35076d754fb
+  catalog:
+    display_name: "ZT AgnosticD v2 Migration Demo (Ansible BU)"
+    category: Workshops
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+      - zerotouch
+      - agnosticd-v2
+      - migration
+      - test
+      - ansiblebu
+    labels:
+      Provider: RHDP
+    parameters:
+      - name: demo_scenario
+        description: Which already-validated Ansible BU content/config scenario to test
+        formLabel: Test scenario
+        required: true
+        openAPIV3Schema:
+          type: string
+          default: dev-tools
+          enum:
+            - dev-tools
+            - eda-netbox
+            - roadshow01
+            - windows-ad
+            - multi-cloud
+            - litemaas
+            - zt-lab-andrew
+          enumNames:
+            - "Dev Tools (plain, single VM)"
+            - "EDA Netbox (containers:, Satellite)"
+            - "Roadshow01 (default content)"
+            - "Windows AD (IronRDP)"
+            - "Multi-cloud (AWS + Azure)"
+            - "LiteMaaS bastion profile"
+            - "zt-lab-andrew (plain/bare)"
