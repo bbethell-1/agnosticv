@@ -9,12 +9,10 @@
 
 #include /includes/parameters/purpose.yaml
 # Auto-pass user email and catalog item name to LiteLLM for better tracking
-#include /includes/parameters/litellm_metadata.yaml
 
 #include /includes/secrets/demosat-rhel-8-and-9-latest.yaml
 #include /includes/secrets/ansible-tower-advanced-24.yaml
 #include /includes/secrets/registry-redhat.yaml
-#include /includes/secrets/litemaas-master_api.yaml
 #include /includes/agd-v2-mapping.yaml
 
 # -------------------------------------------------------------------
@@ -557,7 +555,6 @@ software_workloads:
 
 post_software_workloads:
   bastions:
-    - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
     - infra.aap_configuration.dispatch
     - lb2961.ai_driven_aap.mcp_server
     - lb2961.ai_driven_aap.lightspeed_mcp_server
@@ -575,7 +572,6 @@ post_software_final_workloads:
 # -------------------------------------------------------------------
 pre_destroy_workloads:
   localhost:
-    - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 
 # -------------------------------------------------------------------
 # Workload: host_satellite_repositories
@@ -737,21 +733,11 @@ gitea_db_password: "{{ common_password }}"
 gitea_create_url: "https://gitea-{{ subdomain_base }}"
 gitea_create_password: "{{ common_password }}"
 
-# -------------------------------------------------------------------
-# LiteLLM Virtual Keys Configuration
-# -------------------------------------------------------------------
 # Convert model selection to actual model list
-ocp4_workload_litellm_virtual_keys_models:
-  - openai/granite-3-2-8b-instruct
-  - claude-sonnet-4-6
-  - gemini-2.5-pro
 
 # Duration selected by user
-ocp4_workload_litellm_virtual_keys_duration: "{{ litellm_duration | default('7d') }}"
 
 # Enable user.info messages and data
-ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
-ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
 
 # -------------------------------------------------------------------
 # Role: ansible_automation_platform_configuration
@@ -1858,6 +1844,21 @@ showroom_content_ui_config: |
     - name: Gitea
       url: "https://gitea-{{ subdomain }}"
 
+litellm_api_base_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+litellm_api_endpoint: "{{ maas_sandbox.credentials[0].api_endpoint }}"
+litellm_virtual_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
+litellm_available_models: "{{  maas_sandbox.credentials[0].available_models }}"
+litellm_available_models_list: "{{ maas_sandbox.credentials[0].available_models | join(', ') }}"
+litellm_key_duration: ""
+
+agnosticd_passthrough_user_data:
+  litellm_api_base_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+  litellm_api_endpoint: "{{ maas_sandbox.credentials[0].api_endpoint }}"
+  litellm_virtual_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
+  litellm_available_models: "{{  maas_sandbox.credentials[0].available_models }}"
+  litellm_available_models_list: "{{ maas_sandbox.credentials[0].available_models | join(', ') }}"
+  litellm_key_duration: ""
+
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
@@ -1891,6 +1892,11 @@ __meta__:
       Brand_Event: Red_Hat_One_2026
     workshop_user_mode: none
   sandboxes:
+    - kind: MaaSSandbox
+      cloud_selector:
+        purpose: production
+      models: "openai/granite-3-2-8b-instruct,claude-sonnet-4-6,gemini-2.5-pro"
+      var: maas_sandbox
     - kind: OcpSandbox
       namespace_suffix: ocp4-cluster
       cloud_selector:
