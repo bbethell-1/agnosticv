@@ -98,8 +98,9 @@ common_host_password: "{{ bastion_ansible_ssh_pass }}"
 workloads:
   - agnosticd.cloud_vm_workloads.cnv_instances
   - intro_ao_workshop.automation.ocp4_workload_cnv_node_info
-  - intro_ao_workshop.automation.ocp4_workload_cnv_satellite_repos
-  - intro_ao_workshop.automation.ocp4_workload_cnv_fix_rhel_repos
+  # - intro_ao_workshop.automation.ocp4_workload_cnv_satellite_repos
+  # - intro_ao_workshop.automation.ocp4_workload_cnv_fix_rhel_repos
+  - intro_ao_workshop.automation.ocp4_workload_cnv_insights_host
   - agnosticd.core_workloads.ocp4_workload_gitea_operator
   - intro_ao_workshop.automation.ocp4_workload_gitea_lab_token
   - intro_ao_workshop.automation.ocp4_workload_mattermost
@@ -111,6 +112,9 @@ workloads:
   - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
   - intro_ao_workshop.automation.ocp4_workload_automation_orchestrator
   - infra.aap_configuration.dispatch
+  # Must stay after dispatch: it resolves job_template_id for every AAP
+  # node against the live controller.
+  - intro_ao_workshop.automation.ocp4_workload_automation_orchestrator_config
   - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
   - agnosticd.showroom.ocp4_workload_ocp_console_embed
   - agnosticd.showroom.ocp4_workload_showroom
@@ -148,11 +152,11 @@ ocp4_workload_gitea_operator_user_password: "{{ common_host_password }}"
 ocp4_workload_gitea_operator_admin_user: "admin"
 ocp4_workload_gitea_operator_admin_password: "{{ common_host_password }}"
 
-ocp4_workload_gitea_operator_migrate_repositories: true
-ocp4_workload_gitea_operator_repositories_list:
-  - repo: https://github.com/rhpds/ocp-virt-gitops-apps.git
-    name: ocp-virt-gitops-apps
-    private: false
+ocp4_workload_gitea_operator_migrate_repositories: false
+# ocp4_workload_gitea_operator_repositories_list:
+#   - repo: https://github.com/rhpds/ocp-virt-gitops-apps.git
+#     name: ocp-virt-gitops-apps
+#     private: false
 
 # -------------------------------------------------------------------
 # Workload: intro_ao_workshop.automation.ocp4_workload_mattermost
@@ -189,21 +193,43 @@ ocp4_workload_openflake_mcp_password: "{{ ocp4_workload_openflake_admin_password
 # -----------------------------------
 # Vaulted Lightspeed credentials
 # -----------------------------------
-# @owner: Mitesh Sharma <mitsharm@redhat.com>
+# @owner: Anshul Behl <abehl@redhat.com>
 # @purpose: Red Hat account username for RHEL Lightspeed registration
 # @impact: LOW - used only for lab registration, limited scope
 # @expiration: UNKNOWN
 # @rotation: Update vault with new Red Hat account credentials
-# @source: Red Hat account — access.redhat.com
+# @source: Red Hat account — console.redhat.com
+# @exposure: AgnosticD execution only, used to register lab nodes
+rhel_lightspeed_user: !vault |
+    $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+    37303032353232346430353831366361613239343830346562656166313862306639343732393739
+    3162646639633461356266393364356237303863376663610a333866626431303632376135343430
+    62626666303337313263316364613265656162646135343934386630393563623730366564643231
+    6263383439616463610a623865613133353032353232323137316366636163613138383930346138
+    3666
+# @owner: Anshul Behl <abehl@redhat.com>
+# @purpose: Red Hat account password for RHEL Lightspeed registration
+# @impact: LOW - used only for lab registration, limited scope
+# @expiration: UNKNOWN
+# @rotation: Update vault with new Red Hat account credentials
+# @source: Red Hat account — console.redhat.com
+# @exposure: AgnosticD execution only, used to register lab nodes
+rhel_lightspeed_password: !vault |
+    $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+    39636436336138633234653632383864366166333863313063306133316232623031396237333238
+    6239653866343739323939346362646661323035613139610a383961306232656438656266346662
+    30613231323162613661626432626332353461663739336465343263333235316135366263333566
+    3062653230623364370a663031623165613531336133363861626437646335373937343432373633
+    3039
+
+# @owner: Anshul Behl <abehl@redhat.com>
+# @purpose: Red Hat account username for RHEL Lightspeed registration
+# @impact: LOW - used only for lab registration, limited scope
+# @expiration: UNKNOWN
+# @rotation: Update vault with new Red Hat account credentials
+# @source: Red Hat account — console.redhat.com
 # @exposure: AgnosticD execution only, used to register lab nodes
 
-# @owner: Mitesh Sharma <mitsharm@redhat.com>
-# @purpose: OAuth client ID for Ansible Lightspeed MCP server integration
-# @impact: MEDIUM - grants access to Lightspeed MCP service in lab
-# @expiration: UNKNOWN
-# @rotation: Regenerate OAuth client in Red Hat SSO / Hybrid Cloud Console
-# @source: Red Hat Hybrid Cloud Console — Lightspeed MCP configuration
-# @exposure: AgnosticD execution only, injected into lab bastion
 lightspeed_mcp_client_id: !vault |
     $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
     33633163303262303133393464393965643130656161333963313161343834346630633233666238
@@ -212,7 +238,7 @@ lightspeed_mcp_client_id: !vault |
     3034393832383831630a656263313261353738666439646162313131646436323432373532646131
     38653033666262633335636435396262643936343532343733353730373030383336333132646539
     6165326636333866343631396439383737666662333739383566
-# @owner: Mitesh Sharma <mitsharm@redhat.com>
+# @owner: Anshul Behl <abehl@redhat.com>
 # @purpose: OAuth client secret for Ansible Lightspeed MCP server integration
 # @impact: MEDIUM - grants access to Lightspeed MCP service in lab
 # @expiration: UNKNOWN
@@ -231,6 +257,12 @@ lightspeed_mcp_client_secret: !vault |
 # Supply via secrets include — never hardcode here.
 ocp4_workload_lightspeed_mcp_server_client_id: "{{ lightspeed_mcp_client_id }}"
 ocp4_workload_lightspeed_mcp_server_client_secret: "{{ lightspeed_mcp_client_secret }}"
+
+# -------------------------------------------------------------------
+# Workload: intro_ao_workshop.automation.ocp4_workload_cnv_insights_host
+# -------------------------------------------------------------------
+ocp4_workload_cnv_insights_host_rh_username: "{{ rhel_lightspeed_user }}"
+ocp4_workload_cnv_insights_host_rh_password: "{{ rhel_lightspeed_password }}"
 
 # -------------------------------------------------------------------
 # Workshop: agnosticd.cloud_vm_workloads.cnv_instances
@@ -610,6 +642,15 @@ controller_credentials:
       password: "{{ bastion_ansible_ssh_pass }}"
     state: present
 
+  # Red Hat Lightspeed
+  - name: "Red Hat Lightspeed"
+    description: "Red Hat Lightspeed Credential"
+    organization: "Default"
+    credential_type: "Insights"
+    inputs:
+      username: "{{ rhel_lightspeed_user }}"
+      password: "{{ rhel_lightspeed_password }}"
+
   - name: "OpenFlake"
     description: "OpenFlake instance deployed by ocp4_workload_openflake"
     organization: Default
@@ -631,7 +672,10 @@ controller_credentials:
     state: present
 
   - name: "Automation Orchestrator"
-    description: "AO service account -- client_id/client_secret set manually"
+    # client_id/client_secret are placeholders. The
+    # ocp4_workload_automation_orchestrator_config workload mints an AO
+    # service account later in the run and PATCHes the real pair in.
+    description: "AO service account -- client_id/client_secret set by AgnosticD"
     organization: Default
     credential_type: "AO webhooks"
     inputs:
@@ -943,6 +987,29 @@ ocp4_workload_automation_orchestrator_additional_allowed_hosts:
   - "{{ ocp4_workload_openflake_route_host }}"
 
 # -------------------------------------------------------------------
+# Workload:
+# intro_ao_workshop.automation.ocp4_workload_automation_orchestrator_config
+# -------------------------------------------------------------------
+# Day-2 config of the AO installed above: builds the `solutions`
+# project with every credential, integration and workflow the lab
+# needs, and mints the service account that fills the REPLACE_ME
+# values on the "Automation Orchestrator" controller credential.
+#
+# `default` is left empty on purpose — modules 02 and 03 are the
+# student building these assets by hand.
+#
+# Everything else comes from defaults, which read ao_url /
+# ao_admin_user / ao_admin_password, litellm_api_base_url /
+# litellm_virtual_key / litellm_available_models, and
+# openflake_mcp_bearer_token out of user_data.
+ocp4_workload_automation_orchestrator_config_aap_mcp_host: >-
+  aap-mcp-aap.{{ openshift_cluster_ingress_domain }}
+ocp4_workload_automation_orchestrator_config_openflake_mcp_host: >-
+  openflake-mcp-openflake-mcp.{{ openshift_cluster_ingress_domain }}
+ocp4_workload_automation_orchestrator_config_lightspeed_mcp_host: >-
+  lightspeed-mcp-lightspeed-mcp.{{ openshift_cluster_ingress_domain }}
+
+# -------------------------------------------------------------------
 # Workload: agnosticd.cloud_vm_workloads.agnosticv_userdata_import
 # -------------------------------------------------------------------
 agnosticv_importdata:
@@ -952,6 +1019,8 @@ agnosticv_importdata:
   ssh_port: "{{ bastion_ansible_port }}"
   ssh_command: >-
     ssh {{ bastion_ansible_user }}@{{ bastion_ansible_host }} -p {{ bastion_ansible_port }}
+  insights_username: "{{ rhel_lightspeed_user }}"
+  insights_password: "{{ rhel_lightspeed_password }}"
 
 # -------------------------------------------------------------------
 # Workload: intro_ao_workshop.automation.ocp4_workload_cnv_satellite_repos
