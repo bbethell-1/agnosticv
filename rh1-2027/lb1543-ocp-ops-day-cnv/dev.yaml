@@ -2,6 +2,15 @@
 # Development overrides for testing unreleased changes
 # Uses 'main' branches instead of pinned tags
 
+# Supplies litellm_url + litellm_master_key (vaulted) and requester_email /
+# catalog_item_name (for key attribution) - needed by
+# rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys below, which
+# auto-provisions the Agentic OLS MaaS key instead of requiring one pasted
+# into the catalog form. Same includes used by rh1-2027/lb1815-lightwell-tenant
+# and openshift_cnv/ocp4-lightspeed-cnv.
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/parameters/litellm_metadata.yaml
+
 purpose: development
 
 # Override tag to use main branches for all collections
@@ -30,6 +39,9 @@ requirements_content:
   - name: https://github.com/rhpds/ai_workloads.git
     type: git
     version: "{{ tag }}"
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: main
 
 # -------------------------------------------------------------------
 # Showroom v1.7.2 runtime pins
@@ -164,14 +176,52 @@ ocp4_workload_virtualization_boot_image_trim_disabled_images:
 # common.yaml. Same Azure SP flow as the old role
 # (ocp4_workload_ols_get_token: true), just renamed: provider: azure_sp
 # + ocp5_workload_ols_azure_sp_*. Reuses the existing vaulted Azure
-# credentials via aliased vars, no new secrets needed. Agentic OLS
-# support exists in the new role but is left disabled here pending a
-# real OpenAI API key.
+# credentials via aliased vars, no new secrets needed.
+#
+# Agentic OLS now supports a MaaS backend (ai_workloads#36, merged
+# 2026-10-07). The "Enable Agentic OpenShift Lightspeed" catalog toggle
+# below (__meta__.catalog.parameters) defaults off, same as prior
+# behavior - agentic stays disabled unless the requester opts in.
+#
+# When the toggle is on, rhpds.litellm_virtual_keys.ocp4_workload_litellm_
+# virtual_keys runs first (same pattern as rh1-2027/lb1815-lightwell-tenant
+# and the commented-out scaffold in openshift_cnv/ocp4-lightspeed-cnv/dev.yaml)
+# to auto-mint a per-GUID MaaS key against the shared LiteLLM proxy - no one
+# has to obtain or paste a key by hand, and nothing is committed to git.
+# ocp5_workload_ols_agentic_provider switches to maas and
+# ocp5_workload_ols_agentic_api_key picks up the minted litellm_virtual_key
+# fact the role exports. remove_workloads revokes the key on teardown.
+# This combination is still untested end-to-end.
 # https://github.com/rhpds/ai_workloads/tree/main/roles/ocp5_workload_ols
+# https://github.com/rhpds/ai_workloads/pull/36
+# https://github.com/rhpds/rhpds.litellm_virtual_keys
 # -------------------------------------------------------------------
-_ols_workloads:
-- agnosticd.ai_workloads.ocp5_workload_ols
-- deliver_openshift_ops_day.automation.ocp4_workload_ols_cleanup
+_ols_workloads: >-
+  {{
+    (
+      (['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys']
+        if (ocp5_workload_ols_enable_agentic | default(false) | bool) else []) +
+      [
+        'agnosticd.ai_workloads.ocp5_workload_ols',
+        'deliver_openshift_ops_day.automation.ocp4_workload_ols_cleanup'
+      ]
+    )
+  }}
+
+remove_workloads: >-
+  {{
+    (
+      ['agnosticd.ai_workloads.ocp4_workload_ols'] +
+      (['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys']
+        if (ocp5_workload_ols_enable_agentic | default(false) | bool) else [])
+    )
+  }}
+
+# Models list for the auto-provisioned key above. Free-text model id
+# forwarded to the shared LiteLLM proxy (not validated against the role's
+# Granite/Mistral default list) - same model agentic OLS expects.
+ocp4_workload_litellm_virtual_keys_models:
+- claude-sonnet-4-6
 
 ocp5_workload_ols_use_catalog_snapshot: true
 ocp5_workload_ols_catalog_snapshot_image: quay.io/rhpds/olm_snapshot_redhat_catalog
@@ -183,6 +233,15 @@ ocp5_workload_ols_azure_sp_tenant_id: "{{ ocp4_workload_ols_azure_tenant_id }}"
 ocp5_workload_ols_azure_sp_client_id: "{{ ocp4_workload_ols_main_client_id }}"
 ocp5_workload_ols_azure_sp_client_secret: "{{ ocp4_workload_ols_main_client_secret }}"
 ocp5_workload_ols_azure_sp_group_id: "{{ ocp4_workload_ols_azure_group_id }}"
+
+ocp5_workload_ols_agentic_provider: >-
+  {{ 'maas' if (ocp5_workload_ols_enable_agentic | default(false) | bool) else 'openai' }}
+
+# litellm_virtual_key is a set_fact exported by ocp4_workload_litellm_virtual_keys,
+# which runs earlier in the play (see _ols_workloads above) whenever agentic is
+# on. The default() only matters when agentic is off, since the role never ran
+# and nothing downstream reads this var in that case.
+ocp5_workload_ols_agentic_api_key: "{{ litellm_virtual_key | default('changeme') }}"
 
 # -------------------------------------------------------------------
 # OCP 5.0 candidate catalog drift overrides (dev only)
@@ -230,11 +289,40 @@ ocp4_days_workload_ztwim_catalog_snapshot_image_tag: v4.22_2026_09_14
 
 # -------------------------------------------------------------------
 # OCP 5.0 testing: override the cluster component for dev only.
-# common.yaml still points at the OCP4 item for prod. AgnosticV does
-# not deep-merge lists, so the whole components list must be
-# redefined here rather than patched.
+# common.yaml still points at the OCP4 item for prod. __meta__.components
+# uses the "overwrite" x-merge strategy (.schemas/babylon.yaml), so the
+# whole components list must be redefined here rather than patched.
+#
+# __meta__.catalog, on the other hand, uses "strategic-merge" (same
+# schema file), which merges list items by their `name` key instead of
+# replacing the list wholesale - so the catalog.parameters entry below
+# just adds to common.yaml's existing parameter list rather than
+# clobbering it.
+#
+# No separate "LLM API Key" form field here (unlike agd-v2/ocp5-first-look) -
+# the key is auto-provisioned by rhpds.litellm_virtual_keys above, so the
+# toggle is the only input the requester needs. If a catalog parameter of
+# the same name as ocp5_workload_ols_agentic_api_key existed here, its
+# default would be injected as an extra-var and clobber the Jinja-templated
+# plain-var assignment above (extra-vars outrank role vars but are
+# themselves plain top-level assignments, so whichever is evaluated as the
+# final merged var wins) - so that field is intentionally not present.
 # -------------------------------------------------------------------
 __meta__:
+  catalog:
+    parameters:
+    - name: ocp5_workload_ols_enable_agentic
+      formLabel: Enable Agentic OpenShift Lightspeed
+      formGroup: Advanced Topics
+      description: >-
+        Deploy the Agentic OpenShift Lightspeed component on top of classic
+        OLS, backed by an auto-provisioned MaaS key (claude-sonnet-4-6). No
+        key needs to be supplied manually.
+      required: false
+      openAPIV3Schema:
+        type: boolean
+        default: false
+
   components:
   - name: openshift-base
     display_name: OpenShift 5 Cluster (CNV)
