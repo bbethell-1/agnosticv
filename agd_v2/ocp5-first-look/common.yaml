@@ -33,6 +33,11 @@ num_users: 1
 # Do not scale the cluster — 3 control-plane nodes only
 openshift_cnv_scale_cluster: false
 
+common_admin_password: >-
+  {{ lookup('password', output_dir ~ '/common_admin_password', length=12, chars=['ascii_letters', 'digits']) }}
+common_password: >-
+  {{ lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits']) }}
+
 # ===================================================================
 # Collections
 # ===================================================================
@@ -41,16 +46,30 @@ requirements_content:
   - name: https://github.com/rhpds/core_workloads.git
     type: git
     version: "{{ tag }}"
-  - name: https://github.com/rhpds/ai_workloads.git
+  # - name: https://github.com/rhpds/ai_workloads.git
+  #   type: git
+  #   version: "{{ tag }}"
+  # OCP5 Early Access automation (provides rhdp.workshop.ocp5_ea)
+  # - name: https://github.com/rhpds/ocp5-ea-automation
+  #   type: git
+  #   version: main
+  - name: https://github.com/rhpds/ocp5-first-look-lab.git#automation/ansible
     type: git
     version: "{{ tag }}"
+  # Showroom Collection
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: "v1.7.2"
 
 # ===================================================================
 # Workloads
 # ===================================================================
 workloads:
 - agnosticd.core_workloads.ocp4_workload_authentication
-- agnosticd.ai_workloads.ocp5_workload_ols
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+# - agnosticd.ai_workloads.ocp5_workload_ols
+- ocp5_first_look_lab.automation.ocp5_ea
+- agnosticd.showroom.ocp4_workload_showroom
 
 # ===================================================================
 # Workload: agnosticd.core_workloads.ocp4_workload_authentication
@@ -58,32 +77,90 @@ workloads:
 ocp4_workload_authentication_provider: keycloak
 ocp4_workload_authentication_multiuser: false
 ocp4_workload_authentication_keycloak_channel: stable-v26.6
+ocp4_workload_authentication_keycloak_default_realm: keycloak
 
 # Temporarily pin 4.22 Snapshots until everything is in the 5.0 catalogs
 ocp4_workload_authentication_keycloak_use_catalog_source: true
 ocp4_workload_authentication_keycloak_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
 ocp4_workload_authentication_keycloak_catalogsource_tag: v4.22_2026_08_03
 
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_virtualization
+# -------------------------------------------------------------------
+ocp4_workload_openshift_virtualization_channel: stable
+ocp4_workload_openshift_virtualization_enabled_nested_kvm: true
+
+ocp4_workload_openshift_virtualization_use_catalog_snapshot: false
+# ocp4_workload_openshift_virtualization_catalog_snapshot_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+# ocp4_workload_openshift_virtualization_catalog_snapshot_image_tag: v4.22_2026_08_03
+
 # ===================================================================
 # Workload: agnosticd.ai_workloads.ocp5_workload_ols
 # ===================================================================
-ocp5_workload_ols_provider: azure_sp
-ocp5_workload_ols_auth_provider: keycloak
-ocp5_workload_ols_keycloak_namespace: keycloak
-ocp5_workload_ols_keycloak_realm: sso
-ocp5_workload_ols_admin_username: admin
+# ocp5_workload_ols_provider: azure_sp
+# ocp5_workload_ols_auth_provider: keycloak
+# ocp5_workload_ols_keycloak_namespace: keycloak
+# ocp5_workload_ols_keycloak_realm: sso
+# ocp5_workload_ols_admin_username: admin
 
-# Temporarily pin 4.22 snapshots — lightspeed is not in redhat-operator-index:v5.0
-ocp5_workload_ols_use_catalog_snapshot: true
-ocp5_workload_ols_catalog_snapshot_image: quay.io/rhpds/olm_snapshot_redhat_catalog
-ocp5_workload_ols_catalog_snapshot_image_tag: v4.22_2026_08_31
-ocp5_workload_ols_catalogsource_name: redhat-operators-snapshot-lightspeed
+# # Temporarily pin 4.22 snapshots — lightspeed is not in redhat-operator-index:v5.0
+# ocp5_workload_ols_use_catalog_snapshot: true
+# ocp5_workload_ols_catalog_snapshot_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+# ocp5_workload_ols_catalog_snapshot_image_tag: v4.22_2026_08_31
+# ocp5_workload_ols_catalogsource_name: redhat-operators-snapshot-lightspeed
+
+# -------------------------------------------------------------------
+# ACS Nightly Pull Secret (from vault, merged into global pull secret)
+# -------------------------------------------------------------------
+# @owner: Nate Stephany <nstephan@redhat.com>
+# @purpose: ACS Pull Secret for OCP5 EA
+# @impact: UNKNOWN
+# @expiration: UNKNOWN
+# @rotation: UNKNOWN
+# @source: UNKNOWN
+# @exposure: UNKNOWN
+ocp5_ea_acs_pull_secret: !vault |
+          $ANSIBLE_VAULT;1.2;AES256;gpte_vault_0
+          38393532633438356135383738316331633562353165306261326331376437353932643166636462
+          3736653164656366366664306131636463653466346632310a343530313065663530333961626337
+          32346530333064376233386665666531313734333261653261636561613437383036646562613632
+          3935613662313839310a356539396231313761366438616336363038323236353437303465343865
+          66633239373530623237343639636433666464396563366432303735366133663830613264393463
+          62393334653562313735323263666165363433643466626530316161616164656138633031643433
+          30343664656464623766393333363333636335386235323863343863366262343938393339616535
+          35303536366336373535363264656262343631656235353435623764666465663639333163626233
+          37303934343864333764666362623239636561353738313030666137613863613133643166636336
+          35336563373263303532376530613563663465363962356630393031636565363337336332333831
+          61343539313761373434633635373163663563323864623035333632383537323662326163643838
+          30353238366335656263613937396561663432663335386366663736663038316431386465323862
+          65343933653130396138633636396365653266643732386663646330326634343233326334613732
+          63366331316534646232333630626435643432663932663732363062623230663431643864343433
+          33333666313030316663356131623766363264393233363239353837633030626131363133366361
+          66383235626535336236643538313866636337633161356630383966326530633865626165376266
+          3635
+
+# -------------------------------------------------------------------
+# Workload: ocp5_ea
+# -------------------------------------------------------------------
+ocp5_ea_gitops_repo_tag: main
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ocp5-first-look-lab
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_antora_playbook: site.yml
+ocp4_workload_showroom_antora_image: quay.io/rhpds/antora:v1.3.0
+
+# Enable Wetty terminal and auto-SSH to bastion
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
 
 # ===================================================================
 # Workloads to remove on destroy
 # ===================================================================
-remove_workloads:
-- agnosticd.ai_workloads.ocp5_workload_ols
+# remove_workloads:
+# - agnosticd.ai_workloads.ocp5_workload_ols
 
 # -------------------------------------------------------------------
 # Babylon meta
@@ -104,11 +181,11 @@ __meta__:
       destroy:
         disable: false
       start:
-        disable: true
+        disable: false
       status:
         disable: true
       stop:
-        disable: true
+        disable: false
       update:
         disable: true
 
@@ -129,33 +206,42 @@ __meta__:
     reportingLabels:
       primaryBU: Hybrid_Platforms
     parameters:
-    - name: ocp5_workload_ols_enable_agentic
-      formLabel: Enable Agentic OpenShift Lightspeed
-      formGroup: Agentic OLS
+    - name: ocp5_ea_llm_api_key
       description: >-
-        Deploy the Agentic OpenShift Lightspeed component on top of classic OLS.
-        When enabled, you must provide an OpenAI API key below.
-      required: false
-      openAPIV3Schema:
-        type: boolean
-        default: false
-      components:
-      - name: current
-
-    - name: ocp5_workload_ols_agentic_api_key
-      formLabel: OpenAI API Key
-      formGroup: Agentic OLS
-      description: >-
-        Your OpenAI API key (sk-...) for the Agentic OLS component.
-        Required when Enable Agentic OpenShift Lightspeed is checked.
-      required: false
-      formHideCondition: ocp5_workload_ols_enable_agentic == false
-      formRequireCondition: ocp5_workload_ols_enable_agentic == true
+        The API key for the LLM API
+      formLabel: LLM API Key (Required)
       openAPIV3Schema:
         type: string
-        default: ""
-      components:
-      - name: current
+        minLength: 1
+      required: true
+
+    # - name: ocp5_workload_ols_enable_agentic
+    #   formLabel: Enable Agentic OpenShift Lightspeed
+    #   formGroup: Agentic OLS
+    #   description: >-
+    #     Deploy the Agentic OpenShift Lightspeed component on top of classic OLS.
+    #     When enabled, you must provide an OpenAI API key below.
+    #   required: false
+    #   openAPIV3Schema:
+    #     type: boolean
+    #     default: false
+    #   components:
+    #   - name: current
+
+    # - name: ocp5_workload_ols_agentic_api_key
+    #   formLabel: OpenAI API Key
+    #   formGroup: Agentic OLS
+    #   description: >-
+    #     Your OpenAI API key (sk-...) for the Agentic OLS component.
+    #     Required when Enable Agentic OpenShift Lightspeed is checked.
+    #   required: false
+    #   formHideCondition: ocp5_workload_ols_enable_agentic == false
+    #   formRequireCondition: ocp5_workload_ols_enable_agentic == true
+    #   openAPIV3Schema:
+    #     type: string
+    #     default: ""
+    #   components:
+    #   - name: current
 
   components:
   - name: openshift_base
