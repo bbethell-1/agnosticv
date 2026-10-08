@@ -20,7 +20,7 @@
 # Auto-pass user email and catalog item name to LiteLLM for better tracking
 #include /includes/parameters/litellm_metadata.yaml
 
-#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/sandbox-api.yaml
 
 # ===================================================================
 # Mandatory Variables
@@ -63,11 +63,6 @@ requirements_content:
     type: git
     version: v0.0.9
 
-  # LiteLLM Virtual Keys Collection
-  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
-    type: git
-    version: "1.0.0"
-
   # Core OpenShift Workloads
   - name: https://github.com/rhpds/core_workloads.git
     type: git
@@ -102,7 +97,6 @@ requirements_content:
 # List of workloads to be deployed
 # ===================================================================
 workloads:
-- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 - agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
 - agnosticd.core_workloads.ocp4_workload_gitea_operator
 - agnosticd.core_workloads.ocp4_workload_pipelines
@@ -111,10 +105,6 @@ workloads:
 # - agnosticd.showroom.ocp4_workload_showroom_ocp_integration
 - agnosticd.showroom.ocp4_workload_showroom
 - agnosticd.showroom_ai_assistant.ocp4_workload_showroom_ai_assistant
-
-remove_workloads:
-
-- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 
 # ===================================================================
 # Variables for specific workloads
@@ -127,15 +117,44 @@ common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:1
 common_admin_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:16] }}"
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_litellm_virtual_keys
+# MaaSSandbox
 # -------------------------------------------------------------------
-ocp4_workload_litellm_virtual_keys_duration: "7d"
-ocp4_workload_litellm_virtual_keys_models:
-- llama-scout-17b
-- Llama-Guard-3-1B
-- nomic-embed-text-v1-5
-- qwen3-14b
-- granite-4-0-h-tiny
+litellm_api_base_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+litellm_virtual_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
+litellm_available_models: "{{  maas_sandbox.credentials[0].available_models }}"
+litellm_available_models_list: "{{ maas_sandbox.credentials[0].available_models | join(', ') }}"
+litellm_key_duration: ""
+litellm_virtual_keys: "{{ maas_sandbox.credentials | map(attribute='virtual_key') | list }}"
+userdata: >-
+  {
+  {% for i in range(0,num_users) %}
+  "user{{i+1}}": {
+     litellm_api_endpoint: "{{ maas_sandbox.credentials[i].api_endpoint  }}",
+     litellm_api_base_url: "{{ maas_sandbox.credentials[i].api_endpoint  }}/v1",
+     litellm_virtual_key: "{{ maas_sandbox.credentials[i].virtual_key }}",
+     litellm_user{{i+1}}_virtual_key: "{{ maas_sandbox.credentials[i].virtual_key }}",
+     litellm_key_alias: "{{ maas_sandbox.credentials[i].key_alias }}",
+     litellm_key_id: "{{  maas_sandbox.credentials[i].key_id }}",
+     litellm_user_email: "user{{ i }}@example.com",
+     litellm_available_models: "{{  maas_sandbox.credentials[i].available_models }}",
+     litellm_available_models_list: "{{ maas_sandbox.credentials[i].available_models | join(', ') }}",
+     litellm_key_duration: ""
+    },
+  {% endfor %}
+  }
+litellm_passthrough_user_data:
+  litellm_api_base_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+  litellm_virtual_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
+  litellm_available_models: "{{  maas_sandbox.credentials[0].available_models }}"
+  litellm_available_models_list: "{{ maas_sandbox.credentials[0].available_models | join(', ') }}"
+  litellm_virtual_keys: "{{ maas_sandbox.credentials | map(attribute='virtual_key') | list }}"
+  litellm_key_duration: ""
+
+agnosticd_passthrough_user_data: |
+  {{ litellm_passthrough_user_data
+   | combine( {
+     "users": userdata | from_yaml })
+  }}
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_authentication_htpasswd
@@ -301,7 +320,13 @@ __meta__:
         minimum: 2
         maximum: 22
     workshop_user_mode: multi
-
+  sandboxes:
+  - kind: MaaSSandbox
+    cloud_selector:
+      purpose: production
+    virtual_key_count: "{{ job_vars.num_users }}"
+    models: "llama-scout-17b,Llama-Guard-3-1B,nomic-embed-text-v1-5,qwen3-14b,granite-4-0-h-tiny"
+    var: maas_sandbox
   components:
   - name: openshift_aws
     display_name: OpenShift Container Platform Cluster (AWS Pools)
