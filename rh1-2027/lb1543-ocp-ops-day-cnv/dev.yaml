@@ -369,6 +369,37 @@ ocp4_days_workload_ztwim_catalog_snapshot_image_tag: v4.22_2026_09_14
 # themselves plain top-level assignments, so whichever is evaluated as the
 # final merged var wins) - so that field is intentionally not present.
 # -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# dev-only: add one dedicated worker node. This compact 3-control-plane
+# cluster has no workers at all (worker_instance_count: 0 is hardcoded in
+# agd-v2/ocp5-cluster-cnv-pools/common.yaml), so every system pod -
+# including the redhat-operators CatalogSource's registry-server - lands
+# on the same 3 nodes as CNV, ACM, RHACS, gitops, RHDH, and pipelines.
+# Node control-plane-cluster-n28d8-1 was observed going NodeNotReady and
+# its catalog pod flapping on probe timeouts ("context deadline
+# exceeded") for 2+ hours under this load (job_270975, 2026-10-08) - CPU
+# limits were allocated at 130% on that node. RHACS's operator install
+# landed in one of those outage windows and burned all 100 InstallPlan-
+# wait retries.
+#
+# This must be a plain top-level var here, not a __meta__.components[].
+# parameter_values entry: agd-v2/ocp5-cluster-cnv-pools/common.yaml sets
+# worker_instance_count as a hardcoded scalar, and scalars replace rather
+# than merge, so a parameter_values override gets clobbered (confirmed
+# via job_249781/job_271302 - "Create 0 worker VMs for full cluster"
+# despite PR #28483 setting it via parameter_values). Sibling CNV items
+# (security-roadshow-ocp5-cnv, lb1858-ocp5-container-mngmt-cluster,
+# lb2076-ocp5-virt-infra) all set worker_instance_count/ai_workers_* the
+# same way, as plain top-level vars in their own file - this item is the
+# "current file" relative to the pool's common.yaml (an "included" file
+# for this render), and current-file vars take precedence over included
+# files' vars.
+# -------------------------------------------------------------------
+worker_instance_count: 1
+ai_workers_cores: "16"
+ai_workers_memory: 64Gi
+
 __meta__:
   catalog:
     parameters:
@@ -394,23 +425,6 @@ __meta__:
       # PVs on the CNV sandbox, causing VolumeBinding timeout. Ceph RBD has no
       # node-locality constraint and schedules all 3 VMs without contention.
       ai_local_storageclass: ocs-storagecluster-ceph-rbd
-      # dev-only: add one dedicated worker node. This compact 3-control-plane
-      # cluster has no workers at all (worker_instance_count: 0 is hardcoded
-      # in agd-v2/ocp5-cluster-cnv-pools/common.yaml with no catalog parameter
-      # to override it), so every system pod - including the redhat-operators
-      # CatalogSource's registry-server - lands on the same 3 nodes as CNV,
-      # ACM, RHACS, gitops, RHDH, and pipelines. Node control-plane-cluster-
-      # n28d8-1 was observed going NodeNotReady and its catalog pod flapping
-      # on probe timeouts ("context deadline exceeded") for 2+ hours under
-      # this load (job_270975, 2026-10-08) - CPU limits were allocated at 130%
-      # on that node. RHACS's operator install landed in one of those outage
-      # windows and burned all 100 InstallPlan-wait retries. A standard
-      # install schedules regular workloads off tainted control-plane nodes
-      # once real workers exist, giving the catalog pod (and everything else)
-      # room instead of fighting masters for CPU.
-      worker_instance_count: 1
-      ai_workers_cores: "16"
-      ai_workers_memory: 64Gi
     propagate_provision_data:
     - name: openshift_api_ca_cert
       var: openshift_api_ca_cert
