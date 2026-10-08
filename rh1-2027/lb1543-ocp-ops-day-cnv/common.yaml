@@ -4,7 +4,7 @@
 #
 # Single-user workshop deployed on a 3-node compact OCP cluster from
 # a CNV pool (cloud_provider: none). The cluster comes pre-provisioned
-# with ODF (external Ceph + NooBaa) via ocp-cluster-cnv-pools.
+# with ODF (external Ceph + NooBaa) via ocp5-cluster-cnv-pools.
 #
 # This config connects to the pool cluster and deploys workshop
 # workloads on top. Workloads are built dynamically from module_enable_*
@@ -17,8 +17,8 @@
 #   agnosticd/core_workloads           — upstream shared operator roles
 #   agnosticd/ai_workloads             — upstream OLS role
 #
-# common.yaml is the base config. dev.yaml overrides for testing
-# (uses main branches instead of pinned tags).
+# common.yaml is the base config, shared by both stages. dev.yaml only
+# sets the development purpose/stage marker.
 # ===================================================================
 
 # This item is restricted to devs only!
@@ -36,18 +36,23 @@
 
 #include /includes/parameters/purpose.yaml
 #include /includes/parameters/salesforce-id.yaml
+# Supplies requester_email + catalog_item_name, which the LiteLLM virtual-keys
+# workload uses to attribute the issued key (see _ols_workloads below).
+#include /includes/parameters/litellm_metadata.yaml
 
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 #include /includes/secrets/ocp4_workload_ols_api_token.yaml
 # Provides ocp4_pull_secret for KubeVirt cloud credentials (HCP cluster creation)
 #include /includes/secrets/openshift_assisted_installer_icr.yaml
+# Supplies litellm_url + litellm_master_key. The virtual-keys role asserts on
+# both and cannot mint a key without them.
+#include /includes/secrets/litemaas-master_api.yaml
 
 # ===================================================================
 # Mandatory Variables
 # ===================================================================
 
 # Collection versions — all collections pinned to {{ tag }} use this.
-# dev.yaml overrides to 'main' for testing unreleased changes.
 tag: main
 
 # Connects to a pre-existing OCP cluster from a CNV pool (no cloud provisioning).
@@ -81,15 +86,11 @@ requirements_content:
   # Showroom
   - name: https://github.com/rhpds/showroom.git
     type: git
-    version: v1.6.12
+    # Tracking main until a release tag includes PR #84 (merged 2026-10-02)
+    version: main
 
   # Custom Workshop Workloads for Ops Track (RH1 2027 - deliver-openshift-ops-day)
   - name: https://github.com/rhpds/deliver-openshift-ops-day.git#/automation/ansible
-    type: git
-    version: "{{ tag }}"
-
-  # Sovereign Cloud workloads (for HCP preparation)
-  - name: https://github.com/rhpds/sovereign_cloud.git
     type: git
     version: "{{ tag }}"
 
@@ -97,6 +98,41 @@ requirements_content:
   - name: https://github.com/rhpds/ai_workloads.git
     type: git
     version: "{{ tag }}"
+
+  # Agentic OLS MaaS key auto-provisioning
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: main
+
+# -------------------------------------------------------------------
+# Showroom v1.7.2 runtime pins
+#
+# rh1-2027/account.yaml enables runtime automation globally and still
+# overrides Wetty/runner to the older RH1 defaults. Pin the v1.7.2
+# Showroom stack here so this item gets the matching chart, terminal
+# images, Nookbag bundle, and runner implementation. The newer runner
+# is substantially smaller than zt-runner:v2.4.2, avoiding the long
+# first-pull timeout on compact CNV clusters.
+# -------------------------------------------------------------------
+ocp4_workload_showroom_deployer_chart_version: "2.2.*"
+ocp4_workload_showroom_terminal_image: "quay.io/rhpds/openshift-showroom-terminal-ocp:4.20"
+ocp4_workload_showroom_wetty_image: "quay.io/rhpds/wetty:v3.2.1"
+ocp4_workload_showroom_zero_touch_bundle: "https://github.com/rhpds/nookbag/releases/download/nookbag-v0.4.0/nookbag-v0.4.0.zip"
+ocp4_workload_showroom_runtime_automation_enable: true
+ocp4_workload_showroom_runtime_automation_image: "quay.io/rhpds/zerotouch-automation:v1.3.3"
+# This is a dedicated cluster per claim, not a shared tenant cluster, so use
+# dedicated mode (cluster-admin ClusterRoleBinding) rather than tenant mode.
+# Neither this file nor dev.yaml sets ocp4_workload_tenant_namespace_suffixes,
+# so without this the runtime-automation ServiceAccount behind k8s_kubeconfig
+# is granted no RBAC at all (see rhpds/showroom
+# roles/ocp4_workload_showroom/tasks/setup_runtime_automation_identity.yaml),
+# and qa-automation/healthcheck.yaml's cross-namespace checks (e.g. reading
+# the openshift-gitops Application, or any module-specific check) fail with
+# permission errors instead of reporting real module health.
+ocp4_workload_showroom_runtime_automation_cluster_admin: true
+
+# ACME ClusterIssuer for the optional Console HTTP/2 route certificate.
+workshop_console_http2_cert_issuer_name: acme-bifrost-production-ddns
 
 # -------------------------------------------------------------------
 # Common Passwords
@@ -111,38 +147,63 @@ common_admin_password: >-
 # ============================================
 # BASE WORKLOADS (Always deployed)
 # ============================================
-_base_workloads:
-# Phase 0: Free disk space before operator installs
-- deliver_openshift_ops_day.automation.ocp4_workload_cluster_cleanup_preflight
-# Phase 1: Foundation & Authentication
-- agnosticd.core_workloads.ocp4_workload_authentication
-# Phase 2: Workshop Infrastructure
-- agnosticd.showroom.ocp4_workload_ocp_console_embed
-- agnosticd.showroom.ocp4_workload_showroom
-- deliver_openshift_ops_day.automation.ocp4_workload_days_ops_track
-- agnosticd.core_workloads.ocp4_workload_web_terminal
-# Phase 3: CI/CD
-- agnosticd.core_workloads.ocp4_workload_pipelines
+# Appends ocp4_workload_image_prefetch when agentic OLS is enabled, so the
+# large lightspeed/RHOKP images in ocp4_workload_image_prefetch_images below
+# start pulling as early as possible - this is the first workload group to
+# run, giving the pull the whole rest of the deployment as lead time.
+_base_workloads: >-
+  {{
+    (
+      [
+        'deliver_openshift_ops_day.automation.ocp4_workload_cluster_cleanup_preflight',
+        'agnosticd.core_workloads.ocp4_workload_authentication',
+        'agnosticd.showroom.ocp4_workload_ocp_console_embed',
+        'agnosticd.showroom.ocp4_workload_showroom',
+        'deliver_openshift_ops_day.automation.ocp4_workload_days_ops_track',
+        'agnosticd.core_workloads.ocp4_workload_web_terminal',
+        'agnosticd.core_workloads.ocp4_workload_pipelines'
+      ] +
+      (['deliver_openshift_ops_day.automation.ocp4_workload_image_prefetch']
+        if (ocp5_workload_ols_enable_agentic | default(false) | bool) else [])
+    )
+  }}
+
+# node_selector {} (all nodes): this item's CNV cluster is compact, with no
+# node-role.kubernetes.io/worker label on any node until the dedicated
+# worker added above schedules - a worker-only selector would otherwise
+# match zero nodes and the DaemonSet would never schedule.
+ocp4_workload_image_prefetch_node_selector: {}
+ocp4_workload_image_prefetch_images:
+- registry.redhat.io/offline-knowledge-portal/rhokp-rhel9@sha256:f46082f2dc2972582f3b85ed2a563b554d0aba3255ba2f00835e65f4929ae9a9
+- registry.redhat.io/openshift-lightspeed/lightspeed-service-api-rhel9@sha256:5c6426ec827b469a10a093ded2e9551e5f28d698ff4073ab474bb7d95e1c1694
+- registry.redhat.io/lightspeed-core/dataverse-exporter-rhel9@sha256:1c7ffaead23adfb1dc6bd3adfe75c80f284d6d31f13ca427d754703c78514cb2
 
 # ============================================
 # OPTIONAL WORKLOAD GROUPS
 # ============================================
 
 # Virtualization module workloads
+# Includes ocp4_workload_virtualization_boot_image_trim right after the
+# virtualization role. It only patches the HyperConverged CR that role
+# already created (does not modify core_workloads at all) to disable the
+# default golden-image DataImportCrons this workshop doesn't use — see
+# ocp4_workload_virtualization_boot_image_trim_disabled_images below.
 _virt_workloads:
-- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+- deliver_openshift_ops_day.automation.ocp4_workload_openshift_virtualization
+- deliver_openshift_ops_day.automation.ocp4_workload_virtualization_boot_image_trim
 
 # HCP module workloads — infrastructure needed for Hosted Control Planes
 # Gated by module_enable_acm (HCP requires ACM). Includes KubeVirt,
 # GitOps, MetalLB, and ACM itself. Deduped via unique if Virt also enabled.
 _hcp_workloads:
-- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
-- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- deliver_openshift_ops_day.automation.ocp4_workload_openshift_virtualization
+- deliver_openshift_ops_day.automation.ocp4_workload_virtualization_boot_image_trim
+- deliver_openshift_ops_day.automation.ocp4_workload_openshift_gitops
 - agnosticd.core_workloads.ocp4_workload_rhacm
 - deliver_openshift_ops_day.automation.ocp4_workload_rhacm_cloud_credentials
-- agnosticd.core_workloads.ocp4_workload_metallb
+- deliver_openshift_ops_day.automation.ocp4_workload_metallb
 - deliver_openshift_ops_day.automation.ocp4_workload_hcp_kubevirt
-- rhpds.sovereign_cloud.ocp4_workload_prepare_hcp
+- deliver_openshift_ops_day.automation.ocp4_workload_prepare_hcp
 
 # ACM module workloads - adds multi-cluster observability, compliance, and pre-provisioned managed cluster
 _acm_workloads:
@@ -153,7 +214,7 @@ _acm_workloads:
 # GitOps module workloads
 # Deploys ArgoCD operator. Deduped via unique if ACM also enabled.
 _gitops_workloads:
-- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- deliver_openshift_ops_day.automation.ocp4_workload_openshift_gitops
 
 # Developer Hub module workloads (simplified - operator only)
 _devhub_workloads:
@@ -162,9 +223,26 @@ _devhub_workloads:
 # OpenShift Lightspeed module workloads
 # Cleanup deletes the OLSConfig created by the upstream role so students
 # create it manually in the lab module. Operator and secrets remain.
-_ols_workloads:
-- agnosticd.ai_workloads.ocp4_workload_ols
-- deliver_openshift_ops_day.automation.ocp4_workload_ols_cleanup
+# When agentic OLS is enabled, rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# runs first to auto-mint a per-GUID MaaS key against the shared LiteLLM
+# proxy (see ocp5_workload_ols_agentic_* vars below) - no one has to
+# obtain or paste a key by hand.
+_ols_workloads: >-
+  {{
+    (
+      (['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys']
+        if (ocp5_workload_ols_enable_agentic | default(false) | bool) else []) +
+      [
+        'agnosticd.ai_workloads.ocp5_workload_ols',
+        'deliver_openshift_ops_day.automation.ocp4_workload_ols_cleanup'
+      ]
+    )
+  }}
+
+# Model id for the auto-provisioned key above, forwarded to the shared
+# LiteLLM proxy - same model agentic OLS expects.
+ocp4_workload_litellm_virtual_keys_models:
+- claude-sonnet-4-6
 
 # Security module workloads (ACS + Compliance)
 # After upstream RHACS installs, console_embed patches the Central route from
@@ -216,10 +294,18 @@ workloads: >-
 
 # -------------------------------------------------------------------
 # Remove workloads - runs on destroy to clean up external resources
-# OLS creates Azure AD app registrations that must be deleted
+# OLS creates Azure AD app registrations that must be deleted. Also
+# revokes the auto-provisioned litellm_virtual_key when agentic OLS
+# was enabled (see _ols_workloads above).
 # -------------------------------------------------------------------
-remove_workloads:
-- agnosticd.ai_workloads.ocp4_workload_ols
+remove_workloads: >-
+  {{
+    (
+      ['agnosticd.ai_workloads.ocp5_workload_ols'] +
+      (['rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys']
+        if (ocp5_workload_ols_enable_agentic | default(false) | bool) else [])
+    )
+  }}
 
 # -------------------------------------------------------------------
 # Showroom workshop content configuration
@@ -262,7 +348,10 @@ ocp4_workload_showroom_user_data:
 # between deployments, breaking the workshop if a new version changes
 # defaults or introduces bugs.
 #
-# Snapshot: v4.20_2026_03_16 (latest weekly snapshot)
+# Base snapshot: v4.20_2026_03_16. Operators affected by OCP 5.0-rc catalog
+# drift (pipelines, rhacm, rhacs, gitops, rhdh, ztwim) are pinned to the
+# newer v4.22_2026_09_14 snapshot instead — see their individual workload
+# sections below. Confirmed live via job_203103 (guid tzpk5-1) on 2026-09-16.
 # Each role uses its OWN tag variable — the shared ocp4_workload_catalogsource_tag
 # is NOT picked up by upstream roles. Must set per-role tags explicitly.
 # Operators not in the snapshot (RHDH) are pinned by startingCSV instead.
@@ -282,7 +371,7 @@ ocp4_workload_authentication_provider: htpasswd
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacm (Core version)
 # -------------------------------------------------------------------
-ocp4_workload_rhacm_acm_channel: release-2.16
+ocp4_workload_rhacm_acm_channel: release-2.17
 ocp4_workload_rhacm_enable_wildcards: true
 
 # -------------------------------------------------------------------
@@ -299,7 +388,7 @@ ocp4_workload_rhacm_cloud_credentials_install_hcp_cli: true
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_rhacs (upstream with resource overrides)
 # -------------------------------------------------------------------
-ocp4_workload_rhacs_install_operator_channel: rhacs-4.10
+ocp4_workload_rhacs_install_operator_channel: rhacs-4.11
 ocp4_workload_rhacs_install_operator_namespace: rhacs-operator
 ocp4_workload_rhacs_install_operator_use_catalog_snapshot: false
 ocp4_workload_rhacs_central_admin_password: "{{ common_admin_password }}"
@@ -367,8 +456,14 @@ ocp4_workload_rhacs_sensor_limits_memory: "4Gi"
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops (ArgoCD)
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.19
-ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+ocp4_workload_openshift_gitops_channel: gitops-1.21
+# openshift-gitops-operator package is absent from the live redhat-operators
+# catalog on OCP 5.0-rc clusters; use the pinned snapshot catalog instead.
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalogsource_name: redhat-operators-snapshot
+ocp4_workload_openshift_gitops_catalogsource_namespace: openshift-marketplace
+ocp4_workload_openshift_gitops_catalog_snapshot_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: v4.22_2026_09_14
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_update_route_tls: true
 ocp4_workload_openshift_gitops_rbac_update: true
@@ -440,8 +535,28 @@ ocp4_days_workload_compliance_operator_automatic_install_plan_approval: true
 # Used by both the Virtualization module and HCP (KubeVirt provider).
 # -------------------------------------------------------------------
 ocp4_workload_openshift_virtualization_channel: stable
-ocp4_workload_openshift_virtualization_use_catalog_snapshot: true
+# Pinned snapshot's kubevirt-plugin crashes ("Q is not a function") on OCP
+# 5.0-rc; kubevirt-hyperconverged 4.22.9 is in the live catalog, use that.
+ocp4_workload_openshift_virtualization_use_catalog_snapshot: false
 ocp4_workload_openshift_virtualization_catalog_snapshot_image_tag: v4.20_2026_03_16
+
+# External OCS Ceph RBD (ai_local_storageclass) cannot complete
+# VolumeSnapshot creation on CNV clusters — snapshots stay
+# READYTOUSE=false indefinitely, leaving DataSources NotReady and the
+# bootable volumes catalog empty. Switching to PVC format patches the
+# StorageProfile to use dataImportCronSourceFormat=pvc instead.
+ocp4_workload_openshift_virtualization_boot_sources_snapshot: false
+
+# The Virtualization workshop module (11-virtualization.adoc) only ever
+# boots a rhel9 VM. The other 5 HCO default golden images are each a full
+# 30Gi PVC (forced by the pvc-format override above) that this cluster
+# claim never uses. Leaves rhel9-image-cron untouched.
+ocp4_workload_virtualization_boot_image_trim_disabled_images:
+- centos-stream9-image-cron
+- centos-stream10-image-cron
+- fedora-image-cron
+- rhel8-image-cron
+- rhel10-image-cron
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_metallb (Core version - CNV specific settings)
@@ -449,8 +564,9 @@ ocp4_workload_openshift_virtualization_catalog_snapshot_image_tag: v4.20_2026_03
 # Required for HCP (Hosted Control Planes) ingress.
 # -------------------------------------------------------------------
 ocp4_workload_metallb_channel: stable
+# No live-catalog equivalent on OCP 5.0-rc; stays pinned to the snapshot.
 ocp4_workload_metallb_use_catalog_snapshot: true
-ocp4_workload_metallb_catalog_snapshot_image_tag: v4.20_2026_03_16
+ocp4_workload_metallb_catalog_snapshot_image_tag: v4.22_2026_09_14
 ocp4_workload_metallb_enable_ipaddresspool: true
 ocp4_workload_metallb_ipaddresspool_name: ip-addresspool
 # IP range from the CNV cluster's secondary network (br-ex)
@@ -467,7 +583,7 @@ ocp4_workload_metallb_l2advertisement_interface:
 # Workload: ocp4_workload_pipelines (OpenShift Pipelines / Tekton)
 # Installs the Pipelines operator and tkn CLI for CI/CD exercises.
 # -------------------------------------------------------------------
-ocp4_workload_pipelines_channel: pipelines-1.20
+ocp4_workload_pipelines_channel: pipelines-1.24
 ocp4_workload_pipelines_use_catalog_snapshot: false
 ocp4_workload_pipelines_install_tkn_cli: true
 
@@ -476,7 +592,8 @@ ocp4_workload_pipelines_install_tkn_cli: true
 # Provides an in-browser terminal in the OpenShift console (oc, kubectl, etc.)
 # -------------------------------------------------------------------
 ocp4_workload_web_terminal_channel: fast
-ocp4_workload_web_terminal_use_catalog_snapshot: true
+# web-terminal 1.17.1 is in the live catalog on OCP 5.0-rc; same as virtualization above.
+ocp4_workload_web_terminal_use_catalog_snapshot: false
 ocp4_workload_web_terminal_catalogsource_setup: true
 ocp4_workload_web_terminal_catalog_snapshot_image_tag: v4.20_2026_03_16
 
@@ -488,28 +605,65 @@ ocp4_workload_web_terminal_catalog_snapshot_image_tag: v4.20_2026_03_16
 # -------------------------------------------------------------------
 ocp4_days_workload_rhdh_enable_guest_auth: true
 ocp4_days_workload_rhdh_channel: fast
-# RHDH is not in the snapshot — pin by startingCSV + Manual approval
-# startingCSV ensures OLM installs v1.9.1, Manual approval prevents
+# rhdh package is absent from the live redhat-operators catalog on OCP
+# 5.0-rc clusters entirely — only available via the pinned snapshot catalog.
+# startingCSV ensures OLM installs v1.10.4, Manual approval prevents
 # OLM from auto-upgrading to a newer version in the fast channel.
-ocp4_days_workload_rhdh_starting_csv: "rhdh-operator.v1.9.1"
+ocp4_days_workload_rhdh_use_catalog_snapshot: true
+ocp4_days_workload_rhdh_starting_csv: "rhdh-operator.v1.10.4"
+ocp4_days_workload_rhdh_catalogsource_name: redhat-operators-snapshot
+ocp4_days_workload_rhdh_catalog_snapshot_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp4_days_workload_rhdh_catalog_snapshot_image_tag: v4.22_2026_09_14
 ocp4_days_workload_rhdh_automatic_install_plan_approval: false
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_ols (OpenShift Lightspeed)
-# https://github.com/rhpds/ai_workloads/tree/main/roles/ocp4_workload_ols
-# Installs the operator and creates Azure credentials secret.
-# The upstream role defaults ocp4_workload_ai_platform: azure which also
-# creates an OLSConfig — the ocp4_workload_ols_cleanup role (see
-# _ols_workloads above) deletes it so students create it in the lab.
+# Workload: ocp5_workload_ols (replaces ocp4_workload_ols)
+# https://github.com/rhpds/ai_workloads/tree/main/roles/ocp5_workload_ols
+# Same Azure SP flow as the old ocp4_workload_ols role (ocp4_workload_ols_get_token:
+# true), just renamed: provider: azure_sp + ocp5_workload_ols_azure_sp_*.
+# Reuses the existing vaulted Azure credentials via aliased vars, no new
+# secrets needed.
+#
+# Agentic OLS supports a MaaS backend (ai_workloads#36). The "Enable Agentic
+# OpenShift Lightspeed" catalog toggle (ocp5_workload_ols_enable_agentic,
+# see __meta__.catalog.parameters below) defaults off; when on,
+# ocp5_workload_ols_agentic_provider switches to maas and
+# ocp5_workload_ols_agentic_api_key picks up the litellm_virtual_key fact
+# minted by _ols_workloads above. This combination is still untested
+# end-to-end.
+# https://github.com/rhpds/ai_workloads/tree/main/roles/ocp5_workload_ols
+# https://github.com/rhpds/ai_workloads/pull/36
 # -------------------------------------------------------------------
-# OLS uses a different catalog image by default (quay.io/openshift-lightspeed/...)
-# Override to use our shared snapshot image instead
-ocp4_workload_ols_use_catalog_snapshot: true
-ocp4_workload_ols_catalog_snapshot_image: quay.io/rhpds/olm_snapshot_redhat_catalog
-ocp4_workload_ols_catalog_snapshot_image_tag: v4.20_2026_03_16
-ocp4_workload_ols_catalogsource_name: redhat-operators-snapshot-lightspeed
-ocp4_workload_ols_channel: stable
-ocp4_workload_ols_get_token: true
+ocp5_workload_ols_use_catalog_snapshot: true
+ocp5_workload_ols_catalog_snapshot_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp5_workload_ols_catalog_snapshot_image_tag: v4.22_2026_09_14
+ocp5_workload_ols_catalogsource_name: redhat-operators-snapshot
+ocp5_workload_ols_channel: stable
+ocp5_workload_ols_provider: azure_sp
+ocp5_workload_ols_azure_sp_tenant_id: "{{ ocp4_workload_ols_azure_tenant_id }}"
+ocp5_workload_ols_azure_sp_client_id: "{{ ocp4_workload_ols_main_client_id }}"
+ocp5_workload_ols_azure_sp_client_secret: "{{ ocp4_workload_ols_main_client_secret }}"
+ocp5_workload_ols_azure_sp_group_id: "{{ ocp4_workload_ols_azure_group_id }}"
+
+ocp5_workload_ols_agentic_provider: >-
+  {{ 'maas' if (ocp5_workload_ols_enable_agentic | default(false) | bool) else 'openai' }}
+
+# default() only matters when agentic is off, since litellm_virtual_keys
+# never ran and nothing downstream reads this var in that case.
+ocp5_workload_ols_agentic_api_key: "{{ litellm_virtual_key | default('changeme') }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_days_workload_ztwim (Zero Trust Workload Identity Manager)
+# Package is absent from the live redhat-operators catalog on OCP 5.0-rc
+# clusters, only available in the pinned snapshot catalog.
+# NOTE: use the role-namespaced vars only; a bare install_operator_catalogsource_*
+# is an extra-var and would silently override every role's catalogsource, not just ztwim's.
+# -------------------------------------------------------------------
+ocp4_days_workload_ztwim_use_catalog_snapshot: true
+ocp4_days_workload_ztwim_catalogsource_name: redhat-operators-snapshot
+ocp4_days_workload_ztwim_catalogsource_namespace: openshift-marketplace
+ocp4_days_workload_ztwim_catalog_snapshot_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp4_days_workload_ztwim_catalog_snapshot_image_tag: v4.22_2026_09_14
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_acm_multicluster_observability
@@ -537,8 +691,8 @@ workshop_reduce_noobaa_resources: true
 workshop_reduce_prometheus_retention: true
 
 # -------------------------------------------------------------------
-# Workload: ocp4_workload_prepare_hcp (sovereign_cloud collection)
-# https://github.com/rhpds/sovereign_cloud
+# Workload: ocp4_workload_prepare_hcp (vendored into deliver-openshift-ops-day,
+# was rhpds.sovereign_cloud.ocp4_workload_prepare_hcp — see _hcp_workloads)
 # Configures ACM policies, ManagedClusterSet, and GitOps integration
 # needed before a Hosted Control Plane cluster can be provisioned.
 # -------------------------------------------------------------------
@@ -554,6 +708,16 @@ ocp4_workload_prepare_hcp_gitops_operator_channel: gitops-1.19
 # -------------------------------------------------------------------
 # Use Immediate binding to avoid WaitForFirstConsumer PVC deadlock on multinode external Ceph
 ocp4_workload_create_hcp_cluster_etcd_storage_class: ocs-external-storagecluster-ceph-rbd-immediate
+
+# Dedicated worker node, so system pods don't all land on the 3
+# control-plane nodes (see dev.yaml history for the NodeNotReady
+# incident this fixes). Must be a plain top-level var, not a
+# __meta__.components[].parameter_values entry - the pool's
+# common.yaml hardcodes worker_instance_count as a scalar, which
+# replaces rather than merges with parameter_values overrides.
+worker_instance_count: 1
+ai_workers_cores: "16"
+ai_workers_memory: 64Gi
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -731,6 +895,18 @@ __meta__:
         type: boolean
         default: true
 
+    - name: ocp5_workload_ols_enable_agentic
+      formLabel: Enable Agentic OpenShift Lightspeed
+      formGroup: Agentic OpenShift Lightspeed
+      description: >-
+        Deploy the Agentic OpenShift Lightspeed component on top of classic
+        OLS, backed by an auto-provisioned MaaS key (claude-sonnet-4-6). No
+        key needs to be supplied manually.
+      required: false
+      openAPIV3Schema:
+        type: boolean
+        default: false
+
   deployer:
     scm_url: https://github.com/rhpds/agnosticd-v2
     scm_ref: main
@@ -752,12 +928,15 @@ __meta__:
   # Component-based deployment: CNV cluster
   components:
   - name: openshift-base
-    display_name: OpenShift Cluster (CNV)
-    item: agd-v2/ocp-cluster-cnv-pools
+    display_name: OpenShift 5 Cluster (CNV)
+    item: agd-v2/ocp5-cluster-cnv-pools
     parameter_values:
       cluster_size: multinode
-      host_ocp4_installer_version: "4.20"
-      ocp4_fips_enable: false
+      # hostpath-csi is node-local; 3 simultaneous control plane VMs exhaust
+      # available PVs on the CNV sandbox, causing VolumeBinding timeout. Ceph
+      # RBD has no node-locality constraint and schedules all 3 VMs without
+      # contention.
+      ai_local_storageclass: ocs-storagecluster-ceph-rbd
     propagate_provision_data:
     - name: openshift_api_ca_cert
       var: openshift_api_ca_cert
