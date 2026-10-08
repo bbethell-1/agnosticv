@@ -97,10 +97,18 @@ common_password: >-
   }}
 
 # -------------------------------------------------------------------
+# Catalog Source Snapshot
+# -------------------------------------------------------------------
+ocp4_workload_catalogsource_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp4_workload_catalogsource_tag: v4.22_2026_08_03
+
+# -------------------------------------------------------------------
 # Workload: ocp4_workload_openshift_gitops
 # -------------------------------------------------------------------
-ocp4_workload_openshift_gitops_channel: gitops-1.20
-ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+ocp4_workload_openshift_gitops_channel: gitops-1.21
+ocp4_workload_openshift_gitops_use_catalog_snapshot: true
+ocp4_workload_openshift_gitops_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_openshift_gitops_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 ocp4_workload_openshift_gitops_setup_cluster_admin: true
 ocp4_workload_openshift_gitops_controller_update: true
 ocp4_workload_openshift_gitops_controller_requests_cpu: 250m
@@ -204,7 +212,10 @@ ocp4_workload_authentication_num_users: 0
 
 ocp4_workload_authentication_provider: keycloak
 ocp4_workload_authentication_keycloak_default_realm: sso
-ocp4_workload_authentication_keycloak_channel: stable-v26.4
+ocp4_workload_authentication_keycloak_channel: stable-v26.6
+ocp4_workload_authentication_keycloak_use_catalog_source: true
+ocp4_workload_authentication_keycloak_catalogsource_image: "{{ ocp4_workload_catalogsource_image }}"
+ocp4_workload_authentication_keycloak_catalogsource_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
 # OIDC clients for Red Hat Developer Hub
 ocp4_workload_authentication_keycloak_backstage_client_secret: >-
@@ -271,19 +282,17 @@ __meta__:
     reportingLabels:
       primaryBU: Application_Developer
       secondaryBU: Hybrid_Platforms
-    # This item only provisions shared infrastructure.
-    # It would not be appropriate to order a workshop of this item.
-    workshopUiDisabled: true
+    multiuser: true
+    workshop_user_mode: multi
+    workshopUiDisabled: false
 
   components:
   - name: openshift-base
-    display_name: OpenShift Cluster
-    item: agd-v2/ocp-cluster-cnv-pools
+    display_name: OpenShift 5 Cluster (CNV Pools)
+    item: agd-v2/ocp5-cluster-cnv-pools
     parameter_values:
       cluster_size: multinode
-      host_ocp4_installer_version: "4.20"
-      ocp4_fips_enable: false
-    # Propagate agnosticd_user_info data set by this component to variables.
+      host_ocp4_installer_version: '5.0'
     propagate_provision_data:
     - name: openshift_api_ca_cert
       var: openshift_api_ca_cert
@@ -293,7 +302,6 @@ __meta__:
       var: openshift_api_key
     - name: openshift_cluster_admin_token
       var: openshift_cluster_admin_token
-    # Propagate bastion data for infra_add_bastion role
     - name: bastion_public_hostname
       var: bastion_ansible_host
     - name: bastion_ssh_user_name
@@ -302,7 +310,6 @@ __meta__:
       var: bastion_ansible_ssh_pass
     - name: bastion_ssh_port
       var: bastion_ansible_port
-    # Needed for scaling cluster with workers
     - name: sandbox_openshift_api_key
       var: sandbox_openshift_api_key
     - name: sandbox_openshift_api_url
