@@ -1,0 +1,238 @@
+---
+# This item is restricted to devs only.
+# It should be ordered by regular users using the Virtual CI
+# in the `published` directory.
+#include /includes/access-restriction-devs-only.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/parameters/litellm_metadata.yaml
+#include /includes/secrets/ocp5_workload_ols.yaml
+
+# -------------------------------------------------------------------
+# --- Catalog Item: Demo : OpenShift LightSpeed Demo (OCP5/CNV)
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticDv2 variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+num_users: 0
+
+# -------------------------------------------------------------------
+# Collections for this environment
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: main
+  - name: https://github.com/rhpds/ai_workloads.git
+    type: git
+    version: main
+  - name: https://github.com/rhpds/rhpds.openshift_lightspeed_demo.git
+    type: git
+    version: main
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+- agnosticd.core_workloads.ocp4_workload_openshift_virtualization
+- agnosticd.core_workloads.ocp4_workload_cluster_observability_operator
+- agnosticd.ai_workloads.ocp5_workload_ols
+- rhpds.openshift_lightspeed_demo.ocp4_workload_lightspeed_demo
+- agnosticd.core_workloads.ocp4_workload_web_terminal
+- agnosticd.core_workloads.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_virtualization
+# -------------------------------------------------------------------
+# No bastion VM in this config (cloud_provider: none) - skip virtctl install
+ocp4_workload_openshift_virtualization_install_virtctl: false
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_htpasswd
+# -------------------------------------------------------------------
+ocp4_workload_authentication_htpasswd_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: ""
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: ""
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_password_randomized: true
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_cluster_observability_operator
+# -------------------------------------------------------------------
+ocp4_workload_cluster_observability_operator_enable_monitoring_uiplugin: true
+ocp4_workload_cluster_observability_operator_enable_perses_datasource: true
+
+# -------------------------------------------------------------------
+# Workload: ocp5_workload_ols (OpenShift Lightspeed)
+# Classic OLS uses azure_sp backend.
+# Agentic OLS always uses MaaS (key provided automatically).
+# -------------------------------------------------------------------
+ocp5_workload_ols_provider: azure_sp
+
+# ponytail: catalog snapshot needed until lightspeed ships in redhat-operator-index:v5.0
+ocp5_workload_ols_use_catalog_snapshot: true
+ocp5_workload_ols_catalog_snapshot_image: quay.io/rhpds/olm_snapshot_redhat_catalog
+ocp5_workload_ols_catalog_snapshot_image_tag: v4.22_2026_10_05
+ocp5_workload_ols_catalogsource_name: redhat-operators-snapshot-lightspeed
+
+ocp5_workload_ols_agentic_provider: maas
+ocp5_workload_ols_agentic_maas_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+ocp5_workload_ols_agentic_api_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
+ocp5_workload_ols_agentic_operator_image: "quay.io/dialvare/agentic-operator-no-gate:latest"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_lightspeed_demo
+# -------------------------------------------------------------------
+ocp4_workload_lightspeed_demo_vm_namespace: lightspeed-demo
+ocp4_workload_lightspeed_demo_vm_name: rhel9-demo
+ocp4_workload_lightspeed_demo_vm_cpu_cores: 1
+ocp4_workload_lightspeed_demo_vm_memory: 2Gi
+ocp4_workload_lightspeed_demo_enable_rag: true
+ocp4_workload_lightspeed_demo_rag_image: 'quay.io/dialvare/acme-byok:latest'
+ocp4_workload_lightspeed_demo_create_broken_pod: true
+ocp4_workload_lightspeed_demo_create_troubleshooting_case: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/dialvare/showroom-openshift-lightspeed.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_only: true
+
+# -------------------------------------------------------------------
+# LiteLLM passthrough user data
+# -------------------------------------------------------------------
+litellm_passthrough_user_data:
+  litellm_api_base_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+  litellm_virtual_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
+  litellm_available_models: "{{ maas_sandbox.credentials[0].available_models }}"
+  litellm_key_duration: ""
+
+agnosticd_passthrough_user_data: |
+  {{ litellm_passthrough_user_data
+   | combine( {
+     "users": userdata })
+  }}
+
+# ===================================================================
+# Workloads to remove on destroy
+# ===================================================================
+remove_workloads:
+- agnosticd.ai_workloads.ocp5_workload_ols
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: e91c31d7-dc30-4d57-9b43-bcc3cdaecb76
+  owners:
+    maintainer:
+    - name: Nate Stephany
+      email: nstephan@redhat.com
+    sme:
+    - name: Diego Alvarez
+      email: dialvare@redhat.com
+
+  catalog:
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: OpenShift 5 Lightspeed Demo (CNV)
+    category: Demos
+    workshopUiDisabled: true
+    multiuser: false
+    keywords:
+    - ocp
+    - ocp5
+    - ols
+    - agentic
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Provider: RHDP
+      Product_Family: Red_Hat_Cloud
+    parameters:
+    - name: ocp5_workload_ols_enable_agentic
+      formLabel: Enable Agentic OpenShift Lightspeed
+      formGroup: Agentic OLS
+      description: >-
+        Deploy the Agentic OpenShift Lightspeed component on top of classic OLS.
+        The LLM API key is provided automatically via MaaS.
+      required: false
+      openAPIV3Schema:
+        type: boolean
+        default: false
+      components:
+      - name: current
+
+  components:
+  - name: openshift_base
+    display_name: OpenShift Cluster
+    item: agd-v2/ocp5-cluster-cnv-pools
+    parameter_values:
+      cluster_size: sno
+    propagate_provision_data:
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
+
+  sandboxes:
+  - kind: MaaSSandbox
+    cloud_selector:
+      purpose: production
+    models: "claude-sonnet-4-6"
+    var: maas_sandbox
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-09-15
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+
+  sandbox_api:
+    actions:
+      destroy:
+        # Allow remove_workloads to run before sandbox is destroyed
+        catch_all: false
