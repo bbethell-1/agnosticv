@@ -172,6 +172,67 @@ ocp4_workload_virtualization_boot_image_trim_disabled_images:
 - rhel10-image-cron
 
 # -------------------------------------------------------------------
+# Pre-pull agentic OLS images (dev only).
+#
+# Root cause (job_270971, cluster-drxms, 2026-10-08): lightspeed-rhokp's
+# image is 10.4GB and takes ~11m38s to cold-pull. lightspeed-service-api
+# blocks at startup waiting on RHOKP's Solr endpoint and gets killed by
+# its own livenessProbe every ~90s while the pull is in progress,
+# producing a restart loop. ocp5_workload_ols then fails the deployment
+# with ProgressDeadlineExceeded because its "wait for app-server
+# available" task hardcodes retries: 30 / delay: 20 (600s total) with no
+# override variable (confirmed in ai_workloads roles/ocp5_workload_ols/
+# tasks/deploy_agentic_ols.yaml) - even though the Deployment recovers
+# and goes Available on its own ~19-20 minutes after creation.
+#
+# Fix: pre-pull the three agentic OLS images via a new
+# ocp4_workload_image_prefetch role (deliver-openshift-ops-day#TBD)
+# before the race-prone Deployment is even created. Appended to
+# _base_workloads - the first group to run - rather than _ols_workloads
+# (which runs last, after virt/hcp/acm/gitops/devhub) so the pull has
+# the whole rest of the deployment as lead time, comfortably more than
+# the ~11m38s cold-pull observed.
+#
+# A plain DaemonSet is used instead of the kubernetes-imagepuller-operator
+# (community operator): this cluster has community-operators disabled at
+# the OperatorHub level (confirmed live on cluster-drxms - only
+# redhat-operators / redhat-operators-snapshot are enabled), the same
+# reason gitops/rhdh/ztwim/metallb above need pinned snapshot catalogs
+# instead of their default sources. A DaemonSet needs no operator/catalog
+# at all - the kubelet pulls each container's image before attempting to
+# start it, whether or not that container ever runs successfully.
+#
+# node_selector is overridden to {} (all nodes): this catalog item's CNV
+# cluster component is a compact multinode cluster with no
+# node-role.kubernetes.io/worker label on any node, and the worker
+# MachineConfigPool has zero machines (confirmed live on cluster-drxms:
+# only control-plane-cluster-drxms-1/2/3 exist) - a worker-only selector
+# would match zero nodes and the DaemonSet would never schedule.
+# -------------------------------------------------------------------
+_base_workloads: >-
+  {{
+    (
+      [
+        'deliver_openshift_ops_day.automation.ocp4_workload_cluster_cleanup_preflight',
+        'agnosticd.core_workloads.ocp4_workload_authentication',
+        'agnosticd.showroom.ocp4_workload_ocp_console_embed',
+        'agnosticd.showroom.ocp4_workload_showroom',
+        'deliver_openshift_ops_day.automation.ocp4_workload_days_ops_track',
+        'agnosticd.core_workloads.ocp4_workload_web_terminal',
+        'agnosticd.core_workloads.ocp4_workload_pipelines'
+      ] +
+      (['deliver_openshift_ops_day.automation.ocp4_workload_image_prefetch']
+        if (ocp5_workload_ols_enable_agentic | default(false) | bool) else [])
+    )
+  }}
+
+ocp4_workload_image_prefetch_node_selector: {}
+ocp4_workload_image_prefetch_images:
+- registry.redhat.io/offline-knowledge-portal/rhokp-rhel9@sha256:f46082f2dc2972582f3b85ed2a563b554d0aba3255ba2f00835e65f4929ae9a9
+- registry.redhat.io/openshift-lightspeed/lightspeed-service-api-rhel9@sha256:5c6426ec827b469a10a093ded2e9551e5f28d698ff4073ab474bb7d95e1c1694
+- registry.redhat.io/lightspeed-core/dataverse-exporter-rhel9@sha256:1c7ffaead23adfb1dc6bd3adfe75c80f284d6d31f13ca427d754703c78514cb2
+
+# -------------------------------------------------------------------
 # ocp5_workload_ols (dev only) - replaces ocp4_workload_ols from
 # common.yaml. Same Azure SP flow as the old role
 # (ocp4_workload_ols_get_token: true), just renamed: provider: azure_sp
