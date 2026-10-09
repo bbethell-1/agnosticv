@@ -19,6 +19,7 @@
 # Tags / Revisions
 # -------------------------------------------------------------------
 tag: main
+tag_showroom: v1.7.2
 
 # -------------------------------------------------------------------
 # Platform
@@ -56,7 +57,12 @@ requirements_content:
     - name: https://github.com/rhpds/rhpds.manage_host.git
       type: git
       version: "{{ tag }}"
-    - name: https://github.com/miteshget/ttt.git
+    # Showroom
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: "{{ tag_showroom }}"
+    # Ansible Automation
+    - name: https://github.com/rhpds/ansible-island-adventure.git#/automation/ansible
       type: git
       version: "{{ tag }}"
 
@@ -126,7 +132,9 @@ pre_software_workloads:
     - rhpds.manage_host.asset_injector
 post_software_workloads:
   localhost:
-    - rhpds.ttt.instructor_config
+    - ansible_island_adventure.automation.instructor_config
+    - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
+    - agnosticd.showroom.ocp4_workload_showroom
 
 # -------------------------------------------------------------------
 # Workload: host_satellite_repositories
@@ -215,6 +223,21 @@ agnosticv_importdata:
   ssh_username: "{{ student_name }}"
   ssh_password: "{{ common_password }}"
   guid: "{{ guid }}"
+  openshift_console_url: "https://console-openshift-console{{ openshift_cluster_ingress_domain }}"
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/ansible-island-adventure.git
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_content_antora_playbook: site.yml
+ocp4_workload_showroom_namespace: "showroom-{{ guid | default('00000') }}"
+
+# Enable Wetty and auto-SSH to bastion
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+# Dev Mode is overridden in dev.yaml
+ocp4_workload_showroom_antora_enable_dev_mode: "false"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -272,8 +295,8 @@ __meta__:
           type: string
           default: ""
       - name: openshift_cluster_common_password
-        description: Enter OpenShift Cluster Common Password
-        formLabel: OpenShift Cluster Common Password
+        description: Enter OpenShift Cluster Admin Password
+        formLabel: OpenShift Cluster Admin Password
         required: true
         openAPIV3Schema:
           type: string
