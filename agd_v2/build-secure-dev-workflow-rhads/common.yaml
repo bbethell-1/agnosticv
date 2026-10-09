@@ -9,13 +9,11 @@
 #include /includes/parameters/salesforce-id.yaml
 #include /includes/parameters/purpose.yaml
 # Auto-pass user email and catalog item name to LiteLLM for better tracking
-#include /includes/parameters/litellm_metadata.yaml
 #include /includes/secrets/demosat-rhel-9-10-latest.yaml
 #include /includes/secrets/rhods_git.yaml
 #include /includes/sandbox-api.yaml
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 #include /includes/access-restriction-rh1-2026-devs.yaml
-#include /includes/secrets/litemaas-master_api.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: Build Secure, Streamlined Developer Workflows with Red Hat Advanced Developer Suite
@@ -100,7 +98,6 @@ requirements_content:
     - name: https://github.com/rhpds/showroom.git
       type: git
       version: v1.3.9
-    # LiteLLM Virtual Keys Collection
     - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
       type: git
       version: "1.0.0"
@@ -119,7 +116,6 @@ workloads:
   - agnosticd.core_workloads.ocp4_workload_gitlab
   - rhpds.build_secured_dev_workflows.openshift_gitops
   - rhpds.ads.ocp4_workload_gitops_vault
-  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
   - rhpds.ads.ocp4_workload_openshift_devspaces
   - rhpds.build_secured_dev_workflows.trusted_profile_analyzer
   - rhpds.build_secured_dev_workflows.trusted_artifact_signer
@@ -128,18 +124,6 @@ workloads:
   - agnosticd.showroom.ocp4_workload_showroom
   - rhpds.build_secured_dev_workflows.rhads_validation
 
-remove_workloads:
-  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
-
-# -------------------------------------------------------------------
-# Workload: rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
-# -------------------------------------------------------------------
-ocp4_workload_litellm_virtual_keys_models:
-  - nomic-embed-text-v1-5
-  - granite-3-2-8b-instruct
-ocp4_workload_litellm_virtual_keys_duration: "3d"
-ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
-ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
 
 # -------------------------------------------------------------------
 # Workload: rhpds.ads.ocp4_workload_external_secrets
@@ -427,6 +411,19 @@ ocp4_workload_showroom_wetty_ssh_bastion_login: true
 # --- Student Workloads (YAML List)
 student_workloads: []
 
+litellm_api_base_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+litellm_virtual_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
+litellm_available_models: "{{  maas_sandbox.credentials[0].available_models }}"
+litellm_available_models_list: "{{ maas_sandbox.credentials[0].available_models | join(', ') }}"
+litellm_key_duration: ""
+
+agnosticd_passthrough_user_data:
+  litellm_api_base_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+  litellm_virtual_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
+  litellm_available_models: "{{  maas_sandbox.credentials[0].available_models }}"
+  litellm_available_models_list: "{{ maas_sandbox.credentials[0].available_models | join(', ') }}"
+  litellm_key_duration: ""
+
 # -------------------------------------------------------------------
 # Babylon meta variables
 # -------------------------------------------------------------------
@@ -434,6 +431,12 @@ __meta__:
   asset_uuid: 2E253FB4-45ED-42F7-A4A1-67320624B58D
   anarchy:
     namespace: babylon-anarchy-5
+  sandboxes:
+    - kind: MaaSSandbox
+      cloud_selector:
+        purpose: production
+      models: "nomic-embed-text-v1-5,granite-3-2-8b-instruct"
+      var: maas_sandbox
   components:
     - name: openshift
       display_name: OpenShift Cluster
