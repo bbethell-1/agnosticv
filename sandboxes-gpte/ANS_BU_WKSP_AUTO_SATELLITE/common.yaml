@@ -467,8 +467,13 @@ deploy_automationcontroller_manifest_url: "{{ controller_manifest.url }}"
 configure_automationcontroller: true
 controller_configuration_job_templates_secure_logging: false
 controller_configuration_credentials_secure_logging: false
-controller_configuration_async_retries: 60
-controller_configuration_async_delay: 5
+# Project-sync and CaC job waits were timing out at the default
+# 60 x 5s = 300s when controller job dispatch / content egress stalled
+# (observed in prod 2026-10-12: project-sync wait hit 451s vs the 300s
+# limit). Widen to 120 x 10s = 1200s so slow-but-working dispatch
+# completes instead of failing the provision. Applies to all stages.
+controller_configuration_async_retries: 120
+controller_configuration_async_delay: 10
 
 aap_auth:
   controller_host: "{{ groups['bastions'][0].split('.')[0] }}.{{ subdomain_base }}"
