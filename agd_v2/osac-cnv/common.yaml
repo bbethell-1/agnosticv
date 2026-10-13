@@ -1,14 +1,15 @@
 ---
 # -------------------------------------------------------------------
-# --- Catalog Item: Red Hat Cloud Extensions
+# --- Catalog Item: Red Hat cloud extensions
 # -------------------------------------------------------------------
-
-# Restrict to OSAC "interested parties" for now
-#include /includes/access-restriction-osac.yaml
 
 # -------------------------------------------------------------------
 # AgnosticV includes
 # -------------------------------------------------------------------
+# Restrict base CI to RHDP devs only
+# Order via published CI: published/rh-cloud-extensions
+#include /includes/access-restriction-devs-only.yaml
+
 #include /includes/agd-v2-mapping.yaml
 #include /includes/sandbox-api.yaml
 #include /includes/catalog-icon-openshift.yaml
@@ -82,12 +83,13 @@ networks:
 bastion_setup_student_user: true
 bastion_student_user_name: lab-user
 
-# Make sure the bastion has podman installed
+# Make sure the VMs have podman and virsh installed
 host_common_packages_extra:
 - podman
+- libvirt-client
 
 bastion_extra_networks:
-- "cluster"
+- cluster
 
 bastion_userdata: |
   #cloud-config
@@ -167,20 +169,28 @@ ai_attach_workers_networks:
 # Cluster sizing
 # -------------------------------------------------------------------
 
-# We need the following:
-# Control Plane:
-#   3x16 cores, 32Gi memory, 100Gi root disk
-#   =: 48 cores, 96Gi memory
-# Worker:
-#   5x64 cores, 128Gi memory
-#   5x512Gi root disk
-#   5x2048Gi extra disk
-#   =: 320 cores, 640Gi memory
-#   Root Disk: 5x512Gi=2560Gi
-#   Extra Disk: 5x2048Gi=10240Gi
-#   All Disks: 2560Gi+10240Gi=12800Gi
-#   Safety for Control Plane Disks: 3x256Gi=768Gi
-#   Total Storage: 12800Gi+768Gi=13568Gi
+# Resource requirements (max 5 workers):
+#
+# CPU (cores x sockets = vCPUs per pod):
+#   Bastion:       1x  2 cores x 1 socket  =    2 vCPUs
+#   Control Plane: 3x 16 cores x 1 socket  =   48 vCPUs
+#   Workers:       5x 64 cores x 2 sockets =  640 vCPUs
+#   Total CPU:                                 690 vCPUs
+#
+# Memory (guest + ~2x KubeVirt pod overhead):
+#   Bastion:       1x   2Gi guest ~    4Gi pod
+#   Control Plane: 3x  32Gi guest ~  198Gi pod
+#   Workers:       5x 128Gi guest ~ 1293Gi pod (~258Gi each)
+#   Total Memory:                  ~ 1495Gi
+#
+# Storage:
+#   Bastion:          1x  30Gi                =   30Gi
+#   Control Plane:    3x 256Gi (root+cdrom)   =  768Gi
+#   Workers root:     5x 512Gi               = 2560Gi
+#   Workers extra:    5x1024Gi               = 5120Gi
+#   Workers cdroms:   5x   1Gi               =    5Gi
+#   Installation ISO:    ~  1Gi               =    1Gi
+#   Total Storage:                            ~ 8484Gi
 
 # Control plane configuration
 control_plane_instance_count: 3
@@ -207,19 +217,12 @@ ai_workers_extra_disks:
       volumeMode: Block
       resources:
         requests:
-          storage: 2048Gi
-# - metadata:
-#     name: sdc-INSTANCENAME
-#   spec:
-#     source:
-#       blank: {}
-#     pvc:
-#       accessModes:
-#       - ReadWriteMany
-#       volumeMode: Block
-#       resources:
-#         requests:
-#           storage: 2048Gi
+          storage: 1024Gi
+
+# Wait for workers to be ready. Necessary for big worker nodes with big Datavolumes
+# 40 retries at 15 seconds went down to 0 before succeeding. Adding margin of error.
+ai_workers_wait_retries: 50
+ai_workers_wait_delay: 15
 
 # ===================================================================
 # Workloads
@@ -284,10 +287,8 @@ ocp4_workload_nmstate_use_catalog_snapshot: false
 ocp4_workload_osac_helm_mirror: https://mirror.openshift.com/pub/openshift-v4/clients
 ocp4_workload_osac_helm_version: "3.21.2"
 
-ocp4_workload_osac_cli_url: https://github.com/osac-project/osac/releases/download/fulfillment-service%2Fv0.0.99/osac_Linux_x86_64
-
+# Releases are specified in dev.yaml and prod.yaml
 ocp4_workload_osac_repo: https://github.com/osac-project/osac.git
-ocp4_workload_osac_repo_version: "osac/v0.0.10"
 ocp4_workload_osac_installer_directory: osac/osac-installer
 
 # OSAC namespace
@@ -299,13 +300,6 @@ ocp4_workload_osac_bmf_enabled: false
 
 # OSAC UI image tag (empty = use version from the repo)
 ocp4_workload_osac_ui_image_tag: ""
-
-# ocp4_workload_osac_cluster_versions:
-# - version: "4.20.0"
-#   image: "quay.io/openshift-release-dev/ocp-release:4.20.0-multi"
-# - version: "4.22.0"
-#   image: "quay.io/openshift-release-dev/ocp-release:4.22.0-multi"
-#   default: true
 
 # Set passwords to be able to run more than once (otherwise they will be generated again)
 ocp4_workload_osac_admin_user: osac-admin
@@ -487,7 +481,7 @@ __meta__:
       prefix: cluster
     cloud_selector:
       provider: ddns
-      domain: "dyn.redhatworkshops.io"
+      domain: dyn.redhatworkshops.io
     var: dns_sandbox
   - kind: SSLSandbox
     cloud_selector:
@@ -501,8 +495,8 @@ __meta__:
       name: ocpv01
       virt: "yes"
     quota:
-      requests.storage: "14000Gi"
-      limits.cpu: '999'
-      requests.cpu: '999'
-      limits.memory: 2500Gi
-      requests.memory: 2500Gi
+      requests.storage: 9500Gi
+      limits.cpu: "800"
+      requests.cpu: "800"
+      limits.memory: 1800Gi
+      requests.memory: 1800Gi

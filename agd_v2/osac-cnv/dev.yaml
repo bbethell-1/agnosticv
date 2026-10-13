@@ -1,9 +1,84 @@
 ---
 # -------------------------------------------------------------------
+# Create a VM to host "BM" hosts
+# -------------------------------------------------------------------
+bmf_instance_image: "{{ bastion_instance_image }}"
+bmf_memory: 128Gi
+bmf_cores: "32"
+bmf_rootfs_size: 512Gi
+bmf_userdata: "{{ bastion_userdata }}"
+bmf_networks: "{{ bastion_networks }}"
+bmf_networkdata: |
+  network:
+    version: 2
+    ethernets:
+      eth0:
+        dhcp4: yes
+      eth1:
+        dhcp4: no
+        addresses:
+          - 10.10.10.2/24
+
+instances:
+- name: bastion
+  count: 1
+  unique: true
+  alt_name: bastion
+  memory: "{{ bastion_memory }}"
+  cores: "{{ bastion_cores }}"
+  image_size: "{{ bastion_rootfs_size }}"
+  image: "{{ bastion_instance_image }}"
+  networkdata: "{{ bastion_networkdata | default('network: 2') }}"
+  userdata: "{{ bastion_userdata | default('') }}"
+  metadata:
+  - AnsibleGroup: bastions
+  - function: bastion
+  - user: "{{ bastion_student_user_name }}"
+  - project: "{{ project_tag }}"
+  - ostype: linux
+  - Purpose: "{{ purpose }}"
+  tags:
+  - key: AnsibleGroup
+    value: bastions
+  - key: ostype
+    value: linux
+  - key: instance_filter
+    value: "{{ config }}-{{ guid }}"
+  networks: "{{ bastion_networks }}"
+
+- name: bmf
+  count: 1
+  unique: true
+  alt_name: bmf
+  memory: "{{ bmf_memory }}"
+  cores: "{{ bmf_cores }}"
+  image_size: "{{ bmf_rootfs_size }}"
+  image: "{{ bmf_instance_image }}"
+  networkdata: "{{ bmf_networkdata | default('network: 2') }}"
+  userdata: "{{ bmf_userdata | default('') }}"
+  metadata:
+  - AnsibleGroup: bmf
+  - user: "{{ bastion_student_user_name }}"
+  - project: "{{ project_tag }}"
+  - ostype: linux
+  - Purpose: "{{ purpose }}"
+  tags:
+  - key: AnsibleGroup
+    value: bmf
+  - key: ostype
+    value: linux
+  - key: instance_filter
+    value: "{{ config }}-{{ guid }}"
+  networks: "{{ bmf_networks }}"
+
+# -------------------------------------------------------------------
 # Workload: ocp4_workload_osac
 # -------------------------------------------------------------------
-ocp4_workload_osac_cli_url: https://github.com/osac-project/osac/releases/download/fulfillment-service%2Fv0.0.112/osac_Linux_x86_64
-ocp4_workload_osac_repo_version: osac/v0.0.22
+ocp4_workload_osac_cli_url: https://github.com/osac-project/osac/releases/download/fulfillment-service%2Fv0.0.117/osac_Linux_x86_64
+ocp4_workload_osac_repo_version: osac-release/v0.0.27
+
+# BMF (Bare Metal Fulfillment) operator - requires a real bare-metal backend (BCM or Metal3)
+ocp4_workload_osac_bmf_enabled: true
 
 # -------------------------------------------------------------------
 # Workload: ocp4_workload_showroom
@@ -16,5 +91,3 @@ ocp4_workload_showroom_antora_enable_dev_mode: "true"
 __meta__:
   deployer:
     scm_ref: main
-    execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2026-09-15
