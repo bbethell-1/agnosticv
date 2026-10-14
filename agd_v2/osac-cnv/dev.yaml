@@ -1,20 +1,82 @@
 ---
 # -------------------------------------------------------------------
+# Bastion settings
+# -------------------------------------------------------------------
+# The KubeVirt guests expose the default and secondary NICs as enp1s0/enp2s0.
+# Override the base bastion cloud-init so network configuration and forwarding
+# rules target the actual guest interface names.
+bastion_userdata: |
+  #cloud-config
+  write_files:
+    - path: /etc/sysctl.d/99-ip-forwarding.conf
+      content: |
+        net.ipv4.ip_forward=1
+
+    - path: /etc/nftables/ruleset.nft
+      content: |
+        table inet nat {
+          chain postrouting {
+            type nat hook postrouting priority 100; policy accept;
+            oifname "enp1s0" masquerade
+          }
+        }
+
+        table inet filter {
+          chain forward {
+            type filter hook forward priority 0; policy drop;
+            iifname "enp2s0" oifname "enp1s0" accept
+            iifname "enp1s0" oifname "enp2s0" ct state related,established accept
+          }
+        }
+
+    - path: /etc/systemd/system/nftables-restore.service
+      content: |
+        [Unit]
+        Description=Restore nftables rules
+        After=network.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/bin/bash -c 'while [ ! -x /usr/sbin/nft ]; do sleep 2; done; /usr/sbin/nft -f /etc/nftables/ruleset.nft'
+        RemainAfterExit=yes
+
+        [Install]
+        WantedBy=multi-user.target
+
+  runcmd:
+    - sysctl --system
+    - systemctl daemon-reload
+    - systemctl enable --now nftables-restore.service
+
+bastion_networkdata: |
+  network:
+    version: 2
+    ethernets:
+      enp1s0:
+        dhcp4: yes
+      enp2s0:
+        dhcp4: no
+        addresses:
+          - 10.10.10.1/24
+
+
+# -------------------------------------------------------------------
 # Create a VM to host "BM" hosts
 # -------------------------------------------------------------------
 bmf_instance_image: "{{ bastion_instance_image }}"
 bmf_memory: 128Gi
 bmf_cores: "32"
 bmf_rootfs_size: 512Gi
+
 bmf_userdata: "{{ bastion_userdata }}"
 bmf_networks: "{{ bastion_networks }}"
 bmf_networkdata: |
   network:
     version: 2
     ethernets:
-      eth0:
+      enp1s0:
         dhcp4: yes
-      eth1:
+      enp2s0:
         dhcp4: no
         addresses:
           - 10.10.10.2/24
