@@ -42,7 +42,7 @@ platform: rhpds
 # -------------------------------------------------------------------
 openshift_aws_scale_cluster: false
 openshift_cnv_scale_cluster: false   # must be explicitly false (default is true)
-aws_region: us-east-2
+aws_region: ap-northeast-1
 
 # -------------------------------------------------------------------
 # Common Password
@@ -62,7 +62,7 @@ requirements_content:
       version: main
     - name: https://github.com/rhpds/showroom.git
       type: git
-      version: v1.7.2
+      version: v1.8.0
     - name: https://github.com/rhpds/ai_workloads.git
       type: git
       version: "{{ tag }}"
@@ -77,26 +77,17 @@ openshift_cluster_admin_service_account_enable: true
 openshift_cluster_show_access_user_info: true
 
 
-# -----------------------------------------------------------------
-# Single user — per-student topology
-# -----------------------------------------------------------------
-num_users: 1
-user_count: 1
-student_name: "lab-user"
-common_user_password: "{{ (guid[:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-common_admin_password: "{{ (guid[::-1][:5] | hash('md5') | int(base=16) | b64encode)[:8] }}"
-common_admin_username: admin
-
 # -------------------------------------------------------------------
 # Workloads
 # -------------------------------------------------------------------
 workloads:
-  - agnosticd.ai_workloads.ocp4_workload_openshift_ai
   - agnosticd.core_workloads.ocp4_workload_openshift_gitops
   - agnosticd.core_workloads.ocp4_workload_machinesets
-  - agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+  - agnosticd.core_workloads.ocp4_workload_authentication
+  - agnosticd.core_workloads.ocp4_workload_nfd
+  - agnosticd.ai_workloads.ocp4_workload_nvidia_gpu_operator
+  - agnosticd.ai_workloads.ocp4_workload_openshift_ai
   - agnosticd.showroom.ocp4_workload_ocp_console_embed
-  - agnosticd.core_workloads.ocp4_workload_showroom
 
 # -----------------------------------------------------------------
 # Workload config
@@ -113,7 +104,7 @@ ocp4_workload_openshift_ai_dashboard: Managed
 ocp4_workload_openshift_ai_datasciencepipelines: Managed
 ocp4_workload_openshift_ai_workbenches: Managed
 ocp4_workload_openshift_ai_modelmeshserving: Managed
-ocp4_workload_openshift_ai_kserve: Removed
+ocp4_workload_openshift_ai_kserve: Managed
 ocp4_workload_openshift_ai_ray: Removed
 ocp4_workload_openshift_ai_trustyai: Removed
 ocp4_workload_openshift_ai_trainingoperator: Removed
@@ -153,10 +144,10 @@ ocp4_workload_openshift_gitops_rbac_policy: |
 ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
 
 # -----------------------------------------------------------------
-# GPU Machineset — g6.2xlarge (NVIDIA L4 24 GB)
+# GPU Machineset — g6e.12xlarge (NVIDIA L40S 48 GB)
 # -----------------------------------------------------------------
 ocp4_workload_machinesets_wait_for_nodes: true
-gpu_instance_type: g6.2xlarge
+gpu_instance_type: g6e.12xlarge
 
 ocp4_workload_machinesets_machineset_groups:
   - name: worker-gpu-machineset
@@ -169,37 +160,15 @@ ocp4_workload_machinesets_machineset_groups:
     root_volume_size: "500"
     taints:
       - key: nvidia.com/gpu
-        value: l4-gpu
+        value: l40s-gpu
         effect: NoSchedule
 
 # -------------------------------------------------------------------
-# agnosticd.core_workloads.ocp4_workload_authentication_keycloak
+# agnosticd.core_workloads.ocp4_workload_authentication
 # -------------------------------------------------------------------
-ocp4_workload_authentication_keycloak_namespace: keycloak
-ocp4_workload_authentication_keycloak_channel: stable-v26.2
-ocp4_workload_authentication_keycloak_automatic_install_plan_approval: true
-ocp4_workload_authentication_keycloak_admin_create: true
-ocp4_workload_authentication_keycloak_use_catalog_source: false
-ocp4_workload_authentication_keycloak_num_users: "{{ num_users }}"
-ocp4_workload_authentication_keycloak_admin_username: "{{ common_admin_username }}"
-ocp4_workload_authentication_keycloak_admin_password: "{{ common_admin_password }}"
-ocp4_workload_authentication_keycloak_user_username_base: "{{ student_name }}"
-ocp4_workload_authentication_keycloak_user_password: "{{ common_user_password }}"
-ocp4_workload_authentication_keycloak_remove_kubeadmin: true
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
 
-
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_showroom
-# -------------------------------------------------------------------
-ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/agent-antipatterns-lab
-ocp4_workload_showroom_content_git_repo_ref: main
-ocp4_workload_showroom_terminal_type: wetty
-ocp4_workload_showroom_wetty_ssh_bastion_login: true
-ocp4_workload_showroom_passthrough_user_data: true
-ocp4_workload_showroom_runtime_automation_enable: true
-ocp4_workload_showroom_runtime_automation_cluster_admin: true
-ocp4_workload_showroom_openshift_api_url: "{{ openshift_api_url }}"
-ocp4_workload_showroom_openshift_api_token: "{{ openshift_cluster_admin_token }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -214,7 +183,7 @@ __meta__:
         cluster_size: multinode
         host_ocp4_installer_version: "4.22"
         agnosticd_open_environment: false
-        aws_region: us-east-2
+        aws_region: ap-northeast-1
       propagate_provision_data:
         - name: openshift_api_ca_cert
           var: openshift_api_ca_cert
@@ -257,11 +226,15 @@ __meta__:
     execution_environment:
       image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
       pull: missing
-
+    actions:
+      status:
+        disable: true
+      update:
+        disable: true
 
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
-    display_name: "LB8000: Four Ways Your Agent can Break"
+    display_name: "LB8000: Four Ways Your Agent can Break - Cluster"
     category: Brand_Events
     keywords:
       - openshift ai

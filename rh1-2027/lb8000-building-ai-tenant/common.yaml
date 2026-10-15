@@ -1,0 +1,216 @@
+# -------------------------------------------------------------------
+# --- Catalog Item: LB8000 - Building AI Agents (Tenant)
+# --- Per-tenant provisioning for LB8000
+# -------------------------------------------------------------------
+---
+
+#include /includes/access-restriction-devs-only.yaml
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/litellm_metadata.yaml
+
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/secrets/ai-quickstart-hugging-face-token.yaml
+#include /includes/secrets/ai-quickstart-tavily-token.yaml
+
+# -------------------------------------------------------------------
+# Mandatory Variables
+# -------------------------------------------------------------------
+config: namespace
+cloud_provider: none
+
+# -------------------------------------------------------------------
+# TenantCluster sandbox var remapping
+# The sandbox provides openshift_cluster_admin_token (via deployer_admin_sa_token_target_var).
+# namespaced_workloads roles expect cluster_admin_agnosticd_sa_token.
+# -------------------------------------------------------------------
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+cluster_admin_agnosticd_sa_token: "{{ openshift_cluster_admin_token }}"
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/namespaced_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+
+    # Showroom
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: v1.8.0
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.showroom.ocp4_workload_showroom
+
+remove_workloads:
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+  - agnosticd.showroom.ocp4_workload_showroom
+
+# ===================================================================
+# Common
+# ===================================================================
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+# ===================================================================
+# Workload: ocp4_workload_tenant_keycloak_user
+# ===================================================================
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_namespace: keycloak
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+
+# ===================================================================
+# Workload: ocp4_workload_tenant_namespace
+# ===================================================================
+ocp4_workload_tenant_namespace_username: "user-{{ guid }}"
+ocp4_workload_tenant_namespace_use_cluster_quota: true
+ocp4_workload_tenant_namespace_suffixes:
+  - suffix: rag
+
+# Total resource pool shared across all tenant namespaces via CRQ.
+# Adjust to match your workload's expected resource consumption.
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "40"
+  requests.cpu: "40"
+  limits.memory: 64Gi
+  requests.memory: 64Gi
+  requests.storage: 100Gi
+
+# LimitRange applied to every namespace.
+# Sets container defaults for pods that don't specify resource requests/limits.
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: "2"
+    memory: 4Gi
+  defaultRequest:
+    cpu: 100m
+    memory: 256Mi
+
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_bootstrap
+#
+# Deploys a per-tenant ArgoCD bootstrap Application.
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-{{ guid }}"
+ocp4_workload_gitops_bootstrap_repo_path: "tenant/bootstrap"
+ocp4_workload_gitops_bootstrap_application_project: tenants
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/agent-antipatterns-lab.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_helm_values:
+  tenant:
+    name: "{{ guid }}"
+    user:
+      name: "{{ ocp4_workload_tenant_keycloak_username }}"
+      password: "{{ common_password }}"
+
+ocp4_workload_openshift_gitops_ignore_differences:
+  resourceIdentifiers:
+    - group: kubeflow.org
+      kind: Notebook
+      customization:
+        jqPathExpressions:
+          - '.spec.template.spec.containers[] | select(.name == "kube-rbac-proxy")'
+          - '.spec.template.spec.containers[].env[]? | select(.name | test("^(MLFLOW_K8S_INTEGRATION|MLFLOW_TRACKING_AUTH|MLFLOW_TRACKING_URI|PIP_CERT|REQUESTS_CA_BUNDLE|SSL_CERT_FILE|PIPELINES_SSL_SA_CERTS|KF_PIPELINES_SSL_SA_CERTS|GIT_SSL_CAINFO)$"))'
+          - '.spec.template.spec.containers[].volumeMounts[]? | select(.name == "trusted-ca" or .name == "runtime-images")'
+          - '.spec.template.spec.volumes[]? | select(.name | test("^(trusted-ca|runtime-images|kube-rbac-proxy-config|kube-rbac-proxy-tls-certificates)$"))'
+          - '.spec.template.spec.serviceAccountName'
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/agent-antipatterns-lab
+ocp4_workload_showroom_content_git_repo_ref: main
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+ocp4_workload_showroom_passthrough_user_data: true
+ocp4_workload_showroom_runtime_automation_enable: true
+ocp4_workload_showroom_runtime_automation_cluster_admin: true
+ocp4_workload_showroom_openshift_api_url: "{{ openshift_api_url }}"
+ocp4_workload_showroom_openshift_api_token: "{{ openshift_cluster_admin_token }}"
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: b41987aa-80e6-4be8-b2c2-774ee0a3043e
+  owners:
+    maintainer:
+      - name: David Williams
+        email: davidwil@redhat.com
+      - name: Hunter Gerlach
+        email: hgerlach@redhat.com
+      - name: Ishu Verma
+        email: iverma@redhat.com
+
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+
+  catalog:
+    display_name: "LB8000: Four Ways Your Agent can Break"
+    category: Labs
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    keywords:
+      - openshift
+      - quickstart
+      - ai
+      - rh1
+    labels:
+      Provider: RHDP
+      Product: Red_Hat_OpenShift_AI
+      Product_Family: Red_Hat_AI
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    workshopLabUiRedirect: true
+    multiuser: true
+    parameters: []
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: false
+      status:
+        disable: true
+      stop:
+        disable: false
+      update:
+        disable: true
+
+  sandboxes:
+    - kind: OcpSandbox
+      no_namespace: true
+      tenant_cluster:
+        item: rh1-2027/lb8000-building-ai-cluster
