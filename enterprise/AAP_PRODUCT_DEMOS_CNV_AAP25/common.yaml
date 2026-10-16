@@ -8,10 +8,6 @@
 #include /enterprise/includes/lifetime-standard.yaml
 #include /enterprise/includes/parameters/purpose.yaml
 
-# Include AgnosticV Parameters
-#include /includes/parameters/enable-cert-manager.yaml
-#include /includes/parameters/litellm_metadata.yaml
-
 # Include AgnosticV secrets
 #include /includes/secrets/demosat-rhel-9.3-ansible-2.4.yaml
 #include /includes/secrets/ansible-tower-advanced-2.yaml
@@ -19,7 +15,6 @@
 #include /includes/secrets/ocp4_ai_offline_token.yaml
 #include /includes/secrets/dynamic-dns.yaml
 #include /includes/secrets/acme-bifrost.yaml
-#include /includes/secrets/litemaas-master_api.yaml
 
 # -------------------------------------------------------------------
 # --- Catalog Item: "Ansible Product Demos"
@@ -41,7 +36,7 @@ openshift_cnv_scale_cluster: false
 worker_instance_count: 0
 ai_workers_cores: 16
 ai_workers_memory: 64Gi
-
+ocp4_workload_cert_manager_install_ingress_certificates: true
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
@@ -65,14 +60,6 @@ requirements_content:
       version: v0.0.9
     # Core OpenShift Workloads
     - name: https://github.com/rhpds/core_workloads.git
-      type: git
-      version: "{{ tag }}"
-    # MaaS
-    - name: "https://github.com/rhpds/rhpds.litellm_virtual_keys.git"
-      type: git
-      version: "1.3.2"
-    # AI Workloads
-    - name: https://github.com/rhpds/ai_workloads.git
       type: git
       version: "{{ tag }}"
     - name: https://github.com/rhpds/cloud_vm_workloads.git
@@ -107,25 +94,10 @@ requirements_content:
 # List of workloads to be deployed
 # -------------------------------------------------------------------
 workloads:
-  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
   - agnosticd.core_workloads.ocp4_workload_ansible_automation_platform
   - rhpds.manage_host.ocp4_workload_bastion_ssh_keygen
   - infra.aap_configuration.dispatch
   - agnosticd.cloud_vm_workloads.agnosticv_userdata_import
-
-# -------------------------------------------------------------------
-# Workshop:
-# rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
-# -------------------------------------------------------------------
-# Build model list based on checkbox selections
-ocp4_workload_litellm_virtual_keys_models:
-  - "{{ list_of_litellm_virtual_keys_models }}"
-# Duration selected by user
-ocp4_workload_litellm_virtual_keys_duration: "{{ litellm_duration | default('3d') }}"
-
-# Enable user.info messages and data
-ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
-ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
 
 # -------------------------------------------------------------------
 # Workload: >-
@@ -338,6 +310,12 @@ agnosticv_importdata:
   ssh_command: >-
     ssh {{ bastion_ansible_user }}@{{ bastion_ansible_host }} -p {{ bastion_ansible_port }}
   ssh_provision_pubkey: "{{ bastion_ssh_public_key }}"
+  litellm_api_endpoint: "{{ maas_sandbox.credentials[0].api_endpoint }}"
+  litellm_api_base_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+  # litellm_available_models_list: "{{ maas_sandbox.credentials[0].available_models }}"
+  litellm_available_models_list: "qwen3-235b"
+  litellm_key_alias: "{{ maas_sandbox.credentials[0].key_alias }}"
+  litellm_virtual_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
 
 # -------------------------------------------------------------------
 # Babylon meta variables
@@ -369,27 +347,6 @@ __meta__:
       Product_Family: Red_Hat_Automation
       SLA: Featured
     parameters:
-      - name: list_of_litellm_virtual_keys_models
-        formLabel: Select Model
-        formGroup: MaaS
-        openAPIV3Schema:
-          default: "qwen3-235b"
-          type: string
-          enum:
-            - "qwen3-14b"
-            - "qwen3-235b"
-      - name: litellm_duration
-        formLabel: Select Key Duration
-        formGroup: MaaS
-        openAPIV3Schema:
-          default: "3d"
-          type: string
-          enum:
-            - "1d"
-            - "2d"
-            - "3d"
-            - "4d"
-            - "5d"
       - name: ocp4_workload_ansible_automation_platform_operator_channel
         formLabel: AAP Version
         openAPIV3Schema:
