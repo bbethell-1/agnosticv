@@ -528,8 +528,8 @@ gateway_settings:
 
 
 controller_credential_types:
-  - name: AO webhooks
-    description: AO webhooks
+  - name: AO webhooks (Solutions)
+    description: AO service account for the pre-built solutions workflows
     kind: cloud
     inputs:
       fields:
@@ -549,12 +549,32 @@ controller_credential_types:
     injectors:
       env:
         AO_BASE_URL: '{  { base_url }}'
-        AO_CLIENT_ID: '{  { client_id }}'
-        AO_CLIENT_SECRET: '{  { client_secret }}'
-      extra_vars:
-        ao_base_url: '{  { base_url }}'
-        ao_client_id: '{  { client_id }}'
-        ao_client_secret: '{  { client_secret }}'
+        AO_SOLUTIONS_CLIENT_ID: '{  { client_id }}'
+        AO_SOLUTIONS_CLIENT_SECRET: '{  { client_secret }}'
+
+  - name: AO webhooks (Student)
+    description: AO service account for the workflows the student builds
+    kind: cloud
+    inputs:
+      fields:
+        - id: client_id
+          type: string
+          label: Client ID
+        - id: client_secret
+          type: string
+          label: Client Secret
+          secret: true
+        - id: base_url
+          type: string
+          label: AO Base URL
+      required:
+        - client_id
+        - client_secret
+    injectors:
+      env:
+        AO_BASE_URL: '{  { base_url }}'
+        AO_STUDENT_CLIENT_ID: '{  { client_id }}'
+        AO_STUDENT_CLIENT_SECRET: '{  { client_secret }}'
 
   - name: OpenFlake
     description: OpenFlake instance and admin login
@@ -671,13 +691,20 @@ controller_credentials:
       verify_ssl: false
     state: present
 
-  - name: "Automation Orchestrator"
-    # client_id/client_secret are placeholders. The
-    # ocp4_workload_automation_orchestrator_config workload mints an AO
-    # service account later in the run and PATCHes the real pair in.
-    description: "AO service account -- client_id/client_secret set by AgnosticD"
+  - name: "Automation Orchestrator (Solutions)"
+    description: "AO solutions service account -- client_id/client_secret set by AgnosticD"
     organization: Default
-    credential_type: "AO webhooks"
+    credential_type: "AO webhooks (Solutions)"
+    inputs:
+      base_url: "{{ lookup('agnosticd.core.agnosticd_user_data', 'ao_url') }}"
+      client_id: REPLACE_ME
+      client_secret: REPLACE_ME
+    state: present
+
+  - name: "Automation Orchestrator (Student)"
+    description: "AO student service account -- client_id/client_secret set by AgnosticD"
+    organization: Default
+    credential_type: "AO webhooks (Student)"
     inputs:
       base_url: "{{ lookup('agnosticd.core.agnosticd_user_data', 'ao_url') }}"
       client_id: REPLACE_ME
@@ -844,7 +871,8 @@ controller_templates:
     playbook: "automation/ansible/playbooks/lab-setup/ticket-enrichment/openflake-incident-simulate.yml"
     limit: "node1,localhost"
     credentials:
-      - "Automation Orchestrator"
+      - "Automation Orchestrator (Solutions)"
+      - "Automation Orchestrator (Student)"
       - "OpenFlake"
       - "OpenShift"
       - "Workshop Credential"
@@ -863,6 +891,76 @@ controller_templates:
             - auto_remediate
             - needs_approval
             - inform_only
+        - question_name: "Which workflow should this fire?"
+          question_description: >-
+            solutions runs the pre-built workflow, which exists from
+            provision time. student runs the one you build in module
+            03 on the student-openflake-incident path — it 404s until
+            you have built and published it.
+          variable: webhook_target
+          type: multiplechoice
+          required: true
+          default: "student - the workflow I built"
+          choices:
+            - "student - the workflow I built"
+            - "solutions - the pre-built workflow"
+    state: present
+
+  # Module 03. The workflow the student builds by hand sends three
+  # motd_* extra vars, so ask_variables_on_launch must stay true or
+  # AAP discards them and the banner renders the playbook defaults
+  # with nothing failing.
+  - name: "Linux - Set Message of the Day"
+    organization: Default
+    job_type: run
+    inventory: "Workshop Inventory"
+    project: "Lab Setup"
+    playbook: "automation/ansible/playbooks/lab-setup/message-of-the-day/set_motd.yml"
+    limit: "node1,node2"
+    ask_variables_on_launch: true
+    credentials:
+      - "Workshop Credential"
+    state: present
+
+  - name: "Disk Utilization Simulate Alert"
+    organization: Default
+    job_type: run
+    inventory: "Workshop Inventory"
+    project: "Lab Setup"
+    playbook: "automation/ansible/playbooks/lab-setup/disk-utilization/disk_fill_simulate.yml"
+    limit: "node2,localhost"
+    credentials:
+      - "Automation Orchestrator (Solutions)"
+      - "Automation Orchestrator (Student)"
+      - "Workshop Credential"
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: ""
+      spec:
+        - question_name: "How full should the disk be?"
+          question_description: ""
+          variable: disk_fill_target
+          type: multiplechoice
+          required: true
+          default: "50% - healthy, no remediation"
+          choices:
+            - "50% - healthy, no remediation"
+            - "85% - warning, triggers log cleanup"
+            - "97% - critical, triggers volume expansion"
+            - "0% - reset, clear the ballast and fire nothing"
+        - question_name: "Which workflow should this fire?"
+          question_description: >-
+            solutions runs the pre-built workflow, which exists from
+            provision time. student runs the one you build in module
+            03 on the student-disk-utilization path.
+          variable: webhook_target
+          type: multiplechoice
+          required: true
+          default: "student - the workflow I built"
+          choices:
+            - "student - the workflow I built"
+            - "solutions - the pre-built workflow"
     state: present
 
   - name: "Disk Utilization Check"
