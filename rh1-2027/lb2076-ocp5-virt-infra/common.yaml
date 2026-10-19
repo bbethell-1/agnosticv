@@ -1,38 +1,6 @@
 ---
 # ===================================================================
 # Catalog Item: LB2076 - OpenShift 5 Virtualization Lab
-#
-# Migrated from AgnosticD v1 (self-installing OCP via assisted-installer
-# with a flat `infra_workloads` list) to AgnosticD v2.
-#
-# The OpenShift cluster is now provided PRE-PROVISIONED from a CNV pool
-# (agd-v2/ocp5-cluster-cnv-pools, see __meta__.components). That pool
-# already installs External ODF (Ceph + NooBaa) and cert-manager
-# (with dynamic-dns + acme certs), so this config:
-#   - sets cloud_provider: none and config: openshift-workloads
-#   - connects to the pool cluster via `clusters:`
-#   - scales workers with openshift_cnv_scale_cluster
-#   - only deploys the workloads that sit ON TOP of the base cluster
-#
-# Dropped vs v1 (now provided by the pool):
-#   - ocp4_workload_external_odf
-#   - ocp4_workload_cert_manager
-#   - the self-install bastion/networking, OcpSandbox/DNSSandbox/SSLSandbox
-#
-# Roles not (yet) available in AgnosticD v2 are carried in this project's
-# own collection `ocp5_virt_rh1.automation` (repo rhpds/ocp5-virt-rh1,
-# collection at automation/ansible):
-#   - ocp4_workload_oadp_gitops
-#   - ocp4_workload_virt_roadshow_vms
-#   - ocp4_workload_virt_roadshow_fvmw
-#   - ocp4_workload_virt_roadshow_multi_user
-#
-# NOTE:
-#   * OpenShift 5 preview stream: the live 5.0 catalogs are incomplete, so the
-#     OLM operators install from a pinned 4.22 redhat-operators catalog snapshot
-#     (ocp4_workload_catalogsource_image/tag = v4.22_2026_08_03, the tag used by
-#     the sibling OCP5 CIs lb1858 + security-roadshow-ocp5-cnv). OpenShift
-#     Virtualization is the exception: it runs on the LIVE 5.0 catalog.
 # ===================================================================
 
 # -------------------------------------------------------------------
@@ -46,7 +14,7 @@
 
 #include /includes/parameters/purpose.yaml
 
-#include /includes/secrets/ocp5_workload_ols.yaml
+#include /includes/secrets/litemaas-master_api.yaml
 
 # Required by openshift_cnv_scale_cluster (host_ocp4_assisted_scale)
 #include /includes/secrets/ocp4_ai_offline_token.yaml
@@ -98,6 +66,9 @@ requirements_content:
   - name: https://github.com/rhpds/ai_workloads.git
     type: git
     version: "{{ tag }}"
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "{{ tag }}"
   - name: https://github.com/rhpds/showroom.git
     type: git
     version: "{{ tag_showroom }}"
@@ -116,6 +87,7 @@ ocp4_workload_catalogsource_tag: v4.22_2026_10_05
 workloads:
 - agnosticd.core_workloads.ocp4_workload_authentication
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 - agnosticd.ai_workloads.ocp5_workload_ols
 - agnosticd.core_workloads.ocp4_workload_web_terminal
 - agnosticd.core_workloads.ocp4_workload_openshift_virtualization
@@ -132,6 +104,7 @@ workloads:
 remove_workloads:
 - ocp5_virt_rh1.automation.ocp4_workload_virt_roadshow_fvmw
 - agnosticd.ai_workloads.ocp5_workload_ols
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 
 # ===================================================================
 # Workload variables
@@ -217,13 +190,25 @@ ocp4_workload_openshift_gitops_resource_customizations: |
       return health_status
 
 # -------------------------------------------------------------------
+# rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_multi_user: false
+ocp4_workload_litellm_virtual_keys_models:
+- claude-sonnet-4-6
+
+# -------------------------------------------------------------------
 # agnosticd.ai_workloads.ocp5_workload_ols
 # -------------------------------------------------------------------
 ocp5_workload_ols_use_catalog_snapshot: true
 ocp5_workload_ols_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp5_workload_ols_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
-ocp5_workload_ols_provider: azure_sp
+# ocp5_workload_ols_provider: azure_sp
+ocp5_workload_ols_provider: maas
+ocp5_workload_ols_maas_url: "{{ litellm_api_endpoint }}"
+ocp5_workload_ols_maas_api_token: "{{ litellm_virtual_key }}"
+ocp5_workload_ols_maas_model: claude-sonnet-4-6
+ocp5_workload_ols_maas_deployment_name: claude-sonnet-4-6
 
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_web_terminal
