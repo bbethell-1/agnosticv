@@ -151,6 +151,7 @@ aap_configuration_dispatcher_roles:
   - {role: gateway_role_user_assignments, var: gateway_role_user_assignments, tags: role_user_assignments }
   - {role: controller_settings, var: controller_settings, tags: controller_settings}
   - {role: eda_decision_environments, var: eda_decision_environments, tags: eda_decision_environments}
+  - {role: controller_credential_types, var: controller_credential_types, tags: controller_credential_types}
   - {role: controller_credentials, var: controller_credentials, tags: controller_credentials}
   - {role: controller_execution_environments, var: controller_execution_environments, tags: controller_execution_environments}
   - {role: controller_projects, var: controller_projects, tags: controller_projects}
@@ -222,8 +223,65 @@ _controller_credentials_aws:
       username: "{{ aws_provision_data.aws_access_key_id }}"
       password: "{{ aws_provision_data.aws_secret_access_key }}"
 
+# Custom credential type for LiteMaaS (OpenAI-compatible API URL + virtual key).
+# AAP has no built-in type for this; pattern matches Splunk HEC / RHSM custom types.
+controller_credential_types:
+  - name: LiteMaaS
+    description: Models-as-a-Service (LiteMaaS / LiteLLM) API endpoint and virtual key
+    kind: cloud
+    inputs:
+      fields:
+        - type: string
+          id: api_endpoint
+          label: API Endpoint
+          help_text: LiteMaaS / LiteLLM API endpoint host
+        - type: string
+          id: api_base_url
+          label: API Base URL
+          help_text: OpenAI-compatible API base URL (typically includes /v1)
+        - type: string
+          id: virtual_key
+          label: Virtual Key
+          secret: true
+          help_text: LiteMaaS virtual key / access token
+        - type: string
+          id: model
+          label: Model
+          help_text: Default model id available with this key
+      required:
+        - api_base_url
+        - virtual_key
+    injectors:
+      env:
+        LITELLM_API_ENDPOINT: '{  { api_endpoint }}'
+        LITELLM_API_BASE: '{  { api_base_url }}'
+        OPENAI_API_BASE: '{  { api_base_url }}'
+        LITELLM_API_KEY: '{  { virtual_key }}'
+        OPENAI_API_KEY: '{  { virtual_key }}'
+        LITELLM_MODEL: '{  { model }}'
+      extra_vars:
+        litellm_api_endpoint: '{  { api_endpoint }}'
+        litellm_api_base_url: '{  { api_base_url }}'
+        litellm_virtual_key: '{  { virtual_key }}'
+        litellm_available_models_list: '{  { model }}'
+
+_controller_credentials_maas:
+  - name: LiteMaaS
+    description: Models-as-a-Service (LiteMaaS) API endpoint and virtual key
+    credential_type: LiteMaaS
+    organization: Ansible Product Demos (APD)
+    update_secrets: false
+    inputs:
+      api_endpoint: "{{ maas_sandbox.credentials[0].api_endpoint }}"
+      api_base_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+      virtual_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
+      # Keep in sync with agnosticv_importdata.litellm_available_models_list
+      model: "qwen3-235b"
+
 controller_credentials: >-
-  {{ _controller_credentials_base + (_controller_credentials_aws if aws_provision_data is defined else []) }}
+  {{ _controller_credentials_base
+     + (_controller_credentials_aws if aws_provision_data is defined else [])
+     + (_controller_credentials_maas if maas_sandbox is defined else []) }}
 
 
 controller_inventories:
