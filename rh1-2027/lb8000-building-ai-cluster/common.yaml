@@ -87,6 +87,7 @@ workloads:
   - agnosticd.core_workloads.ocp4_workload_nfd
   - agnosticd.ai_workloads.ocp4_workload_nvidia_gpu_operator
   - agnosticd.ai_workloads.ocp4_workload_openshift_ai
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
   - agnosticd.showroom.ocp4_workload_ocp_console_embed
 
 # -----------------------------------------------------------------
@@ -142,6 +143,19 @@ ocp4_workload_openshift_gitops_rbac_update: true
 ocp4_workload_openshift_gitops_rbac_policy: |
   g, admin, role:admin
 ocp4_workload_openshift_gitops_rbac_scopes: '[name,groups]'
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_gitops_bootstrap (cluster-level infra)
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_health_ignore: true
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-infra"
+ocp4_workload_gitops_bootstrap_repo_path: "automation/gitops/bootstrap-infra"
+ocp4_workload_gitops_bootstrap_application_project: default
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/agent-antipatterns-lab.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_helm_values:
+  deployer:
+    domain: "{{ sandbox_openshift_ingress_domain | default('apps.example.com') }}"
 
 # -----------------------------------------------------------------
 # GPU Machineset — g6e.12xlarge (NVIDIA L40S 48 GB)
@@ -232,6 +246,14 @@ __meta__:
       update:
         disable: true
 
+  sandbox_host:
+    annotations:
+      cloud: cnv-dedicated-shared
+      lab: rh1-lb8000-building-ai
+    max_cpu_usage_percentage: 90
+    max_memory_usage_percentage: 85
+    max_placements: 20
+
   catalog:
     namespace: babylon-catalog-{{ stage | default('?') }}
     display_name: "LB8000: Four Ways Your Agent can Break - Cluster"
@@ -245,18 +267,10 @@ __meta__:
       Product: Red_Hat_OpenShift_AI
       Product_Family: Red_Hat_AI
     reportingLabels:
-      primaryBU: Hybrid_Platforms
+      primaryBU: Artificial_Intelligence
+    workshopUiDisabled: true
 
     # Provision doesn't call `agnosticd_user_info` with `user` set and so does
     # not report `users` in `provision_data`. All data and messages are
     # assigned directly to the workshop seat.
     workshop_user_mode: none
-
-  sandbox_host:
-    annotations:
-      cloud: cnv-dedicated-shared
-      lab: lb8000-building-ai
-    max_cpu_usage_percentage: 90
-    max_memory_usage_percentage: 85
-    # FIXME Need review from developers on max placements
-    max_placements: 10
