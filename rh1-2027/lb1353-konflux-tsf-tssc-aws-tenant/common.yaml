@@ -1,0 +1,195 @@
+---
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-project-dance.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/parameters/purpose.yaml
+#include /includes/sandbox-api.yaml
+
+config: namespace
+cloud_provider: none
+software_to_deploy: none
+
+# -------------------------------------------------------------------
+# TenantCluster sandbox var remapping
+# The sandbox provides sandbox_openshift_api_url and openshift_cluster_admin_token.
+# namespaced_workloads roles expect these remapped variables.
+# -------------------------------------------------------------------
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+cluster_admin_agnosticd_sa_token: "{{ openshift_cluster_admin_token }}"
+tag: main
+
+platform: rhpds
+
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: v1.8.0
+    - name: https://github.com/rhpds/namespaced_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/konflux-tssc-lab.git#/automation/ansible
+      type: git
+      version: "{{ tag }}"
+
+workloads:
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_authentication_user
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_gitlab
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_quay
+  - konflux_tssc_lab.automation.ocp4_workload_konflux_tssc_tenant
+  - agnosticd.showroom.ocp4_workload_showroom
+  - konflux_tssc_lab.automation.ocp4_workload_konflux_tssc_showroom_clis
+
+remove_workloads: []
+
+# Role konflux_tssc_lab.automation.ocp4_workload_konflux_tssc_showroom_clis
+ocp4_workload_konflux_tssc_showroom_clis_showroom_namespace: "user-{{ guid }}-showroom"
+
+# Role konflux_tssc_lab.automation.ocp4_workload_konflux_tssc_tenant
+ocp4_workload_konflux_tssc_tenant_user: "user-{{ guid }}"
+ocp4_workload_konflux_tssc_tenant_namespace: "user-{{ guid }}-tenant"
+ocp4_workload_konflux_tssc_tenant_password: "{{ common_password }}"
+
+# Tenant namespace configuration
+# Creates two namespaces: user-{guid}-tenant and user-{guid}-managed
+ocp4_workload_tenant_namespace_username: "user-{{ guid }}"
+
+# Cluster resource quota for tenant (ClusterResourceQuota)
+# Sized for 20 concurrent tenants on 6-worker cluster @ 16 CPU, 64GB RAM each
+# (6 workers × 15.5 allocatable CPU = ~93 cores - 10 for platform = 83 cores available)
+# 20 tenants × 4 CPU = 80 cores (fits with headroom)
+ocp4_workload_tenant_namespace_default_quota:
+  limits.cpu: "8"
+  requests.cpu: "6"
+  limits.memory: 12Gi
+  requests.memory: 12Gi
+  requests.storage: 50Gi
+
+# LimitRange defaults applied to containers without explicit resource specs
+# Limit: 500m CPU max per container, supports ~8 containers within 4 CPU quota
+# Request: 300m CPU guaranteed for scheduling, ensures good baseline performance
+# 6 parallel tasks = 3 CPU (500m × 6) with 1 CPU headroom for overlap
+ocp4_workload_tenant_namespace_default_limit_range:
+  default:
+    cpu: 500m
+    memory: 1Gi
+  defaultRequest:
+    cpu: 300m
+    memory: 512Mi
+
+ocp4_workload_tenant_namespace_suffixes:
+  - suffix: tenant
+    metadata:
+      labels:
+        konflux-tenant: "user-{{ guid }}"
+        konflux-ci.dev/type: tenant
+  - suffix: managed
+    metadata:
+      labels:
+        konflux-managed: "user-{{ guid }}"
+        konflux-ci.dev/type: tenant
+
+# Pass namespace names to authentication role for RBAC
+ocp4_workload_tenant_namespace_name: "user-{{ guid }}-tenant"
+ocp4_workload_tenant_namespace_additional_namespaces:
+  - name: "user-{{ guid }}-managed"
+
+# GitLab tenant configuration
+ocp4_workload_tenant_gitlab_namespace: gitlab
+ocp4_workload_tenant_gitlab_username: "user-{{ guid }}"
+ocp4_workload_tenant_gitlab_password: "{{ common_password }}"
+
+# Import repository into user's personal namespace
+ocp4_workload_tenant_gitlab_user_repositories:
+  - name: sample-component-golang
+    url: https://github.com/rhpds/sample-component-golang.git
+    visibility: private
+
+# Add user to shared group
+ocp4_workload_tenant_gitlab_user_groups:
+  - name: tsf
+    access_level: developer
+
+# Quay tenant configuration
+ocp4_workload_tenant_quay_namespace: quay-enterprise
+ocp4_workload_tenant_quay_user: "user-{{ guid }}"
+ocp4_workload_tenant_quay_user_password: "{{ common_password }}"
+
+# Tenant authentication user configuration (HTPasswd for OpenShift login)
+ocp4_workload_tenant_authentication_user_provider: htpasswd
+ocp4_workload_tenant_authentication_user_username: "user-{{ guid }}"
+ocp4_workload_tenant_authentication_user_password: "{{ common_password }}"
+ocp4_workload_tenant_authentication_user_create_rbac: true
+
+student_workloads: []
+
+# Showroom configuration for lab guide
+ocp4_workload_showroom_namespace: "user-{{ guid }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/konflux-tssc-lab.git
+ocp4_workload_showroom_content_git_repo_ref: "{{ tag }}"
+ocp4_workload_showroom_runtime_automation_enable: true
+ocp4_workload_showroom_runtime_automation_cluster_admin: true
+ocp4_workload_showroom_runtime_automation_image: "quay.io/rhpds/zerotouch-automation:v1.3.3"
+# Enable Wetty terminal with auto-SSH to bastion (pre-authenticated)
+ocp4_workload_showroom_terminal_type: showroom
+
+__meta__:
+  asset_uuid: f614443b-a322-4e32-88dc-c06c8cc6f842
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+    - kind: OcpSandbox
+      alias: cluster
+      no_namespace: true
+      tenant_cluster:
+        item: rh1-2027/lb1353-konflux-tsf-tssc-aws-cluster
+  catalog:
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1353: Build, Sign, and Ship - Securing the Software Supply Chain with Konflux on AWS"
+    category: Labs
+    keywords:
+      - konflux
+      - tsf
+      - tssc
+      - rhtas
+      - supply-chain
+      - slsa
+      - lab
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    workshopLabUiRedirect: true
+    workshop_user_mode: none
+    multiuser: true
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+    actions:
+      status:
+        disable: true
+      update:
+        disable: true
+  owners:
+    maintainer:
+      - email: treddy@redhat.com
+        name: Tyrell Reddy
+  tower:
+    timeout: 7200
