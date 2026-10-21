@@ -14,6 +14,11 @@ showroom_antora_enable_dev_mode: "false"
 # -------------------------------------------------------------------
 __meta__:
   sandboxes:
+    - kind: MaaSSandbox
+      cloud_selector:
+        purpose: production
+      models: "openai/granite-3-2-8b-instruct,claude-sonnet-4-6-a70b,gemini-2.5-pro"
+      var: maas_sandbox
     - kind: OcpSandbox
       namespace_suffix: ocp4-cluster
       cloud_selector:
@@ -34,3 +39,536 @@ __meta__:
       var: ssl_sandbox
   deployer:
     scm_ref: ai-driven-auto-1.0.0
+
+# ===================================================================
+# Instana TechExchange overrides - MINIMAL changes only
+# Keep everything from common.yaml, only change what needs changing:
+# - instances: drop cisco-rtr1/2, add node2 port 8080
+# - software: drop Splunk
+# - post_software: add instana_agent
+# - collections: lb2961 to feat/instana-section
+# - eda: AI-EDA on feat/instana-section, add Instana activation, drop OSPF/Cron
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Instances: same as common.yaml EXCEPT drop cisco-rtr1/2, add node2 8080
+# -------------------------------------------------------------------
+instances:
+  - name: "bastion"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ bastion_instance_image }}"
+    memory: 12G
+    cores: 6
+    image_size: 100Gi
+    tags:
+      - key: "AnsibleGroup"
+        value: "bastions,showroom"
+      - key: "ostype"
+        value: "linux"
+    networks:
+      - default
+    services:
+      - name: showroom
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: showroom
+      - name: bastion
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: bastion-22
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: showroom
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: bastion-443
+          - port: 3000
+            protocol: TCP
+            targetPort: 3000
+            name: bastion-3000
+          - port: 8000
+            protocol: TCP
+            targetPort: 8000
+            name: bastion-8000
+          - port: 8080
+            protocol: TCP
+            targetPort: 8080
+            name: bastion-8080
+          - port: 5514
+            protocol: TCP
+            targetPort: 5514
+            name: bastion-5514-tcp
+          - port: 5514
+            protocol: UDP
+            targetPort: 5514
+            name: bastion-5514-udp
+          - port: 1514
+            protocol: TCP
+            targetPort: 1514
+            name: bastion-1514-tcp
+          - port: 1514
+            protocol: UDP
+            targetPort: 1514
+            name: bastion-1514-udp
+    routes:
+      - name: showroom
+        host: showroom
+        service: showroom
+        targetPort: 80
+        tls: true
+        tls_termination: edge
+      - name: bastion-443
+        host: bastion-443
+        service: bastion
+        targetPort: 443
+        tls: true
+        tls_termination: edge
+      - name: bastion-3000
+        host: gitea
+        service: bastion
+        targetPort: 3000
+        tls: true
+        tls_termination: edge
+      - name: bastion-8000
+        host: splunk
+        service: bastion
+        targetPort: 8000
+        tls: true
+        tls_termination: edge
+      - name: bastion-8080
+        host: vscode
+        service: bastion
+        targetPort: 8080
+        tls: true
+        tls_termination: edge
+
+  - name: "controller"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ controller_instance_image }}"
+    memory: 32G
+    cores: 8
+    image_size: "{{ controller_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+    userdata: |-
+      #cloud-config
+      user: rhel
+      password: ansible123!
+      chpasswd: { expire: False }
+      runcmd:
+        - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+        - systemctl reload sshd
+        - firewall-cmd --permanent --add-port=5000/tcp
+        - firewall-cmd --reload
+    services:
+      - name: controller
+        ports:
+          - name: controller-443
+            port: 443
+            protocol: TCP
+            targetPort: 443
+          - name: controller-5000
+            port: 5000
+            protocol: TCP
+            targetPort: 5000
+          - name: controller-8448
+            port: 8448
+            protocol: TCP
+            targetPort: 8448
+    routes:
+      - name: controller-5000
+        host: eda-webhook
+        service: controller
+        targetPort: 5000
+        tls: true
+        tls_termination: edge
+      - name: controller-443
+        host: controller
+        service: controller
+        targetPort: 443
+        tls: true
+        tls_termination: reencrypt
+        tls_destinationCACertificate: |
+          -----BEGIN CERTIFICATE-----
+          MIIF1jCCA76gAwIBAgIUASi34Lss1upPyAS1YsA8eZTJOFAwDQYJKoZIhvcNAQEL
+          BQAwgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQIDA5Ob3J0aCBDYXJvbGluYTEQMA4G
+          A1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVkIEhhdDEQMA4GA1UECwwHQW5zaWJs
+          ZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0aW9uIFBsYXRmb3JtMB4XDTI1MTEw
+          MzE5NDkyNVoXDTM1MTEwMTE5NDkyNVowgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQI
+          DA5Ob3J0aCBDYXJvbGluYTEQMA4GA1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVk
+          IEhhdDEQMA4GA1UECwwHQW5zaWJsZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0
+          aW9uIFBsYXRmb3JtMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqNju
+          44XrKsBPTqv5J+OqRz3RsY1QIemHw3NIJF3d3UvimBHt42rHnwt4Lww3mYtYMJQ0
+          nzcRpr+EnFlC5YFl2Htrfq6NzUUqknTpaCeSKNCli4aKYe9JYSocWy/8ag+H7gMf
+          oUFJ7+PDh/S8HcP7ZA15RRXhyGdjzpUK9+ry/UcMcLE4ZOW2Z4YvFyjemh+c/yYY
+          KHsNjV56TRL5q4VqsxlKQuqNQos9lWoHjz363JxC9UrvTPqvl/UbHsQmTD8NKDnB
+          xxsaYTl41kVqscLSw5KR2c6CVVgSjIn5o0iAo01Sd4gONZ0ImhrzQ5Ea9Ya2kKG7
+          OCdg84V4hVmy/fnrcBC4k9RgNthWH9k4eMHwZf3B2P1xZds3dkV1k6yF3zSrQfJd
+          VJZ0AsaeGQGw26NQw0IG17P/jmho1jBhqSLaJyT9vVM/JMOjdojbD/dSFkccID1E
+          wUZeklYiLScD13rhckVk8MxrsFv99BO91tm07lwnj5jsyLoTvUOLuI4o7yw1AlsC
+          V/OjdpAohWbL0W6YxS/elBVgZhe7Gv2lnIF9L7TxTj/UQWaarouAIgyevqbP5dnt
+          mRccxZ38YGivRA+PgWwwSL9AQCFzIJW1Q45shUR2vkTsiWEEB+Lobkj5dcyLG0CH
+          Z7fnJnlKdNDcMbm2s6U1i+nHvv1dpfyveRvOiCsCAwEAAaNCMEAwDgYDVR0PAQH/
+          BAQDAgIEMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFHAFWQy/8in8Lg2TaG9g
+          NJyRxdMfMA0GCSqGSIb3DQEBCwUAA4ICAQBT5QI+nxhpEwPVp/BxZnxJWFBotHw3
+          rROgu1GBR3clZ+c+YFygAUs3LSpCLuDGnqJnh0822sIM+5FFP2ypqHdzeKo3TQEj
+          K4QiTBGeiSgqKqwHQdqPKywgFqAuxFC+clVrmFVR7dQJ8OiUZYNk5fwYLxnOftFQ
+          pxgpJyAX7vpZKnzujc5IGEqb3apjyxUuX3TFRq4uJp8ffWR9cgykeI8WFqAi33+K
+          RW8h9UQbS9mPjkJ3lbTtd06Jx2M0V2pwtQBMlp7aTboEqs+CB5moCIq1wTXvZBqB
+          dcqcpRGppYHL+QuUguBIlZcxn/8JpfoEsYVOJszp4YLEKzr68RoXvevObbrjJxfq
+          BnEPFKqt+pQpjEJktn8JDqp8G6gMc9n+Nkx88f3MR8yr2nhMl9YL6jSZLklH4JJV
+          2UjYg+KU/u/JttFmDydmys1xN9hiFM2wtRjp+r8gAQw95pyUhMraA01qLYWP5wAO
+          KsMpndKg6rUIycxNNr+eLGNafbUNsp9qayRSull5jKok43Goi8oF8edRlPY4qpZW
+          6WvY8+YjBLTCY1rQBb6/Rfr5PHSaRlGLi3Os6xG84gt69dLtMZBz4O232fc5sG5M
+          wMQ+MKwOpgDyuy79XKvsPanlAfP8WgJi79pJdHu3BGTLlDFil9CK8l2sncM1FdaE
+          57Ys1npOUx+oxw==
+          -----END CERTIFICATE-----
+
+  - name: "node1"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ node_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ node_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel9_nodes"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: node
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: node-80
+    routes:
+      - name: node-80
+        host: node
+        service: node
+        targetPort: 80
+        tls: false
+
+  - name: "node2"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ node_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ node_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel9_nodes"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: node2
+        ports:
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: node2-80
+          - port: 8080
+            protocol: TCP
+            targetPort: 8080
+            name: node2-8080
+    routes:
+      - name: node2-80
+        host: node2
+        service: node2
+        targetPort: 80
+        tls: false
+
+  - name: "node3"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ node_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ node_rootfs_size }}"
+    tags:
+      - key: "AnsibleGroup"
+        value: "rhel9_nodes"
+      - key: "ostype"
+        value: "linux"
+
+  - name: "service1"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ service_instance_image }}"
+    memory: 8G
+    cores: 4
+    image_size: "{{ service_rootfs_size }}"
+    networks:
+      - default
+      - kafka
+    userdata: |
+      #cloud-config
+      prefer_fqdn_over_hostname: true
+      manage_etc_hosts: true
+    tags:
+      - key: "AnsibleGroup"
+        value: "servers"
+      - key: "ostype"
+        value: "linux"
+    services:
+      - name: service1-fip
+        type: LoadBalancer
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: ssh
+          - port: 8065
+            protocol: TCP
+            targetPort: 8065
+            name: service1-8065
+          - port: 9092
+            protocol: TCP
+            targetPort: 9092
+            name: service1-9092
+          - port: 9093
+            protocol: TCP
+            targetPort: 9093
+            name: service1-9093
+    routes:
+      - name: service-8065
+        host: mattermost
+        service: service1-fip
+        targetPort: 8065
+        tls: true
+        tls_termination: edge
+
+  - name: "windows"
+    count: 1
+    unique: true
+    public_dns: false
+    floating_ip: false
+    image: "{{ windows_instance_image }}"
+    memory: 16G
+    cores: 4
+    image_size: "{{ windows_rootfs_size }}"
+    interface_model: "e1000e"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+      - key: "ostype"
+        value: "windows"
+    networks:
+      - default
+    services:
+      - name: windows
+        ports:
+          - port: 22
+            protocol: TCP
+            targetPort: 22
+            name: ssh
+          - port: 5986
+            protocol: TCP
+            targetPort: 5986
+            name: windows-winrm
+          - port: 80
+            protocol: TCP
+            targetPort: 80
+            name: windows-http
+      - name: windows-rdp
+        ports:
+          - port: 3389
+            protocol: TCP
+            targetPort: 3389
+            name: windows-rdp
+
+# -------------------------------------------------------------------
+# Collections: pin lb2961 to feat/instana-section only
+# -------------------------------------------------------------------
+requirements_content:
+  collections:
+    - name: https://github.com/rhpds/core_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/cloud_vm_workloads.git
+      type: git
+      version: "{{ tag }}"
+    - name: https://github.com/rhpds/showroom.git
+      type: git
+      version: v1.6.10
+    - name: https://github.com/rhpds/rhpds.manage_host.git
+      type: git
+      version: "{{ tag }}"
+    - name: l3d.git
+      version: 1.1.10
+    - name: https://github.com/rhpds/lb2961.ai_driven_aap.git
+      type: git
+      version: feat/instana-section
+    - name: ansible.netcommon
+      version: ">=6.0.0"
+    - name: cisco.ios
+      version: ">=5.0.0"
+    - name: "https://github.com/rhpds/rhpds.litellm_virtual_keys.git"
+      type: git
+      version: "1.3.2"
+    - name: ansible.windows
+      version: ">=2.0.0"
+    - name: microsoft.ad
+      version: ">=1.0.0"
+    - name: community.windows
+      version: ">=2.0.0"
+    - name: ansible.platform
+      version: ">=2.0.0"
+
+# -------------------------------------------------------------------
+# Software workloads: drop Splunk only, everything else from common
+# -------------------------------------------------------------------
+software_workloads:
+  bastions:
+    - rhpds.manage_host.vscode_server
+    - rhpds.manage_host.gitea_vm_setup
+  rhel9_nodes:
+    - lb2961.ai_driven_aap.rhel_log_forwarding
+    - lb2961.ai_driven_aap.filebeat
+  servers:
+    - lb2961.ai_driven_aap.gitea_create
+
+# -------------------------------------------------------------------
+# Post-software: add instana_agent in rhel9_nodes after dispatch
+# -------------------------------------------------------------------
+post_software_workloads:
+  bastions:
+    - infra.aap_configuration.dispatch
+    - lb2961.ai_driven_aap.mcp_server
+    - lb2961.ai_driven_aap.lightspeed_mcp_server
+    - lb2961.ai_driven_aap.ansible_dev_env
+    - lb2961.ai_driven_aap.code_server_ai_client
+  rhel9_nodes:
+    - lb2961.ai_driven_aap.instana_agent
+
+# -------------------------------------------------------------------
+# AAP: AI-EDA project on feat/instana-section (adds instana.yml)
+# -------------------------------------------------------------------
+controller_projects:
+  - name: "AI-EDA"
+    description: "Project for AI EDA - ansible-tmm repository"
+    organization: "Default"
+    scm_type: "git"
+    scm_url: "https://github.com/ansible-tmm/aiops-summitlab.git"
+    scm_branch: "feat/instana-section"
+    scm_clean: false
+    scm_delete_on_update: false
+    scm_update_on_launch: false
+    wait: false
+  - name: "Lightspeed-Playbooks-Network"
+    description: "Network AIOps Lightspeed Playbooks from Gitea"
+    organization: "Default"
+    scm_type: "git"
+    scm_url: "{{ gitea_create_url }}/lab-user/lightspeed_playbooks.git"
+    scm_clean: true
+    scm_delete_on_update: false
+    scm_update_on_launch: true
+    scm_branch: "main"
+    credential: "Gitea"
+    wait: false
+  - name: "Lightspeed-Playbooks"
+    description: "Project to check AI generated Lightspeed Playbooks"
+    organization: "Default"
+    scm_type: "git"
+    scm_url: "{{ gitea_create_url }}/lab-user/lightspeed_playbooks.git"
+    scm_clean: true
+    scm_delete_on_update: false
+    scm_update_on_launch: false
+    scm_branch: "main"
+    credential: "Gitea"
+    wait: false
+
+# -------------------------------------------------------------------
+# EDA: AI-EDA on feat/instana-section, add Instana AIOps, drop OSPF/Cron
+# -------------------------------------------------------------------
+controller_url: "https://controller-{{ subdomain_base }}"
+
+eda_projects:
+  - name: "ai-eda"
+    description: "Event-driven Ansible rulebooks for AIOps"
+    organization: Default
+    url: "{{ eda_repo_url }}"
+    scm_branch: "feat/instana-section"
+    tls_validation: true
+
+eda_rulebook_activations:
+  - name: "Web App"
+    description: "Capture service errors"
+    organization: Default
+    project: "ai-eda"
+    rulebook: "web_app.yml"
+    decision_environment: "{{ eda_decision_environment_name }}"
+    restart_policy: "on-failure"
+    enabled: true
+    eda_credentials: "AAP"
+    state: present
+  - name: "Windows Events"
+    description: "Detect Windows security and firewall events via Kafka"
+    organization: Default
+    project: "ai-eda"
+    rulebook: "windows_events.yml"
+    decision_environment: "{{ eda_decision_environment_name }}"
+    restart_policy: "on-failure"
+    enabled: true
+    eda_credentials: "AAP"
+    state: present
+  # Disabled at start: shares the httpd Kafka topic with "Web App".
+  # Section 5 (module-09) has students disable Web App and enable this one.
+  - name: "AI Agent"
+    description: "AI Agent for incident response"
+    organization: Default
+    project: "ai-eda"
+    rulebook: "ai_agent.yml"
+    decision_environment: "{{ eda_decision_environment_name }}"
+    restart_policy: "on-failure"
+    enabled: false
+    eda_credentials: "AAP"
+    state: disabled
+  - name: "Instana AIOps"
+    description: "Listens for Instana Smart Alert webhooks and triggers AAP remediation"
+    organization: Default
+    project: "ai-eda"
+    rulebook: "instana.yml"
+    decision_environment: "{{ eda_decision_environment_name }}"
+    restart_policy: "always"
+    enabled: true
+    eda_credentials: "AAP"
+    state: present
+
+# -------------------------------------------------------------------
+# Showroom: feat/instana-section branch with Instana modules
+# -------------------------------------------------------------------
+showroom_git_ref: feat/instana-section
+
+# -------------------------------------------------------------------
+# Instana vars
+# -------------------------------------------------------------------
+instana_backend_host: "agent-acceptor.163-66-82-253.nip.io"
+instana_backend_port: "443"
+instana_zone: "{{ guid }}"
+instana_aap_scm_branch: "feat/instana-section"
+instana_agent_key: "fIP2ztabQbcYhLBMTje4ft"
+instana_download_key: "EgnOCeL9RHmsEbR7PEsH4w"
