@@ -7,7 +7,7 @@
 
 #include /includes/parameters/purpose.yaml
 
-#include /includes/secrets/ocp5_workload_ols.yaml
+#include /includes/secrets/litemaas-master_api.yaml
 
 # Required by host_ocp4_assisted_scale
 #include /includes/secrets/ocp4_ai_offline_token.yaml
@@ -51,6 +51,9 @@ requirements_content:
   - name: https://github.com/rhpds/ai_workloads.git
     type: git
     version: "{{ tag }}"
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "{{ tag }}"
   - name: https://github.com/rhpds/showroom.git
     type: git
     version: "{{ tag_showroom }}"
@@ -64,12 +67,14 @@ ocp4_workload_catalogsource_tag: v4.22_2026_10_05
 workloads:
 - agnosticd.core_workloads.ocp4_workload_authentication
 - agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 - agnosticd.ai_workloads.ocp5_workload_ols
 - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 - agnosticd.showroom.ocp4_workload_ocp_console_embed
 
 remove_workloads:
 - agnosticd.ai_workloads.ocp5_workload_ols
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
 
 common_admin_username: admin
 common_admin_password: >-
@@ -104,13 +109,24 @@ ocp4_workload_openshift_gitops_rbac_policy: |
   g, {{ common_admin_username }}, role:admin
 
 # -------------------------------------------------------------------
+# rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_multi_user: false
+ocp4_workload_litellm_virtual_keys_models:
+- claude-sonnet-4-6-a70b
+
+# -------------------------------------------------------------------
 # agnosticd.ai_workloads.ocp5_workload_ols
 # -------------------------------------------------------------------
 ocp5_workload_ols_use_catalog_snapshot: true
 ocp5_workload_ols_catalog_snapshot_image: "{{ ocp4_workload_catalogsource_image }}"
 ocp5_workload_ols_catalog_snapshot_image_tag: "{{ ocp4_workload_catalogsource_tag }}"
 
-ocp5_workload_ols_provider: azure_sp
+ocp5_workload_ols_provider: maas
+ocp5_workload_ols_maas_url: "{{ litellm_api_endpoint }}"
+ocp5_workload_ols_maas_api_token: "{{ litellm_virtual_key }}"
+ocp5_workload_ols_maas_model: claude-sonnet-4-6-a70b
+ocp5_workload_ols_maas_deployment_name: claude-sonnet-4-6-a70b
 
 # -------------------------------------------------------------------
 # agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
