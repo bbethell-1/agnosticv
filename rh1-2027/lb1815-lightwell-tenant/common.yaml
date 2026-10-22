@@ -80,9 +80,25 @@ remove_workloads:
 # ===================================================================
 ocp4_workload_username: "user-{{ guid }}"
 
+# Automation Orchestrator rejects a local user whose password does not
+# contain at least 3 of {digits, uppercase, lowercase, punctuation}. The
+# `password` lookup draws uniformly from the combined charset and so
+# guarantees none of them: at length 14 over ascii_letters+digits there is a
+# (52/62)^14 ~= 8% chance of drawing no digit at all. A tenant that loses
+# that coin flip gets a letters-only password, AO refuses to create the
+# student user with a 422, the ao-bootstrap hook never completes, and the
+# tenant ends up with no AAP job templates -- which surfaces to the attendee
+# as "job start fail" in the orchestrator canvas. Seen on 1 of 10 tenants.
+#
+# Draw 11 random characters and append one guaranteed digit, uppercase and
+# lowercase, keeping the length at 14 and making the class requirement
+# unconditional rather than probable.
 common_password: >-
   {{
-    lookup('password', output_dir ~ '/common_password', length=14, chars=['ascii_letters', 'digits'])
+    lookup('password', output_dir ~ '/common_password', length=11, chars=['ascii_letters', 'digits'])
+    ~ lookup('password', output_dir ~ '/common_password_digit', length=1, chars=['digits'])
+    ~ lookup('password', output_dir ~ '/common_password_upper', length=1, chars=['ascii_uppercase'])
+    ~ lookup('password', output_dir ~ '/common_password_lower', length=1, chars=['ascii_lowercase'])
   }}
 
 # ===================================================================
