@@ -1,0 +1,255 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: LB1285: AgentOps in Action: Evaluate, Secure,
+#                   and Operate Enterprise AI Agents (Tenant)
+# --- USER PROVISIONER -- per-user resources on shared cluster
+# --- Multi-user deployment on a shared pre-provisioned cluster
+# --- Tenant pattern
+# -------------------------------------------------------------------
+# --- This catalog item combines:
+# ---   - Sandbox/namespace architecture (no cluster provisioning)
+# ---   - Keycloak user authentication
+# ---   - Multi-user support with per-user namespaces
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/parameters/litellm_metadata.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+# ===================================================================
+cloud_provider: none
+config: namespace
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+
+requirements_content:
+  collections:
+  - name: https://github.com/rhpds/namespaced_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: v1.8.0
+
+  # LiteLLM Virtual Keys Collection
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "1.0.0"
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.showroom.ocp4_workload_showroom_user_data_seed
+- agnosticd.showroom.ocp4_workload_showroom
+
+remove_workloads:
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_openshift_gitops
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+- agnosticd.showroom.ocp4_workload_showroom_user_data_seed
+- agnosticd.showroom.ocp4_workload_showroom
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Common -- tenant username and password
+# All tenant resources reference the same username and password
+# Single-user tenant deployment
+# -------------------------------------------------------------------
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+# -------------------------------------------------------------------
+# Hermes API server key -- per-participant static bearer token
+# 48 hex chars == `openssl rand -hex 24`, the format tenant-platform's
+# values.yaml documents. The output_dir file keeps it stable across
+# every reference within a provision.
+# -------------------------------------------------------------------
+hermes_api_server_key: >-
+  {{
+    lookup('password', output_dir ~ '/hermes_api_server_key', length=48, chars=['digits', 'abcdef'])
+  }}
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_keycloak_user
+# -------------------------------------------------------------------
+openshift_api_url: "{{ sandbox_openshift_api_url }}"
+cluster_admin_agnosticd_sa_token: "{{ openshift_cluster_admin_token }}"
+
+ocp4_workload_tenant_keycloak_username: "user-{{ guid }}"
+ocp4_workload_tenant_keycloak_user_password: "{{ common_password }}"
+ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
+ocp4_workload_tenant_keycloak_user_groups:
+- users
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_tenant_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_tenant_openshift_gitops_user: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_openshift_gitops_user_password: "{{ common_password }}"
+
+# -------------------------------------------------------------------
+# Workload: rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_models:
+- qwen3-235b-a22b
+ocp4_workload_litellm_virtual_keys_duration: "7d"
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/agentops-in-action-workshop.git
+ocp4_workload_showroom_content_git_repo_ref: "{{ tag}}"
+ocp4_workload_showroom_runtime_automation_enable: true
+ocp4_workload_showroom_runtime_automation_cluster_admin: true
+ocp4_workload_showroom_runtime_automation_image: "quay.io/rhpds/zerotouch-automation:v1.3.3"
+ocp4_workload_showroom_openshift_api_url: "{{ openshift_api_url }}"
+ocp4_workload_showroom_openshift_api_token: "{{ openshift_cluster_admin_token }}"
+ocp4_workload_showroom_terminal_type: showroom
+ocp4_workload_showroom_terminal_image: quay.io/rhpds/openshift-showroom-terminal-ocp:2026-03-11
+ocp4_workload_showroom_content_ui_config: |
+  type: showroom
+  default_width: 40
+  persist_url_state: true
+  view_switcher:
+    enabled: true
+    default_mode: split
+  tabs:
+  - name: Terminal
+    path: /terminal
+    port: 443
+  - name: OpenShift Console
+    url: "https://console-openshift-console.{{ openshift_cluster_ingress_domain }}"
+  - name: OpenShift AI
+    url: "https://rhods-dashboard-redhat-ods-applications.{{ openshift_cluster_ingress_domain }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom_user_data_seed
+# litellm_* keys are already seeded by the LiteLLM workload's
+# enable_user_info_data. These add the Hermes side.
+# -------------------------------------------------------------------
+ocp4_workload_showroom_user_data_seed:
+  agentops_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-agentops"
+  hermes_api_server_key: "{{ hermes_api_server_key }}"
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/agentops-in-action-workshop.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: automation/gitops/bootstrap-tenant
+ocp4_workload_gitops_bootstrap_application_name: "bootstrap-tenant-{{ ocp4_workload_tenant_keycloak_username }}"
+
+# bootstrap-tenant owns the single workload namespace and its participant RBAC.
+# OpenShell runs beside the applications; Showroom stays in its own namespace.
+# Do not restore openshellNamespaceSuffix or broad edit/admin grants here.
+ocp4_workload_gitops_bootstrap_helm_values:
+  gitops:
+    repoURL: "{{ ocp4_workload_gitops_bootstrap_repo_url }}"
+    # Forward the revision so all three child Applications use the same branch.
+    targetRevision: "{{ ocp4_workload_gitops_bootstrap_repo_revision }}"
+    argocdNamespace: openshift-gitops
+    argocdProject: agentops-in-action
+  tenant:
+    username: "{{ ocp4_workload_tenant_keycloak_username }}"
+  namespaceSuffix: agentops
+  # The chart derives Keycloak and the RHOAI/MLflow URL from deployer.domain.
+  deployer:
+    domain: "{{ openshift_cluster_ingress_domain }}"
+  platform:
+    agentHarness: hermes
+    hermesRuntime: openshell
+    mcpGateway: true
+    mlflowTracing: true
+  secrets:
+    modelApiKey: "{{ litellm_virtual_key }}"
+    apiServerKey: "{{ hermes_api_server_key }}"
+ocp4_workload_gitops_bootstrap_health_retries: 10
+
+# ===================================================================
+# Babylon meta variables
+# ===================================================================
+__meta__:
+  asset_uuid: 6A9B3C05-07F5-4DF0-823F-FE329CF7691A
+  owners:
+    maintainer:
+    - name: Philip Hayes
+      email: phayes@redhat.com
+    - name: Cansu Kavili Oernek
+      email: ckavili@redhat.com
+    - name: Ritesh Shah
+      email: rshah@redhat.com
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+    actions:
+      status:
+        disable: true
+      update:
+        disable: true
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1285: AgentOps in Action: Evaluate, Secure, and Operate Enterprise AI Agents (AWS)"
+    category: Labs
+    keywords:
+    - lb1285
+    - gitops
+    - keycloak
+    - argocd
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Artificial_Intelligence
+      secondaryBU: Hybrid_Platforms
+    workshopLabUiRedirect: true
+    # Provision doesn't call `agnosticd_user_info` with `user` set and so does
+    # not report `users` in `provision_data`. All data and messages are
+    # assigned directly to the workshop seat.
+    workshop_user_mode: none
+    multiuser: true
+  sandbox_api:
+    actions:
+      destroy:
+        catch_all: false
+  sandboxes:
+  - kind: OcpSandbox
+    alias: cluster
+    no_namespace: true
+    tenant_cluster:
+      item: rh1-2027/lb1285-ai-agent-sec-aws-cluster

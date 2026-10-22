@@ -1,0 +1,334 @@
+---
+# -------------------------------------------------------------------
+# --- Catalog Item: LB1285: AgentOps in Action: Evaluate, Secure,
+#                   and Operate Enterprise AI Agents (Cluster)
+# --- A hands-on AgentOps lab that teaches participants how to evaluate,
+#     secure, observe, and operate enterprise AI agents on
+#     Red Hat OpenShift AI using runtime controls, identity-aware
+#     authorization, automated testing, and policy tuning
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# AgnosticV includes
+# -------------------------------------------------------------------
+#include /includes/agd-v2-mapping.yaml
+#include /includes/sandbox-api.yaml
+#include /includes/catalog-icon-openshift.yaml
+#include /includes/terms-of-service.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+#include /includes/secrets/litemaas-master_api.yaml
+#include /includes/parameters/litellm_metadata.yaml
+#include /includes/secrets/ocp4_ai_offline_token.yaml
+
+# ===================================================================
+# Mandatory Variables
+# ===================================================================
+cloud_provider: none
+config: openshift-workloads
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# -------------------------------------------------------------------
+# Autoscaling cluster
+# -------------------------------------------------------------------
+# openshift_cnv_scale_cluster defaults to TRUE — it must be set false
+# explicitly here or the CNV scaling path runs against an AWS cluster.
+openshift_cnv_scale_cluster: false
+openshift_aws_scale_cluster: true
+
+# CNV sized workers as VMs (ai_workers_cores: 32 / ai_workers_memory: 64Gi).
+# AWS sizes them by instance type. m6a.8xlarge is 32 vCPU / 128 GiB — the
+# same core count with memory headroom. For an exact 32 vCPU / 64 GiB match
+# use c6i.8xlarge instead; for the family already proven in other RHDP AWS
+# catalogs use m5a.8xlarge.
+#
+# MUST stay x86_64. Every lab image (quay.io/rh-aiservices-bu/*) is a
+# single-arch linux/amd64 manifest, not a manifest list, so Graviton
+# (m6g/m7g/c7g) would fail to start every workload.
+worker_instance_type: m6a.8xlarge
+worker_instance_count: 8
+aws_region: us-east-2
+
+# ===================================================================
+# Additional Collections & roles to be installed for this config
+# ===================================================================
+tag: main
+gitops_repo_revision: main
+
+requirements_content:
+  collections:
+  # AWS Cloud Provider
+  # Only used with openshift_aws_scale_cluster
+  - name: https://github.com/rhpds/cloud_provider_aws.git
+    type: git
+    version: "{{ tag }}"
+
+  # Core OpenShift Workloads
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: "{{ tag }}"
+
+  # LiteLLM Virtual Keys Collection
+  - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
+    type: git
+    version: "1.0.0"
+
+  # Lab specific collection
+  #- name: https://github.com/rhpds/agentops-in-action-workshop.git#automation/ansible
+  #  type: git
+  #  version: "{{ tag }}"
+
+  # Showroom
+  - name: https://github.com/rhpds/showroom.git
+    type: git
+    version: v1.8.0
+
+# ===================================================================
+# List of workloads to be deployed
+# ===================================================================
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+- agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+
+remove_workloads: []
+
+
+# ===================================================================
+# Variables for specific workloads
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Common Password
+# -------------------------------------------------------------------
+
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password', length=12, chars=['ascii_letters', 'digits'])
+  }}
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.20
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: 1
+ocp4_workload_openshift_gitops_controller_requests_memory: 2Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "8"
+ocp4_workload_openshift_gitops_controller_limits_memory: 8Gi
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 2
+ocp4_workload_openshift_gitops_repo_requests_memory: 4Gi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "8"
+ocp4_workload_openshift_gitops_repo_limits_memory: 8Gi
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, system:cluster-admins, role:admin
+  g, cluster-admins, role:admin
+  g, admin, role:admin
+ocp4_workload_openshift_gitops_resource_customizations: |
+  operators.coreos.com/Subscription:
+    health.lua: |
+      health_status = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          numDegraded = 0
+          numPending = 0
+          msg = ""
+          for i, condition in pairs(obj.status.conditions) do
+            msg = msg .. i .. ": " .. condition.type .. " | " .. condition.status .. "\n"
+            if condition.type == "InstallPlanPending" and condition.status == "True" then
+              numPending = numPending + 1
+            elseif (condition.type == "InstallPlanMissing" and condition.reason ~= "ReferencedInstallPlanNotFound") then
+              numDegraded = numDegraded + 1
+            elseif (condition.type == "CatalogSourcesUnhealthy" or condition.type == "InstallPlanFailed") and condition.status == "True" then
+              numDegraded = numDegraded + 1
+            end
+          end
+          if numDegraded == 0 and numPending == 0 then
+            health_status.status = "Healthy"
+            health_status.message = msg
+            return health_status
+          elseif numPending > 0 and numDegraded == 0 then
+            health_status.status = "Progressing"
+            health_status.message = "An install plan for a subscription is pending installation"
+            return health_status
+          else
+            health_status.status = "Degraded"
+            health_status.message = msg
+            return health_status
+          end
+        end
+      end
+      health_status.status = "Progressing"
+      health_status.message = "An install plan for a subscription is pending installation"
+      return health_status
+
+  quay.redhat.com/QuayRegistry:
+    health.lua: |
+      local hs={ status = "Progressing", message = "Waiting for initialization" }
+      found_status = false
+
+      if obj.status ~= nil then
+        found_status = true
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+
+            if condition.type == "Available" and condition.status ~= "True" then
+              if condition.reason == "ComponentNotReady" then
+                hs.status = "Progressing"
+              else
+                hs.status = "Degraded"
+              end
+              hs.message = condition.message or condition.reason
+            end
+            if condition.type == "Available" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "All instances are available"
+            end
+          end
+        end
+      end
+
+      if not found_status then
+        hs = { status = "Progressing", message = "Instance is waiting for initialization" }
+      end
+
+      return hs
+
+# -------------------------------------------------------------------
+# Workload: rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+# -------------------------------------------------------------------
+ocp4_workload_litellm_virtual_keys_models:
+- qwen3-235b-a22b
+ocp4_workload_litellm_virtual_keys_duration: "15d"
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication
+# -------------------------------------------------------------------
+ocp4_workload_authentication_admin_username: admin
+ocp4_workload_authentication_admin_password: "{{ common_password }}"
+
+ocp4_workload_authentication_remove_kubeadmin: true
+ocp4_workload_authentication_num_users: 0
+
+ocp4_workload_authentication_provider: keycloak
+ocp4_workload_authentication_keycloak_default_realm: sso
+ocp4_workload_authentication_keycloak_channel: stable-v26.4
+
+# -------------------------------------------------------------------
+# ocp4_workload_gitops_bootstrap
+# -------------------------------------------------------------------
+ocp4_workload_gitops_bootstrap_repo_url: https://github.com/rhpds/agentops-in-action-workshop.git
+ocp4_workload_gitops_bootstrap_repo_revision: main
+ocp4_workload_gitops_bootstrap_repo_path: automation/gitops/bootstrap-infra
+ocp4_workload_gitops_bootstrap_health_retries: 2
+
+ocp4_workload_gitops_bootstrap_helm_values:
+  overlay:
+    minimal: false
+    all: true
+  repoRevision: "{{ gitops_repo_revision }}"
+
+# Showroom — lab guide (single user)
+ocp4_workload_showroom_num_users: "{{ num_users }}"
+ocp4_workload_showroom_user_base_name: "{{ student_name }}"
+ocp4_workload_showroom_lab_name: redhat-ai-inference
+ocp4_workload_showroom_content_git_repo: "https://github.com/rhpds/agentops-in-action-workshop.git"
+ocp4_workload_showroom_content_git_repo_branch: main
+
+# -------------------------------------------------------------------
+# Babylon meta variables
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: E90EC1E6-4087-4165-A580-3D5C185B5689
+  owners:
+    maintainer:
+    - name: Philip Hayes
+      email: phayes@redhat.com
+    - name: Cansu Kavili Oernek
+      email: ckavili@redhat.com
+    - name: Ritesh Shah
+      email: rshah@redhat.com
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
+      pull: missing
+  catalog:
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "LB1285: AgentOps in Action: Evaluate, Secure, and Operate Enterprise AI Agents (Cluster, AWS)"
+    category: Labs
+    keywords:
+    - lb1285
+    - gitops
+    - keycloak
+    - argocd
+    labels:
+      Product: Red_Hat_OpenShift_Container_Platform
+      Product_Family: Red_Hat_Cloud
+      Provider: RHDP
+    reportingLabels:
+      primaryBU: Artificial_Intelligence
+      secondaryBU: Hybrid_Platforms
+    # This item only provisions shared infrastructure.
+    # It would not be appropriate to order a workshop of this item.
+    workshopUiDisabled: false
+    multiuser: true
+    workshop_user_mode: multi
+
+  components:
+  - name: openshift-base
+    display_name: OpenShift Container Platform Cluster (AWS Pools)
+    item: agd-v2/ocp-cluster-aws-pools
+    parameter_values:
+      cluster_size: multinode
+      host_ocp4_installer_version: "4.22"
+      ocp4_fips_enable: false
+      aws_region: us-east-2
+    # Propagate agnosticd_user_info data set by this component to variables.
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    # Propagate bastion data for infra_add_bastion role
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    # Needed for scaling cluster with workers
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
+
+  sandbox_host:
+    annotations:
+      cloud: aws-dedicated-shared
+      lab: lb1285-ai-agent-sec
+    max_cpu_usage_percentage: 90
+    max_memory_usage_percentage: 85
+    max_placements: 20
