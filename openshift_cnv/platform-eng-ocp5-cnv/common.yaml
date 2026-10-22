@@ -1,0 +1,284 @@
+---
+# -------------------------------------------------------------------
+# Platform Engineering Workshop on OpenShift 5 (CNV)
+# Development only - GPTEINFRA-18224
+# -------------------------------------------------------------------
+#include /includes/access-restriction-devs-only.yaml
+
+#include /includes/agd-v2-mapping.yaml
+#include /includes/catalog-icon-pe.yaml
+#include /includes/terms-of-service.yaml
+#include /includes/sandbox-api.yaml
+
+#include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
+
+# -------------------------------------------------------------------
+# Mandatory variables
+# -------------------------------------------------------------------
+config: openshift-workloads
+cloud_provider: none
+clusters:
+- default:
+    api_url: "{{ openshift_api_url }}"
+    api_token: "{{ openshift_api_key }}"
+
+# Use the compact, three-control-plane OpenShift 5 pool configuration.
+openshift_cnv_scale_cluster: false
+num_users: 1
+
+common_password: >-
+  {{
+    lookup('password', output_dir ~ '/common_password length=12 chars=ascii_letters,digits')
+  }}
+
+tag: ocp5-update
+
+# -------------------------------------------------------------------
+# Collections
+# -------------------------------------------------------------------
+ocp4_workload_platform_engineering_workshop_automation_repo: https://github.com/rhpds/platform-engineering-workshop.git#automation/ansible
+requirements_content:
+  collections:
+  - name: https://github.com/rhpds/core_workloads.git
+    type: git
+    version: main
+  - name: https://github.com/rhpds/platform-engineering-workshop.git#automation/ansible
+    type: git
+    version: "{{ tag }}"
+  - name: https://github.com/agnosticd/showroom.git
+    type: git
+    version: "v1.8.0"
+
+# -------------------------------------------------------------------
+# Workloads
+# -------------------------------------------------------------------
+workloads:
+- agnosticd.core_workloads.ocp4_workload_authentication_htpasswd
+- agnosticd.core_workloads.ocp4_workload_openshift_gitops
+- rhdp.workshop.ocp4_workload_platform_engineering_workshop
+- agnosticd.showroom.ocp4_workload_ocp_console_embed
+- agnosticd.showroom.ocp4_workload_showroom
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_authentication_htpasswd
+# -------------------------------------------------------------------
+# Preserve the original workshop's cluster login. GitOps manages its own
+# Keycloak and adds the developers provider alongside this htpasswd secret.
+ocp4_workload_authentication_htpasswd_admin_user: admin
+ocp4_workload_authentication_htpasswd_admin_password: "{{ common_password }}"
+ocp4_workload_authentication_htpasswd_admin_password_length: 16
+ocp4_workload_authentication_htpasswd_user_base: user
+ocp4_workload_authentication_htpasswd_user_password: "{{ common_password }}"
+ocp4_workload_authentication_htpasswd_user_password_length: 16
+ocp4_workload_authentication_htpasswd_user_password_randomized: true
+ocp4_workload_authentication_htpasswd_user_count: "{{ (num_users | default('1')) | int }}"
+ocp4_workload_authentication_htpasswd_remove_kubeadmin: true
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_openshift_gitops
+# -------------------------------------------------------------------
+ocp4_workload_openshift_gitops_channel: gitops-1.20
+ocp4_workload_openshift_gitops_use_catalog_snapshot: false
+ocp4_workload_openshift_gitops_setup_cluster_admin: true
+ocp4_workload_openshift_gitops_subscription_config:
+  env:
+  - name: ARGOCD_CLUSTER_CONFIG_NAMESPACES
+    value: 'rhdh-gitops,openshift-gitops'
+ocp4_workload_openshift_gitops_rbac_update: true
+ocp4_workload_openshift_gitops_rbac_policy: |
+  g, system:cluster-admins, role:admin
+  g, cluster-admins, role:admin
+  p, role:pe-workshop, applications, *, pe-workshop/*, allow
+  p, role:pe-workshop, applications, get, default/*, allow
+  p, role:pe-workshop, applications, get, developer-apps/*, allow
+  p, role:pe-workshop, projects, get, pe-workshop, allow
+  p, role:pe-workshop, projects, get, default, allow
+  p, role:pe-workshop, projects, get, developer-apps, allow
+  p, role:pe-workshop, logs, get, pe-workshop/*, allow
+  p, role:pe-workshop, logs, get, default/*, allow
+  p, role:pe-workshop, logs, get, developer-apps/*, allow
+  g, platformengineers, role:pe-workshop
+ocp4_workload_openshift_gitops_controller_update: true
+ocp4_workload_openshift_gitops_controller_requests_cpu: 512m
+ocp4_workload_openshift_gitops_controller_requests_memory: 1Gi
+ocp4_workload_openshift_gitops_controller_limits_cpu: "4"
+ocp4_workload_openshift_gitops_controller_limits_memory: 4Gi
+ocp4_workload_openshift_gitops_controller_app_sync: 1m
+ocp4_workload_openshift_gitops_repo_update: true
+ocp4_workload_openshift_gitops_repo_requests_cpu: 500m
+ocp4_workload_openshift_gitops_repo_requests_memory: 512Mi
+ocp4_workload_openshift_gitops_repo_limits_cpu: "2"
+ocp4_workload_openshift_gitops_repo_limits_memory: 2Gi
+# Preserve the workshop's health check for pinned operator subscriptions.
+ocp4_workload_openshift_gitops_resource_health:
+- group: operators.coreos.com
+  kind: Subscription
+  check: |
+    health_status = {}
+    if obj.status ~= nil then
+      if obj.status.state == "AtLatestKnown" or obj.status.state == "UpgradePending" then
+        health_status.status = "Healthy"
+        health_status.message = obj.status.state
+        return health_status
+      end
+      if obj.status.conditions ~= nil then
+        numDegraded = 0
+        numPending = 0
+        msg = ""
+        for i, condition in pairs(obj.status.conditions) do
+          msg = msg .. i .. ": " .. condition.type .. " | " .. condition.status .. "\n"
+          if condition.type == "InstallPlanPending" and condition.status == "True" then
+            numPending = numPending + 1
+          elseif (condition.type == "InstallPlanMissing" and condition.reason ~= "ReferencedInstallPlanNotFound") then
+            numDegraded = numDegraded + 1
+          elseif (condition.type == "CatalogSourcesUnhealthy" or condition.type == "InstallPlanFailed") and condition.status == "True" then
+            numDegraded = numDegraded + 1
+          end
+        end
+        if numDegraded == 0 and numPending == 0 then
+          health_status.status = "Healthy"
+          health_status.message = msg
+          return health_status
+        elseif numPending > 0 and numDegraded == 0 then
+          health_status.status = "Progressing"
+          health_status.message = "An install plan for a subscription is pending installation"
+          return health_status
+        else
+          health_status.status = "Degraded"
+          health_status.message = msg
+          return health_status
+        end
+      end
+    end
+    health_status.status = "Progressing"
+    health_status.message = "An install plan for a subscription is pending installation"
+    return health_status
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_platform_engineering_workshop
+# -------------------------------------------------------------------
+# The OpenShift 5 workshop keeps its GitOps charts and Showroom content
+# alongside the Ansible collection in the platform-engineering-workshop repo.
+ocp4_workload_platform_engineering_workshop_gitops_repo: https://github.com/rhpds/platform-engineering-workshop.git
+ocp4_workload_platform_engineering_workshop_gitops_repo_tag: "{{ tag }}"
+ocp4_workload_platform_engineering_workshop_wait_for_apps_ignore_errors: true
+ocp4_workload_platform_engineering_workshop_openshift_gitops_install: false
+ocp4_workload_platform_engineering_workshop_litellm_api_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+ocp4_workload_platform_engineering_workshop_litellm_api_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
+
+# -------------------------------------------------------------------
+# MaaSSandbox credentials
+# -------------------------------------------------------------------
+# Keep the existing workshop and Showroom user-data names. MaaS manages
+# the key lifecycle; no LiteLLM master API key is needed by the deployer.
+agnosticd_passthrough_user_data:
+  litellm_api_endpoint: "{{ maas_sandbox.credentials[0].api_endpoint }}"
+  litellm_api_base_url: "{{ maas_sandbox.credentials[0].api_base_url }}"
+  litellm_virtual_key: "{{ maas_sandbox.credentials[0].virtual_key }}"
+  litellm_key_alias: "{{ maas_sandbox.credentials[0].key_alias }}"
+  litellm_key_id: "{{ maas_sandbox.credentials[0].key_id }}"
+  litellm_available_models: "{{ maas_sandbox.credentials[0].available_models }}"
+
+# -------------------------------------------------------------------
+# Workload: ocp4_workload_showroom
+# -------------------------------------------------------------------
+ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/platform-engineering-workshop.git
+ocp4_workload_showroom_content_git_repo_ref: "{{ tag }}"
+ocp4_workload_showroom_content_only: false
+ocp4_workload_showroom_terminal_type: wetty
+ocp4_workload_showroom_wetty_ssh_bastion_login: true
+
+# -------------------------------------------------------------------
+# Babylon metadata
+# -------------------------------------------------------------------
+__meta__:
+  asset_uuid: b4440d24-f014-45c9-a149-ae47ad219e62
+
+  deployer:
+    scm_url: https://github.com/rhpds/agnosticd-v2
+    scm_ref: main
+    execution_environment:
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-09-15
+      pull: missing
+    actions:
+      destroy:
+        disable: false
+      start:
+        disable: false
+      status:
+        disable: false
+      stop:
+        disable: true
+      update:
+        disable: true
+
+  sandboxes:
+  - kind: MaaSSandbox
+    cloud_selector:
+      purpose: production
+    models: "qwen3-235b,qwen38-27b,nomic-embed-text-v1-5,Llama-Guard-3-1B"
+    var: maas_sandbox
+
+  sandbox_api:
+    actions:
+      destroy:
+        # Run workload cleanup before releasing the MaaS allocation.
+        catch_all: false
+
+  owners:
+    maintainer:
+    - name: Evan Shortiss
+      email: eshortis@redhat.com
+    instructions:
+    - name: Evan Shortiss
+      email: eshortis@redhat.com
+
+  catalog:
+    reportingLabels:
+      primaryBU: Hybrid_Platforms
+    namespace: babylon-catalog-{{ stage | default('?') }}
+    display_name: "Platform Engineering Workshop on OpenShift 5 (CNV)"
+    category: Workshops
+    multiuser: false
+    keywords:
+    - platform engineering
+    - rhdh
+    - developer hub
+    - ocp5
+    labels:
+      Provider: RHDP
+      Platform: OpenShift
+      TDP1: Application_Platform
+
+  components:
+  - name: openshift_base
+    display_name: OpenShift Container Platform 5 Cluster (CNV Pools)
+    item: agd-v2/ocp5-cluster-cnv-pools
+    parameter_values:
+      cluster_size: multinode
+    propagate_provision_data:
+    - name: openshift_api_ca_cert
+      var: openshift_api_ca_cert
+    - name: openshift_api_url
+      var: openshift_api_url
+    - name: openshift_cluster_admin_token
+      var: openshift_api_key
+    - name: openshift_cluster_admin_token
+      var: openshift_cluster_admin_token
+    - name: openshift_cluster_ingress_domain
+      var: openshift_cluster_ingress_domain
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    - name: sandbox_openshift_api_key
+      var: sandbox_openshift_api_key
+    - name: sandbox_openshift_api_url
+      var: sandbox_openshift_api_url
+    - name: sandbox_openshift_namespace
+      var: sandbox_openshift_namespace
