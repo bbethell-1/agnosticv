@@ -32,6 +32,8 @@ clusters:
     api_url: "{{ openshift_api_url }}"
     api_token: "{{ openshift_api_key }}"
 
+num_users: 1
+
 # -------------------------------------------------------------------
 # Autoscaling cluster
 # -------------------------------------------------------------------
@@ -68,12 +70,8 @@ requirements_content:
   # Showroom
   - name: https://github.com/rhpds/showroom.git
     type: git
-    version: v1.6.6
+    version: v1.8.0
 
-  # Showroom AI Assistant
-  - name: https://github.com/blues-man/showroom-ai-assistant-collection.git
-    type: git
-    version: main
 # ===================================================================
 # List of workloads to be deployed
 # ===================================================================
@@ -90,7 +88,6 @@ workloads:
 - agnosticd.core_workloads.ocp4_workload_web_terminal
 - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
 - agnosticd.showroom.ocp4_workload_ocp_console_embed
-- agnosticd.showroom_ai_assistant.ocp4_workload_showroom_ai_assistant
 
 remove_workloads:
 
@@ -108,6 +105,11 @@ ocp4_workload_litellm_virtual_keys_models:
 - nomic-embed-text-v1-5
 - granite-4-0-h-tiny
 - qwen3-14b
+# Single cluster-level key: keep the role from auto-detecting multi-user mode
+ocp4_workload_litellm_virtual_keys_multi_user: false
+ocp4_workload_litellm_virtual_keys_user_count: 1
+ocp4_workload_litellm_virtual_keys_enable_user_info_messages: true
+ocp4_workload_litellm_virtual_keys_enable_user_info_data: true
 
 # -------------------------------------------------------------------
 # Common Password
@@ -248,7 +250,7 @@ __meta__:
     scm_url: https://github.com/rhpds/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-09-15
       pull: missing
 
   catalog:
@@ -285,10 +287,11 @@ __meta__:
     deployer_admin_sa_token_ttl: "1h"
     deployer_admin_sa_token_refresh_interval: "30m"
     deployer_admin_sa_token_target_var: cluster_admin_agnosticd_sa_token
+
   components:
   - name: openshift
     display_name: OpenShift Cluster
-    item: agd-v2/ocp-virt-labs-pool
+    item: agd-v2/ocp-cluster-cnv-pools
     parameter_values:
       cluster_size: multinode
       host_ocp4_installer_version: "4.20"
@@ -299,12 +302,19 @@ __meta__:
       var: openshift_api_key
     - name: openshift_cluster_admin_token
       var: openshift_cluster_admin_token
+    # Propagate bastion data for infra_add_bastion role
+    - name: bastion_public_hostname
+      var: bastion_ansible_host
+    - name: bastion_ssh_user_name
+      var: bastion_ansible_user
+    - name: bastion_ssh_password
+      var: bastion_ansible_ssh_pass
+    - name: bastion_ssh_port
+      var: bastion_ansible_port
+    # Needed for scaling cluster with workers
     - name: sandbox_openshift_api_url
       var: sandbox_openshift_api_url
     - name: sandbox_openshift_api_key
       var: sandbox_openshift_api_key
     - name: sandbox_openshift_namespace
       var: sandbox_openshift_namespace
-
-  tower:
-    timeout: 21600

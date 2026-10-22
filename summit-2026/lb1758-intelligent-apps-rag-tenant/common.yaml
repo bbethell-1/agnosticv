@@ -10,6 +10,7 @@
 #include /includes/sandbox-api.yaml
 
 #include /includes/parameters/purpose.yaml
+#include /includes/parameters/salesforce-id.yaml
 
 #include /includes/secrets/litemaas-master_api.yaml
 #include /includes/parameters/litellm_metadata.yaml
@@ -17,6 +18,7 @@
 # -------------------------------------------------------------------
 # Mandatory Variables
 # -------------------------------------------------------------------
+tag: main
 cloud_provider: none
 config: namespace
 # Sandbox API configuration
@@ -31,19 +33,19 @@ requirements_content:
     # Namespaced workloads for tenant provisioning
     - name: https://github.com/rhpds/namespaced_workloads.git
       type: git
-      version: main
+      version: "{{ tag }}"
     # Core OpenShift Workloads
     - name: https://github.com/rhpds/core_workloads.git
       type: git
-      version: main
-    # Showroom — v1.6.6 adds runtime_automation_enable/image support (critical)
+      version: "{{ tag }}"
+    # Showroom — runtime_automation_enable/image support requires >= v1.6.6
     - name: https://github.com/rhpds/showroom.git
       type: git
-      version: v1.6.6
+      version: v1.8.0
     # FTL collection — ZT runner SA + E2E grading
-    - name: https://github.com/rhpds/rhpds-ftl.git
-      type: git
-      version: main
+    # - name: https://github.com/rhpds/rhpds-ftl.git
+    #   type: git
+    #   version: main
     # LiteLLM Virtual Keys Collection
     - name: https://github.com/rhpds/rhpds.litellm_virtual_keys.git
       type: git
@@ -52,28 +54,18 @@ requirements_content:
 # -------------------------------------------------------------------
 # List of workloads to be deployed
 # -------------------------------------------------------------------
-workloads: >-
-  {{
-    [
-      'rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys',
-      'agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user',
-      'agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace',
-      'agnosticd.core_workloads.ocp4_workload_gitops_bootstrap',
-      'agnosticd.showroom.ocp4_workload_showroom',
-      'rhpds.ftl.ocp4_workload_runtime_automation_k8s'
-    ] +
-    (
-      ['rhpds.ftl.ocp4_runtime_automation_load_test']
-      if run_e2e_load_test | default(false) | bool
-      else []
-    )
-  }}
+workloads:
+  - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_keycloak_user
+  - agnosticd.namespaced_workloads.ocp4_workload_tenant_namespace
+  - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
+  - agnosticd.showroom.ocp4_workload_showroom_user_data_seed
+  - agnosticd.showroom.ocp4_workload_showroom
 
 # -------------------------------------------------------------------
 # List of workloads to remove (reverse order of workloads)
 # -------------------------------------------------------------------
 remove_workloads:
-  - rhpds.ftl.ocp4_workload_runtime_automation_k8s
   - rhpds.litellm_virtual_keys.ocp4_workload_litellm_virtual_keys
   - agnosticd.showroom.ocp4_workload_showroom
   - agnosticd.core_workloads.ocp4_workload_gitops_bootstrap
@@ -110,9 +102,10 @@ ocp4_workload_tenant_keycloak_user_keycloak_realm: sso
 # -------------------------------------------------------------------
 ocp4_workload_tenant_namespace_prefix: "{{ ocp4_workload_tenant_keycloak_username }}"
 ocp4_workload_tenant_namespace_username: "{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_tenant_namespace_use_cluster_quota: true
 ocp4_workload_tenant_namespace_namespaces:
   - "{{ ocp4_workload_tenant_keycloak_username }}"
-  - "showroom-{{ ocp4_workload_tenant_keycloak_username }}"
+  - "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
 
 # Casero capacity test (2026-04-24): max_tenants = 15 on CNV shared cluster.
 # Actual per-tenant usage: 0.6 CPU / 1Gi memory.
@@ -155,9 +148,15 @@ ocp4_workload_gitops_bootstrap_health_retries: 2
 # -------------------------------------------------------------------
 ocp4_workload_showroom_openshift_api_token: "{{ cluster_admin_agnosticd_sa_token }}"
 ocp4_workload_showroom_openshift_api_url: "{{ sandbox_openshift_api_url }}"
-ocp4_workload_showroom_namespace: "showroom-{{ ocp4_workload_tenant_keycloak_username }}"
+ocp4_workload_showroom_user_data_seed:
+  user: "{{ ocp4_workload_tenant_keycloak_username }}"
+  password: "{{ common_password }}"
+
+# Namespace pattern: {{ username }}-showroom (not showroom-{{ username }})
+# so the route becomes showroom-<user>-showroom, not showroom-showroom-<user>
+ocp4_workload_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
 ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/intelligent-apps-python-rag-showroom
-ocp4_workload_showroom_content_git_repo_ref: "main"
+ocp4_workload_showroom_content_git_repo_ref: "{{ tag }}"
 ocp4_workload_showroom_content_only: true
 ocp4_workload_showroom_namespace_display: "LB1758: Building Intelligent Apps with Python and RAG"
 ocp4_workload_showroom_chart_package_url: https://rhpds.github.io/showroom-deployer
@@ -172,12 +171,6 @@ ocp4_workload_showroom_runtime_automation_image: "quay.io/rhpds/zt-runner:v2.4.2
 ocp4_workload_showroom_passthrough_user_data: true
 # Enable Showroom dev mode for faster content iteration
 ocp4_workload_showroom_antora_enable_dev_mode: "false"
-# -------------------------------------------------------------------
-# Workload: ocp4_workload_runtime_automation_k8s — ZT runner SA
-# -------------------------------------------------------------------
-ocp4_workload_runtime_automation_k8s_cluster_admin: true
-ocp4_workload_runtime_automation_k8s_openshift_api_url: "{{ sandbox_openshift_api_url }}"
-ocp4_workload_runtime_automation_k8s_openshift_api_token: "{{ cluster_admin_agnosticd_sa_token }}"
 
 # -------------------------------------------------------------------
 # Babylon Meta Variables
@@ -205,7 +198,7 @@ __meta__:
     scm_url: https://github.com/rhpds/agnosticd-v2
     scm_ref: main
     execution_environment:
-      image: quay.io/agnosticd/ee-multicloud:chained-2026-04-10
+      image: quay.io/agnosticd/ee-multicloud:chained-2026-07-07
       pull: missing
     actions:
       status:
@@ -233,13 +226,6 @@ __meta__:
       Brand_Event: Red_Hat_Summit_2026
       Platform: AI
       TDP1: AI_Platform
-    parameters:
-      - name: run_e2e_load_test
-        description: "Run E2E load test after provisioning — triggers solve and validate on all modules"
-        formLabel: "Run E2E Load Test"
-        openAPIV3Schema:
-          type: boolean
-          default: false
     workshopLabUiRedirect: true
     # Provision doesn't call `agnosticd_user_info` with `user` set and so does
     # not report `users` in `provision_data`. All data and messages are
